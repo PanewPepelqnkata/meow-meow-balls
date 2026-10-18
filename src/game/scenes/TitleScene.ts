@@ -130,9 +130,21 @@ export class TitleScene extends Phaser.Scene {
     super('TitleScene')
   }
 
+  /** HiDPI camera: zoom = display scale, centered on the CSS midpoint. */
+  private applyDprCamera(): void {
+    const z = this.game.scale.displayScale.x
+    const cssW = this.scale.width / z
+    const cssH = this.scale.height / z
+    this.cameras.main.setZoom(z)
+    this.cameras.main.centerOn(cssW / 2, cssH / 2)
+  }
+
   create(): void {
     this.closed = false
     this.screen = 'menu'
+    // HiDPI camera setup; reapplied on resize (buildAll relayouts in CSS
+    // coordinates — the camera handles the buffer scaling).
+    this.applyDprCamera()
     this.resetArmed = 0
     // Phase 2.16.0: the menu owns the screen — the gameplay scenes are
     // COMPLETELY HIDDEN (not merely dimmed), so no second container / HUD
@@ -156,6 +168,7 @@ export class TitleScene extends Phaser.Scene {
     this.cameras.main.fadeIn(260, 8, 10, 20)
 
     this.scale.on(Phaser.Scale.Events.RESIZE, this.buildAll, this)
+    this.scale.on(Phaser.Scale.Events.RESIZE, this.applyDprCamera, this)
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.scale.off(Phaser.Scale.Events.RESIZE, this.buildAll, this)
       for (const off of this.offs) off()

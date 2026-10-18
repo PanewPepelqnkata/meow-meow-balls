@@ -28,6 +28,14 @@ export class BackgroundScene extends Phaser.Scene {
   create(): void {
     // Explicit transparent clear — the theme layer paints every pixel.
     this.cameras.main.setBackgroundColor('rgba(0,0,0,0)')
+    // HiDPI: the canvas buffer is dpr× CSS px — zoom every camera by the
+    // display scale AND center on the CSS midpoint (zoom pivots on the
+    // camera center, which is physical/2 — the CSS mid is half that).
+    this.applyDprCamera()
+    this.scale.on(Phaser.Scale.Events.RESIZE, this.applyDprCamera, this)
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.scale.off(Phaser.Scale.Events.RESIZE, this.applyDprCamera, this)
+    })
     this.background = new BackgroundTheme(this)
     // Phase 2.14.0: a pinned theme (SETTINGS screen, persisted) overrides
     // the progression opening theme at boot; 'auto' keeps the default.
@@ -41,6 +49,16 @@ export class BackgroundScene extends Phaser.Scene {
   override update(_time: number, delta: number): void {
     // Star twinkle + cloud drift for themed backgrounds.
     this.background?.update(delta)
+  }
+
+  /** HiDPI camera: zoom = display scale, centered on the CSS midpoint.
+   * Called on create and on every resize. */
+  private applyDprCamera(): void {
+    const z = this.game.scale.displayScale.x
+    const cssW = this.scale.width / z
+    const cssH = this.scale.height / z
+    this.cameras.main.setZoom(z)
+    this.cameras.main.centerOn(cssW / 2, cssH / 2)
   }
 
   /** Theme switching entry point (gameplay events + DEV QA hook). */

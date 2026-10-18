@@ -20,9 +20,20 @@ export class DropClaw {
   private tier = 1
   private seed = 1
   private visible = true
+  /** Mobile composition: the hook/rope assembly is hidden — the current
+   * ball simply floats at the drop position. Desktop keeps the claw. */
+  private mobile = false
 
   constructor(scene: Phaser.Scene) {
     this.g = scene.add.graphics().setDepth(5)
+  }
+
+  /** Composition switch (from the responsive layout). Triggers a redraw. */
+  setMobile(mobile: boolean): void {
+    if (this.mobile !== mobile) {
+      this.mobile = mobile
+      this.redraw()
+    }
   }
 
   /** QA hook: the ball the claw is CURRENTLY displaying. */
@@ -80,11 +91,15 @@ export class DropClaw {
     drawBallFace(g, look, { x, y: by }, r, 1)
 
     // --- cable from the stage top ---
-    // Phase 2.11.1: SIMPLIFIED hardware (spec §4D) — a compact gray metal
-    // head (with screws, matching the reference) + yellow arms. The whole
+    // MOBILE: the hanging hook/rope/drop mechanism is hidden completely —
+    // the current ball simply floats at the drop position (thumb-reachable,
+    // nothing above it to cover the score/HUD).
+    // DESKTOP: SIMPLIFIED hardware (spec §4D) — a compact gray metal head
+    // (with screws, matching the reference) + yellow arms. The whole
     // assembly now tops out ~20px above the ball (ResponsiveLayout's
     // CLAW_TOP_WORST assumes this) so the top-center score and the claw
     // never overlap on any desktop viewport.
+    if (this.mobile) return
     const topY = 0
     const clawTop = by - r - 12
     g.lineStyle(5, 0x3c4046, 1)

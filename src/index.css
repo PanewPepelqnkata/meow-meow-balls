@@ -22,6 +22,19 @@ body,
   padding: 0;
   height: 100%;
   background: #f3f1eb;
+  /* Mobile: the game owns the viewport — no browser scroll/bounce, and
+     the canvas extends under the notch/home indicator (viewport-fit=cover).
+     Safe-area padding is applied by the HUD layout, not here. */
+  overscroll-behavior: none;
+  touch-action: none;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  /* Standalone PWA: fill the real screen including safe areas. */
+  height: 100dvh;
 }
 
 .app {

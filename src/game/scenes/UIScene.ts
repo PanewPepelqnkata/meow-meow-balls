@@ -57,7 +57,24 @@ export class UIScene extends Phaser.Scene {
     this.discoveryOverlay = new DiscoveryOverlay(this)
   }
 
+  /** HiDPI camera: zoom = display scale, centered on the CSS midpoint
+   * (zoom pivots on the camera center — physical/2 — so the CSS mid must
+   * be set explicitly). Called on create and on every resize. */
+  private applyDprCamera(): void {
+    const z = this.game.scale.displayScale.x
+    const cssW = this.scale.width / z
+    const cssH = this.scale.height / z
+    this.cameras.main.setZoom(z)
+    this.cameras.main.centerOn(cssW / 2, cssH / 2)
+  }
+
   create(): void {
+    // HiDPI camera setup; reapplied on resize.
+    this.applyDprCamera()
+    this.scale.on(Phaser.Scale.Events.RESIZE, this.applyDprCamera, this)
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.scale.off(Phaser.Scale.Events.RESIZE, this.applyDprCamera, this)
+    })
     this.uiRoot = new UiRoot(this, {
       onSwap: () => gameBus.emit('ui:swap', {}),
       onRaise: () => gameBus.emit('ui:raise', {}),

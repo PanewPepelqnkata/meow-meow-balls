@@ -132,6 +132,25 @@ export const WORLD_GEOM = {
 } as const
 
 export function resolveLayout(vw: number, vh: number, safe: SafeArea = { top: 0, right: 0, bottom: 0, left: 0 }): UiLayout {
+  // vw/vh may be the GAME size (physical px when the HiDPI buffer is
+  // active). All layout math and thresholds operate on CSS px — normalize
+  // through the game's displayScale (physical / canvas CSS = dpr).
+  const game = (globalThis as { __brGame?: Phaser.Game }).__brGame
+  if (game) {
+    const ds = game.scale.displayScale
+    const dsw = (ds as unknown as { x: number }).x
+    if (dsw > 0 && Math.abs(dsw - 1) > 0.001) {
+      const dsh = (ds as unknown as { y: number }).y
+      vw = vw / dsw
+      vh = vh / dsh
+      safe = {
+        top: safe.top / dsw,
+        right: safe.right / dsw,
+        bottom: safe.bottom / dsw,
+        left: safe.left / dsw,
+      }
+    }
+  }
   const mode: LayoutMode = vw < 600 ? 'mobile' : vw <= 1100 ? 'tablet' : 'desktop'
   const composition: Composition = vh > vw ? 'portrait' : 'landscape'
   const portrait = composition === 'portrait'
@@ -243,8 +262,9 @@ export function resolveLayout(vw: number, vh: number, safe: SafeArea = { top: 0,
 
   // ---- portrait composition (mobile + portrait tablet) ---------------------
   // Sizes scale with the viewport but clamp so 320×568 stays usable and
-  // 430×932 does not balloon.
-  const abilitySize = Math.round(Math.max(54, Math.min(70, 62 * ps)))
+  // 430×932 does not balloon. Ability buttons are comfortable touch targets
+  // (≥ 58px) and clear the safe-area home indicator.
+  const abilitySize = Math.round(Math.max(58, Math.min(72, 64 * ps)))
   // CartoonButton positions its container at the button CENTER — startY must
   // be the center y (Phase 2.11.1: the old vh − size − 10 treated it as top
   // and pushed the buttons up over the tier row).

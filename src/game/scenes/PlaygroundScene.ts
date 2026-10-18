@@ -207,6 +207,7 @@ export class PlaygroundScene extends Phaser.Scene {
 
     this.containerView = new ContainerView(this)
     this.claw = new DropClaw(this)
+    this.claw.setMobile(this.layoutCache?.composition === 'portrait')
 
     // Aim band + drop target use the EXTRAPOLATED interior at the actual
     // spawn height for the LARGEST spawnable tier (raised-wall-anchored,
@@ -687,11 +688,16 @@ export class PlaygroundScene extends Phaser.Scene {
     return Number(this.registry.get('best') ?? 0)
   }
 
-  /** Center the world camera on the gameplay band (central layout rules). */
+  /** Center the world camera on the gameplay band (central layout rules).
+   * HiDPI: the canvas buffer is dpr× CSS px; resolveLayout normalizes the
+   * game size to CSS px internally (via displayScale), and the camera zoom
+   * is multiplied by dpr so the CSS-px layout renders 1:1 into the buffer. */
   private applyWorldCamera(): void {
     this.layoutCache = resolveLayout(this.scale.width, this.scale.height, readSafeArea())
+    // Composition may flip on rotate: the claw's mobile state follows.
+    if (this.claw) this.claw.setMobile(this.layoutCache.composition === 'portrait')
     const cam = this.cameras.main
-    cam.setZoom(this.layoutCache.world.zoom)
+    cam.setZoom(this.layoutCache.world.zoom * this.game.scale.displayScale.x)
     cam.centerOn(this.layoutCache.world.centerX, this.layoutCache.world.centerY)
   }
 
@@ -831,6 +837,8 @@ export class PlaygroundScene extends Phaser.Scene {
   private updateClaw(): void {
     const tier = getTier(this.currentBall.tier)
     if (!tier) return
+    // Mobile composition: no hook — the ball floats at the drop position.
+    this.claw.setMobile(this.layoutCache?.composition === 'portrait')
     this.claw.setAim(this.inputController.aimX)
     this.claw.setBall(this.currentBall.tier, this.currentBall.seed)
   }

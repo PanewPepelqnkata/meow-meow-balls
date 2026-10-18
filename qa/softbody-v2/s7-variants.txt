@@ -1,7 +1,0 @@
-baseline: maxPen=22.2 settled(max/med)=22.2/15.8 maxSpdLast450=6.89 sleeping=0,0,0,0,0,0,0,0
-separation OFF: maxPen=27.3 settled(max/med)=27.3/24.8 maxSpdLast450=4.80 sleeping=0,0,0,0,0,0,0,0
-sep relax 1 cap 4 iters 8: maxPen=8.7 settled(max/med)=-2.0/-2.0 maxSpdLast450=3.60 sleeping=0,0,0,0,0,0,0,0
-skin 3 relax 1 cap 4 iters 8: maxPen=-6.0 settled(max/med)=-6.0/-6.0 maxSpdLast450=4.41 sleeping=0,0,0,0,0,0,0,0
-pressure OFF (sep OFF): maxPen=27.4 settled(max/med)=27.3/24.9 maxSpdLast450=4.70 sleeping=0,0,0,0,0,0,0,0
-pressure OFF (skin3 strong sep): maxPen=-6.0 settled(max/med)=-6.0/-6.0 maxSpdLast450=4.25 sleeping=0,0,0,0,0,0,0,0
-pressure OFF + rim damping 0.3 (sep OFF): maxPen=33.2 settled(max/med)=33.2/29.4 maxSpdLast450=4.22 sleeping=0,0,0,0,0,0,0,0

@@ -88,6 +88,11 @@ export class InputController {
     this.attached = true
     scene.input.on(Phaser.Input.Events.POINTER_MOVE, this.handlePointerMove)
     scene.input.on(Phaser.Input.Events.POINTER_UP, this.handlePointerUp)
+    // Touch reliability: on phones the pointer-up can land outside the
+    // canvas (finger drift past the edge, browser UI overlay) — Phaser
+    // still dispatches it to the scene input. Treat it exactly like an
+    // in-canvas release so drops never get swallowed.
+    scene.input.on(Phaser.Input.Events.POINTER_UP_OUTSIDE, this.handlePointerUp)
   }
 
   detach(scene: Phaser.Scene): void {
@@ -95,5 +100,6 @@ export class InputController {
     this.attached = false
     scene.input.off(Phaser.Input.Events.POINTER_MOVE, this.handlePointerMove)
     scene.input.off(Phaser.Input.Events.POINTER_UP, this.handlePointerUp)
+    scene.input.off(Phaser.Input.Events.POINTER_UP_OUTSIDE, this.handlePointerUp)
   }
 }

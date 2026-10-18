@@ -1,5 +1,28 @@
+# Dependencies
 node_modules
+
+# Build output
 dist
 coverage
+
+# Environment
 *.local
+.env.local
+
+# OS
 .DS_Store
+
+# QA artifacts (screenshots, smoke scripts, diagnostics)
+qa
+qa.zip
+
+# Reference material / design docs outside the game source
+refference
+session-ses_*.md
+
+# Phase delivery notes
+PHASE_*.md
+
+# Archives
+*.zip
+Archive.zip

@@ -17,17 +17,23 @@ import { TitleScene } from './scenes/TitleScene'
  * create) with no duplicate instances or leaked listeners.
  */
 export function createGame(parent: HTMLElement): Phaser.Game {
+  // HiDPI RENDERING: the game runs in Scale.NONE — we own the canvas
+  // buffer entirely. The buffer is sized to PHYSICAL pixels (CSS × dpr,
+  // capped at 2) and the canvas element is CSS-styled back to the viewport
+  // size, so the game renders at the device's native density (crisp text,
+  // vector art and outlines on phones). All scenes operate in CSS-px
+  // coordinates: every camera zooms by dpr and centers on the CSS midpoint
+  // (see each scene's applyDprCamera), and pointer coordinates are
+  // auto-normalized by Phaser's displayScale. Desktop DPR-1 displays are
+  // unaffected (buffer == CSS px, zoom 1).
   const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent,
     width: STAGE.width,
     height: STAGE.height,
     backgroundColor: '#f3f1eb',
-    // Phase 2.11.0: the canvas fills the window (RESIZE); the world scene
-    // frames the fixed 720×1280 gameplay stage with a zoomed camera, and
-    // UIScene renders the responsive HUD at 1:1 viewport scale on top.
     scale: {
-      mode: Phaser.Scale.RESIZE,
+      mode: Phaser.Scale.NONE,
       autoCenter: Phaser.Scale.NO_CENTER,
     },
     // Phase 2.12.1: BackgroundScene renders FIRST (bottom of the scene list)
@@ -39,6 +45,29 @@ export function createGame(parent: HTMLElement): Phaser.Game {
     // registers its key.
     scene: [BackgroundScene, PlaygroundScene, UIScene, TitleScene],
   })
+  const cssSize = (): { w: number; h: number } => ({
+    w: parent.clientWidth || window.innerWidth,
+    h: parent.clientHeight || window.innerHeight,
+  })
+  const dpr = (): number => Math.min(2, window.devicePixelRatio || 1)
+  const applyDprResize = (): void => {
+    const { w, h } = cssSize()
+    const d = dpr()
+    const bufW = Math.round(w * d)
+    const bufH = Math.round(h * d)
+    // NONE mode honors explicit sizes: buffer = physical, display = CSS.
+    game.scale.setGameSize(bufW, bufH)
+    game.scale.setParentSize(w, h) // displayScale = physical / CSS = dpr
+    game.canvas.style.width = `${w}px`
+    game.canvas.style.height = `${h}px`
+    game.scale.displaySize.setSize(w, h)
+    game.events.emit('br:dpr', d)
+  }
+  // Keep the buffer in sync with the viewport (rotate, window resize,
+  // standalone install).
+  const ro = new ResizeObserver(() => applyDprResize())
+  ro.observe(parent)
+  game.events.once(Phaser.Core.Events.READY, () => applyDprResize())
   // Phase 2.7 DEV-ONLY: soft-body prototype behind ?softbody=1
   if (import.meta.env.DEV && typeof window !== 'undefined' &&
       new URLSearchParams(window.location.search).get('softbody') === '1') {
