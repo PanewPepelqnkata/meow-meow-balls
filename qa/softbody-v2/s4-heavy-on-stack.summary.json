@@ -1,0 +1,21 @@
+{
+  "scenario": "s4-heavy-on-stack",
+  "summary": {
+    "maxRawBodyPen": 28.43,
+    "maxProdContactPen": null,
+    "contourMinDistMin": 0,
+    "contourCrossSteps": 5,
+    "settledMaxCentroidSpeed": 1.565,
+    "settledMaxParticleSpeed": 4.935,
+    "settledMaxVelVariance": 3.198,
+    "settledMaxSepMoved": 3.4,
+    "settledAreaRange": [
+      0.544,
+      0.961
+    ],
+    "settledConstraintResidual": 24.99,
+    "maxWallOutPoints": 0.04,
+    "minAspect": 0.36,
+    "maxAspect": 1.801
+  }
+}

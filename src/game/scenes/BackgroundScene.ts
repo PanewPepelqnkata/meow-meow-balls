@@ -1,0 +1,73 @@
+import Phaser from 'phaser'
+import { BackgroundTheme } from '../rendering/BackgroundTheme'
+import type { ThemeName } from '../rendering/BackgroundTheme'
+import { THEME_PROGRESS } from '../../config/presentation'
+import { themeSetting } from '../state/save'
+
+/**
+ * Phase 2.12.1 — dedicated full-screen background scene.
+ *
+ * WHY A SEPARATE SCENE (root-cause fix for the incomplete background):
+ * the gameplay world camera is zoomed/centered to frame the fixed 720×1280
+ * stage. Graphics drawn in the gameplay scene at screen-pixel sizes get
+ * scaled and displaced by that zoom — `setScrollFactor(0)` exempts an object
+ * from camera scroll but NOT from camera zoom, which is exactly how the
+ * background ended up as a misplaced rectangle. This scene runs BELOW the
+ * gameplay scene (Phaser renders scenes in registration order) with a
+ * default camera that is never zoomed or scrolled, so screen-space drawing
+ * here is 1:1 with the viewport at every size, on every theme, through
+ * every resize/transition.
+ */
+export class BackgroundScene extends Phaser.Scene {
+  private background!: BackgroundTheme
+
+  constructor() {
+    super('BackgroundScene')
+  }
+
+  create(): void {
+    // Explicit transparent clear — the theme layer paints every pixel.
+    this.cameras.main.setBackgroundColor('rgba(0,0,0,0)')
+    this.background = new BackgroundTheme(this)
+    // Phase 2.14.0: a pinned theme (SETTINGS screen, persisted) overrides
+    // the progression opening theme at boot; 'auto' keeps the default.
+    const pinned = themeSetting()
+    if (pinned !== 'auto') this.background.setTheme(pinned)
+    // Phaser auto-starts only the FIRST configured scene — this one. The
+    // gameplay scene (which in turn launches UIScene) must be launched here.
+    this.scene.launch('playground')
+  }
+
+  override update(_time: number, delta: number): void {
+    // Star twinkle + cloud drift for themed backgrounds.
+    this.background?.update(delta)
+  }
+
+  /** Theme switching entry point (gameplay events + DEV QA hook). */
+  setTheme(theme: ThemeName, durationMs?: number): void {
+    this.background?.setTheme(theme, durationMs)
+  }
+
+  /**
+   * Phase 2.13.0 (spec §6): milestone-driven progression through
+   * THEME_PROGRESS.order. `steps` advances that many themes; `comboOnly`
+   * (secondary trigger) advances at most one step and is ignored while the
+   * progression has run past the cap for this run — exceptional combos can
+   * never cycle themes endlessly.
+   */
+  advanceTheme(steps: number, comboOnly = false): void {
+    if (!this.background) return
+    const order = THEME_PROGRESS.order
+    const idx = order.indexOf(this.background.themeName)
+    const take = comboOnly ? Math.min(1, steps) : steps
+    const next = order[Math.min(order.length - 1, Math.max(0, idx + take))]
+    if (next && next !== this.background.themeName) {
+      this.background.setTheme(next, THEME_PROGRESS.fadeMs)
+    }
+  }
+
+  /** Restart: back to the opening theme, progression state cleared. */
+  resetTheme(): void {
+    this.background?.setTheme(THEME_PROGRESS.order[0], THEME_PROGRESS.fadeMs)
+  }
+}

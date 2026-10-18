@@ -1,0 +1,21 @@
+{
+  "scenario": "s6-walls-floor",
+  "summary": {
+    "maxRawBodyPen": -9.85,
+    "maxProdContactPen": 0.15,
+    "contourMinDistMin": 7.2,
+    "contourCrossSteps": 0,
+    "settledMaxCentroidSpeed": 3.234,
+    "settledMaxParticleSpeed": 6.396,
+    "settledMaxVelVariance": 5.644,
+    "settledMaxSepMoved": 4.68,
+    "settledAreaRange": [
+      0.783,
+      0.957
+    ],
+    "settledConstraintResidual": 18.87,
+    "maxWallOutPoints": 42,
+    "minAspect": 0.819,
+    "maxAspect": 1.327
+  }
+}

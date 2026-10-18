@@ -1,0 +1,21 @@
+{
+  "scenario": "s1-small-between-large",
+  "summary": {
+    "maxRawBodyPen": -10,
+    "maxProdContactPen": 0,
+    "contourMinDistMin": 5.94,
+    "contourCrossSteps": 0,
+    "settledMaxCentroidSpeed": 1.162,
+    "settledMaxParticleSpeed": 2.947,
+    "settledMaxVelVariance": 1.474,
+    "settledMaxSepMoved": 0.81,
+    "settledAreaRange": [
+      0.894,
+      0.983
+    ],
+    "settledConstraintResidual": 8.96,
+    "maxWallOutPoints": 28,
+    "minAspect": 0.781,
+    "maxAspect": 1.043
+  }
+}

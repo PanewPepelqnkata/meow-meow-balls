@@ -1,0 +1,21 @@
+{
+  "scenario": "s5-dense-pile",
+  "summary": {
+    "maxRawBodyPen": 26.47,
+    "maxProdContactPen": null,
+    "contourMinDistMin": 0,
+    "contourCrossSteps": 13,
+    "settledMaxCentroidSpeed": 1.666,
+    "settledMaxParticleSpeed": 8.278,
+    "settledMaxVelVariance": 4.386,
+    "settledMaxSepMoved": 21.16,
+    "settledAreaRange": [
+      0.316,
+      1.175
+    ],
+    "settledConstraintResidual": 30.39,
+    "maxWallOutPoints": 0.57,
+    "minAspect": 0.648,
+    "maxAspect": 1.251
+  }
+}

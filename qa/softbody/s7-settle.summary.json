@@ -1,0 +1,21 @@
+{
+  "scenario": "s7-settle",
+  "summary": {
+    "maxRawBodyPen": 6.19,
+    "maxProdContactPen": 8.19,
+    "contourMinDistMin": 0,
+    "contourCrossSteps": 1,
+    "settledMaxCentroidSpeed": 4.398,
+    "settledMaxParticleSpeed": 8,
+    "settledMaxVelVariance": 21.587,
+    "settledMaxSepMoved": 33.88,
+    "settledAreaRange": [
+      0.826,
+      1.21
+    ],
+    "settledConstraintResidual": 58.1,
+    "maxWallOutPoints": 0.19,
+    "minAspect": 0.897,
+    "maxAspect": 1.302
+  }
+}

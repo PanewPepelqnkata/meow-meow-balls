@@ -1,0 +1,267 @@
+{
+  "checks": {
+    "perBall": {
+      "bodies": 17,
+      "constraints": 56
+    },
+    "colliderAlignment": {
+      "errTop": 0,
+      "errBottom": 0,
+      "errRight": 0,
+      "floorTop": 1085
+    },
+    "fall": {
+      "spawnY": 319,
+      "trajEnd": {
+        "t": 1450,
+        "y": 1025,
+        "v": 0.034
+      }
+    },
+    "mergeBesideSmall": {
+      "1": 1,
+      "5": 1
+    },
+    "mergeBesideLarge": {
+      "3": 1,
+      "5": 1
+    },
+    "mergeWall": {
+      "5": 1
+    },
+    "mergeDense": {
+      "1": 1,
+      "3": 1,
+      "5": 1,
+      "6": 1
+    },
+    "chain": {
+      "2": 2,
+      "3": 1
+    },
+    "densePile": {
+      "balls": 6,
+      "worstPairOverlap": 0
+    },
+    "gameOver": {
+      "over": true,
+      "score": 672,
+      "best": 672,
+      "overlay": true,
+      "buttonViewport": {
+        "x": 360,
+        "y": 744.4
+      }
+    },
+    "restart": {
+      "restarted": true,
+      "playable": true
+    },
+    "containment": true
+  },
+  "scenarios": [
+    {
+      "name": "baseline per-ball footprint",
+      "pass": true,
+      "perBall": {
+        "bodies": 17,
+        "constraints": 56
+      }
+    },
+    {
+      "name": "colliders exactly on visible geometry (no invisible step)",
+      "pass": true,
+      "errTop": 0,
+      "errBottom": 0,
+      "errRight": 0,
+      "floorTop": 1085,
+      "floorBottom": 1167,
+      "phase": "normal"
+    },
+    {
+      "name": "spawn height above rim + long clean fall",
+      "pass": true,
+      "spawnY": 319,
+      "spawnExpected": 331,
+      "trajectory": [
+        {
+          "t": 0,
+          "y": 319,
+          "v": 2.163
+        },
+        {
+          "t": 200,
+          "y": 405.5,
+          "v": 8
+        },
+        {
+          "t": 400,
+          "y": 532.2,
+          "v": 8
+        },
+        {
+          "t": 600,
+          "y": 667.1,
+          "v": 8
+        },
+        {
+          "t": 800,
+          "y": 789.7,
+          "v": 8
+        },
+        {
+          "t": 1000,
+          "y": 904.2,
+          "v": 8
+        },
+        {
+          "t": 1200,
+          "y": 1029,
+          "v": 2.976
+        },
+        {
+          "t": 1400,
+          "y": 1025.2,
+          "v": 0.359
+        }
+      ]
+    },
+    {
+      "name": "merge beside small ball (tier-1)",
+      "pass": true,
+      "before": {
+        "before": 1
+      },
+      "after": {
+        "balls": 2,
+        "worstPairOverlap": 0
+      },
+      "countsByTier": {
+        "1": 1,
+        "5": 1
+      },
+      "constraints": 112,
+      "expectedConstraints": 112
+    },
+    {
+      "name": "merge beside pink tier-3",
+      "pass": true,
+      "before": {
+        "before": 1
+      },
+      "after": {
+        "balls": 2,
+        "worstPairOverlap": 0
+      },
+      "countsByTier": {
+        "3": 1,
+        "5": 1
+      },
+      "constraints": 112,
+      "expectedConstraints": 112
+    },
+    {
+      "name": "merge next to the left wall",
+      "pass": true,
+      "before": {
+        "before": 0
+      },
+      "after": {
+        "balls": 1,
+        "worstPairOverlap": 0
+      },
+      "countsByTier": {
+        "5": 1
+      },
+      "constraints": 56,
+      "expectedConstraints": 56
+    },
+    {
+      "name": "merge in dense pile",
+      "pass": true,
+      "before": {
+        "before": 3
+      },
+      "after": {
+        "balls": 4,
+        "worstPairOverlap": 0
+      },
+      "countsByTier": {
+        "1": 1,
+        "3": 1,
+        "5": 1,
+        "6": 1
+      },
+      "constraints": 224,
+      "expectedConstraints": 224
+    },
+    {
+      "name": "chain merges in quick succession (exactly-once)",
+      "pass": true,
+      "before": 0,
+      "after": 3,
+      "tiers": {
+        "2": 2,
+        "3": 1
+      },
+      "worstPairOverlap": 0
+    },
+    {
+      "name": "dense pile settles: all asleep, no penetration",
+      "pass": true,
+      "balls": 6,
+      "asleepCount": 6,
+      "awakeDetail": [],
+      "maxCentroidSpeed": 0,
+      "worstPairOverlap": 0,
+      "maxAreaDeviation": 0.06699999999999995
+    },
+    {
+      "name": "game over triggers on overflow + drops stopped",
+      "pass": true,
+      "over": true,
+      "score": 672,
+      "best": 672,
+      "overlay": true,
+      "buttonViewport": {
+        "x": 360,
+        "y": 744.4
+      },
+      "ballsAtOver": 7,
+      "ballsAfterDropAttempt": 7
+    },
+    {
+      "name": "PLAY AGAIN fully resets the game",
+      "pass": true,
+      "over": false,
+      "score": 0,
+      "best": 672,
+      "overlay": false,
+      "buttonViewport": {
+        "x": 360,
+        "y": 744.4
+      },
+      "counts": {
+        "bodies": 3,
+        "constraints": 0,
+        "balls": 0
+      },
+      "wallPhase": "normal",
+      "wallHeight": 320
+    },
+    {
+      "name": "restarted game accepts new drops",
+      "pass": true
+    },
+    {
+      "name": "containment: nothing escapes through walls/floor at extreme drops",
+      "pass": true,
+      "balls": 5,
+      "xRange": [
+        202,
+        544.6
+      ],
+      "yMax": 1046
+    }
+  ]
+}

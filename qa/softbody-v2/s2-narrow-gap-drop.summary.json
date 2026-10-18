@@ -1,0 +1,21 @@
+{
+  "scenario": "s2-narrow-gap-drop",
+  "summary": {
+    "maxRawBodyPen": -0.18,
+    "maxProdContactPen": null,
+    "contourMinDistMin": 0.36,
+    "contourCrossSteps": 0,
+    "settledMaxCentroidSpeed": 0.607,
+    "settledMaxParticleSpeed": 2.236,
+    "settledMaxVelVariance": 0.404,
+    "settledMaxSepMoved": 0.27,
+    "settledAreaRange": [
+      0.967,
+      0.982
+    ],
+    "settledConstraintResidual": 5.64,
+    "maxWallOutPoints": 0,
+    "minAspect": 0.939,
+    "maxAspect": 1.131
+  }
+}

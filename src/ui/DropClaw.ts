@@ -1,0 +1,127 @@
+import Phaser from 'phaser'
+import { getTier } from '../config/ballTiers'
+import { spawnY } from '../config/spawn'
+import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK, drawRainbowBall, drawFantasyBall } from '../game/rendering/BallAppearance'
+import { variantIdFor } from '../game/state/runVariant'
+
+/**
+ * Phase 2.11.0 mechanical claw (spec §7, OPTIONAL): an illustrated claw
+ * suspended from the top of the STAGE (world space, rendered by the world
+ * camera). Vertical cable, gray metal joints, yellow claw arms hugging the
+ * CURRENT next ball — which is drawn through the SHARED BallAppearance
+ * pipeline (same tier color + seed as the preview and the actual dropped
+ * ball). The claw follows the horizontal aim; on drop the ball leaves the
+ * claw and falls under normal physics (the spawn uses the exact same
+ * position and appearance the claw showed).
+ */
+export class DropClaw {
+  private readonly g: Phaser.GameObjects.Graphics
+  private aimX = 360
+  private tier = 1
+  private seed = 1
+  private visible = true
+
+  constructor(scene: Phaser.Scene) {
+    this.g = scene.add.graphics().setDepth(5)
+  }
+
+  /** QA hook: the ball the claw is CURRENTLY displaying. */
+  info(): { tier: number; seed: number; visible: boolean } {
+    return { tier: this.tier, seed: this.seed, visible: this.visible }
+  }
+
+  objects(): Array<Phaser.GameObjects.GameObject> {
+    return [this.g]
+  }
+
+  setAim(x: number): void {
+    if (x !== this.aimX) {
+      this.aimX = x
+      this.redraw()
+    }
+  }
+
+  setBall(tier: number, seed: number): void {
+    if (tier !== this.tier || seed !== this.seed) {
+      this.tier = tier
+      this.seed = seed
+      this.redraw()
+    }
+  }
+
+  private redraw(): void {
+    const g = this.g
+    g.clear()
+    if (!this.visible) return
+    const tier = getTier(this.tier)
+    if (!tier) return
+    const r = tier.radius
+    const by = spawnY(r) // ball center = exact spawn position
+    const x = this.aimX
+
+    // --- ball (same appearance source as gameplay renderer) ---
+    const look = ballLookFor(this.tier, this.seed)
+    const poly = restContour(look, r, x, by, 48)
+    
+    // Phase 2.12.1: Special rendering for Tier 8/9 in claw.
+    // Phase 2.14.0: per-run variant (tiers 8-9 randomize each run).
+    if (this.tier === 8) {
+      const pts = poly.map(p => ({ x: p.x, y: p.y }))
+      drawRainbowBall(g, pts, x, by, r, Date.now(), variantIdFor(8))
+    } else if (this.tier === 9) {
+      drawFantasyBall(g, x, by, r, variantIdFor(9))
+    } else {
+      g.fillStyle(tier.color, 1)
+      g.fillPoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)
+    }
+    
+    g.lineStyle(ballOutlineWidth(r), INK, 1)
+    g.strokePoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true, true)
+    drawBallFace(g, look, { x, y: by }, r, 1)
+
+    // --- cable from the stage top ---
+    // Phase 2.11.1: SIMPLIFIED hardware (spec §4D) — a compact gray metal
+    // head (with screws, matching the reference) + yellow arms. The whole
+    // assembly now tops out ~20px above the ball (ResponsiveLayout's
+    // CLAW_TOP_WORST assumes this) so the top-center score and the claw
+    // never overlap on any desktop viewport.
+    const topY = 0
+    const clawTop = by - r - 12
+    g.lineStyle(5, 0x3c4046, 1)
+    g.lineBetween(x, topY, x, clawTop - 8)
+    // gray metal head block sitting right on the ball
+    g.fillStyle(0x9aa1a8, 1)
+    g.fillRoundedRect(x - 16, clawTop - 9, 32, 18, 5)
+    g.lineStyle(3, 0x111111, 1)
+    g.strokeRoundedRect(x - 16, clawTop - 9, 32, 18, 5)
+    // +/× screws on the head (reference detail)
+    g.lineStyle(2, 0x111111, 1)
+    g.strokeCircle(x - 7, clawTop, 3.2)
+    g.strokeCircle(x + 7, clawTop, 3.2)
+    g.lineBetween(x - 9, clawTop, x - 5, clawTop)
+    g.lineBetween(x + 5, clawTop, x + 9, clawTop)
+    // compact yellow arms: head corners → bowed around the ball's shoulders → tips
+    const armQuad = (sx: number, sy: number, cx: number, cy: number, ex: number, ey: number): void => {
+      const pts: Array<{ x: number; y: number }> = []
+      for (let i = 0; i <= 10; i++) {
+        const t = i / 10
+        const ax = sx + (cx - sx) * t
+        const ay = sy + (cy - sy) * t
+        const bx = cx + (ex - cx) * t
+        const byy = cy + (ey - cy) * t
+        pts.push({ x: ax + (bx - ax) * t, y: ay + (byy - ay) * t })
+      }
+      g.strokePoints(pts as unknown as Phaser.Math.Vector2[], false, false)
+    }
+    g.lineStyle(7, 0xffc93b, 1)
+    armQuad(x - 14, clawTop + 9, x - r * 1.08, by - r * 0.2, x - r * 1.02, by + r * 0.15)
+    armQuad(x + 14, clawTop + 9, x + r * 1.08, by - r * 0.2, x + r * 1.02, by + r * 0.15)
+    // arm tips (rounded caps at the bottom of each arc)
+    g.fillStyle(0xffc93b, 1)
+    for (const s of [-1, 1]) {
+      g.fillCircle(x + s * r * 1.02, by + r * 0.15, 5)
+      g.lineStyle(2.5, 0x111111, 1)
+      g.strokeCircle(x + s * r * 1.02, by + r * 0.15, 5)
+    }
+  }
+}

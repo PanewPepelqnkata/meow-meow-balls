@@ -1,0 +1,62 @@
+/* Phase 2.11.0 — Lilita One display font (heavy rounded comic face chosen
+ * to match the reference's thick-outlined playful lettering). Bundled
+ * locally (public/fonts, OFL license) — no runtime font CDN. All in-canvas
+ * UI text uses this family via src/ui/Typography.ts. */
+@font-face {
+  font-family: 'Lilita One';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/lilita-one.woff2') format('woff2');
+}
+
+:root {
+  color-scheme: light;
+  font-family: 'Lilita One', system-ui, sans-serif;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #f3f1eb;
+}
+
+.app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  /* stretch (not center): the game container must always span the viewport
+     so Phaser's Scale.RESIZE measures the real parent size. */
+  align-items: stretch;
+}
+
+.game-container {
+  /* Canvas fills available space; the world camera frames the gameplay
+     stage inside it, and UIScene draws the HUD at viewport scale. */
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  min-width: 0;
+  touch-action: none;
+  overscroll-behavior: contain;
+}
+
+.game-container canvas {
+  display: block;
+}
+
+.dev-status {
+  position: fixed;
+  top: max(env(safe-area-inset-top), 8px);
+  right: max(env(safe-area-inset-right), 12px);
+  margin: 0;
+  font-size: 12px;
+  font-family: monospace;
+  color: #1a1a1a;
+  opacity: 0.6;
+  user-select: none;
+  pointer-events: none;
+}

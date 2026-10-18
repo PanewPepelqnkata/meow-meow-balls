@@ -1,0 +1,21 @@
+{
+  "scenario": "s8-freefall",
+  "summary": {
+    "maxRawBodyPen": null,
+    "maxProdContactPen": null,
+    "contourMinDistMin": null,
+    "contourCrossSteps": 0,
+    "settledMaxCentroidSpeed": null,
+    "settledMaxParticleSpeed": null,
+    "settledMaxVelVariance": null,
+    "settledMaxSepMoved": null,
+    "settledAreaRange": [
+      null,
+      null
+    ],
+    "settledConstraintResidual": null,
+    "maxWallOutPoints": 0,
+    "minAspect": null,
+    "maxAspect": null
+  }
+}

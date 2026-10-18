@@ -1,0 +1,225 @@
+{
+  "results": [
+    {
+      "case": "case1-merge-beside-small",
+      "pass": true,
+      "detail": {
+        "tiers": {
+          "1": 1,
+          "3": 1
+        },
+        "worstPairOverlap": 0,
+        "renderables": 2,
+        "logicalBalls": 2,
+        "merge": {
+          "mergesCompleted": 1,
+          "sourcesRemoved": 2,
+          "replacementsCreated": 1,
+          "duplicateEventsRejected": 14,
+          "deferredReplacements": 0,
+          "lastBallsBefore": 2,
+          "lastBallsAfter": 1
+        }
+      }
+    },
+    {
+      "case": "case2-large-merge-dense-pile",
+      "pass": true,
+      "detail": {
+        "balls": 5,
+        "worstPairOverlap": 0,
+        "renderables": 5,
+        "merge": {
+          "mergesCompleted": 9,
+          "sourcesRemoved": 18,
+          "replacementsCreated": 9,
+          "duplicateEventsRejected": 178,
+          "deferredReplacements": 0,
+          "lastBallsBefore": 6,
+          "lastBallsAfter": 5
+        }
+      }
+    },
+    {
+      "case": "case3-cooldown-chain",
+      "pass": true,
+      "detail": {
+        "mergeTimes": [
+          1595,
+          2654,
+          3177,
+          4763,
+          5821
+        ],
+        "minGapMs": 523,
+        "merges": 5,
+        "renderables": 4
+      }
+    },
+    {
+      "case": "case4-independent-pairs",
+      "pass": true,
+      "detail": {
+        "tiers": {
+          "2": 2
+        },
+        "merges": 2,
+        "sourcesRemoved": 4
+      }
+    },
+    {
+      "case": "case5-left-wall-settle",
+      "pass": true,
+      "detail": {
+        "balls": [
+          {
+            "id": 62,
+            "tier": 2,
+            "cx": 339.7,
+            "cy": 1034.6,
+            "sleeping": true,
+            "speed": 0
+          },
+          {
+            "id": 63,
+            "tier": 3,
+            "cx": 219.2,
+            "cy": 1024.8,
+            "sleeping": true,
+            "speed": 0
+          }
+        ]
+      }
+    },
+    {
+      "case": "case5-right-wall-settle",
+      "pass": true,
+      "detail": {
+        "balls": [
+          {
+            "id": 64,
+            "tier": 2,
+            "cx": 384.6,
+            "cy": 1034.7,
+            "sleeping": true,
+            "speed": 0
+          },
+          {
+            "id": 65,
+            "tier": 3,
+            "cx": 501.5,
+            "cy": 1024.8,
+            "sleeping": true,
+            "speed": 0
+          }
+        ]
+      }
+    },
+    {
+      "case": "case7-wedged-small",
+      "pass": true,
+      "detail": {
+        "balls": [
+          {
+            "tier": 5,
+            "cx": 335.8,
+            "cy": 997.9,
+            "sleeping": true,
+            "speed": 0
+          },
+          {
+            "tier": 1,
+            "cx": 200.8,
+            "cy": 1042.4,
+            "sleeping": true,
+            "speed": 0
+          },
+          {
+            "tier": 3,
+            "cx": 506.3,
+            "cy": 1024.8,
+            "sleeping": true,
+            "speed": 0
+          }
+        ],
+        "wedgedFound": true,
+        "awake": 0
+      }
+    },
+    {
+      "case": "case8-pile-settles",
+      "pass": true,
+      "detail": {
+        "balls": 6,
+        "awake": 0,
+        "worstPairOverlap": 0
+      }
+    },
+    {
+      "case": "case9-drop-deform",
+      "pass": true,
+      "detail": {
+        "maxDeform": 0.035,
+        "beforeBalls": 1,
+        "afterBalls": 2,
+        "final": [
+          {
+            "tier": 4,
+            "sleeping": true,
+            "speed": 0
+          },
+          {
+            "tier": 3,
+            "sleeping": true,
+            "speed": 0
+          }
+        ]
+      }
+    },
+    {
+      "case": "case10-walls-cycle",
+      "pass": true,
+      "detail": {
+        "raised": [
+          {
+            "cy": 1034.6,
+            "sleeping": true
+          },
+          {
+            "cy": 1034.6,
+            "sleeping": true
+          }
+        ],
+        "lowered": [
+          {
+            "cy": 1035,
+            "sleeping": true
+          },
+          {
+            "cy": 1035,
+            "sleeping": true
+          }
+        ]
+      }
+    },
+    {
+      "case": "case11-restart-clears",
+      "pass": true,
+      "detail": {
+        "cleared": true,
+        "mergeAfterRestart": {
+          "mergesCompleted": 1,
+          "sourcesRemoved": 2,
+          "replacementsCreated": 1,
+          "duplicateEventsRejected": 52,
+          "deferredReplacements": 0,
+          "lastBallsBefore": 2,
+          "lastBallsAfter": 1
+        },
+        "renderables": 1
+      }
+    }
+  ],
+  "passCount": 11,
+  "total": 11
+}

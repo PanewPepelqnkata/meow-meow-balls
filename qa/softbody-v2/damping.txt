@@ -1,0 +1,5 @@
+damping=0.16 sepOff=false: settledMaxVel=6.89 settledMaxDisp=26.04 medDisp=7.45 sleeping=0,0,0,0,0,0,0,0
+damping=0.3 sepOff=false: settledMaxVel=4.37 settledMaxDisp=16.35 medDisp=5.43 sleeping=0,0,0,0,0,0,0,0
+damping=0.5 sepOff=false: settledMaxVel=4.29 settledMaxDisp=12.90 medDisp=3.62 sleeping=0,0,0,0,0,0,0,0
+damping=0.8 sepOff=false: settledMaxVel=3.74 settledMaxDisp=3.40 medDisp=1.57 sleeping=0,0,0,0,0,0,0,0
+damping=0.5 sepOff=true: settledMaxVel=5.13 settledMaxDisp=16.18 medDisp=5.23 sleeping=0,0,0,0,0,0,0,0
