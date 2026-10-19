@@ -863,13 +863,47 @@ export class BackgroundTheme {
   }
 
   private handleResize(): void {
-    this.updateGradImage()
-    this.drawBackground()
-    this.drawGrid()
-    this.initStars(this.currentTheme)
-    this.initAmbient(this.currentTheme)
-    this.rebuildClouds()
+    // Phase 2.21 — RESIZE GUARD: Safari fires RESIZE continuously during
+    // address-bar collapse and momentum scroll (dynamic viewport). A full
+    // rebuild per event — gradient canvas resize + repaint + GPU re-upload
+    // of a ~1170×2532 texture, full Graphics repaint, grid canvas repaint,
+    // star/ambient re-init, nebula Image destroy/recreate — both stutters
+    // the frame loop AND can leave the background half-painted. Two layers
+    // of defense:
+    //  1. skip entirely when the effective CSS size + DPR are unchanged,
+    //  2. debounce the heavy bake: the event storm collapses into ONE
+    //     rebuild 120ms after the last event. The old (last-known-good)
+    //     frame stays on screen until then — no flashing, no half states.
+    const z = this.scene.game.scale.displayScale.x || 1
+    const cssW = Math.round(this.scene.scale.width / z)
+    const cssH = Math.round(this.scene.scale.height / z)
+    const dpr = window.devicePixelRatio || 1
+    if (cssW === this.lastResizeW && cssH === this.lastResizeH && dpr === this.lastResizeDpr) {
+      return
+    }
+    // Immediate cheap part: the gradient texture is already sized for
+    // SOME viewport; display-size scaling keeps it covering the screen
+    // until the debounced rebuild runs.
+    this.lastResizeW = cssW
+    this.lastResizeH = cssH
+    this.lastResizeDpr = dpr
+    if (this.resizeTimer) this.scene.time.removeEvent(this.resizeTimer)
+    this.resizeTimer = this.scene.time.delayedCall(120, () => {
+      this.resizeTimer = undefined
+      this.updateGradImage()
+      this.drawBackground()
+      this.drawGrid()
+      this.initStars(this.currentTheme)
+      this.initAmbient(this.currentTheme)
+      this.rebuildClouds()
+    })
   }
+
+  /** Last resize dimensions seen (CSS px + dpr) — dedupe key. */
+  private lastResizeW = 0
+  private lastResizeH = 0
+  private lastResizeDpr = 0
+  private resizeTimer: Phaser.Time.TimerEvent | undefined
 
   /**
    * Space base gradient as a device-resolution canvas texture on a
@@ -1084,14 +1118,30 @@ export class BackgroundTheme {
     delete this.cloudGroups[theme]
   }
 
-  /** Rebuild every LIVE cloud layer for the current viewport size. */
+  /** Rebuild every LIVE cloud layer for the current viewport size.
+   * Phase 2.21: skips entirely when the CSS viewport is unchanged —
+   * resize storms (Safari dynamic viewport) previously destroyed and
+   * recreated every nebula Image per event (texture re-uploads + GC). */
   private rebuildClouds(): void {
+    const z = this.scene.game.scale.displayScale.x || 1
+    const w = Math.round(this.scene.scale.width / z)
+    const h = Math.round(this.scene.scale.height / z)
+    if (w === this.lastCloudsW && h === this.lastCloudsH) {
+      this.applyCloudAlphas()
+      return
+    }
+    this.lastCloudsW = w
+    this.lastCloudsH = h
     const live: ThemeName[] = [this.currentTheme]
     if (this.fromTheme) live.push(this.fromTheme)
     if (this.toTheme) live.push(this.toTheme)
     for (const t of live) this.buildCloudGroup(t)
     this.applyCloudAlphas()
   }
+
+  /** Last rebuild dimensions (CSS px) — cloud rebuild dedupe key. */
+  private lastCloudsW = 0
+  private lastCloudsH = 0
 
   /** Drive cloud layer alphas alongside the Graphics crossfade. */
   private applyCloudAlphas(): void {
@@ -1396,6 +1446,8 @@ export class BackgroundTheme {
   }
 
   destroy(): void {
+    this.resizeTimer?.remove()
+    this.resizeTimer = undefined
     this.transitionTween?.stop()
     this.bgLayer?.destroy()
     this.gridLayer?.destroy()
