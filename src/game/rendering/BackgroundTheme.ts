@@ -481,7 +481,10 @@ const THEMES: Record<ThemeName, ThemeDef> = {
       // planet/moon shrank to ~40% and vanished into the dark. Scale them
       // by min(vw,vh)/560 clamped 1..1.8 so they stay prominent on
       // narrow-tall viewports.
-      const artScale = Math.min(1.8, Math.max(1, Math.min(w, h) / 560))
+      // Inverse scale: the planet/moon were sized for the desktop
+      // reference (min dim 936). On a 390px phone the same absolute px
+      // reads 2.4× smaller — scale UP to keep the same visual prominence.
+      const artScale = Math.min(3, 936 / Math.min(w, h))
 
       // Small ringed planet upper-left: body, terminator shading, thin
       // ring — restrained, atmospheric (drawn small so it reads as a far
@@ -1418,10 +1421,11 @@ export class BackgroundTheme {
     this.starImage.setVisible(alpha > 0.01)
   }
 
-  /** Current portrait art scale (planet/moon/star sizing). */
+  /** Current portrait art scale (star sizing) — same inverse as the
+   * space.draw planet/moon scale: bigger relative art on phones. */
   private get artScale(): number {
     const z = this.scene.game.scale.displayScale.x || 1
-    return Math.min(1.8, Math.max(1, this.scene.scale.width / z / 560))
+    return Math.min(3, 936 / Math.min(this.scene.scale.width / z, this.scene.scale.height / z))
   }
 
   private drawAmbient(delta: number): void {
