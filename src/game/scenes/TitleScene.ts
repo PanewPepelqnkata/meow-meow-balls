@@ -1523,6 +1523,53 @@ export class TitleScene extends Phaser.Scene {
   // START
   // -------------------------------------------------------------------------
 
+  /** The start-intro sweep-in, run as an overlay INSIDE this scene: the
+   * menu stays fully painted under the closing ring. At full closure the
+   * scene hands off to StartIntroScene (startClosed) which plays the ball
+   * phase + outro over the game. */
+  private runStartSweep(): void {
+    const z = this.game.scale.displayScale.x || 1
+    const vw = this.scale.width / z
+    const vh = this.scale.height / z
+    const cx = vw / 2
+    const cy = vh / 2
+    const outerR = Math.hypot(vw, vh) * 0.5
+    const innerR = Math.min(vw, vh) * 0.14
+    const cover = this.add.graphics().setDepth(5000)
+    const drawCover = (holeR: number): void => {
+      cover.clear()
+      cover.fillStyle(0x0e0f1c, 1)
+      const side = outerR * 2
+      cover.beginPath()
+      cover.moveTo(cx - side, cy - side)
+      cover.lineTo(cx + side, cy - side)
+      cover.lineTo(cx + side, cy + side)
+      cover.lineTo(cx - side, cy + side)
+      cover.closePath()
+      cover.arc(cx, cy, Math.max(1, holeR), 0, Math.PI * 2, true)
+      cover.fillPath()
+      cover.lineStyle(Math.max(3, Math.min(vw, vh) * 0.014), 0xf3f1eb, 1)
+      cover.strokeCircle(cx, cy, Math.max(1, holeR))
+    }
+    drawCover(outerR)
+    const sweepState = { r: outerR }
+    this.tweens.add({
+      targets: sweepState,
+      r: innerR,
+      duration: 620,
+      ease: 'Quad.easeInOut',
+      onUpdate: () => {
+        drawCover(sweepState.r)
+      },
+      onComplete: () => {
+        // Full ink now covers the menu; the handoff boot happens behind
+        // it. StartIntroScene's first frame redraws the identical closed
+        // cover — no flicker, no visible scene change.
+        this.scene.start('StartIntroScene', { startClosed: true })
+      },
+    })
+  }
+
   private pressStart(): void {
     if (this.closed) return
     this.closed = true
@@ -1535,12 +1582,14 @@ export class TitleScene extends Phaser.Scene {
       gameBus.emit('ui:start', {})
       this.scene.setVisible(false, 'playground')
       this.scene.setVisible(false, 'UIScene')
-      // LAUNCH (not start): TitleScene must stay VISIBLE under the intro
-      // — the sweep-in ring closes over the MENU, so the shrinking hole
-      // shows the menu, never the space background behind it. The intro
-      // stops this scene once the cover is fully closed (see
-      // StartIntroScene sweep onComplete).
-      this.scene.launch('StartIntroScene')
+      // IN-MENU SWEEP: the closing ring runs INSIDE TitleScene as an
+      // overlay — the menu stays fully painted underneath it (never a
+      // bare background through the hole, and no scene-boot churn that
+      // iOS can turn into a visible blank). When the cover is fully
+      // closed, we stop this scene and hand off to StartIntroScene with
+      // startClosed — it boots UNDER the full-ink frame (zero flicker)
+      // and continues with the ball phase + outro over the game.
+      this.runStartSweep()
       return
     }
     gameBus.emit('ui:start', {})

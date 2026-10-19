@@ -30,10 +30,15 @@ export class StartIntroScene extends Phaser.Scene {
   }
 
   constructor() {
-    super('StartIntroScene')
+    super({ key: 'StartIntroScene' })
   }
 
-  create(): void {
+  create(data: { startClosed?: boolean } = {}): void {
+    // startClosed: the sweep-in already ran in TitleScene (in-process
+    // overlay — no scene-boot churn over the visible menu). This scene
+    // boots UNDER a fully-closed cover and resumes at the ball phase.
+    const startClosed = data?.startClosed === true
+    ;(window as unknown as { __brIntroPhase?: string }).__brIntroPhase = startClosed ? 'ball' : 'sweep-in'
     this.cameras.main.setBackgroundColor('rgba(0,0,0,0)')
     this.applyDprCamera()
     this.scale.on(Phaser.Scale.Events.RESIZE, this.applyDprCamera, this)
@@ -82,7 +87,7 @@ export class StartIntroScene extends Phaser.Scene {
     drawCover(outerR)
 
     // ---- 2. Timeline ------------------------------------------------------
-    const sweepState = { r: outerR }
+    let sweepState = { r: outerR }
     // ?diag=1 device readout: sweep progress + cover geometry, sampled by
     // the diag panel per frame. r/outerR: 1 = ring at screen edge (open),
     // 0 = fully closed.
@@ -96,7 +101,112 @@ export class StartIntroScene extends Phaser.Scene {
         return (window as unknown as { __brIntroPhase?: string }).__brIntroPhase ?? 'sweep-in'
       },
     }
-    ;(window as unknown as { __brIntroPhase?: string }).__brIntroPhase = 'sweep-in'
+    const setPhase = (p: string): void => {
+      ;(window as unknown as { __brIntroPhase?: string }).__brIntroPhase = p
+    }
+
+    /** Ball phase + outro. Runs from sweep-in completion OR directly on a
+     * startClosed boot (sweep already played in TitleScene). */
+    const runBallPhase = (): void => {
+      // ---- the cover is now FULLY CLOSED --------------------------------
+      // The menu (running under us when launched open) is completely hidden
+      // by the ink — stop it now so the outro reveals the GAME, not a
+      // second menu layer behind the ring.
+      if (this.scene.isActive('TitleScene')) this.scene.stop('TitleScene')
+      setPhase('ball')
+      // ---- gameplay boots UNDER the closed ring (heavy frame hidden) --
+      this.startGameplay()
+      // ---- scared ball pops in the middle ------------------------------
+      const tier1 = getTier(1)
+      const ballR = Math.max(innerR * 0.55, (tier1?.radius ?? 44) * 0.62)
+      const ball = this.add.graphics().setDepth(2)
+      // The AUTHENTIC max-scared slime: shared look pipeline (ballLookFor)
+      // + restContour silhouette + drawBallFace at panic 1 (critical:
+      // eyes x1.62, dilated-shrunk pupils, trembling jitter boosted
+      // criticalShakeBoost). Deterministic seed — same character every
+      // intro.
+      const look = ballLookFor(1, 20260222)
+      const contour = restContour(look, ballR, cx, cy, 40)
+      const face = (): void => {
+        ball.clear()
+        ball.fillStyle(tier1?.color ?? 0x4fc3f7, 1)
+        ball.fillPoints(contour.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)
+        ball.lineStyle(ballOutlineWidth(ballR), INK, 1)
+        ball.strokePoints(contour.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true, true)
+        drawBallFace(ball, look, { x: cx, y: cy }, ballR, 1, {
+          gaze: { x: 0, y: -1 },
+          panic: 1, // MAX scared — the whole point of this ball
+        })
+        // sweat drops (two, alternating alpha) — drawn by the intro, the
+        // in-game face system doesn't have them.
+        const sweatA = 0.55 + Math.sin(this.time.now * 0.014) * 0.35
+        ball.fillStyle(0x9edbff, sweatA)
+        ball.fillCircle(cx - ballR * 0.98, cy - ballR * 0.5, ballR * 0.13)
+        ball.fillCircle(cx + ballR * 1.02, cy - ballR * 0.28, ballR * 0.11)
+      }
+      face()
+
+      // pop-in: scale from 0 with a back ease
+      ball.setScale(0)
+      this.tweens.add({
+        targets: ball,
+        scale: 1,
+        duration: 380,
+        ease: 'Back.easeOut',
+      })
+
+      // idle wobble redraw while the scared ball is on screen
+      const wobbleTimer = this.time.addEvent({
+        delay: 33,
+        loop: true,
+        callback: face,
+      })
+
+      // ---- hold, then the OUTRO: ball drops under the screen, ring
+      // reopens outward to reveal the running game -----------------------
+      this.time.delayedCall(900, () => {
+        wobbleTimer.remove()
+        setPhase('outro')
+        // 1. The scared ball falls out of the ring (gravity-ish accelerate
+        //    downward, slightly squashed — panic drop).
+        this.tweens.add({
+          targets: ball,
+          y: vh + ballR * 1.4,
+          scaleY: 1.12,
+          scaleX: 0.9,
+          duration: 520,
+          ease: 'Quad.easeIn',
+        })
+        // 2. The dark cover + ring edge RE-OPEN outward (reverse of the
+        //    intro sweep) while the ball falls — the game is revealed
+        //    through the growing hole.
+        this.tweens.add({
+          targets: sweepState,
+          r: outerR,
+          duration: 560,
+          delay: 120,
+          ease: 'Cubic.easeIn',
+          onUpdate: () => {
+            drawCover(sweepState.r)
+          },
+          onComplete: () => {
+            cover.clear()
+            this.scene.stop()
+          },
+        })
+      })
+    }
+
+    // startClosed boots under full ink: draw the CLOSED cover so the first
+    // frame of this scene is identical to TitleScene's last frame (zero
+    // flicker at the handoff), and skip straight to the ball phase.
+    if (startClosed) {
+      sweepState = { r: innerR }
+      drawCover(sweepState.r)
+      runBallPhase()
+      return
+    }
+
     this.tweens.add({
       targets: sweepState,
       r: innerR,
@@ -106,93 +216,7 @@ export class StartIntroScene extends Phaser.Scene {
         drawCover(sweepState.r)
       },
       onComplete: () => {
-        // ---- the cover is now FULLY CLOSED --------------------------------
-        // The menu (launched under us, still visible) is completely hidden
-        // by the ink — stop it now so the outro reveals the GAME, not a
-        // second menu layer behind the ring.
-        this.scene.stop('TitleScene')
-        ;(window as unknown as { __brIntroPhase?: string }).__brIntroPhase = 'ball'
-        // ---- gameplay boots UNDER the closed ring (heavy frame hidden) --
-        this.startGameplay()
-        // ---- scared ball pops in the middle ------------------------------
-        const tier1 = getTier(1)
-        const ballR = Math.max(innerR * 0.55, (tier1?.radius ?? 44) * 0.62)
-        const ball = this.add.graphics().setDepth(2)
-        // The AUTHENTIC max-scared slime: shared look pipeline (ballLookFor)
-        // + restContour silhouette + drawBallFace at panic 1 (critical:
-        // eyes x1.62, dilated-shrunk pupils, trembling jitter boosted
-        // criticalShakeBoost). Deterministic seed — same character every
-        // intro.
-        const look = ballLookFor(1, 20260222)
-        const contour = restContour(look, ballR, cx, cy, 40)
-        const face = (): void => {
-          ball.clear()
-          ball.fillStyle(tier1?.color ?? 0x4fc3f7, 1)
-          ball.fillPoints(contour.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)
-          ball.lineStyle(ballOutlineWidth(ballR), INK, 1)
-          ball.strokePoints(contour.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true, true)
-          drawBallFace(ball, look, { x: cx, y: cy }, ballR, 1, {
-            gaze: { x: 0, y: -1 },
-            panic: 1, // MAX scared — the whole point of this ball
-          })
-          // sweat drops (two, alternating alpha) — drawn by the intro, the
-          // in-game face system doesn't have them.
-          const sweatA = 0.55 + Math.sin(this.time.now * 0.014) * 0.35
-          ball.fillStyle(0x9edbff, sweatA)
-          ball.fillCircle(cx - ballR * 0.98, cy - ballR * 0.5, ballR * 0.13)
-          ball.fillCircle(cx + ballR * 1.02, cy - ballR * 0.28, ballR * 0.11)
-        }
-        face()
-
-        // pop-in: scale from 0 with a back ease
-        ball.setScale(0)
-        this.tweens.add({
-          targets: ball,
-          scale: 1,
-          duration: 380,
-          ease: 'Back.easeOut',
-        })
-
-        // idle wobble redraw while the scared ball is on screen
-        const wobbleTimer = this.time.addEvent({
-          delay: 33,
-          loop: true,
-          callback: face,
-        })
-
-        // ---- hold, then the OUTRO: ball drops under the screen, ring
-        // reopens outward to reveal the running game -----------------------
-        this.time.delayedCall(900, () => {
-          wobbleTimer.remove()
-          ;(window as unknown as { __brIntroPhase?: string }).__brIntroPhase = 'outro'
-          // 1. The scared ball falls out of the ring (gravity-ish accelerate
-          //    downward, slightly squashed — panic drop).
-          this.tweens.add({
-            targets: ball,
-            y: vh + ballR * 1.4,
-            scaleY: 1.12,
-            scaleX: 0.9,
-            duration: 520,
-            ease: 'Quad.easeIn',
-          })
-          // 2. The dark cover + ring edge RE-OPEN outward (reverse of the
-          //    intro sweep) while the ball falls — the game is revealed
-          //    through the growing hole.
-          this.tweens.add({
-            targets: sweepState,
-            r: outerR,
-            duration: 560,
-            delay: 120,
-            ease: 'Cubic.easeIn',
-            onUpdate: () => {
-              drawCover(sweepState.r)
-            },
-            onComplete: () => {
-              cover.clear()
-              this.scene.stop()
-            },
-          })
-        })
+        runBallPhase()
       },
     })
   }
