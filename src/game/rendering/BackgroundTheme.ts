@@ -1042,9 +1042,9 @@ export class BackgroundTheme {
 
     this.drawBackground()
     this.drawGrid()
-    this.initStars('light')
-    this.initAmbient('light')
-    this.buildCloudGroup('light')
+    this.initStars(initialTheme)
+    this.initAmbient(initialTheme)
+    this.buildCloudGroup(initialTheme)
     this.applyCloudAlphas()
 
     scene.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this)
@@ -1132,6 +1132,21 @@ export class BackgroundTheme {
       this.gradImage?.setVisible(false)
       return
     }
+    // FRESH-TEXTURE REBUILD: never resize a canvas texture in place.
+    // Resizing src.width + refresh() re-uploads into the SAME GL texture
+    // object — flaky on iOS (WebGL may keep stale content/size: the
+    // "correct for a second, broken after restart" report, and a stale
+    // space bake leaking through as a top-left quad on other themes).
+    // Removing the texture forces a brand-new GL texture every rebuild.
+    const dimsMatch =
+      this.scene.textures.exists('br-space-grad') &&
+      (this.scene.textures.get('br-space-grad').getSourceImage() as HTMLCanvasElement).width === w &&
+      (this.scene.textures.get('br-space-grad').getSourceImage() as HTMLCanvasElement).height === h
+    if (this.scene.textures.exists('br-space-grad') && !dimsMatch) {
+      this.scene.textures.remove('br-space-grad')
+      this.gradImage?.destroy()
+      this.gradImage = null
+    }
     if (!this.gradImage) {
       if (!this.scene.textures.exists('br-space-grad')) {
         this.scene.textures.createCanvas('br-space-grad', w, h)
@@ -1144,16 +1159,13 @@ export class BackgroundTheme {
     }
     const tex = this.scene.textures.get('br-space-grad') as Phaser.Textures.CanvasTexture
     const src = tex.getSourceImage() as HTMLCanvasElement
-    if (src.width !== w || src.height !== h) {
-      src.width = w
-      src.height = h
-    }
     const ctx = src.getContext('2d')!
     const grad = ctx.createLinearGradient(0, 0, 0, h)
     grad.addColorStop(0, '#0a1628')
     grad.addColorStop(0.5, '#0e1a33')
     grad.addColorStop(1, '#2a1a4e')
     ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.clearRect(0, 0, w, h)
     ctx.fillStyle = grad
     ctx.fillRect(0, 0, w, h)
     tex.refresh()
@@ -1424,15 +1436,21 @@ export class BackgroundTheme {
     const w = Math.ceil((this.scene.scale.width / z) * dpr)
     const h = Math.ceil((this.scene.scale.height / z) * dpr)
     const key = 'br-art-' + theme
+    // FRESH-TEXTURE REBUILD (see updateGradImage): dims change ⇒ remove
+    // the old texture + Image, recreate — never resize in place.
+    const existing = this.scene.textures.exists(key)
+      ? (this.scene.textures.get(key).getSourceImage() as HTMLCanvasElement)
+      : null
+    if (existing && (existing.width !== w || existing.height !== h)) {
+      this.scene.textures.remove(key)
+      this.artImages[theme]?.destroy()
+      delete this.artImages[theme]
+    }
     if (!this.scene.textures.exists(key)) {
       this.scene.textures.createCanvas(key, w, h)
     }
     const tex = this.scene.textures.get(key) as Phaser.Textures.CanvasTexture
     const src = tex.getSourceImage() as HTMLCanvasElement
-    if (src.width !== w || src.height !== h) {
-      src.width = w
-      src.height = h
-    }
     const ctx = src.getContext('2d')!
     const g = new G2D(ctx, w / dpr, h / dpr)
     g.clear()
@@ -1495,15 +1513,21 @@ export class BackgroundTheme {
     }
 
     const key = 'br-grid'
+    // FRESH-TEXTURE REBUILD (see updateGradImage): dims change ⇒ remove
+    // the old texture + Image, recreate — never resize in place.
+    const existingGrid = this.scene.textures.exists(key)
+      ? (this.scene.textures.get(key).getSourceImage() as HTMLCanvasElement)
+      : null
+    if (existingGrid && (existingGrid.width !== w || existingGrid.height !== h)) {
+      this.scene.textures.remove(key)
+      this.gridImage?.destroy()
+      this.gridImage = null
+    }
     if (!this.scene.textures.exists(key)) {
       this.scene.textures.createCanvas(key, w, h)
     }
     const tex = this.scene.textures.get(key) as Phaser.Textures.CanvasTexture
     const src = tex.getSourceImage() as HTMLCanvasElement
-    if (src.width !== w || src.height !== h) {
-      src.width = w
-      src.height = h
-    }
     const ctx = src.getContext('2d')!
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, w, h)
@@ -1553,15 +1577,21 @@ export class BackgroundTheme {
     const alpha = Math.min(1, this.starAlpha)
 
     const key = 'br-stars'
+    // FRESH-TEXTURE REBUILD (see updateGradImage): dims change ⇒ remove
+    // the old texture + Image, recreate — never resize in place.
+    const existingStars = this.scene.textures.exists(key)
+      ? (this.scene.textures.get(key).getSourceImage() as HTMLCanvasElement)
+      : null
+    if (existingStars && (existingStars.width !== w || existingStars.height !== h)) {
+      this.scene.textures.remove(key)
+      this.starImage?.destroy()
+      this.starImage = null
+    }
     if (!this.scene.textures.exists(key)) {
       this.scene.textures.createCanvas(key, w, h)
     }
     const tex = this.scene.textures.get(key) as Phaser.Textures.CanvasTexture
     const src = tex.getSourceImage() as HTMLCanvasElement
-    if (src.width !== w || src.height !== h) {
-      src.width = w
-      src.height = h
-    }
     const ctx = src.getContext('2d')!
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, w, h)
