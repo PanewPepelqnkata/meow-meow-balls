@@ -18,6 +18,7 @@ import { loadSave, resetSave, setThemeSetting } from '../state/save'
 import { runVariantFor, variantIdFor, VARIANT_COUNT } from '../state/runVariant'
 import { session } from '../state/session'
 import { bakeCanvas, roundedRectPath } from '../rendering/RoughArt'
+import { StartIntroScene } from './StartIntroScene'
 
 /**
  * Phase 2.14.0 (spec §2) — the START SCREEN.
@@ -1526,6 +1527,17 @@ export class TitleScene extends Phaser.Scene {
     if (this.closed) return
     this.closed = true
     session.menuActive = false
+    // Phase 2.22: portrait phones route through the start-intro scene —
+    // the comic ring + scared ball covers the gameplay scenes' expensive
+    // first frame (the "lag on start" on physical iPhones). Desktop keeps
+    // the instant cross-dissolve.
+    if (StartIntroScene.shouldRun(window.innerWidth, window.innerHeight)) {
+      gameBus.emit('ui:start', {})
+      this.scene.setVisible(false, 'playground')
+      this.scene.setVisible(false, 'UIScene')
+      this.scene.start('StartIntroScene')
+      return
+    }
     gameBus.emit('ui:start', {})
     // Phase 2.16.0: the gameplay scenes were completely HIDDEN while the
     // menu was up — reveal them now, under the menu's fade-out, so the
