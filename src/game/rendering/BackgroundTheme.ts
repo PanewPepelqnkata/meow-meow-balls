@@ -818,8 +818,9 @@ export class BackgroundTheme {
   private shoot: { x: number; y: number; vx: number; vy: number; life: number } | null = null
   private nextShootAt = 2500
 
-  constructor(scene: Phaser.Scene) {
+  constructor(scene: Phaser.Scene, initialTheme: ThemeName = 'light') {
     this.scene = scene
+    this.currentTheme = initialTheme
     // Background renders in screen space (never-zoomed camera).
     this.bgLayer = scene.add.graphics().setDepth(-100).setScrollFactor(0)
     this.gridLayer = scene.add.graphics().setDepth(-90).setScrollFactor(0)

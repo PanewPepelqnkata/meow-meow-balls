@@ -1,5 +1,6 @@
 import Phaser from 'phaser'
 import { STAGE } from '../config/stage'
+import { resolveViewportContainer } from '../config/container'
 import { BackgroundScene } from './scenes/BackgroundScene'
 import { PlaygroundScene } from './scenes/PlaygroundScene'
 import { UIScene } from './scenes/UIScene'
@@ -17,6 +18,20 @@ import { TitleScene } from './scenes/TitleScene'
  * create) with no duplicate instances or leaked listeners.
  */
 export function createGame(parent: HTMLElement): Phaser.Game {
+  // Phase 2.19: pick the container proportion for THIS viewport before any
+  // geometry consumer constructs (colliders, ContainerView texture, spawn
+  // anchors, WallAnimator's captured height). Portrait phones get the tall
+  // narrow funnel; desktop/landscape keeps the reference geometry.
+  const parentRect = parent.getBoundingClientRect()
+  const bootW = parentRect.width || window.innerWidth
+  const bootH = parentRect.height || window.innerHeight
+  resolveViewportContainer(bootW, bootH)
+  // Phase 2.19: portrait phones are space-themed — the canvas clear color
+  // must match the space base so no frame ever flashes cream before the
+  // BackgroundScene paints (it covers every pixel, but first-frame flashes
+  // and resize gaps still read against the clear color).
+  const portraitPhone = bootH > bootW
+  const clearColor = portraitPhone ? '#0a1628' : '#f3f1eb'
   // HiDPI RENDERING: the game runs in Scale.NONE — we own the canvas
   // buffer entirely. The buffer is sized to PHYSICAL pixels (CSS × dpr,
   // capped at 2) and the canvas element is CSS-styled back to the viewport
@@ -31,7 +46,7 @@ export function createGame(parent: HTMLElement): Phaser.Game {
     parent,
     width: STAGE.width,
     height: STAGE.height,
-    backgroundColor: '#f3f1eb',
+    backgroundColor: clearColor,
     scale: {
       mode: Phaser.Scale.NONE,
       autoCenter: Phaser.Scale.NO_CENTER,
@@ -49,7 +64,11 @@ export function createGame(parent: HTMLElement): Phaser.Game {
     w: parent.clientWidth || window.innerWidth,
     h: parent.clientHeight || window.innerHeight,
   })
-  const dpr = (): number => Math.min(2, window.devicePixelRatio || 1)
+  // Full-device pixel ratio: iPhones (DPR 3) were capped at 2, so the
+  // 390×3 physical buffer was rendered from a 390×2 canvas and stretched —
+  // the pixelated look on Retina. Vector/ink art scales cleanly; the
+  // perf cost is bounded by the soft-body particle count, not fill rate.
+  const dpr = (): number => window.devicePixelRatio || 1
   const applyDprResize = (): void => {
     const { w, h } = cssSize()
     const d = dpr()
@@ -64,9 +83,13 @@ export function createGame(parent: HTMLElement): Phaser.Game {
     game.events.emit('br:dpr', d)
   }
   // Keep the buffer in sync with the viewport (rotate, window resize,
-  // standalone install).
+  // standalone install, Safari dynamic-viewport collapse). ResizeObserver
+  // catches container changes; visualViewport resize catches iOS URL-bar
+  // collapse that window.resize misses.
   const ro = new ResizeObserver(() => applyDprResize())
   ro.observe(parent)
+  window.visualViewport?.addEventListener('resize', applyDprResize)
+  window.addEventListener('orientationchange', applyDprResize)
   game.events.once(Phaser.Core.Events.READY, () => applyDprResize())
   // Phase 2.7 DEV-ONLY: soft-body prototype behind ?softbody=1
   if (import.meta.env.DEV && typeof window !== 'undefined' &&
@@ -76,6 +99,13 @@ export function createGame(parent: HTMLElement): Phaser.Game {
   if (import.meta.env.DEV) {
     ;(window as unknown as Record<string, unknown>).__brGame = game
   }
+  // Listeners must not outlive the game (React Strict Mode mounts twice).
+  const cleanup = (): void => {
+    ro.disconnect()
+    window.visualViewport?.removeEventListener('resize', applyDprResize)
+    window.removeEventListener('orientationchange', applyDprResize)
+  }
+  game.events.once(Phaser.Core.Events.DESTROY, cleanup)
   return game
 }
 

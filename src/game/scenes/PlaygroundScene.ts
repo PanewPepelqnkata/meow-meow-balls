@@ -689,11 +689,12 @@ export class PlaygroundScene extends Phaser.Scene {
   }
 
   /** Center the world camera on the gameplay band (central layout rules).
-   * HiDPI: the canvas buffer is dpr× CSS px; resolveLayout normalizes the
-   * game size to CSS px internally (via displayScale), and the camera zoom
-   * is multiplied by dpr so the CSS-px layout renders 1:1 into the buffer. */
+   * HiDPI: the canvas buffer is dpr× CSS px — normalize to CSS px first
+   * (resolveLayout's contract), then multiply the layout zoom by dpr so the
+   * CSS-px layout renders 1:1 into the buffer. */
   private applyWorldCamera(): void {
-    this.layoutCache = resolveLayout(this.scale.width, this.scale.height, readSafeArea())
+    const z = this.game.scale.displayScale.x || 1
+    this.layoutCache = resolveLayout(this.scale.width / z, this.scale.height / z, readSafeArea())
     // Composition may flip on rotate: the claw's mobile state follows.
     if (this.claw) this.claw.setMobile(this.layoutCache.composition === 'portrait')
     const cam = this.cameras.main
@@ -728,8 +729,10 @@ export class PlaygroundScene extends Phaser.Scene {
   private themeMilestone(tier: number, firstTime: boolean, chainDepth: number): void {
     if (!this.backgroundScene) return
     // Phase 2.14.0: a pinned theme (SETTINGS) freezes the background — the
-    // run-progression milestones only apply on AUTO.
+    // run-progression milestones only apply on AUTO. Phase 2.19: portrait
+    // phones are pinned to space (their composition theme) — no cycling.
     if (themeSetting() !== 'auto') return
+    if (window.innerWidth < window.innerHeight) return
     const steps = firstTime ? (THEME_PROGRESS.advanceOnTier[tier] ?? 0) : 0
     if (steps > 0) {
       this.backgroundScene.advanceTheme(steps)

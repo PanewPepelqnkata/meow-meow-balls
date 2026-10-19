@@ -41,7 +41,11 @@ export class UiRoot {
   }
 
   layout(): void {
-    this.l = resolveLayout(this.scene.scale.width, this.scene.scale.height, readSafeArea())
+    // HiDPI: the camera frames the CSS-px region — normalize the buffer size
+    // before layout (prod has no __brGame global; explicit division is the
+    // single source of truth, matching the resolveLayout contract).
+    const z = this.scene.game.scale.displayScale.x || 1
+    this.l = resolveLayout(this.scene.scale.width / z, this.scene.scale.height / z, readSafeArea())
     this.scores.layout(this.l)
     this.nextBall.layout(this.l)
     this.tiers.layout(this.l)
@@ -54,6 +58,13 @@ export class UiRoot {
     this.hitRects = []
     for (const c of this.abilities.centers()) {
       this.hitRects.push({ x: c.x - this.l!.abilities.size / 2, y: c.y - this.l!.abilities.size / 2, w: this.l!.abilities.size, h: this.l!.abilities.size })
+    }
+    // Portrait: the top HUD block (score/Best/Global/Next Ball) also gates
+    // pointer drops — a tap on the compact top stack must never drop a ball
+    // into it (desktop keeps the original ability-only gating: its HUD sits
+    // in screen corners over dead sky).
+    if (this.l!.composition === 'portrait') {
+      this.hitRects.push({ x: 0, y: 0, w: this.l!.vw, h: this.l!.stack.hudBottom })
     }
   }
 

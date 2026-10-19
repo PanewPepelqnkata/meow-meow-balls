@@ -1,0 +1,8 @@
+{
+  "name": "phaser-slim-entry",
+  "version": "4.2.1",
+  "private": true,
+  "type": "commonjs",
+  "main": "index.js",
+  "sideEffects": true
+}

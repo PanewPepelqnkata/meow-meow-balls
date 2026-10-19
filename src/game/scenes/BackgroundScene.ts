@@ -36,11 +36,22 @@ export class BackgroundScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.scale.off(Phaser.Scale.Events.RESIZE, this.applyDprCamera, this)
     })
-    this.background = new BackgroundTheme(this)
+  // Phase 2.19: the PORTRAIT composition is space-themed by design — the
+  // dark blue/purple sky reads as a native mobile game and the phone funnel
+  // was tuned against it. Space is set at CONSTRUCTION (no light→space
+  // flash on the first frames). Desktop/landscape keeps the save-driven
+  // opening theme.
+  // NOTE: this.scale.width/height are still the CONFIG stage dims
+  // (720×1280 — portrait!) when create() runs; the real viewport arrives
+  // via applyDprResize on READY. Use the actual window viewport here.
+  const isPortrait = window.innerWidth < window.innerHeight
+  this.background = new BackgroundTheme(this, isPortrait ? 'space' : 'light')
+  if (!isPortrait) {
     // Phase 2.14.0: a pinned theme (SETTINGS screen, persisted) overrides
     // the progression opening theme at boot; 'auto' keeps the default.
     const pinned = themeSetting()
     if (pinned !== 'auto') this.background.setTheme(pinned)
+  }
     // Phaser auto-starts only the FIRST configured scene — this one. The
     // gameplay scene (which in turn launches UIScene) must be launched here.
     this.scene.launch('playground')
@@ -84,8 +95,10 @@ export class BackgroundScene extends Phaser.Scene {
     }
   }
 
-  /** Restart: back to the opening theme, progression state cleared. */
+  /** Restart: back to the opening theme, progression state cleared.
+   * Portrait viewports stay pinned to space (their composition theme). */
   resetTheme(): void {
+    if (window.innerWidth < window.innerHeight) return
     this.background?.setTheme(THEME_PROGRESS.order[0], THEME_PROGRESS.fadeMs)
   }
 }

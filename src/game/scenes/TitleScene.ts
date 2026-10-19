@@ -256,8 +256,12 @@ export class TitleScene extends Phaser.Scene {
   // -------------------------------------------------------------------------
 
   private buildAll(): void {
-    const vw = this.scale.width
-    const vh = this.scale.height
+    // HiDPI: the camera zooms by displayScale and frames the CSS-px region
+    // (0,0)-(cssW,cssH), so the layout must be built in CSS px — the buffer
+    // size divided by the display scale. At DPR 1 the two are identical.
+    const z = this.game.scale.displayScale.x || 1
+    const vw = this.scale.width / z
+    const vh = this.scale.height / z
 
     // Phase 2.16.0: the menu's OWN background — a deep ink gradient with a
     // soft center glow and a hand-sprinkled dust of cream dots, baked once
@@ -970,8 +974,10 @@ export class TitleScene extends Phaser.Scene {
     // pickers, reset) re-register as they are created.
     this.panelContent.removeAll(true)
     this.panelRects.length = 1
-    const vw = this.scale.width
-    const vh = this.scale.height
+    // HiDPI: CSS-px layout, matching buildAll (camera frames the CSS region).
+    const z = this.game.scale.displayScale.x || 1
+    const vw = this.scale.width / z
+    const vh = this.scale.height / z
     const headSize = Math.max(24, Math.min(44, vw * 0.045))
     const head = hudText(this, 0, 0, this.screen.toUpperCase(), 1, {
       color: YELLOW,

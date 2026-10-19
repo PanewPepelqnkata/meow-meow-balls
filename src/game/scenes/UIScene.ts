@@ -21,7 +21,7 @@ import { session } from '../state/session'
 export class UIScene extends Phaser.Scene {
   private uiRoot!: UiRoot
   private readonly gameOverlay: GameOverView
-  private readonly discoveryOverlay: DiscoveryOverlay
+  private discoveryOverlay!: DiscoveryOverlay
   private lastBest = 0
   private lastScore = 0
   private offs: Array<() => void> = []
@@ -50,11 +50,6 @@ export class UIScene extends Phaser.Scene {
         title.scene.start('TitleScene')
       },
     )
-    // Phase 2.12.2: the discovery modal lives HERE — UIScene's camera is 1:1
-    // with the viewport (no zoom/scroll), so the full-screen dim actually
-    // covers the whole screen (the world scene's zoomed camera was turning
-    // it into an inset rectangle).
-    this.discoveryOverlay = new DiscoveryOverlay(this)
   }
 
   /** HiDPI camera: zoom = display scale, centered on the CSS midpoint
@@ -78,6 +73,15 @@ export class UIScene extends Phaser.Scene {
     this.uiRoot = new UiRoot(this, {
       onSwap: () => gameBus.emit('ui:swap', {}),
       onRaise: () => gameBus.emit('ui:raise', {}),
+    })
+    // Phase 2.19: the discovery modal centers in the GAMEPLAY SLOT on
+    // portrait (below the HUD block, above the controls) — never inside
+    // the top HUD. Desktop keeps its full-screen centering.
+    this.discoveryOverlay = new DiscoveryOverlay(this, () => {
+      const l = this.uiRoot.layout_
+      return l.composition === 'portrait'
+        ? { top: l.stack.hudBottom, bottom: l.stack.controlsTop }
+        : null
     })
 
     // Boot-time sync (PlaygroundScene.create ran first and populated these).

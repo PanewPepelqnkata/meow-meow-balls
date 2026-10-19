@@ -9,6 +9,20 @@
  * Bottom band below the floor (floorY..1280) is reserved for the future HUD.
  * Extend Walls (future power-up) stays compatible: geometry is derived from
  * this config, so extension = shifting `topY` up / increasing `height`.
+ *
+ * Phase 2.19 — PORTRAIT PHONES get a dedicated container proportion: the
+ * desktop funnel (645 outer, shallow 320 walls) reads as a desktop object
+ * when framed for a phone. `resolveViewportContainer()` detects a portrait
+ * phone viewport ONCE at boot and overrides the exported values so every
+ * consumer (physics colliders, ContainerView texture, spawn anchors, Raise
+ * Walls animation) derives the phone container — same wall-slope rules, but
+ * a TALLER, NARROWER funnel that fills the lower-middle of a portrait
+ * screen. Landscape/desktop keeps the reference geometry untouched.
+ *
+ * The exported object is intentionally mutable-once: geometry consumers
+ * capture `CONTAINER.height` in fields at construction (WallAnimator), so
+ * the override must happen before any scene constructs. GameRoot calls
+ * `resolveViewportContainer()` first thing in createGame().
  */
 export const CONTAINER = {
   /**
@@ -25,6 +39,9 @@ export const CONTAINER = {
    * down to y=765.
    * - mouth 495.9 at the normal rim, bottom 405: tier-6 diameter 212 = 52%
    *   of floor width, still well inside
+   *
+   * Phase 2.19: `resolveViewportContainer()` rewrites these (once, at boot)
+   * for portrait phones — see its doc for the phone funnel design.
    */
   topWidth: 495.905,
   bottomWidth: 405,
@@ -59,7 +76,48 @@ export const CONTAINER = {
      */
     bandThickness: 74,
   },
-} as const
+}
+
+/**
+ * Desktop reference geometry snapshot — the values above before a portrait
+ * override. Kept for tests and for any code that must compare against the
+ * canonical desktop proportions.
+ */
+export const DESKTOP_CONTAINER: Readonly<typeof CONTAINER> = { ...CONTAINER }
+
+/**
+ * Phase 2.19 — detect a portrait phone viewport and, if found, rewrite the
+ * CONTAINER values in place so the whole game (physics, rendering, spawn)
+ * uses the phone funnel. Call ONCE, before any scene/geometry consumer
+ * constructs. Landscape and desktop viewports leave the reference geometry.
+ *
+ * Phone funnel design (same slope-invariant construction as Phase 2.11.2):
+ *  - interior bottom 340 (desktop 405): a narrower floor reads as a phone
+ *    object and leaves symmetric sky margins at equal zoom
+ *  - interior height 400 (desktop 320): a TALLER funnel = real gameplay
+ *    depth in the lower-middle of the portrait screen; top width derived
+ *    from the SAME 0.142105 slope → 340 + 2·0.142105·400 = 453.7
+ *  - the floor stays at stage 1085; the rim moves UP to 1085 − 400 = 685.
+ *    Raise Walls must still extend above the phone rim, so raisedHeight
+ *    grows: raised rim = 685 − 160 = 525 (raisedHeight 560).
+ */
+export function resolveViewportContainer(vw: number, vh: number): void {
+  // Any portrait viewport is the mobile composition (space theme, phone
+  // funnel) — matching BackgroundScene's theme pin rule.
+  const isPortrait = vh > vw
+  if (!isPortrait) return
+
+  const bottomWidth = 340
+  const height = 400
+  const slopePerY = (DESKTOP_CONTAINER.topWidth - DESKTOP_CONTAINER.bottomWidth) / 2 / DESKTOP_CONTAINER.height
+  const topWidth = bottomWidth + 2 * slopePerY * height
+
+  CONTAINER.topWidth = topWidth
+  CONTAINER.bottomWidth = bottomWidth
+  CONTAINER.height = height
+  CONTAINER.topY = DESKTOP_CONTAINER.topY + DESKTOP_CONTAINER.height - height
+  CONTAINER.raisedHeight = height + 160
+}
 
 export interface Vec2 {
   x: number

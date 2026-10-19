@@ -20,8 +20,14 @@ body,
 #root {
   margin: 0;
   padding: 0;
-  height: 100%;
-  background: #f3f1eb;
+  /* Background matches the theme the boot viewport will pin: portrait
+     phones render the space composition (deep blue), everything else the
+     cream morning sky. Prevents a cream flash behind the canvas on phones
+     while the first frames paint. */
+  @media (orientation: portrait) {
+    background: #0a1628;
+  }
+
   /* Mobile: the game owns the viewport — no browser scroll/bounce, and
      the canvas extends under the notch/home indicator (viewport-fit=cover).
      Safe-area padding is applied by the HUD layout, not here. */
@@ -30,27 +36,33 @@ body,
   position: fixed;
   inset: 0;
   overflow: hidden;
+  width: 100vw;
+  /* 100dvh tracks the dynamic viewport (browser chrome collapse on
+     Safari); the fixed+inset:0 chain makes it robust in standalone PWA
+     mode where dvh == 100vh == screen height. */
+  height: 100dvh;
   -webkit-user-select: none;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
-  /* Standalone PWA: fill the real screen including safe areas. */
-  height: 100dvh;
 }
 
 .app {
-  height: 100%;
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
   /* stretch (not center): the game container must always span the viewport
-     so Phaser's Scale.RESIZE measures the real parent size. */
+     so Phaser's resize measures the real parent size. */
   align-items: stretch;
 }
 
 .game-container {
-  /* Canvas fills available space; the world camera frames the gameplay
-     stage inside it, and UIScene draws the HUD at viewport scale. */
+  /* Canvas fills the whole viewport: 100vw × 100dvh — the world camera
+     frames the gameplay stage inside it, and UIScene draws the HUD at
+     viewport scale. The canvas IS the screen; no letterboxing, no margins. */
   flex: 1;
   width: 100%;
+  height: 100%;
   min-height: 0;
   min-width: 0;
   touch-action: none;
@@ -59,6 +71,10 @@ body,
 
 .game-container canvas {
   display: block;
+  /* Hard guarantee: the canvas element always fills its container — never
+     a stretched smaller buffer, never a gray strip. */
+  width: 100% !important;
+  height: 100% !important;
 }
 
 .dev-status {

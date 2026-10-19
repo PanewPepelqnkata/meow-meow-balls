@@ -169,8 +169,11 @@ export class GameOverView {
   show(score: number, best: number, isNewBest: boolean): void {
     this.hide()
     const scene = this.scene
-    const vw = scene.scale.width
-    const vh = scene.scale.height
+    // HiDPI: the UIScene camera zooms by displayScale and frames the CSS-px
+    // region, so the panel must be laid out in CSS px (buffer / scale).
+    const z = scene.game.scale.displayScale.x || 1
+    const vw = scene.scale.width / z
+    const vh = scene.scale.height / z
     const cx = vw / 2
     const cy = vh / 2
     // Responsive scale: the panel must fit BOTH axes with margin — on short

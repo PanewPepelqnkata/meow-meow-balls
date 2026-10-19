@@ -22,22 +22,27 @@ export class ScoreDisplay {
   layout(l: UiLayout): void {
     const pop = (old: Phaser.GameObjects.Text | null, x: number, y: number): boolean =>
       old != null && Math.abs(old.x - x) < 0.5 && Math.abs(old.y - y) < 0.5
+    // Rendered px size (hudText rounds design·fontScale) — rebuild when the
+    // layout scales the text differently (orientation/size change).
+    const rendered = (design: number): number => Math.max(10, Math.round(design * l.fontScale))
 
-    if (!pop(this.best, l.best.x, l.best.y)) {
+    // Best/Global sizes are layout-driven (portrait keeps them clearly
+    // smaller than the score hero; landscape matches the reference sizes).
+    if (!pop(this.best, l.best.x, l.best.y) || this.best?.style?.fontSize !== `${rendered(l.bestSize)}px`) {
       this.best?.destroy()
       this.best = hudText(this.scene, l.best.x, l.best.y, `Best: ${this.bestVal}`, l.fontScale, {
         color: WHITE,
-        size: 30,
+        size: l.bestSize,
         stroke: 4,
       })
     } else {
       this.best?.setPosition(l.best.x, l.best.y)
     }
-    if (!pop(this.global, l.global.x, l.global.y)) {
+    if (!pop(this.global, l.global.x, l.global.y) || this.global?.style?.fontSize !== `${rendered(l.globalSize)}px`) {
       this.global?.destroy()
       this.global = hudText(this.scene, l.global.x, l.global.y, this.globalText(), l.fontScale, {
         color: WHITE,
-        size: 21,
+        size: l.globalSize,
         stroke: 3,
       })
     } else {
@@ -47,11 +52,8 @@ export class ScoreDisplay {
       this.score?.destroy()
       this.score = hudText(this.scene, l.score.x, l.score.y, `Score: ${this.scoreVal}`, l.fontScale, {
         color: SCORE_GREEN,
-        // Design size comes from the layout (portrait row is shared with
-        // Best/Global, so the score is smaller there). The landscape value
-        // must match ResponsiveLayout.WORLD_GEOM.SCORE_DESIGN_SIZE: the
-        // zoom guard reserves vertical space for THIS box so the claw ball
-        // never overlaps the score (spec §4D).
+        // Design size comes from the layout. The landscape value must match
+        // ResponsiveLayout.WORLD_GEOM.SCORE_DESIGN_SIZE.
         size: l.scoreSize,
         stroke: 4,
         origin: [0.5, 0],

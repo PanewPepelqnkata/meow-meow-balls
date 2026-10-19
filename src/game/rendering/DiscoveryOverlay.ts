@@ -77,8 +77,14 @@ export class DiscoveryOverlay {
   private dismissTimer: Phaser.Time.TimerEvent | null = null
   private resizeRegistered = false
 
-  constructor(scene: Phaser.Scene) {
+  /** Optional gameplay-slot bounds provider (portrait): returns the
+   * viewport-px region between the HUD block and the control stack, where
+   * the modal centers. `null` = desktop full-screen centering. */
+  private slotBounds: (() => { top: number; bottom: number } | null) | null = null
+
+  constructor(scene: Phaser.Scene, slotBounds?: () => { top: number; bottom: number } | null) {
     this.scene = scene
+    this.slotBounds = slotBounds ?? null
     try {
       this.reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
     } catch {
@@ -199,14 +205,25 @@ export class DiscoveryOverlay {
     titleY: number
     labelY: number
   } {
-    const vw = this.scene.scale.width
-    const vh = this.scene.scale.height
+    // HiDPI: the UIScene camera frames the CSS-px region (buffer / scale) —
+    // layout must match or the band lands off-center at DPR ≥ 2.
+    const z = this.scene.game.scale.displayScale.x || 1
+    const vw = this.scene.scale.width / z
+    const vh = this.scene.scale.height / z
+    // Portrait: center the presentation in the GAMEPLAY SLOT (below the
+    // HUD block, above the control stack) — the permanent HUD owns the top
+    // of the screen and the modal must never sit on top of it.
+    const slot = this.slotBounds?.()
+    const slotTop = slot?.top ?? 0
+    const slotBottom = slot?.bottom ?? vh
     const cx = vw / 2
-    const displayRadius = Math.min(120, Math.max(40, Math.min(vw, vh) * 0.15))
-    const ballY = vh * 0.48
-    const bandH = Math.max(130, Math.min(240, vh * 0.3))
-    const titleY = Math.max(30, vh * 0.13)
-    const labelY = Math.min(vh - 34, ballY + displayRadius * 1.62 + 26)
+    const slotH = slotBottom - slotTop
+    const slotMid = slotTop + slotH / 2
+    const displayRadius = Math.min(110, Math.max(44, Math.min(vw * 0.24, slotH * 0.3)))
+    const ballY = slotMid + slotH * 0.04
+    const bandH = Math.min(slotH * 0.86, Math.max(150, vh * 0.26))
+    const titleY = slotTop + Math.max(26, slotH * 0.1)
+    const labelY = Math.min(slotBottom - 24, ballY + displayRadius * 1.5 + 22)
     return { vw, vh, cx, ballY, displayRadius, bandH, titleY, labelY }
   }
 

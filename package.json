@@ -15,8 +15,7 @@
     "matter-js": "^0.20.0",
     "phaser": "^4.2.1",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "roughjs": "^4.6.6"
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

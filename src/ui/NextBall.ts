@@ -42,11 +42,13 @@ export class NextBall {
     this.g?.destroy()
     this.label?.destroy()
     this.g = this.scene.add.graphics().setDepth(42)
+    // Portrait: the label sits BESIDE the disc (left-aligned block, compact).
+    // Desktop: the label sits BELOW the disc (original centered layout).
     this.label = hudText(this.scene, l.nextBall.label.x, l.nextBall.label.y, 'Next Ball:', l.fontScale, {
       color: WHITE,
-      size: 22,
+      size: 18,
       stroke: 3,
-      origin: [0.5, 0],
+      origin: l.nextBall.labelAlign === 'left' ? [0, 0.5] : [0.5, 0],
     })
     this.redraw()
   }
