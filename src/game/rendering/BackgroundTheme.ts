@@ -476,12 +476,19 @@ const THEMES: Record<ThemeName, ThemeDef> = {
       // some DPR configs). This draw paints only the pin-sharp elements:
       // stars, planets, moon, horizon.
 
+      // PORTRAIT ART SCALE (Phase 2.22): the static art was sized for the
+      // desktop reference (min dim ~936). On a phone (min dim 390) the
+      // planet/moon shrank to ~40% and vanished into the dark. Scale them
+      // by min(vw,vh)/560 clamped 1..1.8 so they stay prominent on
+      // narrow-tall viewports.
+      const artScale = Math.min(1.8, Math.max(1, Math.min(w, h) / 560))
+
       // Small ringed planet upper-left: body, terminator shading, thin
       // ring — restrained, atmospheric (drawn small so it reads as a far
       // world, not a foreground object).
       const px = w * 0.2
       const py = h * 0.15
-      const pr = Math.min(w, h) * 0.032
+      const pr = Math.min(w, h) * 0.032 * artScale
       g.fillStyle(0xe8b06a, 1)
       g.fillCircle(px, py, pr)
       g.fillStyle(0xc78748, 0.6)
@@ -501,7 +508,7 @@ const THEMES: Record<ThemeName, ThemeDef> = {
       g.strokePath()
 
       // One distant cratered moon, lower-right (small, quiet).
-      crateredBody(g, w * 0.84, h * 0.31, Math.min(w, h) * 0.026, 0xcdd6e8, 0x93a2c2, [
+      crateredBody(g, w * 0.84, h * 0.31, Math.min(w, h) * 0.026 * artScale, 0xcdd6e8, 0x93a2c2, [
         { dx: -0.3, dy: -0.2, cr: 0.16 },
         { dx: 0.25, dy: 0.15, cr: 0.12 },
         { dx: 0.05, dy: -0.4, cr: 0.09 },
@@ -521,7 +528,7 @@ const THEMES: Record<ThemeName, ThemeDef> = {
       const bands = [
         { n: 80, r: [0.5, 1.0], a: [0.22, 0.5] },
         { n: 30, r: [0.9, 1.6], a: [0.35, 0.75] },
-        { n: 10, r: [1.6, 2.3], a: [0.55, 0.9] },
+        { n: 10, r: [1.6 * artScale, 2.3 * artScale], a: [0.55, 0.9] },
       ]
       for (const b of bands) {
         for (let i = 0; i < b.n; i++) {
@@ -803,7 +810,6 @@ export class BackgroundTheme {
   private scene: Phaser.Scene
   private currentTheme: ThemeName = 'light'
   private bgLayer!: Phaser.GameObjects.Graphics
-  private gridLayer!: Phaser.GameObjects.Graphics
   private starLayer?: Phaser.GameObjects.Graphics
   private ambientLayer!: Phaser.GameObjects.Graphics
   private transitionTween?: Phaser.Tweens.Tween
@@ -815,11 +821,17 @@ export class BackgroundTheme {
   /** Per-theme soft cloud layers (irregular gradient blobs). */
   private cloudGroups: Partial<Record<ThemeName, CloudObj[]>> = {}
   /**
-   * Space base gradient as a screen-space Image. The gradient is baked
-   * into a canvas texture at device resolution (Graphics
-   * fillGradientStyle renders flat through the Flat render node on some
-   * DPR configs — a 2D-canvas gradient is reliable and sharp). Rebuilt on
-   * resize; visible only while space is active.
+   * SPACE BASE GRADIENT — device-resolution canvas texture on a
+   * screen-space Image. Depth map (Phase 2.21, back → front):
+   *   -100 gradImage  (space base gradient — replaces bgLayer's fill)
+   *    -99 bgLayer    (theme art: planet, moon, horizon, non-space env)
+   *    -97 nebula Images (cloudGroups — above space art)
+   *    -95 starLayer  (twinkling stars)
+   *    -89 ambientLayer
+   *    -88 gridImage  (baked grid)
+   * bgLayer is TRANSPARENT while space is active (the gradImage owns the
+   * base fill); non-space themes paint fill + art on bgLayer with the
+   * gradImage hidden.
    */
   private gradImage: Phaser.GameObjects.Image | null = null
   private gridImage: Phaser.GameObjects.Image | null = null
@@ -838,8 +850,7 @@ export class BackgroundTheme {
     this.scene = scene
     this.currentTheme = initialTheme
     // Background renders in screen space (never-zoomed camera).
-    this.bgLayer = scene.add.graphics().setDepth(-100).setScrollFactor(0)
-    this.gridLayer = scene.add.graphics().setDepth(-90).setScrollFactor(0)
+    this.bgLayer = scene.add.graphics().setDepth(-99).setScrollFactor(0)
     this.starLayer = scene.add.graphics().setDepth(-95).setScrollFactor(0)
     this.ambientLayer = scene.add.graphics().setDepth(-89).setScrollFactor(0)
     this.updateGradImage()
@@ -929,7 +940,7 @@ export class BackgroundTheme {
       this.gradImage = this.scene.add
         .image(0, 0, 'br-space-grad')
         .setOrigin(0, 0)
-        .setDepth(-98)
+        .setDepth(-100)
         .setScrollFactor(0)
     }
     const tex = this.scene.textures.get('br-space-grad') as Phaser.Textures.CanvasTexture
@@ -947,8 +958,10 @@ export class BackgroundTheme {
     ctx.fillStyle = grad
     ctx.fillRect(0, 0, w, h)
     tex.refresh()
-    // Device-px texture, LOGICAL display size (dpr = bitmap res only).
-    this.gradImage.setDisplaySize(Math.ceil(w / (window.devicePixelRatio || 1)), Math.ceil(h / (window.devicePixelRatio || 1)))
+    // Device-px texture, LOGICAL display size — CSS px derived from the
+    // SAME z used for the bake (keeps bake and display in lockstep even
+    // mid-resize when displayScale changes under us).
+    this.gradImage.setDisplaySize(Math.ceil(this.scene.scale.width / z), Math.ceil(this.scene.scale.height / z))
     this.gradImage.setVisible(true)
   }
 
@@ -1086,7 +1099,7 @@ export class BackgroundTheme {
         const key = ensureNebulaTexture(this.scene, 'br-nebula-' + b.seed, b.seed, texW, texH)
         const img = this.scene.add
           .image(w * b.x, h * b.y, key)
-          .setDepth(-99)
+          .setDepth(-97)
           .setScrollFactor(0)
           .setData('baseAlpha', b.alpha)
         img.setScale((w * b.tw) / texW, (w * b.tw * 0.62) / texH)
@@ -1305,8 +1318,8 @@ export class BackgroundTheme {
         .setDepth(-88)
         .setScrollFactor(0)
     }
-    // Device-px texture, LOGICAL display size.
-    this.gridImage.setDisplaySize(Math.ceil(w / (window.devicePixelRatio || 1)), Math.ceil(h / (window.devicePixelRatio || 1)))
+    // Device-px texture, LOGICAL display size (CSS px from the same z).
+    this.gridImage.setDisplaySize(Math.ceil(this.scene.scale.width / z), Math.ceil(this.scene.scale.height / z))
     const spaceActive = (this.toTheme ?? this.currentTheme) === 'space'
     this.gridImage.setVisible(spaceActive)
   }
@@ -1450,7 +1463,6 @@ export class BackgroundTheme {
     this.resizeTimer = undefined
     this.transitionTween?.stop()
     this.bgLayer?.destroy()
-    this.gridLayer?.destroy()
     this.starLayer?.destroy()
     this.ambientLayer?.destroy()
     for (const name of Object.keys(this.cloudGroups) as ThemeName[]) this.destroyCloudGroup(name)
