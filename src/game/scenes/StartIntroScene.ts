@@ -35,8 +35,6 @@ export function bakeIrisCover(
   scene: Phaser.Scene,
   outerR: number,
   innerR: number,
-  vw: number,
-  vh: number,
 ): HTMLCanvasElement {
   const key = 'br-intro-cover'
   const size = Math.ceil(outerR * 2)
@@ -47,23 +45,19 @@ export function bakeIrisCover(
   if (scene.textures.exists(key)) scene.textures.remove(key)
   // dpr 1: the texture is 2·outerR square; at dpr 2+ it would exceed
   // the iOS canvas pool for negligible sharpness gain on a moving
-  // ring. Ring width formula matches the old hand-drawn cover.
+  // ring. NO cream ring stroke — the user wants a plain solid cover
+  // sweeping in, no white circle (user feedback: 'remove the white
+  // circle in the animation').
   const canvas = document.createElement('canvas')
   canvas.width = size
   canvas.height = size
   const ctx = canvas.getContext('2d')!
   const c = size / 2
-  const ringW = Math.max(3, Math.min(vw, vh) * 0.014)
   ctx.fillStyle = '#0e0f1c'
   ctx.beginPath()
   ctx.arc(c, c, outerR, 0, Math.PI * 2)
   ctx.arc(c, c, innerR, 0, Math.PI * 2, true)
   ctx.fill()
-  ctx.strokeStyle = '#f3f1eb'
-  ctx.lineWidth = ringW
-  ctx.beginPath()
-  ctx.arc(c, c, innerR + ringW / 2, 0, Math.PI * 2)
-  ctx.stroke()
   scene.textures.addCanvas(key, canvas)
   return canvas
 }
@@ -102,7 +96,7 @@ export class StartIntroScene extends Phaser.Scene {
     // closing sweep is visible from frame one (a ring starting past the
     // corners reads as a plain fade).
     const outerR = Math.hypot(vw, vh) * 0.5
-    const innerR = Math.min(vw, vh) * 0.14
+    const innerR = 12 // closed-beat hole: near-zero, seal bridges it (user: close fully to center)
     const dur = 620
 
 
@@ -112,7 +106,7 @@ export class StartIntroScene extends Phaser.Scene {
     // (hole radius = innerR * scale). NO per-frame Graphics redraws —
     // the iOS blanking class (canvas-pool exhaustion + Phaser #6051/
     // #6914) is eliminated from the transition entirely.
-    bakeIrisCover(this, outerR, innerR, vw, vh)
+    bakeIrisCover(this, outerR, innerR)
     const cover = this.add
       .image(cx, cy, 'br-intro-cover')
       .setOrigin(0.5, 0.5)

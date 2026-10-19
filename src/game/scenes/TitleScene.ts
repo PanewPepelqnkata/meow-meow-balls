@@ -1535,7 +1535,7 @@ export class TitleScene extends Phaser.Scene {
     const cx = vw / 2
     const cy = vh / 2
     const outerR = Math.hypot(vw, vh) * 0.5
-    const innerR = Math.min(vw, vh) * 0.14
+    const innerR = 12 // closed-beat hole: near-zero, seal bridges it (user: close fully to center)
     // IRIS OVERLAY (iOS-proof): the cover is a BAKED annulus texture
     // (solid ink from the hole edge out past the corners + cream ring
     // at the hole edge), animated by pure GPU scale — zero per-frame
@@ -1543,7 +1543,7 @@ export class TitleScene extends Phaser.Scene {
     // viewport Graphics redraws are a known iOS blank/black trigger
     // (Phaser #6051/#6914) and the app already lost two features to
     // that class. See bakeIrisCover() in StartIntroScene (shared bake).
-    const baked = bakeIrisCover(this, outerR, innerR, vw, vh)
+    const baked = bakeIrisCover(this, outerR, innerR)
     const iris = this.add
       .image(cx, cy, 'br-intro-cover')
       .setOrigin(0.5, 0.5)
@@ -1564,8 +1564,8 @@ export class TitleScene extends Phaser.Scene {
     this.tweens.add({
       targets: seal,
       alpha: 1,
-      duration: 200,
-      delay: 420,
+      duration: 260,
+      delay: 360,
       ease: 'Quad.easeIn',
     })
     this.tweens.add({
