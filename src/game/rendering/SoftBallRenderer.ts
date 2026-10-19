@@ -59,6 +59,8 @@ export class SoftBallRenderer {
   >()
   /** Sleep state from the PREVIOUS frame, for wake-edge detection. */
   private readonly wasSleeping = new Map<number, boolean>()
+  /** Reused centroid out-vector (zero-allocation reads). */
+  private readonly centroidScratch = { x: 0, y: 0 }
 
   constructor(scene: Phaser.Scene) {
     this.layer = scene.add.graphics().setDepth(10)
@@ -120,6 +122,8 @@ export class SoftBallRenderer {
       r: number;
       tier: number;
       entity: SoftBallEntity;
+      cx: number;
+      cy: number;
     }> = []
     this.lastDrawnIds.clear()
 
@@ -155,7 +159,7 @@ export class SoftBallRenderer {
       } else {
         const pr = r.soft.radius * SOFT.particleRadiusFactor
         const base = renderContour(r.soft, 6, pr)
-        const c = softBallCentroid(r.soft)
+        const c = softBallCentroid(r.soft, this.centroidScratch)
         const built = wobbleContour(look, base, c.x, c.y, drawR, 1.5)
         if (cacheable) {
           // In-place Vector2 reuse: the cached array is mutated on the next
@@ -182,8 +186,7 @@ export class SoftBallRenderer {
         }
       }
       this.wasSleeping.set(r.id, sleeping)
-      const c = { x: cx, y: cy }
-      polys.push({ poly, color, soft: r.soft, look, r: drawR, tier: r.tier, entity: r })
+      polys.push({ poly, color, soft: r.soft, look, r: drawR, tier: r.tier, entity: r, cx, cy })
 
       // Phase 2.12.1: Special rendering for Tier 8 (rainbow) and Tier 9 (fantasy).
       // Phase 2.14.0: both take the PER-RUN variant (runVariant rolls tiers
@@ -191,10 +194,10 @@ export class SoftBallRenderer {
       if (r.tier === 8) {
         // Tier 8: Rainbow gradient
         const pts = poly.map(v => ({ x: v.x, y: v.y }))
-        drawRainbowBall(g, pts, c.x, c.y, r.soft.radius, Date.now(), variantIdFor(8))
+        drawRainbowBall(g, pts, cx, cy, r.soft.radius, Date.now(), variantIdFor(8))
       } else if (r.tier === 9) {
         // Tier 9: Fantasy/unicorn
-        drawFantasyBall(g, c.x, c.y, r.soft.radius, variantIdFor(9))
+        drawFantasyBall(g, cx, cy, r.soft.radius, variantIdFor(9))
       } else {
         // Normal tier: solid fill
         g.fillStyle(color, 1)
@@ -211,15 +214,24 @@ export class SoftBallRenderer {
     // Pass 3: Faces for all balls — live GLANCE timeline (pupils dart every
     // ~4 s, de-synced per ball) + EASTER-EGG expressions (wink/grin/tongue
     // flashing every 10–30 s), both deterministic per ball seed + time.
-    for (const { soft, look, entity } of polys) {
-      const c = softBallCentroid(soft)
-      const ys = soft.particles.map((p) => p.position.y)
-      const xs = soft.particles.map((p) => p.position.x)
-      const aspect = Math.max(0.6, Math.min(1.0, (Math.max(...ys) - Math.min(...ys)) / (Math.max(...xs) - Math.min(...xs))))
+    for (const { soft, look, entity, cx: fcx, cy: fcy } of polys) {
+      // Zero-allocation: aspect via direct min/max
+      // walk (the old version built 2 arrays + 2 Math.max spreads per ball
+      // per frame).
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+      const parts = soft.particles
+      for (let i = 0; i < parts.length; i++) {
+        const p = parts[i]!.position
+        if (p.x < minX) minX = p.x
+        if (p.x > maxX) maxX = p.x
+        if (p.y < minY) minY = p.y
+        if (p.y > maxY) maxY = p.y
+      }
+      const aspect = Math.max(0.6, Math.min(1.0, (maxY - minY) / (maxX - minX)))
       const now = Date.now()
       // Game-over override: every surviving ball wears the doomed face.
       const panic = this.gameOverSequence?.panicOverride ?? this.emotion.panicOf(entity.id)
-      drawBallFace(g, look, { x: c.x, y: c.y }, soft.radius, aspect, {
+      drawBallFace(g, look, { x: fcx, y: fcy }, soft.radius, aspect, {
         gaze: gazeAt(entity.seed, now),
         expr: expressionAt(entity.seed, now),
         panic,

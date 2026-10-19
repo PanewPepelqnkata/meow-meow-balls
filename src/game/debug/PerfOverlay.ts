@@ -29,6 +29,12 @@ export class PerfOverlay {
   private worstBucket = 0
   private physicsMs = 0
   private renderMs = 0
+  /** Soft-body solver pass timings (set by the scene's substep handler). */
+  stepAllMs = 0
+  separateMs = 0
+  expandMs = 0
+  clampMs = 0
+  private passAccum = { stepAll: 0, separate: 0, expand: 0, clamp: 0, n: 0 }
   private dpr = 0
   /** Independent RAF cadence measurement (not Phaser's step). */
   private rafCount = 0
@@ -81,6 +87,11 @@ export class PerfOverlay {
     if (dur > this.worstBucketMax) this.worstBucketMax = dur
     this.physicsMs = physicsMs
     this.renderMs = renderMs
+    this.passAccum.stepAll += this.stepAllMs
+    this.passAccum.separate += this.separateMs
+    this.passAccum.expand += this.expandMs
+    this.passAccum.clamp += this.clampMs
+    this.passAccum.n++
     this.dpr = window.devicePixelRatio || 1
   }
 
@@ -108,6 +119,7 @@ export class PerfOverlay {
       : 0
     this.frameSamples = []
     this.frameWorst = []
+    this.passAccum = { stepAll: 0, separate: 0, expand: 0, clamp: 0, n: 0 }
     this.lastReadout = now
 
     let particles = 0
@@ -132,6 +144,7 @@ export class PerfOverlay {
         `gameFPS ${gameFps}  RAF FPS ${this.rafFps || '…'}`,
         `avg ${avg.toFixed(1)}ms  1%low ${low1.toFixed(1)}ms  worst ${max.toFixed(1)}ms`,
         `physics ${this.physicsMs.toFixed(1)}ms  render ${this.renderMs.toFixed(1)}ms`,
+        `solver: stepAll ${(this.passAccum.stepAll / Math.max(1, this.passAccum.n)).toFixed(2)} sep ${(this.passAccum.separate / Math.max(1, this.passAccum.n)).toFixed(2)} expand ${(this.passAccum.expand / Math.max(1, this.passAccum.n)).toFixed(2)} clamp ${(this.passAccum.clamp / Math.max(1, this.passAccum.n)).toFixed(2)}ms`,
         `balls ${this.softBalls?.size ?? 0}  particles ${particles}`,
         `dpr ${this.dpr}`,
         `win ${window.innerWidth}x${window.innerHeight}  vv ${vv ? Math.round(vv.width) + 'x' + Math.round(vv.height) : 'n/a'}`,

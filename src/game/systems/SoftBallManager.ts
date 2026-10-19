@@ -78,6 +78,30 @@ export class SoftBallManager {
   private readonly warSurrendered = new Set<number>()
   /** Diagnostics: max separation correction applied in the last call (px). */
   lastSeparationCorrection = 0
+  /** Phase 2.21 diagnostics: wall-clock cost of the last pass run (ms).
+   * Set by the scene's instrumentation wrappers (see PlaygroundScene). */
+  lastStepAllMs = 0
+  lastSeparateMs = 0
+  lastExpandMs = 0
+  lastClampMs = 0
+  /**
+   * Phase 2.21 — REUSED hot-path buffers (zero allocations per substep in
+   * steady state):
+   *  - `sepMoved`: wake set for separateContacts (was `new Set` per call —
+   *    8 iterations × 120 calls/s = ~960 Set allocations/s)
+   *  - `nearParticles`: pooled foreign-particle candidate slots for
+   *    expandShape's ray-clamp (was a fresh `{x,y,r}` object per foreign
+   *    particle per ball per substep)
+   *  - `asleepScratch` / `reachSqScratch`: per-call broad-phase sleep
+   *    flags and pairwise squared-reach matrix
+   *  - `centroidScratch`: reused out-vector for softBallCentroid
+   */
+  private readonly sepMoved = new Set<number>()
+  private readonly nearParticles: Array<{ x: number; y: number; r: number }> = []
+  private readonly centroidScratch: Matter.Vector = { x: 0, y: 0 }
+  /** Per-call scratch: pairwise squared reach matrix + sleep flags. */
+  private readonly asleepScratch: boolean[] = []
+  private readonly reachSqScratch: number[] = []
   /** Diagnostics: max boundary-clamp correction applied in the last
    * clampToContainer call (px). Wall-jitter instrumentation (Phase 2.10.2). */
   lastClampCorrection = 0
@@ -200,7 +224,7 @@ export class SoftBallManager {
    */
   wakeNear(x: number, y: number, reach: number): void {
     for (const ball of this.balls) {
-      const c = softBallCentroid(ball.soft)
+      const c = softBallCentroid(ball.soft, this.centroidScratch)
       if (Math.hypot(c.x - x, c.y - y) <= reach + ball.soft.radius) this.wakeBall(ball.id)
     }
   }
@@ -374,14 +398,38 @@ export class SoftBallManager {
    */
   separateContacts(): void {
     const balls = this.balls
+    const moved = this.sepMoved
+    moved.clear()
+    // Phase 2.21 — BROAD-PHASE PRE-FILTER: compute pairwise reach ONCE per
+    // call (not per iteration), precompute per-ball sleep state (was two
+    // softBallSleeping walks over 17 bodies per pair per iteration), and
+    // skip pairs whose reach excludes overlap. The inner particle×particle
+    // double loop only runs for ball pairs whose CENTROIDS are within
+    // reach — the same invariant the old per-iteration distance check
+    // enforced, just hoisted.
+    const n = balls.length
+    const asleep: boolean[] = this.asleepScratch
+    const reachSq: number[] = this.reachSqScratch
+    for (let i = 0; i < n; i++) {
+      asleep[i] = softBallSleeping(balls[i]!.soft)
+      const ri = balls[i]!.soft.radius + 2 * SOFT.contactSkin + 8
+      // reach = ri + rj (sum of both radii + skins + margin); store the
+      // squared sum for the per-pair distance test.
+      for (let j = 0; j < i; j++) {
+        const rj = balls[j]!.soft.radius + 2 * SOFT.contactSkin + 8
+        reachSq[i * n + j] = (ri + rj) * (ri + rj)
+      }
+    }
     let worst = 0
-    const moved = new Set<number>()
     for (let iter = 0; iter < SOFT.separationIterations; iter++) {
       let corrected = false
-      for (let i = 0; i < balls.length; i++) {
+      for (let i = 0; i < n; i++) {
         const A = balls[i]!
-        for (let j = i + 1; j < balls.length; j++) {
+        const aAsleep = asleep[i]!
+        const ca = A.soft.center.position
+        for (let j = i + 1; j < n; j++) {
           const B = balls[j]!
+          const bAsleep = asleep[j]!
           // Phase 2.9.9: a coherently-sleeping ball is FROZEN state — moving
           // its particles (Body.translate works on sleeping bodies) and then
           // ensureAwake-ing it produced a measured endless sleep/wake cycle
@@ -390,13 +438,12 @@ export class SoftBallManager {
           // Two sleeping balls: nothing to do. One sleeping ball: the whole
           // correction goes to the awake side (the frozen ball acts as
           // terrain, exactly like the static container walls).
-          const aAsleep = softBallSleeping(A.soft)
-          const bAsleep = softBallSleeping(B.soft)
           if (aAsleep && bAsleep) continue
-          const ca = A.soft.center.position
           const cb = B.soft.center.position
-          const reach = A.soft.radius + B.soft.radius + 2 * SOFT.contactSkin + 8
-          if ((ca.x - cb.x) ** 2 + (ca.y - cb.y) ** 2 > reach * reach) continue
+          const dx = ca.x - cb.x
+          const dy = ca.y - cb.y
+          const reach = reachSq[i * n + j]!
+          if (dx * dx + dy * dy > reach) continue
           // Target exactly NON-OVERLAP of the actual collision discs (which
           // include the contact skin). NO extra clearance demand: in a dense
           // pile the geometry wants surfaces touching — demanding extra
@@ -410,11 +457,15 @@ export class SoftBallManager {
           const imA = 1 / A.soft.particles[0]!.mass
           const imB = 1 / B.soft.particles[0]!.mass
           const imSum = imA + imB
-          for (const pa of A.soft.particles) {
-            for (const pb of B.soft.particles) {
-              const dx = pb.position.x - pa.position.x
-              const dy = pb.position.y - pa.position.y
-              const d2 = dx * dx + dy * dy
+          const paArr = A.soft.particles
+          const pbArr = B.soft.particles
+          for (let a = 0; a < paArr.length; a++) {
+            const pa = paArr[a]!
+            for (let b = 0; b < pbArr.length; b++) {
+              const pb = pbArr[b]!
+              const pdx = pb.position.x - pa.position.x
+              const pdy = pb.position.y - pa.position.y
+              const d2 = pdx * pdx + pdy * pdy
               if (d2 >= contact * contact) continue
               // Floor the distance: two particles at (near-)coincident centers
               // get a deterministic fallback direction, never NaN.
@@ -423,15 +474,13 @@ export class SoftBallManager {
               let ny: number
               if (d < 1e-3) {
                 // coincident: push along the balls' centroid line
-                const ex = cb.x - ca.x
-                const ey = cb.y - ca.y
-                const el = Math.hypot(ex, ey)
-                nx = el > 1e-6 ? ex / el : 1
-                ny = el > 1e-6 ? ey / el : 0
+                const el = Math.hypot(dx, dy) || 1e-6
+                nx = dx / el || 1
+                ny = dy / el
                 d = 1e-3
               } else {
-                nx = dx / d
-                ny = dy / d
+                nx = pdx / d
+                ny = pdy / d
               }
               const deficit = contact - d
               // Depth-proportional cap: small deficits (the standing solver
@@ -454,8 +503,8 @@ export class SoftBallManager {
               const wB = bAsleep ? 0 : aAsleep ? 1 : (fix * imB) / imSum
               const fixA = Math.min(wA, this.wallLimitedDistance(pa, -nx, -ny, prA))
               const fixB = Math.min(wB, this.wallLimitedDistance(pb, nx, ny, prB))
-              if (fixA > 1e-4) Matter.Body.translate(pa, { x: (-nx * fixA), y: (-ny * fixA) })
-              if (fixB > 1e-4) Matter.Body.translate(pb, { x: (nx * fixB), y: (ny * fixB) })
+              if (fixA > 1e-4) Matter.Body.translate(pa, { x: -nx * fixA, y: -ny * fixA })
+              if (fixB > 1e-4) Matter.Body.translate(pb, { x: nx * fixB, y: ny * fixB })
               if (fix > SOFT.separationMinMove) {
                 corrected = true
                 // never re-awake a frozen ball — only the sides actually
@@ -495,13 +544,18 @@ export class SoftBallManager {
    */
   expandShape(): void {
     const balls = this.balls
+    // Phase 2.21: the foreign-particle candidate list reuses pooled slots
+    // (nearParticles/nearRadii) instead of pushing a fresh {x,y,r} object
+    // per foreign particle per ball per substep.
+    const near = this.nearParticles
+    let nearN = 0
     for (const A of balls) {
       if (softBallSleeping(A.soft)) continue
       const soft = A.soft
       const deficit = 1 - softBallArea(soft) / soft.restArea
       const minR = soft.radius * (1 - SOFT.particleRadiusFactor) * SOFT.minRadiusFraction
       if (deficit < SOFT.expandMinDeficit && deficit > -SOFT.expandMinDeficit) continue
-      const c = softBallCentroid(soft)
+      const c = softBallCentroid(soft, this.centroidScratch)
       const ringR = soft.radius * (1 - SOFT.particleRadiusFactor)
       const bodyR = soft.radius * SOFT.particleRadiusFactor + SOFT.contactSkin
       // outward when compressed, inward when inflated
@@ -511,7 +565,7 @@ export class SoftBallManager {
       // particle radius + margin: the moving particle's CENTER must stay
       // outside foreign surfaces, or Matter cancels the move next step).
       // Only needed for OUTWARD moves — inward moves retreat from neighbors.
-      const near: Array<{ x: number; y: number; r: number }> = []
+      nearN = 0
       if (outward) {
         for (const B of balls) {
           if (B === A) continue
@@ -521,7 +575,16 @@ export class SoftBallManager {
           if (dx * dx + dy * dy > reach * reach) continue
           const rB = bodyR + B.soft.radius * SOFT.particleRadiusFactor + SOFT.contactSkin + 0.5
           for (const pb of B.soft.particles) {
-            near.push({ x: pb.position.x, y: pb.position.y, r: rB })
+            // pooled slot: reuse the object at index nearN, extend when needed
+            let slot = near[nearN]
+            if (!slot) {
+              slot = { x: 0, y: 0, r: 0 }
+              near[nearN] = slot
+            }
+            slot.x = pb.position.x
+            slot.y = pb.position.y
+            slot.r = rB
+            nearN++
           }
         }
       }
@@ -561,7 +624,8 @@ export class SoftBallManager {
           const tWall = this.wallLimitedDistance(p, ux, uy, bodyR)
           if (tWall < move) move = Math.max(0, tWall)
           // ray-clamp against foreign discs: largest t keeping p+t·r̂ outside
-          for (const q of near) {
+          for (let qi = 0; qi < nearN; qi++) {
+            const q = near[qi]!
             const qx = q.x - p.position.x
             const qy = q.y - p.position.y
             const b1 = qx * ux + qy * uy

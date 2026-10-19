@@ -159,10 +159,27 @@ export class PlaygroundScene extends Phaser.Scene {
     // freeze balls whose rest window completed (always LAST so they sleep
     // in a repaired, clamped state).
     this.physicsWorld.setSubStepHandler(() => {
+      const perf = this.perf
+      if (!perf) {
+        this.balls.stepAll(this.physicsWorld.activeContactBodyIds())
+        this.balls.separateContacts()
+        this.balls.expandShape()
+        this.balls.clampToContainer()
+        this.balls.commitRest()
+        return
+      }
+      let t0 = performance.now()
       this.balls.stepAll(this.physicsWorld.activeContactBodyIds())
+      perf.stepAllMs = performance.now() - t0
+      t0 = performance.now()
       this.balls.separateContacts()
+      perf.separateMs = performance.now() - t0
+      t0 = performance.now()
       this.balls.expandShape()
+      perf.expandMs = performance.now() - t0
+      t0 = performance.now()
       this.balls.clampToContainer()
+      perf.clampMs = performance.now() - t0
       this.balls.commitRest()
     })
     

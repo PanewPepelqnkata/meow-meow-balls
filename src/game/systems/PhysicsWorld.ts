@@ -191,8 +191,17 @@ export class PhysicsWorld {
   /** IDs of every body currently in an ACTIVE contact pair (started and
    * not separated this substep). Cheap single pass over the pair list —
    * used by the soft-ball manager's stuck-ball audit. */
-  activeContactBodyIds(): Set<number> {
-    const ids = new Set<number>()
+  private readonly activeIds = new Set<number>()
+
+  /** IDs of every body currently in an ACTIVE contact pair (started and
+   * not separated this substep). Cheap single pass over the pair list —
+   * used by the soft-ball manager's stuck-ball audit. Phase 2.21: the Set
+   * is reused (was allocated per substep — 120/s). The returned set is a
+   * live view: consumers must not retain it across substeps (they don't —
+   * stepAll reads it synchronously). */
+  activeContactBodyIds(): ReadonlySet<number> {
+    const ids = this.activeIds
+    ids.clear()
     for (const p of this.engine.pairs.list) {
       if (!p.isActive) continue
       ids.add(p.bodyA.id)

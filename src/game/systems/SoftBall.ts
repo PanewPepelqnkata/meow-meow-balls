@@ -260,19 +260,19 @@ export interface SoftBall {
   seed: number
 }
 
-function polygonArea(points: Matter.Vector[]): number {
+/** Current particle ring area of a soft ball. */
+export function softBallArea(ball: SoftBall): number {
+  // Zero-allocation shoelace — iterates the particle array directly
+  // instead of mapping positions into a temporary array per call.
+  const pts = ball.particles
+  const n = pts.length
   let a = 0
-  for (let i = 0; i < points.length; i++) {
-    const p = points[i]!
-    const q = points[(i + 1) % points.length]!
+  for (let i = 0; i < n; i++) {
+    const p = pts[i]!.position
+    const q = pts[(i + 1) % n]!.position
     a += p.x * q.y - q.x * p.y
   }
   return Math.abs(a) / 2
-}
-
-/** Current particle ring area of a soft ball. */
-export function softBallArea(ball: SoftBall): number {
-  return polygonArea(ball.particles.map((p) => p.position))
 }
 
 /**
@@ -281,6 +281,16 @@ export function softBallArea(ball: SoftBall): number {
  * normals with a pressure ∝ area deficit. This is the minimal custom solver
  * native Matter needs to behave like a pressurized slime ball.
  */
+/** Zero-allocation speed clamp for one body (see clampSoftBallSpeed). */
+function clampBodySpeed(body: Matter.Body, cap: number): void {
+  const v = body.velocity
+  const speed = Math.hypot(v.x, v.y)
+  if (speed > cap) {
+    const k = cap / speed
+    Matter.Body.setVelocity(body, { x: v.x * k, y: v.y * k })
+  }
+}
+
 /** Clamp particle speeds (anti-tunneling). Call once per physics step.
  * Uses SOFT.maxParticleSpeed (config) — see its measured rationale.
  * `inContact` (the ball has active contacts) lowers the cap to
@@ -292,13 +302,12 @@ export function softBallArea(ball: SoftBall): number {
  * (9 units = 4.5px/step vs the 14px/step tunneling limit). */
 export function clampSoftBallSpeed(ball: SoftBall, inContact = true): void {
   const cap = inContact ? SOFT.maxParticleSpeed : SOFT.freeFallMaxParticleSpeed
-  for (const body of [ball.center, ...ball.particles]) {
-    const v = body.velocity
-    const speed = Math.hypot(v.x, v.y)
-    if (speed > cap) {
-      const k = cap / speed
-      Matter.Body.setVelocity(body, { x: v.x * k, y: v.y * k })
-    }
+  // Zero-allocation: clamp the center, then each particle directly (no
+  // temporary array).
+  clampBodySpeed(ball.center, cap)
+  const pts = ball.particles
+  for (let i = 0; i < pts.length; i++) {
+    clampBodySpeed(pts[i]!, cap)
   }
 }
 
@@ -595,15 +604,24 @@ export function softBallSleeping(ball: SoftBall): boolean {
 }
 
 /** Centroid of the particles (+center). */
-export function softBallCentroid(ball: SoftBall): Matter.Vector {
-  let x = 0
-  let y = 0
-  const bodies = [...ball.particles, ball.center]
-  for (const b of bodies) {
-    x += b.position.x
-    y += b.position.y
+export function softBallCentroid(ball: SoftBall, out?: Matter.Vector): Matter.Vector {
+  // Zero-allocation: iterates particles + center directly (the old version
+  // spread them into a temporary array per call). `out` reuses the caller's
+  // vector when provided.
+  let x = ball.center.position.x
+  let y = ball.center.position.y
+  const pts = ball.particles
+  for (let i = 0; i < pts.length; i++) {
+    x += pts[i]!.position.x
+    y += pts[i]!.position.y
   }
-  return { x: x / bodies.length, y: y / bodies.length }
+  const inv = 1 / (pts.length + 1)
+  if (out) {
+    out.x = x * inv
+    out.y = y * inv
+    return out
+  }
+  return { x: x * inv, y: y * inv }
 }
 
 // ---------------------------------------------------------------------------
