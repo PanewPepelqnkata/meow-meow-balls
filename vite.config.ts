@@ -1,4 +1,5 @@
 import { fileURLToPath } from 'node:url'
+import { execSync } from 'node:child_process'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -23,9 +24,18 @@ import react from '@vitejs/plugin-react'
  * `phaser/src/...` requires resolve through the prefix alias below —
  * phaser's own `exports` field would otherwise block deep imports.
  */
+const shortHash = (() => {
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim()
+  } catch {
+    return 'dev'
+  }
+})()
+
 export default defineConfig({
   plugins: [react()],
   define: {
+    __BR_BUILD__: JSON.stringify(shortHash),
     'typeof CANVAS_RENDERER': JSON.stringify(true),
     'typeof WEBGL_RENDERER': JSON.stringify(true),
     'typeof WEBGL_DEBUG': JSON.stringify(false),

@@ -7,6 +7,7 @@ import { PlaygroundScene } from './scenes/PlaygroundScene'
 import { UIScene } from './scenes/UIScene'
 import { SoftBallScene } from './scenes/SoftBallScene'
 import { TitleScene } from './scenes/TitleScene'
+import { installDiag } from './diag'
 
 /**
  * The single approved boundary between React and the game engine
@@ -116,6 +117,12 @@ export function createGame(parent: HTMLElement): Phaser.Game {
   }
   if (import.meta.env.DEV) {
     ;(window as unknown as Record<string, unknown>).__brGame = game
+  }
+  // ?diag=1 — on-device diagnostic overlay (PROD too): build hash, GPU,
+  // background layer states, texture/Graphics test patches.
+  if (typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('diag') === '1') {
+    installDiag(game)
   }
   // Listeners must not outlive the game (React Strict Mode mounts twice).
   const cleanup = (): void => {
