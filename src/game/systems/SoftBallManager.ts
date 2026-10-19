@@ -194,6 +194,7 @@ export class SoftBallManager {
   wakeBall(id: number): void {
     const ball = this.getBallById(id)
     if (!ball) return
+    this.onBallWake?.(id)
     this.restCounters.set(id, 0)
     this.restWar.delete(id)
     this.warSurrendered.delete(id)
@@ -298,6 +299,15 @@ export class SoftBallManager {
   tierRadius: (tier: number) => number = (tier) => {
     throw new Error(`SoftBallManager.tierRadius not configured (tier ${tier})`)
   }
+
+  /**
+   * Wake notification (injected by the scene): fires for EVERY genuine wake
+   * of a specific ball — wakeBall is the single funnel for auditStuckBalls,
+   * partial-wake repair, merge displacement, wall raise (wakeAll) and
+   * translateBall. The renderer uses it to drop that ball's baked textures
+   * immediately, the same frame the wake happens, before the next draw.
+   */
+  onBallWake: ((id: number) => void) | null = null
 
   /** Mark first physical contact (merge eligibility) for the owning balls. */
   markTouched(bodyIds: Iterable<number>): void {

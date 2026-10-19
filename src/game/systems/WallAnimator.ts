@@ -67,6 +67,12 @@ export class WallAnimator {
     return this.phase !== 'normal'
   }
 
+  /** Total raise+hold+lower cycle length (ms) — used by the scene to time
+   * baked-rendering suspension around the full wall animation. */
+  animationDurationMs(): number {
+    return ANIM_MS * 2 + HOLD_MS
+  }
+
   activate(): boolean {
     if (this.isActive) return false // no re-trigger while active
     this.phase = 'raising'

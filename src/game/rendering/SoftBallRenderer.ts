@@ -9,6 +9,7 @@ import type { GameOverSequence } from './GameOverSequence'
 import { INK, ballLookFor, ballOutlineWidth, drawBallFace, expressionAt, gazeAt, wobbleContour, drawRainbowBall, drawFantasyBall } from './BallAppearance'
 import { variantIdFor } from '../state/runVariant'
 import type { BallLook } from './BallAppearance'
+import { BallBaker } from './BallBaker'
 
 /**
  * Phase 2.9 production renderer for soft-body balls, restyled in Phase
@@ -19,19 +20,29 @@ import type { BallLook } from './BallAppearance'
  *
  * One shared Graphics layer, cleared and redrawn per frame. Two-pass
  * fill/stroke (Phase 2.9.3) keeps adjacent outlines clean.
+ *
+ * BAKED RENDERING (settled-state kill): a FULLY-sleeping ball's pixels are
+ * frozen — its contour is cached and never rebuilt — so its body is baked
+ * once into a fill texture + an outline texture (BallBaker) and displayed as
+ * two textured quads layered around the live Graphics layer, reproducing the
+ * two-pass draw order exactly:
+ *
+ *   9.5   baked FILL quads
+ *   10    live Graphics: awake fills → awake strokes → ALL faces
+ *   10.5  baked OUTLINE quads
+ *
+ * Faces stay LIVE for baked balls (gaze timeline, easter-egg expressions and
+ * the emotion system's panic all keep animating) — the face pass below runs
+ * for every drawn ball using the frozen centroid. A sleeping ball that WAKES
+ * (any collision, auditStuckBalls, wall raise, merge displacement, partial
+ * wake) is detected at draw time via softBallSleeping and its textures are
+ * dropped the SAME frame — stale baked pixels can never reach the screen.
  */
 export class SoftBallRenderer {
   /** Live entities — the entity (not a snapshot) so the lifecycle state is
    * checked at DRAW time. Phase 2.13.4: the guard is on 'removed' ONLY.
-   * A 'merging'-state ball is a DEFERRED merge source — a real ball that is
-   * still in the world, holding its pocket open until the replacement
-   * commits (Phase 2.13.3 transactional merges) — and it MUST be drawn:
-   * skipping it made both sources vanish visually during the pending window
-   * (the Phase 2.13.4 "disappearing balls" defect). Sources are removed in
-   * the SAME frame the replacement spawns, so a merging ball can never
-   * appear beside/inside its own replacement — the Phase 2.10.2 defect this
-   * guard originally fixed stays fixed by the 'removed' check plus the
-   * registry sync. */
+   * A 'merging' ball is a deferred-merge source — still real, still visible,
+   * still drawing through the live path (its replacement pends). */
   private readonly renderables = new Map<number, SoftBallEntity>()
   /** Per-character look cache (deterministic per ball seed, never per frame). */
   private readonly looks = new Map<number, BallLook>()
@@ -41,6 +52,33 @@ export class SoftBallRenderer {
    * renderer consults its panic override and per-ball scale). */
   gameOverSequence: GameOverSequence | null = null
   private readonly layer: Phaser.GameObjects.Graphics
+  /** Baked rendering for fully-sleeping balls (see class doc). */
+  private readonly baker: BallBaker
+  /**
+   * Baked rendering budget: at most this many balls bake per update() call.
+   * Baking rasterizes a small canvas + uploads two textures — a few ms. A
+   * pile that settles all at once (a big drop landing on a settled pile)
+   * would otherwise bake ~10 textures in a single frame and spike it; the
+   * budget spreads the work at 2 balls/frame while EVERY ball still draws
+   * through the (contour-cached) live path meanwhile — no visual difference,
+   * just a deferred cost.
+   */
+  private bakeBudget = 0
+  private static readonly BAKE_BUDGET_PER_FRAME = 2
+  /**
+   * Bake suspension (Raise Walls): while the walls ANIMATE (height changing
+   * every frame), balls whose measured danger level is changing must re-render
+   * their faces live — but their BODIES are still frozen. The suspension only
+   * pauses NEW bakes; existing bakes keep displaying (bodies unchanged) and
+   * the live face pass keeps drawing over them, so the panic face morphs
+   * smoothly on top of the frozen body — identical to the pre-bake look.
+   * The scene toggles this around WallAnimator's active animation.
+   */
+  private bakingSuspended = false
+  /** Ball ids whose bake was actually USED in the last update() — QA
+   * evidence that settled piles render as textured quads, and that a wake
+   * drops the bake (the id must disappear from this set the same frame). */
+  private readonly bakeSweep = new Set<number>()
   /** IDs actually drawn in the LAST update() — QA evidence that reserved
    * ('merging') sources remain visible while their replacement pends. */
   private readonly lastDrawnIds = new Set<number>()
@@ -51,7 +89,8 @@ export class SoftBallRenderer {
    * dominant CPU cost in settled piles (the common state). The cache is
    * invalidated by any wake (positions moved), a pop scale (game over),
    * or registry removal. Drawn with the cached points; live balls
-   * (moving/colliding) rebuild every frame as before.
+   * (moving/colliding) rebuild every frame as before. Under baked rendering
+   * this cache also produces the bake SOURCE contour (first frozen frame).
    */
   private readonly contourCache = new Map<
     number,
@@ -64,6 +103,7 @@ export class SoftBallRenderer {
 
   constructor(scene: Phaser.Scene) {
     this.layer = scene.add.graphics().setDepth(10)
+    this.baker = new BallBaker(scene)
   }
 
   register(ball: SoftBallEntity): void {
@@ -75,6 +115,7 @@ export class SoftBallRenderer {
     this.looks.delete(ballId)
     this.contourCache.delete(ballId)
     this.wasSleeping.delete(ballId)
+    this.baker.drop(ballId)
   }
 
   clear(): void {
@@ -82,6 +123,7 @@ export class SoftBallRenderer {
     this.looks.clear()
     this.contourCache.clear()
     this.wasSleeping.clear()
+    this.baker.clear()
   }
 
   /** Diagnostics: number of live renderer entries (Phase 2.10.2 stale-renderer checks). */
@@ -96,9 +138,45 @@ export class SoftBallRenderer {
     return this.lastDrawnIds.size
   }
 
+  /** Diagnostics: how many balls rendered as baked quads in the LAST
+   * update() — the settled-state pixel-savings evidence. */
+  get bakedSize(): number {
+    return this.bakeSweep.size
+  }
+
   /** QA: was this ball actually drawn in the last frame? */
   isDrawn(ballId: number): boolean {
     return this.lastDrawnIds.has(ballId)
+  }
+
+  /** QA: did this ball render as a baked quad in the last frame? */
+  isBaked(ballId: number): boolean {
+    return this.bakeSweep.has(ballId)
+  }
+
+  /**
+   * Drop one ball's baked textures (wake invalidation, fired from
+   * SoftBallManager.onBallWake — every wake path funnels through there).
+   * Idempotent; the ball keeps drawing through the live Graphics path until
+   * it settles again (then it rebakes, budget permitting).
+   */
+  dropBake(ballId: number): void {
+    this.baker.drop(ballId)
+  }
+
+  /** Pause NEW bakes (Raise Walls animation) — existing baked bodies keep
+   * displaying; faces stay live on top. See the field doc. */
+  suspendBaking(): void {
+    this.bakingSuspended = true
+  }
+
+  resumeBaking(): void {
+    this.bakingSuspended = false
+  }
+
+  /** Destroy the baker's display objects (scene shutdown). */
+  destroy(): void {
+    this.baker.destroy()
   }
 
   update(): void {
@@ -113,9 +191,11 @@ export class SoftBallRenderer {
     // EVERY outline. Single-pass per-ball drawing let a later ball's stroke
     // cut into an earlier ball's fill at contact points — the main visible
     // "interpenetration" signal. With two passes, adjacent balls show BOTH
-    // outlines cleanly at the junction.
+    // outlines cleanly at the junction. Baked balls participate through
+    // their two quads (fill at depth 9.5, outline at depth 10.5) — the same
+    // ordering, one frame of work amortized away.
     const polys: Array<{
-      poly: Phaser.Math.Vector2[];
+      poly: Phaser.Math.Vector2[] | null;
       color: number;
       soft: SoftBall;
       look: BallLook;
@@ -124,8 +204,11 @@ export class SoftBallRenderer {
       entity: SoftBallEntity;
       cx: number;
       cy: number;
+      baked: boolean;
     }> = []
     this.lastDrawnIds.clear()
+    this.bakeSweep.clear()
+    this.bakeBudget = SoftBallRenderer.BAKE_BUDGET_PER_FRAME
 
     for (const r of this.renderables.values()) {
       // Lifecycle guard: a REMOVED ball must never appear (not even for one
@@ -147,12 +230,44 @@ export class SoftBallRenderer {
       // Any wake (positions changed), pop tween, or first frame rebuilds.
       const sleeping = softBallSleeping(r.soft)
       const wasSleeping = this.wasSleeping.get(r.id) ?? false
-      const cacheable = sleeping && popScale == null && r.tier !== 8
+      // Tier 8's rainbow fill shimmers with Date.now() and tier 9 is fully
+      // procedural — both keep streaming through the live path.
+      const bakeEligible = sleeping && popScale == null && r.tier !== 8 && r.tier !== 9
+
+      // ---- BAKED FAST PATH: a still-frozen ball with a live bake renders
+      // as two textured quads and costs the frame nothing but a quad draw.
+      // softBallSleeping is re-evaluated EVERY frame at draw time: the
+      // instant ANY wake path touches the ball (collision, auditStuckBalls,
+      // wall raise, merge displacement, partial-wake repair) this branch
+      // stops matching and the bake is dropped below — stale pixels can
+      // never reach the screen.
+      const frozenBake = bakeEligible && wasSleeping ? this.baker.views().get(r.id) : undefined
+      if (frozenBake) {
+        this.bakeSweep.add(r.id)
+        this.wasSleeping.set(r.id, true)
+        polys.push({
+          poly: null,
+          color,
+          soft: r.soft,
+          look,
+          r: drawR,
+          tier: r.tier,
+          entity: r,
+          cx: frozenBake.cx,
+          cy: frozenBake.cy,
+          baked: true,
+        })
+        continue
+      }
+      // Not (yet) frozen-and-baked: any existing bake is invalid for this
+      // state (wake, pop scale, tier, first frozen frame) — drop it.
+      this.baker.drop(r.id)
+
       let poly: Phaser.Math.Vector2[]
       let cx: number
       let cy: number
       const cached = this.contourCache.get(r.id)
-      if (cacheable && cached && wasSleeping) {
+      if (bakeEligible && cached && wasSleeping) {
         poly = cached.poly
         cx = cached.centroid.x
         cy = cached.centroid.y
@@ -161,7 +276,7 @@ export class SoftBallRenderer {
         const base = renderContour(r.soft, 6, pr)
         const c = softBallCentroid(r.soft, this.centroidScratch)
         const built = wobbleContour(look, base, c.x, c.y, drawR, 1.5)
-        if (cacheable) {
+        if (bakeEligible) {
           // In-place Vector2 reuse: the cached array is mutated on the next
           // rebuild rather than reallocated.
           let reuse = cached?.poly
@@ -199,7 +314,19 @@ export class SoftBallRenderer {
         }
       }
       this.wasSleeping.set(r.id, sleeping)
-      polys.push({ poly, color, soft: r.soft, look, r: drawR, tier: r.tier, entity: r, cx, cy })
+
+      // ---- FIRST FROZEN FRAME: bake the body once (budgeted — see the
+      // bakeBudget doc). This frame still draws the body live (one extra
+      // raster behind the scenes); from the NEXT frame the quads take over.
+      if (bakeEligible && !this.bakingSuspended && this.bakeBudget > 0) {
+        this.bakeBudget--
+        this.baker.bake(r, poly, color, cx, cy)
+        this.bakeSweep.add(r.id)
+        polys.push({ poly: null, color, soft: r.soft, look, r: drawR, tier: r.tier, entity: r, cx, cy, baked: true })
+        continue
+      }
+
+      polys.push({ poly, color, soft: r.soft, look, r: drawR, tier: r.tier, entity: r, cx, cy, baked: false })
 
       // Phase 2.12.1: Special rendering for Tier 8 (rainbow) and Tier 9 (fantasy).
       // Phase 2.14.0: both take the PER-RUN variant (runVariant rolls tiers
@@ -217,16 +344,18 @@ export class SoftBallRenderer {
         g.fillPoints(poly, true)
       }
     }
-    
-    // Pass 2: Outlines for all balls
-    for (const { poly, r } of polys) {
-      g.lineStyle(ballOutlineWidth(r), INK, 1)
-      g.strokePoints(poly, true, true)
+
+    // Pass 2: Outlines for all balls (baked balls own theirs as quads).
+    for (const item of polys) {
+      if (item.baked || item.poly == null) continue
+      g.lineStyle(ballOutlineWidth(item.r), INK, 1)
+      g.strokePoints(item.poly, true, true)
     }
-    
+
     // Pass 3: Faces for all balls — live GLANCE timeline (pupils dart every
     // ~4 s, de-synced per ball) + EASTER-EGG expressions (wink/grin/tongue
     // flashing every 10–30 s), both deterministic per ball seed + time.
+    // Runs for BAKED balls too: their body is frozen but their face is not.
     for (const { soft, look, entity, cx: fcx, cy: fcy } of polys) {
       // Zero-allocation: aspect via direct min/max
       // walk (the old version built 2 arrays + 2 Math.max spreads per ball

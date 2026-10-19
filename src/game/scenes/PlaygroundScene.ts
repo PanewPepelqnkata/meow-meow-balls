@@ -157,6 +157,13 @@ export class PlaygroundScene extends Phaser.Scene {
       this.balls.invalidateWallGeo()
     }, this.balls, tipBodies)
     this.ballRenderer = new SoftBallRenderer(this)
+    // Baked-rendering invalidation (settled-state kill): EVERY genuine wake
+    // funnels through SoftBallManager.wakeBall (auditStuckBalls, partial
+    // wake repair, merge displacement, wall raise wakeAll, translateBall) —
+    // dropping the ball's baked textures here means stale baked pixels can
+    // never reach the screen (the renderer's draw-time softBallSleeping
+    // check is the second gate; this one fires the same frame, off-draw).
+    this.balls.onBallWake = (id) => this.ballRenderer.dropBake(id)
     // Per-substep soft-body solver passes, exactly once per Engine.update —
     // never per rendered frame: rest/pressure → contact backstop (iterates
     // internally) → positional area restoration → boundary safety net →
@@ -320,6 +327,10 @@ export class PlaygroundScene extends Phaser.Scene {
       Phaser.Scenes.Events.SHUTDOWN,
       gameBus.on('ui:restart', () => this.restartRun()),
     )
+    // Baked rendering: drop all baked textures + quads with the scene.
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.ballRenderer?.destroy()
+    })
     // Phase 2.14.0: title screen START → gameplay input unlocks (once).
     // A short drop-suppression window swallows the very pointerup that
     // pressed START (Phaser dispatches input to every scene; the same click
@@ -463,6 +474,12 @@ export class PlaygroundScene extends Phaser.Scene {
          * and drawing are now distinct — deferred-merge sources must appear
          * in BOTH.) */
         isDrawn: (id: number) => this.ballRenderer?.isDrawn(id) ?? false,
+        /** DEV-ONLY QA hook (baked rendering, read-only): baked-quad
+         * diagnostics — how many balls rendered as textured quads last
+         * frame, and whether a specific id did. Settled piles should show
+         * bakedSize → ball count; a wake must clear the id same-frame. */
+        bakedSize: () => this.ballRenderer?.bakedSize ?? -1,
+        isBaked: (id: number) => this.ballRenderer?.isBaked(id) ?? false,
         /** DEV-ONLY QA hook: where the claw currently holds the next ball
          * (stage coords) — appearance-consistency probes. */
         spawnInfo: (tier: number) => ({
@@ -811,6 +828,15 @@ export class PlaygroundScene extends Phaser.Scene {
     // refuses those) or after the walls lower again are all no-ops.
     if (this.gameOver || session.menuActive || this.raiseUsed || this.discoveryBlocking()) return
     if (!this.walls.activate()) return
+    // Baked rendering: during the wall ANIMATION the danger zone sweeps
+    // through the pile and ball faces morph — suspend NEW bakes so nothing
+    // mid-animation freezes a face into a texture. Existing baked BODIES
+    // stay valid (walls don't move balls directly; wakeAll resets their
+    // rest windows and faces stay live on top — see SoftBallRenderer).
+    this.ballRenderer.suspendBaking()
+    this.time.delayedCall(this.walls.animationDurationMs() + 50, () => {
+      this.ballRenderer.resumeBaking()
+    })
     this.raiseUsed = true
     gameBus.emit('ability:raiseUsed', {})
   }
