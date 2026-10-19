@@ -470,9 +470,11 @@ const THEMES: Record<ThemeName, ThemeDef> = {
     // (canvas-baked multi-blob composites — zero hard edges). The static
     // draw keeps only pin-sharp elements: stars, planets, moon, horizon.
     draw: (g, w, h, rng) => {
-      // Deep navy → violet base. A single vertical gradient — no bands.
-      g.fillGradientStyle(0x0a1628, 0x0e1a33, 0x1e1440, 0x2a1a4e, 1)
-      g.fillRect(0, 0, w, h)
+      // Deep navy → violet base: painted by the dedicated gradImage
+      // (canvas-baked texture rebuilt on resize — Graphics
+      // fillGradientStyle renders flat through the Flat render node on
+      // some DPR configs). This draw paints only the pin-sharp elements:
+      // stars, planets, moon, horizon.
 
       // Small ringed planet upper-left: body, terminator shading, thin
       // ring — restrained, atmospheric (drawn small so it reads as a far
@@ -812,6 +814,15 @@ export class BackgroundTheme {
   private starAlpha = 0
   /** Per-theme soft cloud layers (irregular gradient blobs). */
   private cloudGroups: Partial<Record<ThemeName, CloudObj[]>> = {}
+  /**
+   * Space base gradient as a screen-space Image. The gradient is baked
+   * into a canvas texture at device resolution (Graphics
+   * fillGradientStyle renders flat through the Flat render node on some
+   * DPR configs — a 2D-canvas gradient is reliable and sharp). Rebuilt on
+   * resize; visible only while space is active.
+   */
+  private gradImage: Phaser.GameObjects.Image | null = null
+  private gridImage: Phaser.GameObjects.Image | null = null
   /** Ambient particles (theme-flavored, deterministic layout). */
   private ambient: Array<{ x: number; y: number; s: number; ph: number; kind: string }> = []
   /** Shooting star state (space theme): null = idle. */
@@ -831,6 +842,7 @@ export class BackgroundTheme {
     this.gridLayer = scene.add.graphics().setDepth(-90).setScrollFactor(0)
     this.starLayer = scene.add.graphics().setDepth(-95).setScrollFactor(0)
     this.ambientLayer = scene.add.graphics().setDepth(-89).setScrollFactor(0)
+    this.updateGradImage()
 
     this.drawBackground()
     this.drawGrid()
@@ -851,11 +863,58 @@ export class BackgroundTheme {
   }
 
   private handleResize(): void {
+    this.updateGradImage()
     this.drawBackground()
     this.drawGrid()
     this.initStars(this.currentTheme)
     this.initAmbient(this.currentTheme)
     this.rebuildClouds()
+  }
+
+  /**
+   * Space base gradient as a device-resolution canvas texture on a
+   * screen-space Image (depth -98: above bgLayer -100, below stars -95).
+   * Rebuilt when the viewport size or DPR changes; visible only while
+   * space is the active/target theme. Graphics fillGradientStyle renders
+   * flat through the Flat render node on some DPR configs — the 2D-canvas
+   * gradient is reliable and stays sharp at high DPR.
+   */
+  private updateGradImage(): void {
+    const z = this.scene.game.scale.displayScale.x || 1
+    const w = Math.ceil((this.scene.scale.width / z) * (window.devicePixelRatio || 1))
+    const h = Math.ceil((this.scene.scale.height / z) * (window.devicePixelRatio || 1))
+    const spaceActive = (this.toTheme ?? this.currentTheme) === 'space'
+    if (!spaceActive) {
+      this.gradImage?.setVisible(false)
+      return
+    }
+    if (!this.gradImage) {
+      if (!this.scene.textures.exists('br-space-grad')) {
+        this.scene.textures.createCanvas('br-space-grad', w, h)
+      }
+      this.gradImage = this.scene.add
+        .image(0, 0, 'br-space-grad')
+        .setOrigin(0, 0)
+        .setDepth(-98)
+        .setScrollFactor(0)
+    }
+    const tex = this.scene.textures.get('br-space-grad') as Phaser.Textures.CanvasTexture
+    const src = tex.getSourceImage() as HTMLCanvasElement
+    if (src.width !== w || src.height !== h) {
+      src.width = w
+      src.height = h
+    }
+    const ctx = src.getContext('2d')!
+    const grad = ctx.createLinearGradient(0, 0, 0, h)
+    grad.addColorStop(0, '#0a1628')
+    grad.addColorStop(0.5, '#0e1a33')
+    grad.addColorStop(1, '#2a1a4e')
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.fillStyle = grad
+    ctx.fillRect(0, 0, w, h)
+    tex.refresh()
+    this.gradImage.setSize(w, h)
+    this.gradImage.setVisible(true)
   }
 
   /** Change to a new theme with a smooth crossfade. */
@@ -896,7 +955,10 @@ export class BackgroundTheme {
 
   /** Stable star field for the space theme (deterministic layout). */
   private initStars(theme: ThemeName): void {
-    const { width, height } = this.scene.scale
+    // CSS-px field (camera view = scale.width / displayScale).
+    const z = this.scene.game.scale.displayScale.x || 1
+    const width = this.scene.scale.width / z
+    const height = this.scene.scale.height / z
     const rng = seeded(20260215)
     this.stars = []
     if (theme === 'space') {
@@ -915,7 +977,10 @@ export class BackgroundTheme {
 
   /** Ambient particle field per theme (deterministic positions). */
   private initAmbient(theme: ThemeName): void {
-    const { width, height } = this.scene.scale
+    // CSS-px field (see initStars).
+    const z = this.scene.game.scale.displayScale.x || 1
+    const width = this.scene.scale.width / z
+    const height = this.scene.scale.height / z
     const rng = seeded(theme === 'light' ? 20260251 : theme === 'space' ? 20260252 : theme === 'jungle' ? 20260253 : 20260254)
     this.ambient = []
     this.shoot = null
@@ -961,7 +1026,10 @@ export class BackgroundTheme {
   /** Build a theme's soft cloud layer (positions deterministic per theme). */
   private buildCloudGroup(theme: ThemeName): void {
     this.destroyCloudGroup(theme)
-    const { width: w, height: h } = this.scene.scale
+    // CSS-px placement (see initStars).
+    const z = this.scene.game.scale.displayScale.x || 1
+    const w = this.scene.scale.width / z
+    const h = this.scene.scale.height / z
     const m = Math.min(w, h)
     const group: CloudObj[] = []
 
@@ -1026,6 +1094,19 @@ export class BackgroundTheme {
 
   /** Drive cloud layer alphas alongside the Graphics crossfade. */
   private applyCloudAlphas(): void {
+    // GradImage alpha tracks the space weight of the active transition.
+    if (this.gradImage) {
+      let ga: number
+      if (this.toTheme) {
+        const fromSpace = this.fromTheme === 'space'
+        const toSpace = this.toTheme === 'space'
+        ga = fromSpace && toSpace ? 1 : fromSpace ? 1 - this.transitionProgress : toSpace ? this.transitionProgress : 0
+      } else {
+        ga = this.currentTheme === 'space' ? 1 : 0
+      }
+      this.gradImage.setAlpha(ga)
+      this.gradImage.setVisible(ga > 0.005)
+    }
     for (const [name, group] of Object.entries(this.cloudGroups)) {
       if (!group) continue
       const themeName = name as ThemeName
@@ -1048,12 +1129,22 @@ export class BackgroundTheme {
   private drawBackground(): void {
     const g = this.bgLayer
     g.clear()
-    const { width, height } = this.scene.scale
+    // CSS-px painting: the scene camera zooms by displayScale and frames the
+    // CSS-px region, so art sized to the buffer would render 3× too large.
+    const z = this.scene.game.scale.displayScale.x || 1
+    const width = this.scene.scale.width / z
+    const height = this.scene.scale.height / z
+    // Space's base gradient lives in the gradImage (device-resolution bake);
+    // bgLayer paints nothing under it (transparent) so the Image IS the
+    // base layer while space is active.
+    const isSpace = this.currentTheme === 'space'
 
     if (!this.fromTheme || !this.toTheme || this.transitionProgress <= 0) {
       const t = THEMES[this.currentTheme]
-      g.fillStyle(t.bgColor, 1)
-      g.fillRect(0, 0, width, height)
+      if (!isSpace) {
+        g.fillStyle(t.bgColor, 1)
+        g.fillRect(0, 0, width, height)
+      }
       t.draw(g, width, height, seeded(20260213))
       this.applyCloudAlphas()
       return
@@ -1062,8 +1153,27 @@ export class BackgroundTheme {
     const t = this.transitionProgress
     const from = THEMES[this.fromTheme]
     const to = THEMES[this.toTheme]
+    // Crossfade between a space state and a non-space state: the gradImage
+    // alpha fades (see applyCloudAlphas), and bgLayer paints only the
+    // non-space partner's art. Space↔space: bgLayer stays transparent,
+    // the single gradImage is the base.
+    const spaceFrom = this.fromTheme === 'space'
+    const spaceTo = this.toTheme === 'space'
+    if (spaceFrom !== spaceTo) {
+      const other = spaceFrom ? from : to
+      g.fillStyle(other.bgColor, 1)
+      g.fillRect(0, 0, width, height)
+      other.draw(g, width, height, seeded(20260213))
+      this.applyCloudAlphas()
+      return
+    }
+    if (spaceFrom && spaceTo) {
+      to.draw(g, width, height, seeded(20260213))
+      this.applyCloudAlphas()
+      return
+    }
 
-    // Under-coat: the FROM base color (guarantees full coverage at t≈0).
+    // Non-space ↔ non-space crossfade (both partners paint on bgLayer).
     g.fillStyle(from.bgColor, 1)
     g.fillRect(0, 0, width, height)
     from.draw(g, width, height, seeded(20260213))
@@ -1076,45 +1186,77 @@ export class BackgroundTheme {
   }
 
   private drawGrid(): void {
-    const g = this.gridLayer
-    g.clear()
-    const { width, height } = this.scene.scale
-    const cellSize = 42
+    // Phase 2.21: the grid is baked into a device-resolution canvas
+    // texture on an Image at depth -88 — ABOVE the nebula banks (-99)
+    // which were occluding the Graphics-layer lines. Rebuilt on resize.
+    const z = this.scene.game.scale.displayScale.x || 1
+    const dpr = window.devicePixelRatio || 1
+    const w = Math.ceil((this.scene.scale.width / z) * dpr)
+    const h = Math.ceil((this.scene.scale.height / z) * dpr)
 
-    // Lerp grid color/alpha across a crossfade instead of snapping.
+    const portraitBoost = window.innerWidth < window.innerHeight ? 2.6 : 1
     let color: number
     let alpha: number
     if (this.fromTheme && this.toTheme && this.transitionProgress > 0) {
       const from = THEMES[this.fromTheme]
       const to = THEMES[this.toTheme]
-      const t = this.transitionProgress
+      const t2 = this.transitionProgress
       const mixed = Phaser.Display.Color.Interpolate.ColorWithColor(
         Phaser.Display.Color.IntegerToColor(from.gridColor),
         Phaser.Display.Color.IntegerToColor(to.gridColor),
         100,
-        t * 100,
+        t2 * 100,
       )
       color = mixed.color
-      alpha = from.gridAlpha + (to.gridAlpha - from.gridAlpha) * t
+      alpha = Math.min(1, (from.gridAlpha + (to.gridAlpha - from.gridAlpha) * t2) * portraitBoost)
     } else {
       const def = THEMES[this.currentTheme]
       color = def.gridColor
-      alpha = def.gridAlpha
+      alpha = Math.min(1, def.gridAlpha * portraitBoost)
     }
 
-    g.lineStyle(1, color, alpha)
-    for (let x = 0; x <= width; x += cellSize) {
-      g.beginPath()
-      g.moveTo(x, 0)
-      g.lineTo(x, height)
-      g.strokePath()
+    const key = 'br-grid'
+    if (!this.scene.textures.exists(key)) {
+      this.scene.textures.createCanvas(key, w, h)
     }
-    for (let y = 0; y <= height; y += cellSize) {
-      g.beginPath()
-      g.moveTo(0, y)
-      g.lineTo(width, y)
-      g.strokePath()
+    const tex = this.scene.textures.get(key) as Phaser.Textures.CanvasTexture
+    const src = tex.getSourceImage() as HTMLCanvasElement
+    if (src.width !== w || src.height !== h) {
+      src.width = w
+      src.height = h
     }
+    const ctx = src.getContext('2d')!
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.clearRect(0, 0, w, h)
+    if (alpha > 0.01) {
+      ctx.strokeStyle = '#' + color.toString(16).padStart(6, '0')
+      ctx.globalAlpha = alpha
+      ctx.lineWidth = Math.max(1, Math.round(dpr))
+      const cell = 42 * dpr
+      ctx.beginPath()
+      for (let x = 0; x <= w; x += cell) {
+        ctx.moveTo(x, 0)
+        ctx.lineTo(x, h)
+      }
+      for (let y = 0; y <= h; y += cell) {
+        ctx.moveTo(0, y)
+        ctx.lineTo(w, y)
+      }
+      ctx.stroke()
+      ctx.globalAlpha = 1
+    }
+    tex.refresh()
+
+    if (!this.gridImage) {
+      this.gridImage = this.scene.add
+        .image(0, 0, key)
+        .setOrigin(0, 0)
+        .setDepth(-88)
+        .setScrollFactor(0)
+    }
+    this.gridImage.setSize(w, h)
+    const spaceActive = (this.toTheme ?? this.currentTheme) === 'space'
+    this.gridImage.setVisible(spaceActive)
   }
 
   private drawStars(): void {
@@ -1140,7 +1282,10 @@ export class BackgroundTheme {
     const g = this.ambientLayer
     g.clear()
     const theme = this.toTheme ?? this.currentTheme
-    const { width: w, height: h } = this.scene.scale
+    // CSS-px bounds (see initStars).
+    const z = this.scene.game.scale.displayScale.x || 1
+    const w = this.scene.scale.width / z
+    const h = this.scene.scale.height / z
     const now = this.scene.time.now
 
     if (theme === 'space') {
@@ -1233,7 +1378,8 @@ export class BackgroundTheme {
     }
     this.drawAmbient(delta)
     // Slow parallax drift on the cloud blobs (Images only).
-    const w = this.scene.scale.width
+    const z = this.scene.game.scale.displayScale.x || 1
+    const w = this.scene.scale.width / z
     for (const group of Object.values(this.cloudGroups)) {
       if (!group) continue
       for (const obj of group) {

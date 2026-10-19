@@ -33,14 +33,15 @@ export function createGame(parent: HTMLElement): Phaser.Game {
   const portraitPhone = bootH > bootW
   const clearColor = portraitPhone ? '#0a1628' : '#f3f1eb'
   // HiDPI RENDERING: the game runs in Scale.NONE — we own the canvas
-  // buffer entirely. The buffer is sized to PHYSICAL pixels (CSS × dpr,
-  // capped at 2) and the canvas element is CSS-styled back to the viewport
-  // size, so the game renders at the device's native density (crisp text,
-  // vector art and outlines on phones). All scenes operate in CSS-px
-  // coordinates: every camera zooms by dpr and centers on the CSS midpoint
-  // (see each scene's applyDprCamera), and pointer coordinates are
-  // auto-normalized by Phaser's displayScale. Desktop DPR-1 displays are
-  // unaffected (buffer == CSS px, zoom 1).
+  // buffer entirely. The buffer is sized to PHYSICAL pixels (CSS × full
+  // devicePixelRatio — NO cap: iPhone DPR 3 renders a 1170×2532 buffer)
+  // and the canvas element is CSS-styled back to the viewport size, so
+  // the game renders at the device's native density (crisp text, vector
+  // art and outlines on phones). All scenes operate in CSS-px
+  // coordinates: every camera zooms by dpr and centers on the CSS
+  // midpoint (see each scene's applyDprCamera), and pointer coordinates
+  // are auto-normalized by Phaser's displayScale. Desktop DPR-1 displays
+  // are unaffected (buffer == CSS px, zoom 1).
   const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent,

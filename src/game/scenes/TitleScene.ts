@@ -328,7 +328,7 @@ export class TitleScene extends Phaser.Scene {
         ctx.arc(x, y, r, 0, Math.PI * 2)
         ctx.fill()
       }
-    })
+    }, window.devicePixelRatio || 1)
     const img = this.add.image(0, 0, key).setOrigin(0, 0)
     img.setAlpha(0.9)
     return img
@@ -653,7 +653,7 @@ export class TitleScene extends Phaser.Scene {
       rrPath(ctx, 66 * u, 122 * u, 11 * u, 5 * u, 2 * u)
       ctx.fill()
       // rc/seed unused: the back layer is fully deterministic shapes.
-    })
+    }, window.devicePixelRatio || 1)
     return this.add.image(0, 0, `br-gumball-back:${key}`).setOrigin(0, 0)
   }
 
@@ -786,7 +786,7 @@ export class TitleScene extends Phaser.Scene {
       ctx.lineWidth = Math.max(1, 1.1 * u)
       starPath(ctx, 31.5 * u, 96 * u, 2.8 * u)
       ctx.stroke()
-    })
+    }, window.devicePixelRatio || 1)
     return this.add.image(0, 0, `br-gumball-front:${key}`).setOrigin(0, 0)
   }
 

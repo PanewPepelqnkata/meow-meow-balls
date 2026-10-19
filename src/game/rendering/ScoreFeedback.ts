@@ -106,6 +106,7 @@ export class ScoreFeedback {
       color: '#' + tierColor.toString(16).padStart(6, '0'),
       stroke: '#000000',
       strokeThickness: style.scoreStroke,
+      resolution: window.devicePixelRatio || 1,
     })
     scoreText.setOrigin(0.5)
     scoreText.setShadow(style.shadowOffset, style.shadowOffset, '#000000', style.shadowOffset * 2, true, true)
@@ -119,6 +120,7 @@ export class ScoreFeedback {
         color,
         stroke: '#000000',
         strokeThickness: style.gradeStroke,
+        resolution: window.devicePixelRatio || 1,
       })
       gradeText.setOrigin(0.5)
       gradeText.setShadow(style.shadowOffset, style.shadowOffset, '#000000', style.shadowOffset * 2, true, true)
@@ -132,6 +134,7 @@ export class ScoreFeedback {
           color: style.comboColor,
           stroke: '#000000',
           strokeThickness: style.comboStroke,
+          resolution: window.devicePixelRatio || 1,
         })
         comboText.setOrigin(0.5)
         comboText.setShadow(style.shadowOffset, style.shadowOffset, '#000000', style.shadowOffset * 2, true, true)

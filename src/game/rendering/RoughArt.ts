@@ -41,14 +41,17 @@ export function bakeCanvas(
   w: number,
   h: number,
   paint: (ctx: CanvasRenderingContext2D, seed: number) => void,
+  dpr = 1,
 ): HTMLCanvasElement {
   const prev = baked.get(key)
-  if (prev && prev.w === w && prev.h === h && scene.textures.exists(key)) return prev.canvas
+  if (prev && prev.w === w * dpr && prev.h === h * dpr && scene.textures.exists(key)) return prev.canvas
 
   const canvas = document.createElement('canvas')
-  canvas.width = w
-  canvas.height = h
+  canvas.width = w * dpr
+  canvas.height = h * dpr
   const ctx = canvas.getContext('2d')!
+  // Callers paint in CSS px; the dpr scale bakes at device resolution.
+  ctx.scale(dpr, dpr)
   paint(ctx, seedFor(key))
 
   if (scene.textures.exists(key)) scene.textures.remove(key)

@@ -30,7 +30,11 @@ export interface TextOptions {
   pad?: number
 }
 
-/** Cartoon text with the display font + ink outline, scaled by fontScale. */
+/** Cartoon text with the display font + ink outline, scaled by fontScale.
+ * Phase 2.21: the Text canvas is baked at devicePixelRatio resolution
+ * (`resolution` scales the internal canvas and frame so the GPU samples
+ * 1:1 texture px on high-DPI screens — default 1 renders 1× and upscales,
+ * which is the blurry-text cause on phones). */
 export function hudText(
   scene: Phaser.Scene,
   x: number,
@@ -47,6 +51,7 @@ export function hudText(
       color: opts.color,
       stroke: '#111111',
       strokeThickness: Math.max(1, stroke * fontScale),
+      resolution: window.devicePixelRatio || 1,
     })
     .setOrigin(opts.origin?.[0] ?? 0, opts.origin?.[1] ?? 0)
   if (opts.pad) t.setPadding(opts.pad, opts.pad, opts.pad, opts.pad)

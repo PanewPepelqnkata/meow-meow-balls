@@ -293,6 +293,7 @@ export class DiscoveryOverlay {
         color: '#ffeb3b',
         stroke: '#111111',
         strokeThickness: 9,
+        resolution: window.devicePixelRatio || 1,
         wordWrap: { width: Math.max(160, vw - 96), useAdvancedWrap: true },
       })
       .setOrigin(0.5, 0.5)
@@ -308,6 +309,7 @@ export class DiscoveryOverlay {
         color: '#ffffff',
         stroke: '#111111',
         strokeThickness: 7,
+        resolution: window.devicePixelRatio || 1,
       })
       .setOrigin(0.5, 0.5)
       .setShadow(0, 4, '#00000066', 0, false, true)
