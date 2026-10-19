@@ -60,6 +60,22 @@ export function installDiag(game: Phaser.Game): void {
     gpu = '?'
   }
 
+  // FPS instrument: rolling 2s window of rAF deltas → p50/p95/max + fps.
+  // The device-readout line for every perf wave.
+  const deltas: number[] = []
+  let last = performance.now()
+  const fpsLoop = (now: number): void => {
+    deltas.push(now - last)
+    last = now
+    if (deltas.length > 300) deltas.shift()
+    requestAnimationFrame(fpsLoop)
+  }
+  requestAnimationFrame(fpsLoop)
+  const pct = (arr: number[], p: number): number => {
+    const s = arr.slice().sort((a, b) => a - b)
+    return s[Math.min(s.length - 1, Math.floor(s.length * p))] ?? 0
+  }
+
   const fmtImg = (i: { visible: boolean; alpha: number; displayWidth: number; displayHeight: number } | null | undefined): string =>
     i ? `${i.visible ? 'vis' : 'HID'} a${i.alpha.toFixed(2)} ${Math.round(i.displayWidth)}x${Math.round(i.displayHeight)}` : 'null'
 
@@ -72,6 +88,15 @@ export function installDiag(game: Phaser.Game): void {
       lines.push(`BUILD ${__BR_BUILD__}`)
       lines.push(`PHASER ${Phaser.VERSION} ${gpu}`)
       lines.push(`VIEW ${window.innerWidth}x${window.innerHeight} dpr${window.devicePixelRatio} buf ${game.scale.width}x${game.scale.height}`)
+      if (deltas.length >= 30) {
+        const p50 = pct(deltas, 0.5)
+        const p95 = pct(deltas, 0.95)
+        const avg = deltas.reduce((a, b) => a + b, 0) / deltas.length
+        const lastDelta = deltas[deltas.length - 1] ?? 0
+        lines.push(
+          `FPS avg ${(1000 / avg).toFixed(0)} p50 ${p50.toFixed(1)}ms p95 ${p95.toFixed(1)}ms${lastDelta > 60 ? ' SPIKE' : ''}`,
+        )
+      }
       lines.push(`MODE ${standalone ? 'PWA-standalone' : 'browser-tab'}`)
       const bg = game.scene.getScene('BackgroundScene') as Phaser.Scene & { background?: Record<string, unknown> }
       const th = bg?.background
