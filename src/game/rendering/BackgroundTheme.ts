@@ -810,7 +810,6 @@ export class BackgroundTheme {
   private scene: Phaser.Scene
   private currentTheme: ThemeName = 'light'
   private bgLayer!: Phaser.GameObjects.Graphics
-  private starLayer?: Phaser.GameObjects.Graphics
   private ambientLayer!: Phaser.GameObjects.Graphics
   private transitionTween?: Phaser.Tweens.Tween
   private transitionProgress = 0
@@ -835,6 +834,8 @@ export class BackgroundTheme {
    */
   private gradImage: Phaser.GameObjects.Image | null = null
   private gridImage: Phaser.GameObjects.Image | null = null
+  /** Space star field baked at device resolution (see drawStars). */
+  private starImage: Phaser.GameObjects.Image | null = null
   /** Ambient particles (theme-flavored, deterministic layout). */
   private ambient: Array<{ x: number; y: number; s: number; ph: number; kind: string }> = []
   /** Shooting star state (space theme): null = idle. */
@@ -851,7 +852,6 @@ export class BackgroundTheme {
     this.currentTheme = initialTheme
     // Background renders in screen space (never-zoomed camera).
     this.bgLayer = scene.add.graphics().setDepth(-99).setScrollFactor(0)
-    this.starLayer = scene.add.graphics().setDepth(-95).setScrollFactor(0)
     this.ambientLayer = scene.add.graphics().setDepth(-89).setScrollFactor(0)
     this.updateGradImage()
 
@@ -892,6 +892,12 @@ export class BackgroundTheme {
     if (cssW === this.lastResizeW && cssH === this.lastResizeH && dpr === this.lastResizeDpr) {
       return
     }
+    // Correctness net: remember the TARGET dims — update() repaints
+    // synchronously if the debounced rebuild hasn't run yet (covers
+    // paused-tab timers and any missed event).
+    this.pendingW = cssW
+    this.pendingH = cssH
+    this.pendingDpr = dpr
     // Immediate cheap part: the gradient texture is already sized for
     // SOME viewport; display-size scaling keeps it covering the screen
     // until the debounced rebuild runs.
@@ -907,6 +913,10 @@ export class BackgroundTheme {
       this.initStars(this.currentTheme)
       this.initAmbient(this.currentTheme)
       this.rebuildClouds()
+      this.drawStars()
+      this.pendingW = 0
+      this.pendingH = 0
+      this.pendingDpr = 0
     })
   }
 
@@ -915,6 +925,10 @@ export class BackgroundTheme {
   private lastResizeH = 0
   private lastResizeDpr = 0
   private resizeTimer: Phaser.Time.TimerEvent | undefined
+  /** Target dims awaiting the debounced rebuild (correctness net). */
+  private pendingW = 0
+  private pendingH = 0
+  private pendingDpr = 0
 
   /**
    * Space base gradient as a device-resolution canvas texture on a
@@ -1325,24 +1339,91 @@ export class BackgroundTheme {
   }
 
   private drawStars(): void {
-    if (!this.starLayer) return
-    const g = this.starLayer
-    g.clear()
-    if (this.stars.length === 0 || this.starAlpha <= 0.01) return
-    for (const star of this.stars) {
-      const twinkleAlpha = 0.4 + 0.6 * Math.abs(Math.sin(star.twinkle + this.scene.time.now * 0.0012))
-      g.fillStyle(0xffffff, this.starAlpha * twinkleAlpha)
-      g.fillCircle(star.x, star.y, star.size)
-      if (star.glint) {
-        g.lineStyle(1.4, 0xffffff, this.starAlpha * twinkleAlpha * 0.8)
-        const r = star.size * 2.6
-        g.lineBetween(star.x - r, star.y, star.x + r, star.y)
-        g.lineBetween(star.x, star.y - r, star.x, star.y + r)
+    // Phase 2.21: stars baked into a device-resolution canvas texture on
+    // an Image (depth -95). The old per-frame Graphics clear+repaint of
+    // 120 circles silently failed to render on high-DPR phone viewports
+    // (same Graphics-layer issue as the grid). Twinkle is now a whole-
+    // layer alpha pulse — visually equivalent at these amplitudes and
+    // effectively free.
+    const z = this.scene.game.scale.displayScale.x || 1
+    const dpr = window.devicePixelRatio || 1
+    const w = Math.ceil((this.scene.scale.width / z) * dpr)
+    const h = Math.ceil((this.scene.scale.height / z) * dpr)
+    const alpha = Math.min(1, this.starAlpha)
+
+    const key = 'br-stars'
+    if (!this.scene.textures.exists(key)) {
+      this.scene.textures.createCanvas(key, w, h)
+    }
+    const tex = this.scene.textures.get(key) as Phaser.Textures.CanvasTexture
+    const src = tex.getSourceImage() as HTMLCanvasElement
+    if (src.width !== w || src.height !== h) {
+      src.width = w
+      src.height = h
+    }
+    const ctx = src.getContext('2d')!
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.clearRect(0, 0, w, h)
+    if (alpha > 0.01) {
+      const bands = [
+        { n: 80, r: [0.5, 1.0], a: [0.22, 0.5] },
+        { n: 30, r: [0.9, 1.6], a: [0.35, 0.75] },
+        { n: 10, r: [1.6 * this.artScale, 2.3 * this.artScale], a: [0.55, 0.9] },
+      ]
+      const rng = seeded(20260215)
+      for (const b of bands) {
+        for (let i = 0; i < b.n; i++) {
+          const sx = rng() * w
+          const sy = rng() * h * 0.94
+          const r = (b.r[0]! + rng() * (b.r[1]! - b.r[0]!)) * dpr
+          const a = b.a[0]! + rng() * (b.a[1]! - b.a[0]!)
+          if (r > 1.5 * dpr * 0.8) {
+            ctx.fillStyle = `rgba(191,216,255,${a * 0.07})`
+            ctx.beginPath()
+            ctx.arc(sx, sy, r * 3.4, 0, Math.PI * 2)
+            ctx.fill()
+            ctx.fillStyle = `rgba(216,232,255,${a * 0.11})`
+            ctx.beginPath()
+            ctx.arc(sx, sy, r * 2.1, 0, Math.PI * 2)
+            ctx.fill()
+          }
+          ctx.fillStyle = `rgba(255,255,255,${a})`
+          ctx.beginPath()
+          ctx.arc(sx, sy, r, 0, Math.PI * 2)
+          ctx.fill()
+          if (r > 2.0 * dpr * 0.8) {
+            ctx.strokeStyle = `rgba(255,255,255,${a * 0.6})`
+            ctx.lineWidth = 1.2 * dpr * 0.8
+            ctx.beginPath()
+            ctx.moveTo(sx - r * 2.3, sy)
+            ctx.lineTo(sx + r * 2.3, sy)
+            ctx.moveTo(sx, sy - r * 2.3)
+            ctx.lineTo(sx, sy + r * 2.3)
+            ctx.stroke()
+          }
+        }
       }
     }
+    tex.refresh()
+
+    if (!this.starImage) {
+      this.starImage = this.scene.add
+        .image(0, 0, key)
+        .setOrigin(0, 0)
+        .setDepth(-95)
+        .setScrollFactor(0)
+    }
+    // Device-px texture, LOGICAL display size.
+    this.starImage.setDisplaySize(Math.ceil(w / dpr), Math.ceil(h / dpr))
+    this.starImage.setVisible(alpha > 0.01)
   }
 
-  /** Per-theme ambient animation (fireflies, butterflies, shooting star). */
+  /** Current portrait art scale (planet/moon/star sizing). */
+  private get artScale(): number {
+    const z = this.scene.game.scale.displayScale.x || 1
+    return Math.min(1.8, Math.max(1, this.scene.scale.width / z / 560))
+  }
+
   private drawAmbient(delta: number): void {
     const g = this.ambientLayer
     g.clear()
@@ -1428,6 +1509,21 @@ export class BackgroundTheme {
 
   /** Per-frame star twinkle + cloud drift + ambient layer. */
   update(delta: number): void {
+    // Correctness net: if a resize left unbaked dims (debounce pending or
+    // timer frozen by a hidden tab), rebuild NOW — the background must
+    // never stay stale relative to the viewport.
+    if (this.pendingW !== 0 || this.pendingH !== 0 || this.pendingDpr !== 0) {
+      this.updateGradImage()
+      this.drawBackground()
+      this.drawGrid()
+      this.initStars(this.currentTheme)
+      this.initAmbient(this.currentTheme)
+      this.rebuildClouds()
+      this.drawStars()
+      this.pendingW = 0
+      this.pendingH = 0
+      this.pendingDpr = 0
+    }
     const fromSpace = this.currentTheme === 'space'
     const toSpace = this.toTheme === 'space'
     if (this.toTheme) {
@@ -1435,7 +1531,7 @@ export class BackgroundTheme {
     } else {
       this.starAlpha = fromSpace ? 1 : 0
     }
-    // Star twinkle at ~20 Hz (see STAR_INTERVAL_MS) — accumulate and skip.
+    // Star layer alpha pulse at ~20 Hz (baked texture — cheap alpha set).
     this.starAccumMs += delta
     if (this.starAccumMs >= BackgroundTheme.STAR_INTERVAL_MS) {
       this.starAccumMs %= BackgroundTheme.STAR_INTERVAL_MS
@@ -1463,7 +1559,7 @@ export class BackgroundTheme {
     this.resizeTimer = undefined
     this.transitionTween?.stop()
     this.bgLayer?.destroy()
-    this.starLayer?.destroy()
+    this.starImage?.destroy()
     this.ambientLayer?.destroy()
     for (const name of Object.keys(this.cloudGroups) as ThemeName[]) this.destroyCloudGroup(name)
   }
