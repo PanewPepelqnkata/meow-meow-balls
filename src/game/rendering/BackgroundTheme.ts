@@ -30,12 +30,38 @@ import Phaser from 'phaser'
 
 export type ThemeName = 'light' | 'space' | 'jungle' | 'fantasy'
 
+/**
+ * Structural subset of Phaser Graphics that every theme draw uses. Both
+ * the real Graphics object and the G2D canvas adapter satisfy it, so the
+ * same draw code paints live (desktop debugging) and baked (production).
+ */
+export interface ThemeDrawTarget {
+  clear(): unknown
+  fillStyle(color: number, alpha?: number): unknown
+  lineStyle(width: number, color: number, alpha?: number): unknown
+  fillGradientStyle(tl: number, tr: number, bl: number, br: number, alpha?: number): unknown
+  fillRect(x: number, y: number, w: number, h: number): unknown
+  fillRoundedRect(x: number, y: number, w: number, h: number, radius: number): unknown
+  fillCircle(x: number, y: number, radius: number): unknown
+  fillEllipse(x: number, y: number, width: number, height: number): unknown
+  strokeEllipse(x: number, y: number, width: number, height: number): unknown
+  fillTriangle(x1: number, y1: number, x2: number, y2: number, x3: number, y3: number): unknown
+  beginPath(): unknown
+  moveTo(x: number, y: number): unknown
+  lineTo(x: number, y: number): unknown
+  arc(x: number, y: number, radius: number, startAngle: number, endAngle: number, anticlockwise?: boolean): unknown
+  closePath(): unknown
+  fillPath(): unknown
+  strokePath(): unknown
+  lineBetween(x1: number, y1: number, x2: number, y2: number): unknown
+}
+
 interface ThemeDef {
   name: ThemeName
   bgColor: number
   gridColor: number
   gridAlpha: number
-  draw: (g: Phaser.GameObjects.Graphics, w: number, h: number, rng: () => number) => void
+  draw: (g: ThemeDrawTarget, w: number, h: number, rng: () => number) => void
 }
 
 /** Deterministic RNG (mulberry32) — stable art across redraws. */
@@ -177,7 +203,7 @@ function addCloud(
 
 /** Smooth rolling hill silhouette (layered sines — never jagged). */
 function rollingHill(
-  g: Phaser.GameObjects.Graphics,
+  g: ThemeDrawTarget,
   w: number,
   h: number,
   baseY: number,
@@ -200,7 +226,7 @@ function rollingHill(
 
 /** Rounded tree-line silhouette along a baseline. */
 function treeLine(
-  g: Phaser.GameObjects.Graphics,
+  g: ThemeDrawTarget,
   w: number,
   baseY: number,
   color: number,
@@ -219,7 +245,7 @@ function treeLine(
 
 /** Scalloped leaf canopy band across the top. */
 function canopyBand(
-  g: Phaser.GameObjects.Graphics,
+  g: ThemeDrawTarget,
   w: number,
   bandY: number,
   bumpR: number,
@@ -238,7 +264,7 @@ function canopyBand(
 
 /** Hanging vine with small leaves. */
 function vine(
-  g: Phaser.GameObjects.Graphics,
+  g: ThemeDrawTarget,
   x: number,
   topY: number,
   len: number,
@@ -265,7 +291,7 @@ function vine(
 
 /** Palm frond: curved spine with leaflets. */
 function palmFrond(
-  g: Phaser.GameObjects.Graphics,
+  g: ThemeDrawTarget,
   x: number,
   y: number,
   len: number,
@@ -307,7 +333,7 @@ function palmFrond(
 
 /** Scalloped leafy mound (bush silhouette). */
 function leafyMound(
-  g: Phaser.GameObjects.Graphics,
+  g: ThemeDrawTarget,
   x: number,
   y: number,
   mw: number,
@@ -326,7 +352,7 @@ function leafyMound(
 }
 
 /** Bird silhouette (two shallow quadratic arcs, sampled). */
-function bird(g: Phaser.GameObjects.Graphics, x: number, y: number, s: number, color: number, alpha: number): void {
+function bird(g: ThemeDrawTarget, x: number, y: number, s: number, color: number, alpha: number): void {
   g.lineStyle(2, color, alpha)
   g.beginPath()
   g.moveTo(x - s, y)
@@ -347,7 +373,7 @@ function bird(g: Phaser.GameObjects.Graphics, x: number, y: number, s: number, c
 
 /** Cratered moon/planet disc with shading and craters. */
 function crateredBody(
-  g: Phaser.GameObjects.Graphics,
+  g: ThemeDrawTarget,
   x: number,
   y: number,
   r: number,
@@ -374,7 +400,7 @@ function crateredBody(
 
 /** Diagonal sun/light shafts (very low alpha, wide). */
 function lightShafts(
-  g: Phaser.GameObjects.Graphics,
+  g: ThemeDrawTarget,
   w: number,
   h: number,
   originX: number,
@@ -801,6 +827,164 @@ const THEMES: Record<ThemeName, ThemeDef> = {
 }
 
 /* ------------------------------------------------------------------ */
+/* Canvas-2D Graphics adapter (device-res art bake)                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Implements the Phaser Graphics subset the theme draw functions use,
+ * backed by a CanvasRenderingContext2D. All coordinates arrive in CSS px;
+ * the context is pre-scaled by dpr so one pass paints the device-res bake.
+ *
+ * Why: Phaser 4.2 Graphics command buffers silently fail to render on
+ * high-DPR phone viewports (observed on bgLayer/grid/stars with big
+ * buffers). The gradient, grid and stars already moved to canvas textures;
+ * the static theme art is the last Graphics consumer — it bakes through
+ * this adapter onto 'br-art-<theme>' canvas textures instead.
+ */
+class G2D {
+  constructor(
+    private ctx: CanvasRenderingContext2D,
+    private wCss: number,
+    private hCss: number,
+  ) {}
+  private fillA = 1
+  private strokeC = '#000'
+  private strokeA = 1
+
+  private css(c: number): string {
+    return '#' + c.toString(16).padStart(6, '0')
+  }
+
+  clear(): void {
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0)
+    this.ctx.clearRect(0, 0, this.ctx.canvas.width, this.ctx.canvas.height)
+    this.ctx.scale(this.ctx.canvas.width / this.wCss, this.ctx.canvas.height / this.hCss)
+  }
+
+  fillStyle(color: number, alpha = 1): void {
+    this.fillA = alpha
+    this.ctx.fillStyle = this.css(color)
+  }
+
+  lineStyle(width: number, color: number, alpha = 1): void {
+    this.strokeC = this.css(color)
+    this.strokeA = alpha
+    this.ctx.lineWidth = width
+    this.ctx.strokeStyle = this.strokeC
+  }
+
+  /** Vertical gradient approximation of Phaser's quad gradient. */
+  fillGradientStyle(tl: number, tr: number, bl: number, br: number, alpha = 1): void {
+    const mix = (a: number, b: number): number => {
+      const ar = (a >> 16) & 0xff
+      const ag = (a >> 8) & 0xff
+      const ab = a & 0xff
+      const brv = (b >> 16) & 0xff
+      const bg = (b >> 8) & 0xff
+      const bb = b & 0xff
+      return ((Math.round((ar + brv) / 2) << 16) | (Math.round((ag + bg) / 2) << 8) | Math.round((ab + bb) / 2)) >>> 0
+    }
+    const g = this.ctx.createLinearGradient(0, 0, 0, this.hCss)
+    g.addColorStop(0, this.css(mix(tl, tr)))
+    g.addColorStop(1, this.css(mix(bl, br)))
+    this.fillA = alpha
+    this.ctx.fillStyle = g
+  }
+
+  fillRect(x: number, y: number, w: number, h: number): void {
+    this.ctx.globalAlpha = this.fillA
+    this.ctx.fillRect(x, y, w, h)
+    this.ctx.globalAlpha = 1
+  }
+
+  fillRoundedRect(x: number, y: number, w: number, h: number, r: number): void {
+    this.ctx.globalAlpha = this.fillA
+    this.ctx.beginPath()
+    this.ctx.roundRect(x, y, w, h, r)
+    this.ctx.fill()
+    this.ctx.globalAlpha = 1
+  }
+
+  fillCircle(x: number, y: number, r: number): void {
+    this.ctx.globalAlpha = this.fillA
+    this.ctx.beginPath()
+    this.ctx.arc(x, y, Math.max(0.05, r), 0, Math.PI * 2)
+    this.ctx.fill()
+    this.ctx.globalAlpha = 1
+  }
+
+  fillEllipse(x: number, y: number, width: number, height: number): void {
+    this.ctx.globalAlpha = this.fillA
+    this.ctx.beginPath()
+    this.ctx.ellipse(x, y, Math.max(0.05, width / 2), Math.max(0.05, height / 2), 0, 0, Math.PI * 2)
+    this.ctx.fill()
+    this.ctx.globalAlpha = 1
+  }
+
+  strokeEllipse(x: number, y: number, width: number, height: number): void {
+    this.ctx.globalAlpha = this.strokeA
+    this.ctx.beginPath()
+    this.ctx.ellipse(x, y, Math.max(0.05, width / 2), Math.max(0.05, height / 2), 0, 0, Math.PI * 2)
+    this.ctx.stroke()
+    this.ctx.globalAlpha = 1
+  }
+
+  fillTriangle(x1: number, y1: number, x2: number, y2: number, x3: number, y3: number): void {
+    this.ctx.globalAlpha = this.fillA
+    this.ctx.beginPath()
+    this.ctx.moveTo(x1, y1)
+    this.ctx.lineTo(x2, y2)
+    this.ctx.lineTo(x3, y3)
+    this.ctx.closePath()
+    this.ctx.fill()
+    this.ctx.globalAlpha = 1
+  }
+
+  beginPath(): void {
+    this.ctx.beginPath()
+  }
+
+  moveTo(x: number, y: number): void {
+    this.ctx.moveTo(x, y)
+  }
+
+  lineTo(x: number, y: number): void {
+    this.ctx.lineTo(x, y)
+  }
+
+  arc(x: number, y: number, radius: number, startAngle: number, endAngle: number, anticlockwise?: boolean): void {
+    this.ctx.arc(x, y, Math.max(0.05, radius), startAngle, endAngle, anticlockwise)
+  }
+
+  closePath(): void {
+    this.ctx.closePath()
+  }
+
+  fillPath(): void {
+    this.ctx.globalAlpha = this.fillA
+    this.ctx.fill()
+    this.ctx.globalAlpha = 1
+  }
+
+  strokePath(): void {
+    this.ctx.globalAlpha = this.strokeA
+    this.ctx.lineJoin = 'round'
+    this.ctx.lineCap = 'round'
+    this.ctx.stroke()
+    this.ctx.globalAlpha = 1
+  }
+
+  lineBetween(x1: number, y1: number, x2: number, y2: number): void {
+    this.ctx.globalAlpha = this.strokeA
+    this.ctx.beginPath()
+    this.ctx.moveTo(x1, y1)
+    this.ctx.lineTo(x2, y2)
+    this.ctx.stroke()
+    this.ctx.globalAlpha = 1
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Manager                                                             */
 /* ------------------------------------------------------------------ */
 
@@ -812,7 +996,6 @@ const THEMES: Record<ThemeName, ThemeDef> = {
 export class BackgroundTheme {
   private scene: Phaser.Scene
   private currentTheme: ThemeName = 'light'
-  private bgLayer!: Phaser.GameObjects.Graphics
   private ambientLayer!: Phaser.GameObjects.Graphics
   private transitionTween?: Phaser.Tweens.Tween
   private transitionProgress = 0
@@ -824,16 +1007,16 @@ export class BackgroundTheme {
   private cloudGroups: Partial<Record<ThemeName, CloudObj[]>> = {}
   /**
    * SPACE BASE GRADIENT — device-resolution canvas texture on a
-   * screen-space Image. Depth map (Phase 2.21, back → front):
-   *   -100 gradImage  (space base gradient — replaces bgLayer's fill)
-   *    -99 bgLayer    (theme art: planet, moon, horizon, non-space env)
+   * screen-space Image. Depth map (Phase 2.23, back → front):
+   *   -100 gradImage  (space base gradient)
+   *    -99 artImages  (baked theme static art — one Image per theme)
    *    -97 nebula Images (cloudGroups — above space art)
-   *    -95 starLayer  (twinkling stars)
+   *    -95 starImage  (twinkling stars)
    *    -89 ambientLayer
    *    -88 gridImage  (baked grid)
-   * bgLayer is TRANSPARENT while space is active (the gradImage owns the
-   * base fill); non-space themes paint fill + art on bgLayer with the
-   * gradImage hidden.
+   * While space is active the art bake paints only the pin-sharp space
+   * elements (the gradImage owns the base fill); non-space art bakes
+   * include their own base fill and the gradImage hides.
    */
   private gradImage: Phaser.GameObjects.Image | null = null
   private gridImage: Phaser.GameObjects.Image | null = null
@@ -854,7 +1037,6 @@ export class BackgroundTheme {
     this.scene = scene
     this.currentTheme = initialTheme
     // Background renders in screen space (never-zoomed camera).
-    this.bgLayer = scene.add.graphics().setDepth(-99).setScrollFactor(0)
     this.ambientLayer = scene.add.graphics().setDepth(-89).setScrollFactor(0)
     this.updateGradImage()
 
@@ -994,7 +1176,9 @@ export class BackgroundTheme {
     this.initAmbient(theme)
     this.buildCloudGroup(this.fromTheme)
     this.buildCloudGroup(theme)
-    this.applyCloudAlphas()
+    // Bake BOTH partner arts once; the tween then only blends alphas
+    // (via applyCloudAlphas on the progress tick) — no per-frame rebakes.
+    this.drawBackground()
 
     this.transitionTween?.stop()
     this.transitionTween = this.scene.tweens.add({
@@ -1003,7 +1187,7 @@ export class BackgroundTheme {
       duration,
       ease: 'Sine.easeInOut',
       onUpdate: () => {
-        this.drawBackground()
+        this.applyCloudAlphas()
         this.drawGrid()
       },
       onComplete: () => {
@@ -1175,6 +1359,24 @@ export class BackgroundTheme {
 
   /** Drive cloud layer alphas alongside the Graphics crossfade. */
   private applyCloudAlphas(): void {
+    // Baked static art: active/target themes visible, others hidden.
+    // During a crossfade both partners blend by transitionProgress; the
+    // to-art sits ABOVE the from-art so the fade reads as a curtain
+    // (same layering as the old bgLayer repaint path).
+    for (const [name, img] of Object.entries(this.artImages)) {
+      if (!img) continue
+      const themeName = name as ThemeName
+      let a: number
+      if (this.toTheme) {
+        if (themeName === this.toTheme) a = this.transitionProgress
+        else if (themeName === this.fromTheme) a = 1
+        else a = 0
+      } else {
+        a = themeName === this.currentTheme ? 1 : 0
+      }
+      img.setAlpha(a)
+      img.setVisible(a > 0.005)
+    }
     // GradImage alpha tracks the space weight of the active transition.
     if (this.gradImage) {
       let ga: number
@@ -1207,62 +1409,58 @@ export class BackgroundTheme {
     }
   }
 
-  private drawBackground(): void {
-    const g = this.bgLayer
-    g.clear()
-    // CSS-px painting: the scene camera zooms by displayScale and frames the
-    // CSS-px region, so art sized to the buffer would render 3× too large.
+  /**
+   * Phase 2.23 — theme static art as device-res canvas bakes. Each theme's
+   * full static draw (base fill + scenery) paints ONCE through the G2D
+   * adapter onto a 'br-art-<theme>' texture shown on an Image at depth
+   * -99. Crossfades become alpha blends of two baked Images — zero
+   * Graphics command buffers anywhere in the background, so the silent
+   * high-DPR phone render failure cannot recur, and transitions cost 4
+   * alpha writes per frame instead of full Graphics rebuilds.
+   */
+  private bakeThemeArt(theme: ThemeName): void {
     const z = this.scene.game.scale.displayScale.x || 1
-    const width = this.scene.scale.width / z
-    const height = this.scene.scale.height / z
-    // Space's base gradient lives in the gradImage (device-resolution bake);
-    // bgLayer paints nothing under it (transparent) so the Image IS the
-    // base layer while space is active.
-    const isSpace = this.currentTheme === 'space'
-
-    if (!this.fromTheme || !this.toTheme || this.transitionProgress <= 0) {
-      const t = THEMES[this.currentTheme]
-      if (!isSpace) {
-        g.fillStyle(t.bgColor, 1)
-        g.fillRect(0, 0, width, height)
-      }
-      t.draw(g, width, height, seeded(20260213))
-      this.applyCloudAlphas()
-      return
+    const dpr = window.devicePixelRatio || 1
+    const w = Math.ceil((this.scene.scale.width / z) * dpr)
+    const h = Math.ceil((this.scene.scale.height / z) * dpr)
+    const key = 'br-art-' + theme
+    if (!this.scene.textures.exists(key)) {
+      this.scene.textures.createCanvas(key, w, h)
     }
-
-    const t = this.transitionProgress
-    const from = THEMES[this.fromTheme]
-    const to = THEMES[this.toTheme]
-    // Crossfade between a space state and a non-space state: the gradImage
-    // alpha fades (see applyCloudAlphas), and bgLayer paints only the
-    // non-space partner's art. Space↔space: bgLayer stays transparent,
-    // the single gradImage is the base.
-    const spaceFrom = this.fromTheme === 'space'
-    const spaceTo = this.toTheme === 'space'
-    if (spaceFrom !== spaceTo) {
-      const other = spaceFrom ? from : to
-      g.fillStyle(other.bgColor, 1)
-      g.fillRect(0, 0, width, height)
-      other.draw(g, width, height, seeded(20260213))
-      this.applyCloudAlphas()
-      return
+    const tex = this.scene.textures.get(key) as Phaser.Textures.CanvasTexture
+    const src = tex.getSourceImage() as HTMLCanvasElement
+    if (src.width !== w || src.height !== h) {
+      src.width = w
+      src.height = h
     }
-    if (spaceFrom && spaceTo) {
-      to.draw(g, width, height, seeded(20260213))
-      this.applyCloudAlphas()
-      return
+    const ctx = src.getContext('2d')!
+    const g = new G2D(ctx, w / dpr, h / dpr)
+    g.clear()
+    const def = THEMES[theme]
+    const wCss = w / dpr
+    const hCss = h / dpr
+    def.draw(g, wCss, hCss, seeded(20260213))
+    tex.refresh()
+    if (!this.artImages[theme]) {
+      this.artImages[theme] = this.scene.add
+        .image(0, 0, key)
+        .setOrigin(0, 0)
+        .setDepth(-99)
+        .setScrollFactor(0)
     }
+    this.artImages[theme]!.setDisplaySize(Math.ceil(w / dpr), Math.ceil(h / dpr))
+  }
 
-    // Non-space ↔ non-space crossfade (both partners paint on bgLayer).
-    g.fillStyle(from.bgColor, 1)
-    g.fillRect(0, 0, width, height)
-    from.draw(g, width, height, seeded(20260213))
+  /** Baked static art per theme (depth -99, screen-space). */
+  private artImages: Partial<Record<ThemeName, Phaser.GameObjects.Image>> = {}
 
-    // Crossfade curtain: TO base color + environment fading in on top.
-    g.fillStyle(to.bgColor, t)
-    g.fillRect(0, 0, width, height)
-    to.draw(g, width, height, seeded(20260213 + 7))
+  private drawBackground(): void {
+    // Bake every theme the current state shows, then drive visibility
+    // through applyCloudAlphas (which also handles the art Images).
+    const wanted: ThemeName[] = [this.currentTheme]
+    if (this.fromTheme) wanted.push(this.fromTheme)
+    if (this.toTheme) wanted.push(this.toTheme)
+    for (const t of wanted) this.bakeThemeArt(t)
     this.applyCloudAlphas()
   }
 
@@ -1562,7 +1760,8 @@ export class BackgroundTheme {
     this.resizeTimer?.remove()
     this.resizeTimer = undefined
     this.transitionTween?.stop()
-    this.bgLayer?.destroy()
+    for (const img of Object.values(this.artImages)) img?.destroy()
+    this.artImages = {}
     this.starImage?.destroy()
     this.ambientLayer?.destroy()
     for (const name of Object.keys(this.cloudGroups) as ThemeName[]) this.destroyCloudGroup(name)
