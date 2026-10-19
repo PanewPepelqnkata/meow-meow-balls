@@ -193,6 +193,14 @@ export class StartIntroScene extends Phaser.Scene {
         duration: 380,
         ease: 'Back.easeOut',
       })
+      // Legacy open path: seal in the remaining hole so the closed beat
+      // ends on solid ink (startClosed boots with the seal already on).
+      this.tweens.add({
+        targets: seal,
+        alpha: 1,
+        duration: 120,
+        ease: 'Quad.easeIn',
+      })
 
       // idle wobble redraw while the scared ball is on screen
       const wobbleTimer = this.time.addEvent({
@@ -221,6 +229,16 @@ export class StartIntroScene extends Phaser.Scene {
             // 2. ONLY THEN the cover + ring edge RE-OPEN outward (reverse
             //    of the intro sweep) — the game is revealed through the
             //    growing hole.
+            // The seal dissolves in overlap so the hole that reappears
+            // as the ring pulls back is pre-filled with ink — no sudden
+            // hole pop, no second arc crossing the frame.
+            this.tweens.add({
+              targets: seal,
+              alpha: 0,
+              duration: 220,
+              delay: 260,
+              ease: 'Quad.easeOut',
+            })
             this.tweens.add({
               targets: sweepState,
               r: outerR,
@@ -231,6 +249,7 @@ export class StartIntroScene extends Phaser.Scene {
               },
               onComplete: () => {
                 cover.destroy()
+                seal.destroy()
                 this.scene.stop()
               },
             })
@@ -239,11 +258,18 @@ export class StartIntroScene extends Phaser.Scene {
       })
     }
 
+    // Seal: fills the 55px hole under the closed annulus — the closed
+    // beat is SOLID ink. Depth -2 (under cover -1) so the cream ring
+    // stays visible on top; the outro dissolves it in overlap.
+    const seal = this.add
+      .rectangle(cx, cy, vw, vh, 0x0e0f1c)
+      .setDepth(-2)
+      .setAlpha(startClosed ? 1 : 0)
     // startClosed boots under full ink: draw the CLOSED cover so the first
     // frame of this scene is identical to TitleScene's last frame (zero
     // flicker at the handoff), and skip straight to the ball phase.
     if (startClosed) {
-      sweepState = { r: 2 }
+      sweepState = { r: innerR }
       drawCover(sweepState.r)
       runBallPhase()
       return
@@ -251,7 +277,7 @@ export class StartIntroScene extends Phaser.Scene {
 
     this.tweens.add({
       targets: sweepState,
-      r: 2,
+      r: innerR,
       duration: dur,
       ease: 'Quad.easeInOut',
       onUpdate: () => {

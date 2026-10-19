@@ -1549,20 +1549,36 @@ export class TitleScene extends Phaser.Scene {
       .setOrigin(0.5, 0.5)
       .setDepth(5000)
       .setScale(outerR / innerR)
-    // FULLY close: the user spec is ring closes to a hairline (not to
-    // the ball-sized hole), ball pops over the ink, drops, then opens.
-    const closedScale = (2 / innerR) * 0.5
+    // SEAL: a full-screen ink quad UNDER the iris that fades in during
+    // the final third of the sweep, filling the 55px hole. The ring
+    // never closes past innerR — scaling below 1 pulled the baked
+    // outer edge on-screen (the 'loops' the user saw: a second huge
+    // arc crossing the frame + a collapsing donut + the menu re-exposed
+    // through 99.97% transparent coverage). With the seal, the sweep
+    // reads exactly like the praised version, and the closed beat is
+    // SOLID ink + cream ring at r=innerR.
+    const seal = this.add
+      .rectangle(cx, cy, vw, vh, 0x0e0f1c)
+      .setDepth(4999)
+      .setAlpha(0)
+    this.tweens.add({
+      targets: seal,
+      alpha: 1,
+      duration: 200,
+      delay: 420,
+      ease: 'Quad.easeIn',
+    })
     this.tweens.add({
       targets: iris,
-      scale: closedScale,
+      scale: 1,
       duration: 620,
       ease: 'Quad.easeInOut',
       onComplete: () => {
-        // Full ink now covers the menu. Hand off WITHOUT destroying the
-        // iris: it stays painted until this scene stops (part of
-        // scene.start), and StartIntroScene's create() draws its own
-        // identical closed iris in the same frame — no coverless frame,
-        // no flicker at the handoff.
+        // Full ink now covers the menu (annulus at scale 1 + seal under
+        // it). Hand off WITHOUT destroying either: they stay painted
+        // until this scene stops (part of scene.start), and
+        // StartIntroScene's create() draws its identical closed pair in
+        // the same frame — no coverless frame, no flicker.
         this.scene.start('StartIntroScene', { startClosed: true })
       },
     })
