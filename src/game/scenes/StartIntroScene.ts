@@ -120,7 +120,9 @@ export class StartIntroScene extends Phaser.Scene {
     const drawCover = (holeR: number): void => {
       cover.setScale(Math.max(1e-4, holeR / innerR))
     }
-    cover.setScale(startClosed ? 1 : outerR / innerR)
+    // startClosed boots FULLY closed (2px hairline) to match
+    // TitleScene's last frame; the legacy open path starts wide open.
+    cover.setScale(startClosed ? (2 / innerR) * 0.5 : outerR / innerR)
 
     // ---- 2. Timeline ------------------------------------------------------
     let sweepState = { r: outerR }
@@ -241,7 +243,7 @@ export class StartIntroScene extends Phaser.Scene {
     // frame of this scene is identical to TitleScene's last frame (zero
     // flicker at the handoff), and skip straight to the ball phase.
     if (startClosed) {
-      sweepState = { r: innerR }
+      sweepState = { r: 2 }
       drawCover(sweepState.r)
       runBallPhase()
       return
@@ -249,7 +251,7 @@ export class StartIntroScene extends Phaser.Scene {
 
     this.tweens.add({
       targets: sweepState,
-      r: innerR,
+      r: 2,
       duration: dur,
       ease: 'Quad.easeInOut',
       onUpdate: () => {

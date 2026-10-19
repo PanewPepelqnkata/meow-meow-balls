@@ -1549,9 +1549,12 @@ export class TitleScene extends Phaser.Scene {
       .setOrigin(0.5, 0.5)
       .setDepth(5000)
       .setScale(outerR / innerR)
+    // FULLY close: the user spec is ring closes to a hairline (not to
+    // the ball-sized hole), ball pops over the ink, drops, then opens.
+    const closedScale = (2 / innerR) * 0.5
     this.tweens.add({
       targets: iris,
-      scale: 1,
+      scale: closedScale,
       duration: 620,
       ease: 'Quad.easeInOut',
       onComplete: () => {
