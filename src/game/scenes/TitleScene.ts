@@ -18,6 +18,7 @@ import { loadSave, resetSave, setThemeSetting } from '../state/save'
 import { runVariantFor, variantIdFor, VARIANT_COUNT } from '../state/runVariant'
 import { session } from '../state/session'
 import { bakeCanvas, roundedRectPath } from '../rendering/RoughArt'
+import { bakeIrisCover } from './StartIntroScene'
 import { StartIntroScene } from './StartIntroScene'
 
 /**
@@ -1535,39 +1536,33 @@ export class TitleScene extends Phaser.Scene {
     const cy = vh / 2
     const outerR = Math.hypot(vw, vh) * 0.5
     const innerR = Math.min(vw, vh) * 0.14
-    const cover = this.add.graphics().setDepth(5000)
-    const drawCover = (holeR: number): void => {
-      cover.clear()
-      cover.fillStyle(0x0e0f1c, 1)
-      const side = outerR * 2
-      cover.beginPath()
-      cover.moveTo(cx - side, cy - side)
-      cover.lineTo(cx + side, cy - side)
-      cover.lineTo(cx + side, cy + side)
-      cover.lineTo(cx - side, cy + side)
-      cover.closePath()
-      cover.arc(cx, cy, Math.max(1, holeR), 0, Math.PI * 2, true)
-      cover.fillPath()
-      cover.lineStyle(Math.max(3, Math.min(vw, vh) * 0.014), 0xf3f1eb, 1)
-      cover.strokeCircle(cx, cy, Math.max(1, holeR))
-    }
-    drawCover(outerR)
-    const sweepState = { r: outerR }
+    // IRIS OVERLAY (iOS-proof): the cover is a BAKED annulus texture
+    // (solid ink from the hole edge out past the corners + cream ring
+    // at the hole edge), animated by pure GPU scale — zero per-frame
+    // Graphics buffer streaming, zero canvas repaints. Per-frame
+    // viewport Graphics redraws are a known iOS blank/black trigger
+    // (Phaser #6051/#6914) and the app already lost two features to
+    // that class. See bakeIrisCover() in StartIntroScene (shared bake).
+    const baked = bakeIrisCover(this, outerR, innerR, vw, vh)
+    const iris = this.add
+      .image(cx, cy, 'br-intro-cover')
+      .setOrigin(0.5, 0.5)
+      .setDepth(5000)
+      .setScale(outerR / innerR)
     this.tweens.add({
-      targets: sweepState,
-      r: innerR,
+      targets: iris,
+      scale: 1,
       duration: 620,
       ease: 'Quad.easeInOut',
-      onUpdate: () => {
-        drawCover(sweepState.r)
-      },
       onComplete: () => {
         // Full ink now covers the menu; the handoff boot happens behind
-        // it. StartIntroScene's first frame redraws the identical closed
-        // cover — no flicker, no visible scene change.
+        // it. StartIntroScene boots startClosed: its first frame draws
+        // the identical closed iris image — no flicker, no scene pop.
+        iris.destroy()
         this.scene.start('StartIntroScene', { startClosed: true })
       },
     })
+    void baked
   }
 
   private pressStart(): void {

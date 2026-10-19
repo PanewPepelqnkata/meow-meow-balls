@@ -35,6 +35,19 @@ function seedFor(key: string): number {
  * draws onto the 2D context in texture pixel coordinates. Re-bakes only
  * when the size changes.
  */
+/** iOS canvas-pool guard: WebKit enforces a process-wide 2D canvas
+ * memory cap (~384MB on modern devices, less on older); overflow draws
+ * SILENTLY TRANSPARENT. Cap offscreen bake resolution at dpr 2 (full
+ * quality on dpr-1/2 screens; dpr-3 phones get 1.5x-size bakes —
+ * visually near-identical for soft background art) and shrink every
+ * replaced canvas to 1x1 so Safari releases its backing store instead
+ * of hoarding it (WebKit keeps removed-canvas memory alive otherwise). */
+const BAKE_DPR_CAP = 2
+function releaseCanvas(c: HTMLCanvasElement): void {
+  c.width = 1
+  c.height = 1
+}
+
 export function bakeCanvas(
   scene: Phaser.Scene,
   key: string,
@@ -43,22 +56,29 @@ export function bakeCanvas(
   paint: (ctx: CanvasRenderingContext2D, seed: number) => void,
   dpr = 1,
 ): HTMLCanvasElement {
+  const capped = Math.min(dpr, BAKE_DPR_CAP)
   const prev = baked.get(key)
-  if (prev && prev.w === w * dpr && prev.h === h * dpr && scene.textures.exists(key)) return prev.canvas
+  if (prev && prev.w === w * capped && prev.h === h * capped && scene.textures.exists(key)) return prev.canvas
 
   const canvas = document.createElement('canvas')
-  canvas.width = w * dpr
-  canvas.height = h * dpr
+  canvas.width = w * capped
+  canvas.height = h * capped
   const ctx = canvas.getContext('2d')!
-  // Callers paint in CSS px; the dpr scale bakes at device resolution.
-  ctx.scale(dpr, dpr)
+  // Callers paint in CSS px; the (capped) dpr scale bakes at device res.
+  ctx.scale(capped, capped)
   paint(ctx, seedFor(key))
 
+  const oldCanvas = scene.textures.exists(key)
+    ? (scene.textures.get(key).getSourceImage() as HTMLCanvasElement | null)
+    : null
   if (scene.textures.exists(key)) scene.textures.remove(key)
   // One synchronous re-upload right after registration (harmless no-op if
   // the initial upload was already good).
   const tex = scene.textures.addCanvas(key, canvas) as Phaser.Textures.CanvasTexture | null
   tex?.refresh()
+  // Safari hoards removed-canvas backing stores — shrink the old one.
+  if (oldCanvas && oldCanvas !== canvas) releaseCanvas(oldCanvas)
+  if (prev && prev.canvas !== canvas) releaseCanvas(prev.canvas)
   baked.set(key, { w, h, canvas })
   return canvas
 }

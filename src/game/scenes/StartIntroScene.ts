@@ -23,6 +23,51 @@ import { getTier } from '../../config/ballTiers'
  * physics, no textures (vector only — sharp at any DPR).
  */
 
+/**
+ * Bake the intro cover ONCE as an annulus texture: solid ink from the
+ * hole edge (cream ring) out past the screen corners, transparent hole
+ * inside. Animated by pure GPU scale (Image.setScale) — zero per-frame
+ * Graphics buffer streaming or canvas repaints, the iOS failure class
+ * behind the blanking menu (WebKit canvas-pool exhaustion + Phaser
+ * #6051/#6914 per-frame Graphics). Hole radius at scale s = innerR·s.
+ */
+export function bakeIrisCover(
+  scene: Phaser.Scene,
+  outerR: number,
+  innerR: number,
+  vw: number,
+  vh: number,
+): HTMLCanvasElement {
+  const key = 'br-intro-cover'
+  const size = Math.ceil(outerR * 2)
+  const existing = scene.textures.exists(key)
+    ? (scene.textures.get(key).getSourceImage() as HTMLCanvasElement | null)
+    : null
+  if (existing && existing.width >= size) return existing
+  if (scene.textures.exists(key)) scene.textures.remove(key)
+  // dpr 1: the texture is 2·outerR square; at dpr 2+ it would exceed
+  // the iOS canvas pool for negligible sharpness gain on a moving
+  // ring. Ring width formula matches the old hand-drawn cover.
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')!
+  const c = size / 2
+  const ringW = Math.max(3, Math.min(vw, vh) * 0.014)
+  ctx.fillStyle = '#0e0f1c'
+  ctx.beginPath()
+  ctx.arc(c, c, outerR, 0, Math.PI * 2)
+  ctx.arc(c, c, innerR, 0, Math.PI * 2, true)
+  ctx.fill()
+  ctx.strokeStyle = '#f3f1eb'
+  ctx.lineWidth = ringW
+  ctx.beginPath()
+  ctx.arc(c, c, innerR + ringW / 2, 0, Math.PI * 2)
+  ctx.stroke()
+  scene.textures.addCanvas(key, canvas)
+  return canvas
+}
+
 export class StartIntroScene extends Phaser.Scene {
   /** Skipped (non-phone viewport): flag for the menu to fast-path. */
   static shouldRun(vw: number, vh: number): boolean {
@@ -61,30 +106,21 @@ export class StartIntroScene extends Phaser.Scene {
     const dur = 620
 
 
-    // ---- 1. Ring sweep: screen covered by two closing arcs ---------------
-    // The viewport is painted with the MENU'S ink tone (the player just
-    // left the dark-ink menu) except a shrinking center hole. A bright
-    // cream ring edge marks the closing boundary so the sweep reads even
-    // against the dark space sky.
-    const cover = this.add.graphics().setDepth(-1)
+    // ---- 1. Ring sweep: screen covered by a scaled iris annulus --------
+    // Baked ONCE (bakeIrisCover): ink annulus + cream ring at the hole
+    // edge; hole radius = innerR at scale 1. Animating = pure GPU scale
+    // (hole radius = innerR * scale). NO per-frame Graphics redraws —
+    // the iOS blanking class (canvas-pool exhaustion + Phaser #6051/
+    // #6914) is eliminated from the transition entirely.
+    bakeIrisCover(this, outerR, innerR, vw, vh)
+    const cover = this.add
+      .image(cx, cy, 'br-intro-cover')
+      .setOrigin(0.5, 0.5)
+      .setDepth(-1)
     const drawCover = (holeR: number): void => {
-      cover.clear()
-      cover.fillStyle(0x0e0f1c, 1)
-      // Dark cover: rect with a circular hole (nonzero winding cut).
-      const side = outerR * 2
-      cover.beginPath()
-      cover.moveTo(cx - side, cy - side)
-      cover.lineTo(cx + side, cy - side)
-      cover.lineTo(cx + side, cy + side)
-      cover.lineTo(cx - side, cy + side)
-      cover.closePath()
-      cover.arc(cx, cy, Math.max(1, holeR), 0, Math.PI * 2, true)
-      cover.fillPath()
-      // Bright comic ring edge at the hole boundary.
-      cover.lineStyle(Math.max(3, Math.min(vw, vh) * 0.014), 0xf3f1eb, 1)
-      cover.strokeCircle(cx, cy, Math.max(1, holeR))
+      cover.setScale(Math.max(1e-4, holeR / innerR))
     }
-    drawCover(outerR)
+    cover.setScale(startClosed ? 1 : outerR / innerR)
 
     // ---- 2. Timeline ------------------------------------------------------
     let sweepState = { r: outerR }
@@ -190,7 +226,7 @@ export class StartIntroScene extends Phaser.Scene {
             drawCover(sweepState.r)
           },
           onComplete: () => {
-            cover.clear()
+            cover.destroy()
             this.scene.stop()
           },
         })

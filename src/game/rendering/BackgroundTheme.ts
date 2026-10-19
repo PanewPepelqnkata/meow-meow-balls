@@ -1070,7 +1070,7 @@ export class BackgroundTheme {
     const z = this.scene.game.scale.displayScale.x || 1
     const cssW = Math.round(this.scene.scale.width / z)
     const cssH = Math.round(this.scene.scale.height / z)
-    const dpr = window.devicePixelRatio || 1
+    const dpr = Math.min(window.devicePixelRatio || 1, 2) // iOS canvas-pool cap
     if (cssW === this.lastResizeW && cssH === this.lastResizeH && dpr === this.lastResizeDpr) {
       return
     }
@@ -1479,7 +1479,7 @@ export class BackgroundTheme {
    */
   private bakeThemeArt(theme: ThemeName): void {
     const z = this.scene.game.scale.displayScale.x || 1
-    const dpr = window.devicePixelRatio || 1
+    const dpr = Math.min(window.devicePixelRatio || 1, 2) // iOS canvas-pool cap
     const w = Math.ceil((this.scene.scale.width / z) * dpr)
     const h = Math.ceil((this.scene.scale.height / z) * dpr)
     const key = 'br-art-' + theme
@@ -1533,7 +1533,7 @@ export class BackgroundTheme {
     // texture on an Image at depth -88 — ABOVE the nebula banks (-99)
     // which were occluding the Graphics-layer lines. Rebuilt on resize.
     const z = this.scene.game.scale.displayScale.x || 1
-    const dpr = window.devicePixelRatio || 1
+    const dpr = Math.min(window.devicePixelRatio || 1, 2) // iOS canvas-pool cap
     const w = Math.ceil((this.scene.scale.width / z) * dpr)
     const h = Math.ceil((this.scene.scale.height / z) * dpr)
 
@@ -1618,7 +1618,7 @@ export class BackgroundTheme {
     // Baked once per resize/theme change; twinkle is a whole-layer alpha
     // pulse driven by update() (visually equivalent at these amplitudes).
     const z = this.scene.game.scale.displayScale.x || 1
-    const dpr = window.devicePixelRatio || 1
+    const dpr = Math.min(window.devicePixelRatio || 1, 2) // iOS canvas-pool cap
     const w = Math.ceil((this.scene.scale.width / z) * dpr)
     const h = Math.ceil((this.scene.scale.height / z) * dpr)
     const alpha = Math.min(1, this.starAlpha)
