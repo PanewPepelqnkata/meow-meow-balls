@@ -43,7 +43,7 @@ export function installDiag(game: Phaser.Game): void {
     'position:fixed;bottom:2px;left:2px;z-index:99999;background:rgba(0,0,0,.75);color:#4f4;' +
     'font:11px/1.4 ui-monospace,Menlo,monospace;padding:6px 8px;pointer-events:none;' +
     'white-space:pre;border-radius:6px;text-shadow:0 1px 0 #000'
-  legend.textContent = 'T1=solid tex T2=circle tex G=graphics'
+  legend.textContent = 'T1=solid tex T2=circle tex T3=large tex G=graphics'
   document.body.appendChild(legend)
 
   let gpu = '?'
@@ -117,6 +117,19 @@ export function installDiag(game: Phaser.Game): void {
         x2.fill()
         bg.textures.addCanvas('br-diag-t2', c2)
       }
+      if (!bg.textures.exists('br-diag-t3')) {
+        // LARGE-texture patch: 600×1200 solid red — the same upload class
+        // as the 1170×2532 background bakes (~11.8 MP RGBA). If T1/T2
+        // show but T3 doesn't, the device fails texImage2D for large
+        // canvas textures and the bakes must be tiled/downscaled.
+        const c3 = document.createElement('canvas')
+        c3.width = 600
+        c3.height = 1200
+        const x3 = c3.getContext('2d')!
+        x3.fillStyle = '#ff2222'
+        x3.fillRect(0, 0, 600, 1200)
+        bg.textures.addCanvas('br-diag-t3', c3)
+      }
       bg.add
         .image(8, 64, 'br-diag-t1')
         .setOrigin(0, 0)
@@ -129,9 +142,15 @@ export function installDiag(game: Phaser.Game): void {
         .setDisplaySize(46, 46)
         .setDepth(999)
         .setScrollFactor(0)
+      bg.add
+        .image(116, 64, 'br-diag-t3')
+        .setOrigin(0, 0)
+        .setDisplaySize(46, 92)
+        .setDepth(999)
+        .setScrollFactor(0)
       const g = bg.add.graphics().setDepth(999).setScrollFactor(0)
       g.fillStyle(0x22cc44, 1)
-      g.fillRect(116, 64, 46, 46)
+      g.fillRect(170, 64, 46, 46)
     } catch {
       /* patches are best-effort; the text panel still works */
     }
