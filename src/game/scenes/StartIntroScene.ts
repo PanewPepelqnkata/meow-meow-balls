@@ -1,4 +1,6 @@
 import Phaser from 'phaser'
+import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK } from '../rendering/BallAppearance'
+import { getTier } from '../../config/ballTiers'
 
 /**
  * Phase 2.22 — MOBILE START INTRO (?play intro, portrait phones only).
@@ -53,7 +55,6 @@ export class StartIntroScene extends Phaser.Scene {
     const innerR = Math.min(vw, vh) * 0.14
     const dur = 620
 
-    const g = this.add.graphics().setDepth(0)
 
     // ---- 1. Ring sweep: screen covered by two closing arcs ---------------
     // The viewport is painted with the MENU'S ink tone (the player just
@@ -94,36 +95,32 @@ export class StartIntroScene extends Phaser.Scene {
         // ---- gameplay boots UNDER the closed ring (heavy frame hidden) --
         this.startGameplay()
         // ---- scared ball pops in the middle ------------------------------
-        const ballR = innerR * 0.52
+        const tier1 = getTier(1)
+        const ballR = Math.max(innerR * 0.55, (tier1?.radius ?? 44) * 0.62)
         const ball = this.add.graphics().setDepth(2)
+        // The AUTHENTIC max-scared slime: shared look pipeline (ballLookFor)
+        // + restContour silhouette + drawBallFace at panic 1 (critical:
+        // eyes x1.62, dilated-shrunk pupils, trembling jitter boosted
+        // criticalShakeBoost). Deterministic seed — same character every
+        // intro.
+        const look = ballLookFor(1, 20260222)
+        const contour = restContour(look, ballR, cx, cy, 40)
         const face = (): void => {
           ball.clear()
-          const wobble = Math.sin(this.time.now * 0.012) * ballR * 0.03
-          // body
-          ball.fillStyle(0x4fc3f7, 1)
-          ball.fillCircle(cx, cy, ballR + wobble)
-          ball.lineStyle(Math.max(2, ballR * 0.09), 0x111111, 1)
-          ball.strokeCircle(cx, cy, ballR + wobble)
-          // eyes: wide (panic)
-          const eyeW = ballR * 0.3
-          const eyeH = ballR * 0.42
-          const eyeDX = ballR * 0.3
-          const eyeY = cy - ballR * 0.08
-          ball.fillStyle(0xffffff, 1)
-          ball.fillEllipse(cx - eyeDX, eyeY, eyeW * 2, eyeH * 2)
-          ball.fillEllipse(cx + eyeDX, eyeY, eyeW * 2, eyeH * 2)
-          // pupils: tiny, pinned up (scared)
-          ball.fillStyle(0x111111, 1)
-          ball.fillCircle(cx - eyeDX, eyeY - eyeH * 0.45, ballR * 0.09)
-          ball.fillCircle(cx + eyeDX, eyeY - eyeH * 0.45, ballR * 0.09)
-          // mouth: small open "o"
-          ball.fillStyle(0x111111, 1)
-          ball.fillEllipse(cx, cy + ballR * 0.42, ballR * 0.36, ballR * 0.46)
-          // sweat drops (two, alternating alpha)
+          ball.fillStyle(tier1?.color ?? 0x4fc3f7, 1)
+          ball.fillPoints(contour.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)
+          ball.lineStyle(ballOutlineWidth(ballR), INK, 1)
+          ball.strokePoints(contour.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true, true)
+          drawBallFace(ball, look, { x: cx, y: cy }, ballR, 1, {
+            gaze: { x: 0, y: -1 },
+            panic: 1, // MAX scared — the whole point of this ball
+          })
+          // sweat drops (two, alternating alpha) — drawn by the intro, the
+          // in-game face system doesn't have them.
           const sweatA = 0.55 + Math.sin(this.time.now * 0.014) * 0.35
           ball.fillStyle(0x9edbff, sweatA)
-          ball.fillCircle(cx - ballR * 0.92, cy - ballR * 0.55, ballR * 0.12)
-          ball.fillCircle(cx + ballR * 0.95, cy - ballR * 0.32, ballR * 0.1)
+          ball.fillCircle(cx - ballR * 0.98, cy - ballR * 0.5, ballR * 0.13)
+          ball.fillCircle(cx + ballR * 1.02, cy - ballR * 0.28, ballR * 0.11)
         }
         face()
 
@@ -143,15 +140,34 @@ export class StartIntroScene extends Phaser.Scene {
           callback: face,
         })
 
-        // ---- hold, then hand over to the game ----------------------------
+        // ---- hold, then the OUTRO: ball drops under the screen, ring
+        // reopens outward to reveal the running game -----------------------
         this.time.delayedCall(900, () => {
           wobbleTimer.remove()
+          // 1. The scared ball falls out of the ring (gravity-ish accelerate
+          //    downward, slightly squashed — panic drop).
           this.tweens.add({
-            targets: [ball, cover, g],
-            alpha: 0,
-            duration: 340,
+            targets: ball,
+            y: vh + ballR * 1.4,
+            scaleY: 1.12,
+            scaleX: 0.9,
+            duration: 520,
             ease: 'Quad.easeIn',
+          })
+          // 2. The dark cover + ring edge RE-OPEN outward (reverse of the
+          //    intro sweep) while the ball falls — the game is revealed
+          //    through the growing hole.
+          this.tweens.add({
+            targets: sweepState,
+            r: outerR,
+            duration: 560,
+            delay: 120,
+            ease: 'Cubic.easeIn',
+            onUpdate: () => {
+              drawCover(sweepState.r)
+            },
             onComplete: () => {
+              cover.clear()
               this.scene.stop()
             },
           })

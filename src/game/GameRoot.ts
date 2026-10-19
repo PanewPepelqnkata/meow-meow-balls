@@ -71,16 +71,32 @@ export function createGame(parent: HTMLElement): Phaser.Game {
   // the pixelated look on Retina. Vector/ink art scales cleanly; the
   // perf cost is bounded by the soft-body particle count, not fill rate.
   const dpr = (): number => window.devicePixelRatio || 1
+  let lastAppliedW = 0
+  let lastAppliedH = 0
+  let lastAppliedDpr = 0
   const applyDprResize = (): void => {
     const { w, h } = cssSize()
     const d = dpr()
+    // Same-size guard: multiple listeners fire per real viewport change —
+    // skip duplicate full re-layouts.
+    if (w === lastAppliedW && h === lastAppliedH && d === lastAppliedDpr) return
+    lastAppliedW = w
+    lastAppliedH = h
+    lastAppliedDpr = d
     const bufW = Math.round(w * d)
     const bufH = Math.round(h * d)
     // NONE mode honors explicit sizes: buffer = physical, display = CSS.
-    game.scale.setGameSize(bufW, bufH)
-    game.scale.setParentSize(w, h) // displayScale = physical / CSS = dpr
+    // ORDERING MATTERS (Phase 2.21): style the canvas element FIRST so
+    // ScaleManager.refresh() (fired inside setGameSize) measures the NEW
+    // CSS bounds and computes a correct displayScale before the RESIZE
+    // event reaches BackgroundScene/UiRoot handlers — the previous order
+    // (setGameSize → setParentSize → style) let resize handlers read a
+    // STALE displayScale and paint the background at wrong dimensions
+    // (the 'background shown wrong' bug on real devices).
     game.canvas.style.width = `${w}px`
     game.canvas.style.height = `${h}px`
+    game.scale.setGameSize(bufW, bufH)
+    game.scale.setParentSize(w, h) // displayScale = physical / CSS = dpr
     game.scale.displaySize.setSize(w, h)
     game.events.emit('br:dpr', d)
   }
