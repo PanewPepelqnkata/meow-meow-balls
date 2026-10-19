@@ -38,6 +38,13 @@ export const PHYSICS = {
     // At 8 the rings hold their shape under load and the pile reaches a true
     // static equilibrium (the backstop converges and stays converged).
     // Per-second constraint work at 120Hz/8 ≈ 60Hz/4.
+    // PERF AUDIT (2026): a retune to 8/8/2 (−46% engine time measured)
+    // and 10/10/3 (−33%) BOTH fail the settled-pile battery
+    // (softBallMaxSpeed 4.6 and 6.7 vs the <2 stillness gate) — the
+    // iteration budget is LOAD-BEARING for rest quality at this world
+    // shape. Do not retune without an adaptive-iterations design
+    // (14 while any ball is awake-and-settling, 8 when settled) gated
+    // by the full stabilization battery.
     positionIterations: 14,
     velocityIterations: 12,
     constraintIterations: 4,

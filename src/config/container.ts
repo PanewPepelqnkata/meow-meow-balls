@@ -167,11 +167,21 @@ export interface TrapezoidBounds {
   innerRightAt: (y: number) => number
 }
 
+let cachedBounds: TrapezoidBounds | null = null
+let cachedBoundsKey = ''
+
+/** PERF: containerBounds() allocated ~7 objects (corners + bounds + 2
+ * closures) per call and was called 1-3x per SUBSTEP from the physics
+ * passes — ~500-800 allocs/s. The geometry only changes when the
+ * viewport container resolves (resize), so cache by the current
+ * resolved signature. resolveViewportContainer clears the cache. */
 export function containerBounds(): TrapezoidBounds {
+  const key = `${CONTAINER.topWidth}x${CONTAINER.height}`
+  if (cachedBounds && cachedBoundsKey === key) return cachedBounds
   const c = interiorCorners()
   const slopeL = (c.bottomLeft.x - c.topLeft.x) / (c.bottomLeft.y - c.topLeft.y)
   const slopeR = (c.bottomRight.x - c.topRight.x) / (c.bottomRight.y - c.topRight.y)
-  return {
+  const b: TrapezoidBounds = {
     left: c.topLeft.x,
     right: c.topRight.x,
     top: c.topLeft.y,
@@ -179,6 +189,9 @@ export function containerBounds(): TrapezoidBounds {
     innerLeftAt: (y: number) => c.topLeft.x + slopeL * (y - c.topLeft.y),
     innerRightAt: (y: number) => c.topRight.x + slopeR * (y - c.topRight.y),
   }
+  cachedBounds = b
+  cachedBoundsKey = key
+  return b
 }
 
 /** Inner trapezoid polygon: [topLeft, topRight, bottomRight, bottomLeft]. */

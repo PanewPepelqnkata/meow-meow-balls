@@ -77,17 +77,21 @@ export class PhysicsWorld {
     }
     const constraintInternals = Matter.Constraint as unknown as ConstraintInternals
     const constraintSolveAll = constraintInternals.solveAll
+    // PERF: pooled scratch — solveAll runs 8×/substep (2 passes ×
+    // constraintIterations); a fresh array per call allocated up to
+    // ~8 MB/s in awake piles (JSC minor-GC hitches on iOS).
+    const liveScratch: Matter.Constraint[] = []
     constraintInternals.solveAll = (constraints, delta) => {
-      const live: Matter.Constraint[] = []
+      liveScratch.length = 0
       for (const c of constraints) {
         const a = c.bodyA
         const b = c.bodyB
         const aFrozen = !a || a.isStatic || a.isSleeping
         const bFrozen = !b || b.isStatic || b.isSleeping
         if (aFrozen && bFrozen) continue
-        live.push(c)
+        liveScratch.push(c)
       }
-      constraintSolveAll(live, delta)
+      constraintSolveAll(liveScratch, delta)
     }
     const constraintPostSolveAll = constraintInternals.postSolveAll
     constraintInternals.postSolveAll = (bodies) => {
