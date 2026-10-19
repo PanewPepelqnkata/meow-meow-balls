@@ -83,6 +83,20 @@ export class StartIntroScene extends Phaser.Scene {
 
     // ---- 2. Timeline ------------------------------------------------------
     const sweepState = { r: outerR }
+    // ?diag=1 device readout: sweep progress + cover geometry, sampled by
+    // the diag panel per frame. r/outerR: 1 = ring at screen edge (open),
+    // 0 = fully closed.
+    ;(this.scene.settings.data as unknown as { introDiag?: unknown }).introDiag = {
+      get r() {
+        return sweepState.r
+      },
+      outerR,
+      innerR,
+      get phase() {
+        return (window as unknown as { __brIntroPhase?: string }).__brIntroPhase ?? 'sweep-in'
+      },
+    }
+    ;(window as unknown as { __brIntroPhase?: string }).__brIntroPhase = 'sweep-in'
     this.tweens.add({
       targets: sweepState,
       r: innerR,
@@ -97,6 +111,7 @@ export class StartIntroScene extends Phaser.Scene {
         // by the ink — stop it now so the outro reveals the GAME, not a
         // second menu layer behind the ring.
         this.scene.stop('TitleScene')
+        ;(window as unknown as { __brIntroPhase?: string }).__brIntroPhase = 'ball'
         // ---- gameplay boots UNDER the closed ring (heavy frame hidden) --
         this.startGameplay()
         // ---- scared ball pops in the middle ------------------------------
@@ -149,6 +164,7 @@ export class StartIntroScene extends Phaser.Scene {
         // reopens outward to reveal the running game -----------------------
         this.time.delayedCall(900, () => {
           wobbleTimer.remove()
+          ;(window as unknown as { __brIntroPhase?: string }).__brIntroPhase = 'outro'
           // 1. The scared ball falls out of the ring (gravity-ish accelerate
           //    downward, slightly squashed — panic drop).
           this.tweens.add({

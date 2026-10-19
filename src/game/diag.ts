@@ -75,6 +75,12 @@ export function installDiag(game: Phaser.Game): void {
       lines.push(`MODE ${standalone ? 'PWA-standalone' : 'browser-tab'}`)
       const bg = game.scene.getScene('BackgroundScene') as Phaser.Scene & { background?: Record<string, unknown> }
       const th = bg?.background
+      const intro = game.scene.getScene('StartIntroScene') as Phaser.Scene & { scene: { settings: { status: number; data?: { introDiag?: { outerR: number; innerR: number; r: number; phase: string } } } } }
+      if (intro && intro.scene.settings.data?.introDiag) {
+        const d = intro.scene.settings.data.introDiag
+        const closed = 1 - d.r / d.outerR
+        lines.push(`INTRO phase=${d.phase} closed=${Math.round(closed * 100)}% status=${intro.scene.settings.status}`)
+      }
       if (th) {
         const arts = Object.entries((th.artImages as Record<string, Phaser.GameObjects.Image>) ?? {})
           .map(([k, img]) => `${k}:${fmtImg(img)}`)
