@@ -913,7 +913,8 @@ export class BackgroundTheme {
     ctx.fillStyle = grad
     ctx.fillRect(0, 0, w, h)
     tex.refresh()
-    this.gradImage.setSize(w, h)
+    // Device-px texture, LOGICAL display size (dpr = bitmap res only).
+    this.gradImage.setDisplaySize(Math.ceil(w / (window.devicePixelRatio || 1)), Math.ceil(h / (window.devicePixelRatio || 1)))
     this.gradImage.setVisible(true)
   }
 
@@ -1254,7 +1255,8 @@ export class BackgroundTheme {
         .setDepth(-88)
         .setScrollFactor(0)
     }
-    this.gridImage.setSize(w, h)
+    // Device-px texture, LOGICAL display size.
+    this.gridImage.setDisplaySize(Math.ceil(w / (window.devicePixelRatio || 1)), Math.ceil(h / (window.devicePixelRatio || 1)))
     const spaceActive = (this.toTheme ?? this.currentTheme) === 'space'
     this.gridImage.setVisible(spaceActive)
   }

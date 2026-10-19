@@ -330,6 +330,9 @@ export class TitleScene extends Phaser.Scene {
       }
     }, window.devicePixelRatio || 1)
     const img = this.add.image(0, 0, key).setOrigin(0, 0)
+    // The texture is baked at dpr× resolution; display at LOGICAL size —
+    // dpr changes bitmap resolution only, never world coordinates.
+    img.setDisplaySize(Math.ceil(vw), Math.ceil(vh))
     img.setAlpha(0.9)
     return img
   }
@@ -455,8 +458,10 @@ export class TitleScene extends Phaser.Scene {
     const baselineY = m + wave + maxAsc // sane resting baseline within the canvas
     // Pass 2 — paint: one glyph at a time with its cycle color, a bouncy
     // baseline and an alternating tilt (the pen pivot = typographic base).
-    paint.canvas.width = cW
-    paint.canvas.height = cH
+    const dpr = window.devicePixelRatio || 1
+    paint.canvas.width = cW * dpr
+    paint.canvas.height = cH * dpr
+    paint.scale(dpr, dpr)
     paint.font = font
     paint.lineJoin = 'round'
     paint.lineCap = 'round'
@@ -481,6 +486,8 @@ export class TitleScene extends Phaser.Scene {
     if (this.textures.exists(key)) this.textures.remove(key)
     this.textures.addCanvas(key, paint.canvas)
     const image = this.add.image(0, 0, key)
+    // Baked at dpr× — display at logical size.
+    image.setDisplaySize(cW, cH)
     this.logoImg = image
     this.logoC.add(image)
     const sub = hudText(this, 0, 0, 'soft-body merge rush', 1, {
@@ -654,7 +661,10 @@ export class TitleScene extends Phaser.Scene {
       ctx.fill()
       // rc/seed unused: the back layer is fully deterministic shapes.
     }, window.devicePixelRatio || 1)
-    return this.add.image(0, 0, `br-gumball-back:${key}`).setOrigin(0, 0)
+    // Baked at dpr× — display at the LOGICAL w×h (dpr = bitmap res only).
+    const backImg = this.add.image(0, 0, `br-gumball-back:${key}`).setOrigin(0, 0)
+    backImg.setDisplaySize(Math.ceil(w), Math.ceil(h))
+    return backImg
   }
 
   /** Machine FRONT layer: glass rim, sheen arcs and chrome outlines — clean
@@ -787,7 +797,10 @@ export class TitleScene extends Phaser.Scene {
       starPath(ctx, 31.5 * u, 96 * u, 2.8 * u)
       ctx.stroke()
     }, window.devicePixelRatio || 1)
-    return this.add.image(0, 0, `br-gumball-front:${key}`).setOrigin(0, 0)
+    // Baked at dpr× — display at the LOGICAL w×h (dpr = bitmap res only).
+    const frontImg = this.add.image(0, 0, `br-gumball-front:${key}`).setOrigin(0, 0)
+    frontImg.setDisplaySize(Math.ceil(w), Math.ceil(h))
+    return frontImg
   }
 
   private drawCastBall(ball: CastBall): void {

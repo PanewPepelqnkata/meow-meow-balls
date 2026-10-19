@@ -245,6 +245,7 @@ export class PlaygroundScene extends Phaser.Scene {
       // resolution). DEV-only.
       if (new URLSearchParams(window.location.search).get('perf') === '1') {
         this.perf = new PerfOverlay(this, this.ballRenderer, this.balls)
+        this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.perf?.destroy())
       }
       // Dev diagnostics ONLY behind explicit URL params — never in normal
       // gameplay (Phase 2.5 §4).
