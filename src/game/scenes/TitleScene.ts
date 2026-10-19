@@ -1555,10 +1555,11 @@ export class TitleScene extends Phaser.Scene {
       duration: 620,
       ease: 'Quad.easeInOut',
       onComplete: () => {
-        // Full ink now covers the menu; the handoff boot happens behind
-        // it. StartIntroScene boots startClosed: its first frame draws
-        // the identical closed iris image — no flicker, no scene pop.
-        iris.destroy()
+        // Full ink now covers the menu. Hand off WITHOUT destroying the
+        // iris: it stays painted until this scene stops (part of
+        // scene.start), and StartIntroScene's create() draws its own
+        // identical closed iris in the same frame — no coverless frame,
+        // no flicker at the handoff.
         this.scene.start('StartIntroScene', { startClosed: true })
       },
     })

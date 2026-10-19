@@ -145,13 +145,14 @@ export class StartIntroScene extends Phaser.Scene {
      * startClosed boot (sweep already played in TitleScene). */
     const runBallPhase = (): void => {
       // ---- the cover is now FULLY CLOSED --------------------------------
-      // The menu (running under us when launched open) is completely hidden
-      // by the ink — stop it now so the outro reveals the GAME, not a
-      // second menu layer behind the ring.
-      if (this.scene.isActive('TitleScene')) this.scene.stop('TitleScene')
       setPhase('ball')
       // ---- gameplay boots UNDER the closed ring (heavy frame hidden) --
       this.startGameplay()
+      // Stop the menu AFTER the gameplay scenes are revealed: both render
+      // targets swap in the same frame — no paint gap at the handoff.
+      // (TitleScene normally already stopped itself post-handoff; this
+      // guard covers the legacy open-launch path.)
+      if (this.scene.isActive('TitleScene')) this.scene.stop('TitleScene')
       // ---- scared ball pops in the middle ------------------------------
       const tier1 = getTier(1)
       const ballR = Math.max(innerR * 0.55, (tier1?.radius ?? 44) * 0.62)
@@ -204,7 +205,8 @@ export class StartIntroScene extends Phaser.Scene {
         wobbleTimer.remove()
         setPhase('outro')
         // 1. The scared ball falls out of the ring (gravity-ish accelerate
-        //    downward, slightly squashed — panic drop).
+        //    downward, slightly squashed — panic drop) and fully leaves
+        //    the screen BEFORE the ring opens.
         this.tweens.add({
           targets: ball,
           y: vh + ballR * 1.4,
@@ -212,22 +214,24 @@ export class StartIntroScene extends Phaser.Scene {
           scaleX: 0.9,
           duration: 520,
           ease: 'Quad.easeIn',
-        })
-        // 2. The dark cover + ring edge RE-OPEN outward (reverse of the
-        //    intro sweep) while the ball falls — the game is revealed
-        //    through the growing hole.
-        this.tweens.add({
-          targets: sweepState,
-          r: outerR,
-          duration: 560,
-          delay: 120,
-          ease: 'Cubic.easeIn',
-          onUpdate: () => {
-            drawCover(sweepState.r)
-          },
           onComplete: () => {
-            cover.destroy()
-            this.scene.stop()
+            ball.destroy()
+            // 2. ONLY THEN the cover + ring edge RE-OPEN outward (reverse
+            //    of the intro sweep) — the game is revealed through the
+            //    growing hole.
+            this.tweens.add({
+              targets: sweepState,
+              r: outerR,
+              duration: 560,
+              ease: 'Cubic.easeIn',
+              onUpdate: () => {
+                drawCover(sweepState.r)
+              },
+              onComplete: () => {
+                cover.destroy()
+                this.scene.stop()
+              },
+            })
           },
         })
       })
