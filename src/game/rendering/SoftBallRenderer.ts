@@ -108,7 +108,7 @@ export class SoftBallRenderer {
     // faces use this frame's eased panic value. Visual-only: the system
     // never touches physics state. (Array.from avoids a closure spread —
     // same list, no allocation churn.)
-    this.emotion.update(Array.from(this.renderables.values()))
+    this.emotion.update(this.renderables.values())
     // PHASE 2.9.3: two-pass draw. Pass 1 fills EVERY ball; pass 2 strokes
     // EVERY outline. Single-pass per-ball drawing let a later ball's stroke
     // cut into an earlier ball's fill at contact points — the main visible
@@ -179,7 +179,20 @@ export class SoftBallRenderer {
           cx = c.x
           cy = c.y
         } else {
-          poly = built.map((p) => new Phaser.Math.Vector2(p.x, p.y))
+          // PERF: pooled in-place reuse for AWAKE balls too — the
+          // non-cacheable path previously allocated ~200 Vector2s per
+          // ball per frame (~240k allocs/s at 10 awake balls).
+          let reuse = cached?.poly
+          if (!reuse || reuse.length !== built.length) {
+            reuse = built.map((p) => new Phaser.Math.Vector2(p.x, p.y))
+          } else {
+            for (let i = 0; i < built.length; i++) {
+              const p = reuse[i]
+              const b = built[i]
+              if (p && b) p.set(b.x, b.y)
+            }
+          }
+          poly = reuse
           cx = c.x
           cy = c.y
           this.contourCache.delete(r.id)

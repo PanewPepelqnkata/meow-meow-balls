@@ -15,7 +15,10 @@ import { variantIdFor } from '../game/state/runVariant'
  * position and appearance the claw showed).
  */
 export class DropClaw {
+  private readonly scene: Phaser.Scene
   private readonly g: Phaser.GameObjects.Graphics
+  private holder: Phaser.GameObjects.Container | null = null
+  private objectsCache: Array<Phaser.GameObjects.GameObject> | null = null
   private aimX = 360
   private tier = 1
   private seed = 1
@@ -25,6 +28,7 @@ export class DropClaw {
   private mobile = false
 
   constructor(scene: Phaser.Scene) {
+    this.scene = scene
     this.g = scene.add.graphics().setDepth(5)
   }
 
@@ -42,13 +46,16 @@ export class DropClaw {
   }
 
   objects(): Array<Phaser.GameObjects.GameObject> {
-    return [this.g]
+    return this.objectsCache ?? [this.g]
   }
 
   setAim(x: number): void {
     if (x !== this.aimX) {
       this.aimX = x
-      this.redraw()
+      // PERF: aim changes only TRANSLATE the container — the ~1100-tri
+      // character + claw assembly are NOT re-tessellated per pointermove
+      // (render audit #3: the aim-drag spike, largest frame mid-drag).
+      if (this.holder) this.holder.x = x
     }
   }
 
@@ -61,14 +68,22 @@ export class DropClaw {
   }
 
   private redraw(): void {
+    if (!this.holder) {
+      this.holder = this.scene.add.container(0, 0)
+      this.holder.setDepth(this.g.depth)
+      this.holder.add(this.g)
+      this.objectsCache = [this.holder]
+    }
+    this.holder.x = this.aimX
     const g = this.g
     g.clear()
-    if (!this.visible) return
+    if (!this.visible) { this.g.setVisible(false); return }
+    this.g.setVisible(true)
     const tier = getTier(this.tier)
     if (!tier) return
     const r = tier.radius
     const by = spawnY(r) // ball center = exact spawn position
-    const x = this.aimX
+    const x = 0 // local coords inside the aim container
 
     // --- ball (same appearance source as gameplay renderer) ---
     const look = ballLookFor(this.tier, this.seed)

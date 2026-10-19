@@ -479,24 +479,26 @@ export function drawBallFace(
       continue
     }
     g.fillStyle(0xffffff, 1)
-    g.fillEllipse(X(e.x), Y(e.y), e.a * 2, e.b * 2)
+    g.fillEllipse(X(e.x), Y(e.y), e.a * 2, e.b * 2, 12)
     g.lineStyle(e.rim, INK, 1)
-    g.strokeEllipse(X(e.x), Y(e.y), e.a * 2, e.b * 2)
+    g.strokeEllipse(X(e.x), Y(e.y), e.a * 2, e.b * 2, 12)
     g.fillStyle(INK, 1)
-    g.fillEllipse(X(e.x + e.px), Y(e.y + e.py), e.pa * 2, e.pb * 2)
+    g.fillEllipse(X(e.x + e.px), Y(e.y + e.py), e.pa * 2, e.pb * 2, 10)
     // Main highlight near the pupil's upper-left + tiny secondary dot.
+    // PERF: fillCircle = 100-pt Earcut per dot regardless of radius;
+    // small smoothness ellipses render identically at ≤4px.
     g.fillStyle(0xffffff, 1)
-    g.fillCircle(X(e.x + e.px - e.pa * 0.32), Y(e.y + e.py - e.pb * 0.34), e.pa * 0.3)
-    g.fillCircle(X(e.x + e.px - e.pa * 0.1), Y(e.y + e.py - e.pb * 0.38), e.pa * 0.12)
+    g.fillEllipse(X(e.x + e.px - e.pa * 0.32), Y(e.y + e.py - e.pb * 0.34), e.pa * 0.6, e.pa * 0.6, 8)
+    g.fillEllipse(X(e.x + e.px - e.pa * 0.1), Y(e.y + e.py - e.pb * 0.38), e.pa * 0.24, e.pa * 0.24, 8)
   }
 
   // Body glint: white oval on the TOP-LEFT of the head (10–11 o'clock),
   // drawn after the eyes (in ball-local space so it deforms with the
   // squash) + a tiny secondary dot — a clearly visible shine.
   g.fillStyle(0xffffff, 0.85)
-  g.fillEllipse(X(L.highlight.x), Y(L.highlight.y), L.highlight.w, L.highlight.h)
+  g.fillEllipse(X(L.highlight.x), Y(L.highlight.y), L.highlight.w, L.highlight.h, 10)
   g.fillStyle(0xffffff, 0.95)
-  g.fillCircle(X(L.highlightDot.x), Y(L.highlightDot.y), L.highlightDot.r)
+  g.fillEllipse(X(L.highlightDot.x), Y(L.highlightDot.y), L.highlightDot.r * 2, L.highlightDot.r * 2, 8)
 
   // Simple marker mouths (Priority 1C): one clean ink stroke each —
   // 0 shallow smile · 1 slightly asymmetric smile · 2 tiny arc.

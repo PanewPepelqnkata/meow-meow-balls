@@ -114,7 +114,7 @@ export class BallEmotionSystem {
    * spawn grace period (`activationDelayMs`) measures 0 — newly dropped
    * balls fall through the rim on the way in and must never panic.
    */
-  update(balls: readonly SoftBallEntity[]): void {
+  update(balls: Iterable<SoftBallEntity>): void {
     const wallTopY = this.wallTopY
     const now = this.now()
     const dt = Math.min(0.1, Math.max(0, (now - this.lastTick) / 1000))
