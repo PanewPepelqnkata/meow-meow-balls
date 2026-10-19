@@ -92,6 +92,11 @@ export class StartIntroScene extends Phaser.Scene {
         drawCover(sweepState.r)
       },
       onComplete: () => {
+        // ---- the cover is now FULLY CLOSED --------------------------------
+        // The menu (launched under us, still visible) is completely hidden
+        // by the ink — stop it now so the outro reveals the GAME, not a
+        // second menu layer behind the ring.
+        this.scene.stop('TitleScene')
         // ---- gameplay boots UNDER the closed ring (heavy frame hidden) --
         this.startGameplay()
         // ---- scared ball pops in the middle ------------------------------

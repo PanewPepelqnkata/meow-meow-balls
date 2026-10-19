@@ -1535,7 +1535,12 @@ export class TitleScene extends Phaser.Scene {
       gameBus.emit('ui:start', {})
       this.scene.setVisible(false, 'playground')
       this.scene.setVisible(false, 'UIScene')
-      this.scene.start('StartIntroScene')
+      // LAUNCH (not start): TitleScene must stay VISIBLE under the intro
+      // — the sweep-in ring closes over the MENU, so the shrinking hole
+      // shows the menu, never the space background behind it. The intro
+      // stops this scene once the cover is fully closed (see
+      // StartIntroScene sweep onComplete).
+      this.scene.launch('StartIntroScene')
       return
     }
     gameBus.emit('ui:start', {})
