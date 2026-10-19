@@ -85,6 +85,35 @@ function write(): void {
   }
 }
 
+/**
+ * PERF: merges fire recordMerge up to several times inside ONE frame (deep
+ * chains). localStorage.setItem is a synchronous IPC round-trip on iOS
+ * (5-20 ms each) — a 4-merge chain stalled frames by 60 ms+. writeNow()
+ * flushes immediately (run end, settings change, tab hide); high-frequency
+ * callers use writeSoon() which coalesces to one store write per second.
+ * The in-memory cache is ALWAYS current — only the disk copy may lag ≤1 s.
+ */
+let writeTimer: ReturnType<typeof setTimeout> | null = null
+function writeSoon(): void {
+  if (writeTimer) return
+  writeTimer = setTimeout(() => {
+    writeTimer = null
+    write()
+  }, 1000)
+}
+function writeNow(): void {
+  if (writeTimer) {
+    clearTimeout(writeTimer)
+    writeTimer = null
+  }
+  write()
+}
+if (typeof window !== 'undefined') {
+  const flush = (): void => writeNow()
+  window.addEventListener('visibilitychange', flush)
+  window.addEventListener('pagehide', flush)
+}
+
 export function loadSave(): SaveDataV1 {
   if (cache) return cache
   const s = storage()
@@ -114,6 +143,10 @@ export function loadSave(): SaveDataV1 {
 /** Test/QA hook: wipe the save completely (Settings → Reset progress). */
 export function resetSave(): void {
   cache = freshSave()
+  if (writeTimer) {
+    clearTimeout(writeTimer)
+    writeTimer = null
+  }
   const s = storage()
   if (s) {
     try {
@@ -134,7 +167,7 @@ export function recordDiscovery(tier: number, variantId: number | null): void {
     if (save.variants[k] == null) save.variants[k] = now
   }
   if (tier > save.stats.bestTier) save.stats.bestTier = tier
-  write()
+  writeSoon()
 }
 
 /** One merge happened (lifetime stat). */
@@ -142,7 +175,7 @@ export function recordMerge(tier: number): void {
   const save = loadSave()
   save.stats.merges++
   if (tier > save.stats.bestTier) save.stats.bestTier = tier
-  write()
+  writeSoon()
 }
 
 /** A run ended (game over): leaderboard entry + best-score bookkeeping. */
@@ -153,7 +186,7 @@ export function recordRunEnd(score: number, bestTier: number): number {
   save.leaderboard.push({ score, bestTier, at: Date.now() })
   save.leaderboard.sort((a, b) => b.score - a.score || a.at - b.at)
   save.leaderboard = save.leaderboard.slice(0, MAX_LEADERBOARD)
-  write()
+  writeNow()
   return save.best
 }
 
@@ -164,7 +197,7 @@ export function savedBest(): number {
 
 export function setThemeSetting(theme: ThemeSetting): void {
   loadSave().settings.theme = theme
-  write()
+  writeNow()
 }
 
 export function themeSetting(): ThemeSetting {

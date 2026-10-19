@@ -50,6 +50,11 @@ export function createGame(parent: HTMLElement): Phaser.Game {
     width: STAGE.width,
     height: STAGE.height,
     backgroundColor: clearColor,
+    // PERF: hint the GL context at the high-power GPU. Phaser forwards this
+    // verbatim into the WebGL context attributes; 'default' lets iOS/Android
+    // treat the context as dispensable (background throttling, reduced
+    // sustained clocks on dual-GPU devices).
+    powerPreference: 'high-performance',
     scale: {
       mode: Phaser.Scale.NONE,
       autoCenter: Phaser.Scale.NO_CENTER,

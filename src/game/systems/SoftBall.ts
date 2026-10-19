@@ -346,8 +346,7 @@ export function applyPressure(ball: SoftBall): void {
   // pile-scale breathing, area 0.45↔0.5 on a ~0.7s period); with the brake
   // the gas reaches static equilibrium like a real damped spring: full
   // support under load, no overshoot, no standing oscillation.
-  const pts = ball.particles.map((p) => p.position)
-  const n = pts.length
+  const n = ball.particles.length
   const centroid = ball.center.position
   const sgn = Math.sign(signed)
   const brakeCoef = SOFT.pressureDamping * Math.sqrt(magnitudeCapped)

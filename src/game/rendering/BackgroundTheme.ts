@@ -1026,21 +1026,19 @@ export class BackgroundTheme {
   /** Shooting star state (space theme): null = idle. */
   private shoot: { x: number; y: number; vx: number; vy: number; life: number } | null = null
   private nextShootAt = 2500
-  /** Phase 2.20: star twinkle repaints at ~20 Hz — the twinkle period is
-   * seconds, so 20 fps of star motion is visually identical to 60 while
-   * cutting the star-layer Graphics rebuild to a third. */
-  private starAccumMs = 0
-  private static readonly STAR_INTERVAL_MS = 1000 / 20
-
   constructor(scene: Phaser.Scene, initialTheme: ThemeName = 'light') {
     this.scene = scene
     this.currentTheme = initialTheme
     // Background renders in screen space (never-zoomed camera).
     this.ambientLayer = scene.add.graphics().setDepth(-89)
-    this.updateGradImage()
-
-    this.drawBackground()
-    this.drawGrid()
+    // PERF: no bakes here. At construction scale.width/height are still the
+    // 720x1280 STAGE config and displayScale is 1, so with dpr 3 every bake
+    // would create a 2160x3840 texture (~33 MB x4) that the imminent boot
+    // resize (READY -> applyDprResize) throws away and re-bakes at the real
+    // viewport — a burst of 8 GPU texture alloc/free cycles of 8-12 MP each,
+    // exactly the regime where iOS WebGL uploads fail. The boot RESIZE storm
+    // reaches handleResize with the real viewport; the pending-net in
+    // update() paints synchronously before the first visible frame.
     this.initStars(initialTheme)
     this.initAmbient(initialTheme)
     this.buildCloudGroup(initialTheme)
@@ -1088,19 +1086,14 @@ export class BackgroundTheme {
     this.lastResizeW = cssW
     this.lastResizeH = cssH
     this.lastResizeDpr = dpr
+    // PERF: the timer no longer bakes. Previously BOTH this debounced
+    // callback AND update()'s pending-net ran the full rebuild — the boot
+    // sequence baked every full-screen texture TWICE (double the GPU
+    // alloc/upload churn). Now the timer just lets the event storm settle;
+    // update()'s pending-net performs the single rebuild on the next frame.
     if (this.resizeTimer) this.scene.time.removeEvent(this.resizeTimer)
     this.resizeTimer = this.scene.time.delayedCall(120, () => {
       this.resizeTimer = undefined
-      this.updateGradImage()
-      this.drawBackground()
-      this.drawGrid()
-      this.initStars(this.currentTheme)
-      this.initAmbient(this.currentTheme)
-      this.rebuildClouds()
-      this.drawStars()
-      this.pendingW = 0
-      this.pendingH = 0
-      this.pendingDpr = 0
     })
   }
 
@@ -1195,6 +1188,16 @@ export class BackgroundTheme {
     // Bake BOTH partner arts once; the tween then only blends alphas
     // (via applyCloudAlphas on the progress tick) — no per-frame rebakes.
     this.drawBackground()
+    // Star/grid layers follow the same once-per-change rule: initStars only
+    // resets the data; with the 20 Hz re-bake gone, space-bound transitions
+    // must bake the star texture here (pruneArtTextures may have dropped it).
+    if ((theme === 'space' || this.fromTheme === 'space') && (!this.starImage || !this.scene.textures.exists('br-stars'))) {
+      this.starAlpha = theme === 'space' ? 1 : 0
+      this.drawStars()
+    }
+    if ((theme === 'space' || this.fromTheme === 'space') && (!this.gridImage || !this.scene.textures.exists('br-grid'))) {
+      this.drawGrid()
+    }
 
     this.transitionTween?.stop()
     this.transitionTween = this.scene.tweens.add({
@@ -1204,7 +1207,18 @@ export class BackgroundTheme {
       ease: 'Sine.easeInOut',
       onUpdate: () => {
         this.applyCloudAlphas()
-        this.drawGrid()
+        // PERF: no drawGrid() per tick. The grid bake depends only on
+        // viewport dims + spaceActive — both constant during a crossfade —
+        // yet the old call repainted the full 1170x2532 canvas + tex.refresh()
+        // (11.8 MB upload) EVERY tick, ~700 MB over one 800 ms fade, to
+        // interpolate a line color the eye cannot track at gridAlpha 0.2.
+        // Bake at the endpoints only; blend the Image alpha in between.
+        if (this.gridImage && this.fromTheme && this.toTheme) {
+          const from = THEMES[this.fromTheme].gridAlpha
+          const to = THEMES[this.toTheme].gridAlpha
+          const portraitBoost = window.innerWidth < window.innerHeight ? 2.6 : 1
+          this.gridImage.setAlpha(Math.min(1, (from + (to - from) * this.transitionProgress) * portraitBoost))
+        }
       },
       onComplete: () => {
         this.currentTheme = theme
@@ -1214,8 +1228,38 @@ export class BackgroundTheme {
         this.transitionTween = undefined
         this.drawBackground()
         this.drawGrid()
+        this.pruneArtTextures()
       },
     })
+  }
+
+  /**
+   * PERF: drop device-res art textures (11.8 MB GPU + 11.8 MB CPU canvas
+   * each on an iPhone) of themes that are no longer visible. bakeThemeArt
+   * recreates them on demand via drawBackground()'s wanted list — a one-off
+   * bake at the next theme switch instead of permanent residency (up to
+   * 47 MB for all four themes). Also drops the space grid/star layers when
+   * space is fully gone; drawGrid/drawStars recreate them cheaply.
+   */
+  private pruneArtTextures(): void {
+    for (const name of Object.keys(this.artImages) as ThemeName[]) {
+      if (name === this.currentTheme) continue
+      this.artImages[name]?.destroy()
+      delete this.artImages[name]
+      if (this.scene.textures.exists('br-art-' + name)) this.scene.textures.remove('br-art-' + name)
+    }
+    if (this.currentTheme !== 'space') {
+      if (this.starImage) {
+        this.starImage.destroy()
+        this.starImage = null
+        if (this.scene.textures.exists('br-stars')) this.scene.textures.remove('br-stars')
+      }
+      if (this.gridImage) {
+        this.gridImage.destroy()
+        this.gridImage = null
+        if (this.scene.textures.exists('br-grid')) this.scene.textures.remove('br-grid')
+      }
+    }
   }
 
   /** Stable star field for the space theme (deterministic layout). */
@@ -1533,6 +1577,9 @@ export class BackgroundTheme {
     const ctx = src.getContext('2d')!
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, w, h)
+    // PERF: the star texture is time-INDEPENDENT (fixed seed; the per-star
+    // twinkle phases in this.stars are never read). It is baked once per
+    // resize/theme change; update() drives visibility with starImage alpha.
     if (alpha > 0.01) {
       ctx.strokeStyle = '#' + color.toString(16).padStart(6, '0')
       ctx.globalAlpha = alpha
@@ -1566,11 +1613,10 @@ export class BackgroundTheme {
 
   private drawStars(): void {
     // Phase 2.21: stars baked into a device-resolution canvas texture on
-    // an Image (depth -95). The old per-frame Graphics clear+repaint of
-    // 120 circles silently failed to render on high-DPR phone viewports
-    // (same Graphics-layer issue as the grid). Twinkle is now a whole-
-    // layer alpha pulse — visually equivalent at these amplitudes and
-    // effectively free.
+    // an Image (depth -95) — the old per-frame Graphics clear+repaint of
+    // 120 circles silently failed to render on high-DPR phone viewports.
+    // Baked once per resize/theme change; twinkle is a whole-layer alpha
+    // pulse driven by update() (visually equivalent at these amplitudes).
     const z = this.scene.game.scale.displayScale.x || 1
     const dpr = window.devicePixelRatio || 1
     const w = Math.ceil((this.scene.scale.width / z) * dpr)
@@ -1596,6 +1642,9 @@ export class BackgroundTheme {
     const ctx = src.getContext('2d')!
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, w, h)
+    // PERF: the star texture is time-INDEPENDENT (fixed seed; the per-star
+    // twinkle phases in this.stars are never read). It is baked once per
+    // resize/theme change; update() drives visibility with starImage alpha.
     if (alpha > 0.01) {
       const bands = [
         { n: 80, r: [0.5, 1.0], a: [0.22, 0.5] },
@@ -1644,9 +1693,11 @@ export class BackgroundTheme {
         .setOrigin(0, 0)
         .setDepth(-95)
     }
-    // Device-px texture, LOGICAL display size.
+    // Device-px texture, LOGICAL display size. Visibility/alpha are owned
+    // by update()'s starAlpha pulse.
     this.starImage.setDisplaySize(Math.ceil(w / dpr), Math.ceil(h / dpr))
     this.starImage.setVisible(alpha > 0.01)
+    this.starImage.setAlpha(alpha)
   }
 
   /** Current portrait art scale (star sizing) — same inverse as the
@@ -1657,18 +1708,33 @@ export class BackgroundTheme {
   }
 
   private drawAmbient(delta: number): void {
-    const g = this.ambientLayer
-    g.clear()
     const theme = this.toTheme ?? this.currentTheme
-    // CSS-px bounds (see initStars).
-    const z = this.scene.game.scale.displayScale.x || 1
-    const w = this.scene.scale.width / z
-    const h = this.scene.scale.height / z
-    const now = this.scene.time.now
-
+    // PERF: in space the ambient layer holds only the occasional shooting
+    // star (~1 s every 4-8 s). The old path cleared and re-tessellated the
+    // (empty) Graphics buffer every frame regardless — skip entirely while
+    // idle; the last streak frame stays on screen until the layer is
+    // explicitly hidden here (it fades via s.life anyway).
     if (theme === 'space') {
-      // Shooting star: spawn occasionally, streak diagonally and fade.
       this.nextShootAt -= delta
+      if (this.shoot) {
+        this.shoot.life -= delta / 900
+        if (this.shoot.life <= 0) this.shoot = null
+      }
+      if (!this.shoot && this.nextShootAt > 0) {
+        if (this.ambientLayer.visible) {
+          this.ambientLayer.clear()
+          this.ambientLayer.setVisible(false)
+        }
+        return
+      }
+      const g = this.ambientLayer
+      g.setVisible(true)
+      g.clear()
+      // CSS-px bounds (see initStars).
+      const z = this.scene.game.scale.displayScale.x || 1
+      const w = this.scene.scale.width / z
+      const h = this.scene.scale.height / z
+
       if (!this.shoot && this.nextShootAt <= 0) {
         const sx = w * (0.25 + Math.random() * 0.6)
         this.shoot = { x: sx, y: h * (0.04 + Math.random() * 0.2), vx: -(w * 0.42), vy: h * 0.22, life: 1 }
@@ -1678,30 +1744,31 @@ export class BackgroundTheme {
         const s = this.shoot
         s.x += s.vx * (delta / 1000)
         s.y += s.vy * (delta / 1000)
-        s.life -= delta / 900
-        if (s.life <= 0) {
-          this.shoot = null
-        } else {
-          const tailX = s.x - s.vx * 0.22
-          const tailY = s.y - s.vy * 0.22
-          const grad = this.ambientGrad
-          void grad
-          g.lineStyle(2.2, 0xffffff, 0.85 * s.life)
-          g.beginPath()
-          g.moveTo(tailX, tailY)
-          g.lineTo(s.x, s.y)
-          g.strokePath()
-          g.lineStyle(4.5, 0xbfd8ff, 0.25 * s.life)
-          g.beginPath()
-          g.moveTo(tailX, tailY)
-          g.lineTo(s.x, s.y)
-          g.strokePath()
-          g.fillStyle(0xffffff, s.life)
-          g.fillCircle(s.x, s.y, 2.2)
-        }
+        const tailX = s.x - s.vx * 0.22
+        const tailY = s.y - s.vy * 0.22
+        g.lineStyle(2.2, 0xffffff, 0.85 * s.life)
+        g.beginPath()
+        g.moveTo(tailX, tailY)
+        g.lineTo(s.x, s.y)
+        g.strokePath()
+        g.lineStyle(4.5, 0xbfd8ff, 0.25 * s.life)
+        g.beginPath()
+        g.moveTo(tailX, tailY)
+        g.lineTo(s.x, s.y)
+        g.strokePath()
+        g.fillStyle(0xffffff, s.life)
+        g.fillCircle(s.x, s.y, 2.2)
       }
       return
     }
+
+    const g = this.ambientLayer
+    g.clear()
+    // CSS-px bounds (see initStars).
+    const z = this.scene.game.scale.displayScale.x || 1
+    const w = this.scene.scale.width / z
+    const h = this.scene.scale.height / z
+    const now = this.scene.time.now
 
     for (const p of this.ambient) {
       const t = now * 0.001 + p.ph
@@ -1737,9 +1804,7 @@ export class BackgroundTheme {
     }
   }
 
-  private ambientGrad = false
-
-  /** Per-frame star twinkle + cloud drift + ambient layer. */
+  /** Per-frame star pulse + cloud drift + ambient layer. */
   update(delta: number): void {
     // Correctness net: if a resize left unbaked dims (debounce pending or
     // timer frozen by a hidden tab), rebuild NOW — the background must
@@ -1763,11 +1828,14 @@ export class BackgroundTheme {
     } else {
       this.starAlpha = fromSpace ? 1 : 0
     }
-    // Star layer alpha pulse at ~20 Hz (baked texture — cheap alpha set).
-    this.starAccumMs += delta
-    if (this.starAccumMs >= BackgroundTheme.STAR_INTERVAL_MS) {
-      this.starAccumMs %= BackgroundTheme.STAR_INTERVAL_MS
-      this.drawStars()
+    // Star twinkle: whole-layer alpha pulse on the baked texture — the old
+    // 20 Hz drawStars() re-baked IDENTICAL pixels (fixed seed, no
+    // time-dependent input) = clearRect + 120 arcs + tex.refresh() on the
+    // full 1170x2532 canvas => ~11.8 MB texImage2D 20x/s (~236 MB/s) for
+    // zero visual change. A setAlpha is a free uniform write.
+    if (this.starImage) {
+      this.starImage.setAlpha(Math.min(1, this.starAlpha))
+      this.starImage.setVisible(this.starAlpha > 0.01)
     }
     this.drawAmbient(delta)
     // Slow parallax drift on the cloud blobs (Images only).

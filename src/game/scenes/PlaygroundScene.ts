@@ -147,11 +147,15 @@ export class PlaygroundScene extends Phaser.Scene {
     this.walls.setClock(() => this.time.now)
 
     this.balls = new SoftBallManager(this.physicsWorld.world)
+    this.balls.setPhysics(this.physicsWorld)
     this.balls.tierRadius = (tier) => getTier(tier)?.radius ?? 34
     // Bind AFTER the manager exists — Phase 2.9.9 fix: the previous code bound
     // while `this.balls` was still undefined, so the animator's manager ref
     // (wakeAll on wall motion) was silently dead.
-    this.walls.bind(wallBodies, (h) => this.containerView.redrawWalls(h), this.balls, tipBodies)
+    this.walls.bind(wallBodies, (h) => {
+      this.containerView.redrawWalls(h)
+      this.balls.invalidateWallGeo()
+    }, this.balls, tipBodies)
     this.ballRenderer = new SoftBallRenderer(this)
     // Per-substep soft-body solver passes, exactly once per Engine.update —
     // never per rendered frame: rest/pressure → contact backstop (iterates

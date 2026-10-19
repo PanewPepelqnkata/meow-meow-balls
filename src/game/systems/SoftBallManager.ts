@@ -111,7 +111,15 @@ export class SoftBallManager {
    * `null` (headless rigs) = extrapolated funnel clamp at every height. */
   wallTopY: number | null = null
 
+  private physics: { registerComposite(c: Matter.Composite): void; unregisterComposite(c: Matter.Composite): void } | null = null
+
   constructor(private readonly world: Matter.World) {}
+
+  /** PERF wiring: keep the body cache in PhysicsWorld in sync with soft-ball
+   * composites (they bypass addBody/removeBody). No-op when unset (tests). */
+  setPhysics(physics: { registerComposite(c: Matter.Composite): void; unregisterComposite(c: Matter.Composite): void }): void {
+    this.physics = physics
+  }
 
   get count(): number {
     return this.balls.length
@@ -269,6 +277,7 @@ export class SoftBallManager {
     const useSeed = seed ?? this.nextId
     const soft = createSoftBall(x, y, this.tierRadius(tier), this.nextId)
     addToWorld(this.world, soft)
+    this.physics?.registerComposite(soft.composite)
     const entity: SoftBallEntity = {
       id: this.nextId++,
       tier,
@@ -330,6 +339,7 @@ export class SoftBallManager {
     const c = softBallCentroid(ball.soft)
     const radius = ball.soft.radius
     removeFromWorld(this.world, ball.soft)
+    this.physics?.unregisterComposite(ball.soft.composite)
     this.bodyOwners.delete(ball.soft.center.id)
     for (const p of ball.soft.particles) this.bodyOwners.delete(p.id)
     this.restCounters.delete(id)
@@ -352,19 +362,49 @@ export class SoftBallManager {
    * walls or floor (measured defect: wedged particles were pushed through
    * the floor line by their own separation corrections).
    */
+  /** Cached container line constants (slope/intercept/length per wall +
+   * floorY) — the trapezoid geometry only changes during the Raise Walls
+   * animation, but the old code recomputed containerBounds() + 4 hypots +
+   * 4 closures on EVERY call of wallLimitedDistance (thousands per substep
+   * in a busy pile). Lazily rebuilt when WallAnimator moves the walls. */
+  private wallGeo: {
+    floorY: number
+    slopeL: number
+    cL: number
+    lenL: number
+    slopeR: number
+    cR: number
+    lenR: number
+  } | null = null
+
+  invalidateWallGeo(): void {
+    this.wallGeo = null
+  }
+
   private wallLimitedDistance(p: Matter.Body, ux: number, uy: number, bodyR: number): number {
-    const b = containerBounds()
-    const slopeL = (b.innerLeftAt(b.floorY) - b.innerLeftAt(b.top)) / (b.floorY - b.top)
-    const cL = b.innerLeftAt(b.top) - slopeL * b.top
-    const lenL = Math.hypot(1, slopeL)
-    const slopeR = (b.innerRightAt(b.floorY) - b.innerRightAt(b.top)) / (b.floorY - b.top)
-    const cR = b.innerRightAt(b.top) - slopeR * b.top
-    const lenR = Math.hypot(1, slopeR)
+    let geo = this.wallGeo
+    if (!geo) {
+      const b = containerBounds()
+      const slopeL = (b.innerLeftAt(b.floorY) - b.innerLeftAt(b.top)) / (b.floorY - b.top)
+      const cL = b.innerLeftAt(b.top) - slopeL * b.top
+      const slopeR = (b.innerRightAt(b.floorY) - b.innerRightAt(b.top)) / (b.floorY - b.top)
+      const cR = b.innerRightAt(b.top) - slopeR * b.top
+      geo = this.wallGeo = {
+        floorY: b.floorY,
+        slopeL,
+        cL,
+        lenL: Math.hypot(1, slopeL),
+        slopeR,
+        cR,
+        lenR: Math.hypot(1, slopeR),
+      }
+    }
+    const { floorY, slopeL, cL, lenL, slopeR, cR, lenR } = geo
     const clear = bodyR + 0.5
     let allowed = Infinity
     if (uy > 1e-6) {
       // moving toward the floor
-      const t = (b.floorY - clear - p.position.y) / uy
+      const t = (floorY - clear - p.position.y) / uy
       if (t < allowed) allowed = Math.max(0, t)
     }
     const dirL = (ux - slopeL * uy) / lenL
@@ -548,7 +588,6 @@ export class SoftBallManager {
     // (nearParticles/nearRadii) instead of pushing a fresh {x,y,r} object
     // per foreign particle per ball per substep.
     const near = this.nearParticles
-    let nearN = 0
     for (const A of balls) {
       if (softBallSleeping(A.soft)) continue
       const soft = A.soft
@@ -565,7 +604,7 @@ export class SoftBallManager {
       // particle radius + margin: the moving particle's CENTER must stay
       // outside foreign surfaces, or Matter cancels the move next step).
       // Only needed for OUTWARD moves — inward moves retreat from neighbors.
-      nearN = 0
+      let nearN = 0
       if (outward) {
         for (const B of balls) {
           if (B === A) continue

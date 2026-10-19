@@ -141,19 +141,41 @@ export class PhysicsWorld {
     return body
   }
 
+  /** Flat body list cache — Composite.allBodies() walks the entire
+   * composite tree and fills a fresh array on EVERY call; the step loop
+   * called it twice per substep (velocity snapshot + clampSpeeds), i.e.
+   * ~240 array allocations/s in steady state. Maintained via add/remove.
+   * Soft-ball composites must call registerComposite/unregisterComposite
+   * so spawned particles stay in the cache. */
+  private bodiesCache: Matter.Body[] = []
+
   addBody(body: Matter.Body): void {
     if (this._disposed) return
     Matter.Composite.add(this.world, body)
+    this.bodiesCache.push(body)
   }
 
   removeBody(body: Matter.Body): void {
     if (this._disposed) return
     Matter.Composite.remove(this.world, body)
+    const i = this.bodiesCache.indexOf(body)
+    if (i >= 0) this.bodiesCache.splice(i, 1)
+  }
+
+  registerComposite(composite: Matter.Composite): void {
+    if (this._disposed) return
+    this.bodiesCache.push(...Matter.Composite.allBodies(composite))
+  }
+
+  unregisterComposite(composite: Matter.Composite): void {
+    if (this._disposed) return
+    const gone = new Set(Matter.Composite.allBodies(composite))
+    this.bodiesCache = this.bodiesCache.filter((b) => !gone.has(b))
   }
 
   getAllBodies(): Matter.Body[] {
     if (this._disposed) return []
-    return Matter.Composite.allBodies(this.world)
+    return this.bodiesCache
   }
 
   getDynamicBodies(): Matter.Body[] {
@@ -232,9 +254,22 @@ export class PhysicsWorld {
     let substeps = 0
     while (this.accumulatorMs >= PHYSICS.stepMs && substeps < PHYSICS.maxSubSteps) {
       // Snapshot velocities BEFORE this substep resolves collisions
-      this.preStepVelocities.clear()
+      // Pooled reuse: overwrite the cached vectors in place instead of
+      // allocating ~340 fresh objects per substep (~41k allocs/s).
+      for (const v of this.preStepVelocities.values()) {
+        v.x = 0
+        v.y = 0
+      }
       for (const body of this.getAllBodies()) {
-        if (!body.isStatic) this.preStepVelocities.set(body.id, { ...body.velocity })
+        if (!body.isStatic) {
+          const pooled = this.preStepVelocities.get(body.id)
+          if (pooled) {
+            pooled.x = body.velocity.x
+            pooled.y = body.velocity.y
+          } else {
+            this.preStepVelocities.set(body.id, { x: body.velocity.x, y: body.velocity.y })
+          }
+        }
       }
       Matter.Engine.update(this.engine, PHYSICS.stepMs)
       this._stepCount += 1
@@ -265,8 +300,12 @@ export class PhysicsWorld {
   /** Remove all dynamic bodies, restore initial state (statics persist). */
   reset(): void {
     if (this._disposed) return
-    for (const body of this.getAllBodies()) {
-      if (!body.isStatic) Matter.Composite.remove(this.world, body)
+    for (const body of [...this.bodiesCache]) {
+      if (!body.isStatic) {
+        Matter.Composite.remove(this.world, body)
+        const i = this.bodiesCache.indexOf(body)
+        if (i >= 0) this.bodiesCache.splice(i, 1)
+      }
     }
     this.accumulatorMs = 0
     this._stepCount = 0
@@ -278,6 +317,7 @@ export class PhysicsWorld {
     this._disposed = true
     Matter.Events.off(this.engine, 'collisionStart', this.onCollisionStart)
     this.collisionQueue = []
+    this.bodiesCache = []
     Matter.Composite.clear(this.world, false)
     Matter.Engine.clear(this.engine)
   }
