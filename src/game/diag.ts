@@ -118,39 +118,37 @@ export function installDiag(game: Phaser.Game): void {
         bg.textures.addCanvas('br-diag-t2', c2)
       }
       if (!bg.textures.exists('br-diag-t3')) {
-        // LARGE-texture patch: 600×1200 solid red — the same upload class
-        // as the 1170×2532 background bakes (~11.8 MP RGBA). If T1/T2
-        // show but T3 doesn't, the device fails texImage2D for large
-        // canvas textures and the bakes must be tiled/downscaled.
+        // LARGE-texture patch: 1170×2532 solid red — the EXACT upload
+        // class of the background bakes (11.8 MP RGBA). A smaller patch
+        // could false-clear the large-upload branch.
         const c3 = document.createElement('canvas')
-        c3.width = 600
-        c3.height = 1200
+        c3.width = 1170
+        c3.height = 2532
         const x3 = c3.getContext('2d')!
         x3.fillStyle = '#ff2222'
-        x3.fillRect(0, 0, 600, 1200)
+        x3.fillRect(0, 0, 1170, 2532)
         bg.textures.addCanvas('br-diag-t3', c3)
       }
+      // Patch row at y=200: the DOM text panel (~140px tall) paints the
+      // top-left corner — patches behind it are unreadable on device.
       bg.add
-        .image(8, 64, 'br-diag-t1')
+        .image(8, 200, 'br-diag-t1')
         .setOrigin(0, 0)
         .setDisplaySize(46, 46)
         .setDepth(999)
-        .setScrollFactor(0)
       bg.add
-        .image(62, 64, 'br-diag-t2')
+        .image(62, 200, 'br-diag-t2')
         .setOrigin(0, 0)
         .setDisplaySize(46, 46)
         .setDepth(999)
-        .setScrollFactor(0)
       bg.add
-        .image(116, 64, 'br-diag-t3')
+        .image(116, 200, 'br-diag-t3')
         .setOrigin(0, 0)
-        .setDisplaySize(46, 92)
+        .setDisplaySize(46, 46)
         .setDepth(999)
-        .setScrollFactor(0)
-      const g = bg.add.graphics().setDepth(999).setScrollFactor(0)
+      const g = bg.add.graphics().setDepth(999)
       g.fillStyle(0x22cc44, 1)
-      g.fillRect(170, 64, 46, 46)
+      g.fillRect(170, 200, 46, 46)
     } catch {
       /* patches are best-effort; the text panel still works */
     }

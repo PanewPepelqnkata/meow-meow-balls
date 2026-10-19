@@ -189,7 +189,6 @@ function addCloud(
   const img = scene.add
     .image(cx, cy, CLOUD_TEX_KEY)
     .setDepth(-98)
-    .setScrollFactor(0)
     .setTint(tint)
     .setData('baseAlpha', alpha)
   img.setScale(rw / 256, rh / 256)
@@ -1037,7 +1036,7 @@ export class BackgroundTheme {
     this.scene = scene
     this.currentTheme = initialTheme
     // Background renders in screen space (never-zoomed camera).
-    this.ambientLayer = scene.add.graphics().setDepth(-89).setScrollFactor(0)
+    this.ambientLayer = scene.add.graphics().setDepth(-89)
     this.updateGradImage()
 
     this.drawBackground()
@@ -1155,7 +1154,6 @@ export class BackgroundTheme {
         .image(0, 0, 'br-space-grad')
         .setOrigin(0, 0)
         .setDepth(-100)
-        .setScrollFactor(0)
     }
     const tex = this.scene.textures.get('br-space-grad') as Phaser.Textures.CanvasTexture
     const src = tex.getSourceImage() as HTMLCanvasElement
@@ -1188,6 +1186,12 @@ export class BackgroundTheme {
     this.initAmbient(theme)
     this.buildCloudGroup(this.fromTheme)
     this.buildCloudGroup(theme)
+    // Rebuild the space base gradient when the target theme changes: a
+    // session that booted non-space has gradImage === null (the early
+    // return in updateGradImage), and the space art bake intentionally
+    // paints no base fill — without this the crossfade lands on the raw
+    // canvas clear color instead of the navy→violet gradient.
+    this.updateGradImage()
     // Bake BOTH partner arts once; the tween then only blends alphas
     // (via applyCloudAlphas on the progress tick) — no per-frame rebakes.
     this.drawBackground()
@@ -1313,7 +1317,6 @@ export class BackgroundTheme {
         const img = this.scene.add
           .image(w * b.x, h * b.y, key)
           .setDepth(-97)
-          .setScrollFactor(0)
           .setData('baseAlpha', b.alpha)
         img.setScale((w * b.tw) / texW, (w * b.tw * 0.62) / texH)
         img.setData('drift', 1.6 + (b.seed % 3) * 0.7)
@@ -1464,7 +1467,6 @@ export class BackgroundTheme {
         .image(0, 0, key)
         .setOrigin(0, 0)
         .setDepth(-99)
-        .setScrollFactor(0)
     }
     this.artImages[theme]!.setDisplaySize(Math.ceil(w / dpr), Math.ceil(h / dpr))
   }
@@ -1555,7 +1557,6 @@ export class BackgroundTheme {
         .image(0, 0, key)
         .setOrigin(0, 0)
         .setDepth(-88)
-        .setScrollFactor(0)
     }
     // Device-px texture, LOGICAL display size (CSS px from the same z).
     this.gridImage.setDisplaySize(Math.ceil(this.scene.scale.width / z), Math.ceil(this.scene.scale.height / z))
@@ -1642,7 +1643,6 @@ export class BackgroundTheme {
         .image(0, 0, key)
         .setOrigin(0, 0)
         .setDepth(-95)
-        .setScrollFactor(0)
     }
     // Device-px texture, LOGICAL display size.
     this.starImage.setDisplaySize(Math.ceil(w / dpr), Math.ceil(h / dpr))
