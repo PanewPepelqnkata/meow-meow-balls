@@ -817,6 +817,11 @@ export class BackgroundTheme {
   /** Shooting star state (space theme): null = idle. */
   private shoot: { x: number; y: number; vx: number; vy: number; life: number } | null = null
   private nextShootAt = 2500
+  /** Phase 2.20: star twinkle repaints at ~20 Hz — the twinkle period is
+   * seconds, so 20 fps of star motion is visually identical to 60 while
+   * cutting the star-layer Graphics rebuild to a third. */
+  private starAccumMs = 0
+  private static readonly STAR_INTERVAL_MS = 1000 / 20
 
   constructor(scene: Phaser.Scene, initialTheme: ThemeName = 'light') {
     this.scene = scene
@@ -1220,7 +1225,12 @@ export class BackgroundTheme {
     } else {
       this.starAlpha = fromSpace ? 1 : 0
     }
-    this.drawStars()
+    // Star twinkle at ~20 Hz (see STAR_INTERVAL_MS) — accumulate and skip.
+    this.starAccumMs += delta
+    if (this.starAccumMs >= BackgroundTheme.STAR_INTERVAL_MS) {
+      this.starAccumMs %= BackgroundTheme.STAR_INTERVAL_MS
+      this.drawStars()
+    }
     this.drawAmbient(delta)
     // Slow parallax drift on the cloud blobs (Images only).
     const w = this.scene.scale.width

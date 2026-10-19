@@ -21,6 +21,7 @@ import { BackgroundScene } from './BackgroundScene'
 import { ScoreFeedback } from '../rendering/ScoreFeedback'
 import { gameBus } from '../events/gameBus'
 import { DebugOverlay } from '../debug/DebugOverlay'
+import { PerfOverlay } from '../debug/PerfOverlay'
 import { session, fastbootRequested } from '../state/session'
 import { recordDiscovery, recordMerge, recordRunEnd, savedBest, themeSetting } from '../state/save'
 import { rollNewRunSeed, runVariantFor } from '../state/runVariant'
@@ -83,6 +84,11 @@ export class PlaygroundScene extends Phaser.Scene {
   private currentBall = { tier: 1, seed: 0 }
   private nextBallState = { tier: 1, seed: 0 }
   private devScorePre: HTMLPreElement | null = null
+  /** Phase 2.20 dev-only perf overlay (?perf=1) + its rolling samples. */
+  private perf: PerfOverlay | null = null
+  private perfFrameStart = 0
+  private perfPhysicsMs = 0
+  private perfRenderMs = 0
   /** Last emitted walls countdown — suppresses per-frame no-change events. */
   private lastWallsMs = Number.NaN
   private readonly devDiagnostics: Array<Record<string, unknown>> = []
@@ -234,6 +240,12 @@ export class PlaygroundScene extends Phaser.Scene {
 
     if (import.meta.env.DEV) {
       this.debug = new DebugOverlay(this, this.physicsWorld, this.balls)
+      // Phase 2.20: ?perf=1 mounts the frame-budget overlay (FPS, frame
+      // time, physics/render split, ball/particle counts, DPR, canvas
+      // resolution). DEV-only.
+      if (new URLSearchParams(window.location.search).get('perf') === '1') {
+        this.perf = new PerfOverlay(this, this.ballRenderer, this.balls)
+      }
       // Dev diagnostics ONLY behind explicit URL params — never in normal
       // gameplay (Phase 2.5 §4).
       const params = new URLSearchParams(window.location.search)
@@ -598,6 +610,7 @@ export class PlaygroundScene extends Phaser.Scene {
 
   /** The single authoritative physics update path. */
   override update(time: number, delta: number): void {
+    this.perfFrameStart = performance.now()
     try {
       this.updateInner(time, delta)
     } catch (err) {
@@ -625,7 +638,9 @@ export class PlaygroundScene extends Phaser.Scene {
       this.balls.wallTopY = wallTopY
       // The danger zone rides the rim: Raise Walls moves the panic line.
       this.ballRenderer.emotion.wallTopY = wallTopY
+      const physStart = this.perf ? performance.now() : 0
       this.physicsWorld.step(delta)
+      if (this.perf) this.perfPhysicsMs = performance.now() - physStart
 
       // One drain per frame: mark first contact (merge eligibility), then merge.
       // Soft bodies deform physically — the 2.4 visual-impact feeding is retired.
@@ -652,6 +667,7 @@ export class PlaygroundScene extends Phaser.Scene {
       this.lastWallsMs = this.walls.remainingMs
       gameBus.emit('walls:countdown', { remainingMs: this.walls.remainingMs })
     }
+    const renderStart = this.perf ? performance.now() : 0
     this.ballRenderer.update()
     // Game-over pop sequence fx (pooled particles/rings) — no-op while idle.
     this.gameOverSequence?.update(delta)
@@ -660,6 +676,11 @@ export class PlaygroundScene extends Phaser.Scene {
     // Phase 2.12.1: background animates inside BackgroundScene's own update
     // loop — nothing to drive from here anymore.
     this.debug?.update(delta)
+    if (this.perf) {
+      this.perfRenderMs = performance.now() - renderStart
+      this.perf?.sample(this.perfFrameStart, this.perfPhysicsMs, this.perfRenderMs)
+      this.perf?.tick()
+    }
 
     if (import.meta.env.DEV) {
       // Read-only per-frame state for QA scripts — always on in dev so the

@@ -93,6 +93,11 @@ export class SoftBallManager {
     return this.balls.length
   }
 
+  /** Read-only copy of the live entities (perf overlay / QA iteration). */
+  snapshot(): SoftBallEntity[] {
+    return this.balls.slice()
+  }
+
   getBalls(): readonly SoftBallEntity[] {
     return this.balls
   }

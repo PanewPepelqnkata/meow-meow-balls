@@ -1,6 +1,6 @@
 import Phaser from 'phaser'
 import { getTier } from '../../config/ballTiers'
-import { renderContour, softBallArea, softBallCentroid } from '../systems/SoftBall'
+import { renderContour, softBallArea, softBallCentroid, softBallSleeping } from '../systems/SoftBall'
 import type { SoftBall } from '../systems/SoftBall'
 import { SOFT } from '../systems/SoftBall'
 import type { SoftBallEntity } from '../systems/SoftBallManager'
@@ -44,6 +44,21 @@ export class SoftBallRenderer {
   /** IDs actually drawn in the LAST update() — QA evidence that reserved
    * ('merging') sources remain visible while their replacement pends. */
   private readonly lastDrawnIds = new Set<number>()
+  /**
+   * Phase 2.20 — per-ball contour cache (PERFORMANCE): a sleeping ball's
+   * particles are frozen, so its catmull-rom contour + wobble never
+   * change. Rebuilding ~200-point geometry per frame per ball was the
+   * dominant CPU cost in settled piles (the common state). The cache is
+   * invalidated by any wake (positions moved), a pop scale (game over),
+   * or registry removal. Drawn with the cached points; live balls
+   * (moving/colliding) rebuild every frame as before.
+   */
+  private readonly contourCache = new Map<
+    number,
+    { poly: Phaser.Math.Vector2[]; centroid: { x: number; y: number } }
+  >()
+  /** Sleep state from the PREVIOUS frame, for wake-edge detection. */
+  private readonly wasSleeping = new Map<number, boolean>()
 
   constructor(scene: Phaser.Scene) {
     this.layer = scene.add.graphics().setDepth(10)
@@ -56,11 +71,15 @@ export class SoftBallRenderer {
   unregister(ballId: number): void {
     this.renderables.delete(ballId)
     this.looks.delete(ballId)
+    this.contourCache.delete(ballId)
+    this.wasSleeping.delete(ballId)
   }
 
   clear(): void {
     this.renderables.clear()
     this.looks.clear()
+    this.contourCache.clear()
+    this.wasSleeping.clear()
   }
 
   /** Diagnostics: number of live renderer entries (Phase 2.10.2 stale-renderer checks). */
@@ -85,24 +104,25 @@ export class SoftBallRenderer {
     g.clear()
     // Advance the per-ball emotion (danger-zone panic) BEFORE drawing so
     // faces use this frame's eased panic value. Visual-only: the system
-    // never touches physics state.
-    this.emotion.update([...this.renderables.values()])
+    // never touches physics state. (Array.from avoids a closure spread —
+    // same list, no allocation churn.)
+    this.emotion.update(Array.from(this.renderables.values()))
     // PHASE 2.9.3: two-pass draw. Pass 1 fills EVERY ball; pass 2 strokes
     // EVERY outline. Single-pass per-ball drawing let a later ball's stroke
     // cut into an earlier ball's fill at contact points — the main visible
     // "interpenetration" signal. With two passes, adjacent balls show BOTH
     // outlines cleanly at the junction.
-    const polys: Array<{ 
-      poly: Phaser.Math.Vector2[]; 
-      color: number; 
-      soft: SoftBall; 
-      look: BallLook; 
+    const polys: Array<{
+      poly: Phaser.Math.Vector2[];
+      color: number;
+      soft: SoftBall;
+      look: BallLook;
       r: number;
       tier: number;
       entity: SoftBallEntity;
     }> = []
     this.lastDrawnIds.clear()
-    
+
     for (const r of this.renderables.values()) {
       // Lifecycle guard: a REMOVED ball must never appear (not even for one
       // frame) beside or inside its replacement. A 'merging' ball is a
@@ -113,17 +133,58 @@ export class SoftBallRenderer {
       const popScale = this.gameOverSequence?.scaleOverrides.get(r.id)
       if (popScale != null && popScale <= 0.002) continue
       this.lastDrawnIds.add(r.id)
-      const pr = r.soft.radius * SOFT.particleRadiusFactor
-      const base = renderContour(r.soft, 6, pr)
       const look = this.lookFor(r)
-      const c = softBallCentroid(r.soft)
-      const drawR = popScale != null ? r.soft.radius * popScale : r.soft.radius
-      const poly = wobbleContour(look, base, c.x, c.y, drawR, 1.5).map(
-        (p) => new Phaser.Math.Vector2(p.x, p.y),
-      )
       const color = this.tierColor(r.tier)
+      const drawR = popScale != null ? r.soft.radius * popScale : r.soft.radius
+
+      // Phase 2.20 contour cache: a fully-sleeping ball's geometry is
+      // frozen — reuse the cached points (which also carry the centroid)
+      // instead of rebuilding ~200-point catmull-rom + wobble every frame.
+      // Any wake (positions changed), pop tween, or first frame rebuilds.
+      const sleeping = softBallSleeping(r.soft)
+      const wasSleeping = this.wasSleeping.get(r.id) ?? false
+      const cacheable = sleeping && popScale == null && r.tier !== 8
+      let poly: Phaser.Math.Vector2[]
+      let cx: number
+      let cy: number
+      const cached = this.contourCache.get(r.id)
+      if (cacheable && cached && wasSleeping) {
+        poly = cached.poly
+        cx = cached.centroid.x
+        cy = cached.centroid.y
+      } else {
+        const pr = r.soft.radius * SOFT.particleRadiusFactor
+        const base = renderContour(r.soft, 6, pr)
+        const c = softBallCentroid(r.soft)
+        const built = wobbleContour(look, base, c.x, c.y, drawR, 1.5)
+        if (cacheable) {
+          // In-place Vector2 reuse: the cached array is mutated on the next
+          // rebuild rather than reallocated.
+          let reuse = cached?.poly
+          if (!reuse || reuse.length !== built.length) {
+            reuse = built.map((p) => new Phaser.Math.Vector2(p.x, p.y))
+          }
+          const pts = reuse
+          for (let i = 0; i < built.length; i++) {
+            const p = pts[i]
+            const b = built[i]
+            if (p && b) p.set(b.x, b.y)
+          }
+          poly = pts
+          this.contourCache.set(r.id, { poly, centroid: { x: c.x, y: c.y } })
+          cx = c.x
+          cy = c.y
+        } else {
+          poly = built.map((p) => new Phaser.Math.Vector2(p.x, p.y))
+          cx = c.x
+          cy = c.y
+          this.contourCache.delete(r.id)
+        }
+      }
+      this.wasSleeping.set(r.id, sleeping)
+      const c = { x: cx, y: cy }
       polys.push({ poly, color, soft: r.soft, look, r: drawR, tier: r.tier, entity: r })
-      
+
       // Phase 2.12.1: Special rendering for Tier 8 (rainbow) and Tier 9 (fantasy).
       // Phase 2.14.0: both take the PER-RUN variant (runVariant rolls tiers
       // 8-9 anew every run — see src/game/state/runVariant.ts).

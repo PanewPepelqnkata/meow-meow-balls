@@ -222,10 +222,22 @@ export class ContainerView {
     this.buildGlowPath(inner)
     const canvas = (this.frameImage.texture.getSourceImage() as HTMLCanvasElement) ?? null
     if (!canvas) return
-    canvas.width = 720
-    canvas.height = 1280
+    // Phase 2.20: bake at devicePixelRatio resolution — the texture is
+    // displayed at 720×1280 stage units but renders at zoom×dpr screen
+    // pixels (up to ~1.6× texture px on a DPR-3 phone), so a 1× bake
+    // softened the ink edges. The paint math is unchanged: scale the
+    // context once, draw in stage units as before.
+    const dpr = window.devicePixelRatio > 1.5 ? 2 : 1
+    const texScale = dpr
+    if (canvas.width !== 720 * texScale || canvas.height !== 1280 * texScale) {
+      canvas.width = 720 * texScale
+      canvas.height = 1280 * texScale
+    }
     const ctx = canvas.getContext('2d')!
-    ctx.clearRect(0, 0, 720, 1280)
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.scale(texScale, texScale)
+
 
     // Stroke layers on the concentric U paths (see uPath). Ink and body
     // use ROUND caps (the wall's rounded blue dome end). The cyan strip
