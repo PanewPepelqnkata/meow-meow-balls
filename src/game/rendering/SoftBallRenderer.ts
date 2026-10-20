@@ -79,6 +79,7 @@ export class SoftBallRenderer {
    * evidence that settled piles render as textured quads, and that a wake
    * drops the bake (the id must disappear from this set the same frame). */
   private readonly bakeSweep = new Set<number>()
+  private readonly ineligibleFrames = new Map<number, number>()
   /** IDs actually drawn in the LAST update() — QA evidence that reserved
    * ('merging') sources remain visible while their replacement pends. */
   private readonly lastDrawnIds = new Set<number>()
@@ -115,6 +116,7 @@ export class SoftBallRenderer {
     this.looks.delete(ballId)
     this.contourCache.delete(ballId)
     this.wasSleeping.delete(ballId)
+    this.ineligibleFrames.delete(ballId)
     this.baker.drop(ballId)
   }
 
@@ -244,6 +246,7 @@ export class SoftBallRenderer {
       const frozenBake = bakeEligible && wasSleeping ? this.baker.views().get(r.id) : undefined
       if (frozenBake) {
         this.bakeSweep.add(r.id)
+        this.ineligibleFrames.delete(r.id)
         this.wasSleeping.set(r.id, true)
         polys.push({
           poly: null,
@@ -259,9 +262,19 @@ export class SoftBallRenderer {
         })
         continue
       }
-      // Not (yet) frozen-and-baked: any existing bake is invalid for this
-      // state (wake, pop scale, tier, first frozen frame) — drop it.
-      this.baker.drop(r.id)
+      // Not (yet) frozen-and-baked. HYSTERESIS: a single-frame sleep
+      // flap (one particle's transient wake in a settled pile — measured
+      // oscillation) must NOT destroy the bake; a genuinely woken ball
+      // stays non-eligible for 100+ frames (deform + fall). Drop only
+      // after sustained ineligibility; the authoritative onBallWake
+      // funnel drops immediately on real wakes.
+      if (this.baker.views().has(r.id)) {
+        const n = (this.ineligibleFrames.get(r.id) ?? 0) + 1
+        this.ineligibleFrames.set(r.id, n)
+        if (n > 3) this.baker.drop(r.id)
+      } else {
+        this.ineligibleFrames.delete(r.id)
+      }
 
       let poly: Phaser.Math.Vector2[]
       let cx: number
