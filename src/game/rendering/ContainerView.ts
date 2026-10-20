@@ -184,6 +184,8 @@ export class ContainerView {
   private readonly frameImage: Phaser.GameObjects.Image
   private readonly glowG: Phaser.GameObjects.Graphics
   private lastHeight = -1
+  /** Persistent offscreen for fast-mode repaints (no per-redraw alloc). */
+  private offCanvas: HTMLCanvasElement | null = null
   /** Interior corners at the current height: [tl, tr, br, bl]. */
   private corners: Pt[] | null = null
   /** Combo glow sweep: elapsed ms, < 0 = inactive. */
@@ -295,7 +297,11 @@ export class ContainerView {
     const PANEL_D = T * 0.44
     const PANEL_W = T * 0.36
     strokeU(PANEL_D, PANEL_W, '#f4ead0', { trim: PANEL_W / 2 })
-    const off = document.createElement('canvas')
+    let off = this.offCanvas
+    if (!off) {
+      off = document.createElement('canvas')
+      this.offCanvas = off
+    }
     off.width = 720
     off.height = 1280
     const octx = off.getContext('2d')!

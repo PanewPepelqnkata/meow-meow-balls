@@ -109,6 +109,11 @@ export class SoftBallRenderer {
   private readonly centroidScratch = { x: 0, y: 0 }
   /** Pooled per-ball aspect measurement (zero-allocation). */
   private readonly aspectScratch = { minX: 0, maxX: 0, minY: 0, maxY: 0 }
+  /** Overlay gate hysteresis: enter below 0.955, exit above 0.975 — the
+   * damped deform oscillates across a single threshold 2-4×/impact and
+   * the two render modes have different silhouettes (baked circle vs
+   * wobbled poly) = the 'squished↔normal' flicker. */
+  private readonly overlayOn = new Map<number, boolean>()
   /** Scene ref for texture removal (tier-8/9 per-ball bakes). */
   private readonly scene: Phaser.Scene
 
@@ -132,6 +137,7 @@ export class SoftBallRenderer {
     this.renderables.delete(ballId)
     this.looks.delete(ballId)
     this.contourPool.delete(ballId)
+    this.overlayOn.delete(ballId)
     this.faces.drop(ballId)
     this.spriteViews.delete(ballId)
     this.dropSpecialTextures(ballId)
@@ -141,6 +147,7 @@ export class SoftBallRenderer {
     this.renderables.clear()
     this.looks.clear()
     this.contourPool.clear()
+    this.overlayOn.clear()
     this.faces.clear()
     this.spriteViews.clear()
     for (const id of [...this.specialTextures.keys()]) this.dropSpecialTextures(id)
@@ -272,7 +279,13 @@ export class SoftBallRenderer {
           // Impact transient (aspect below the gate): the wobble overlay
           // will draw this ball's live fill+outline (ranked top-N below) —
           // hide the quads so the overlay is the only body.
-          const overlayEligible = aspect < WobbleOverlay.AMP_GATE
+          // HYSTERESIS: enter < AMP_GATE (0.955), exit at 0.985 — the
+          // damped deform crosses the single threshold repeatedly after
+          // impact; without the band the ball flickers
+          // squished↔circle on every crossing.
+          const wasOn = this.overlayOn.get(r.id) === true
+          const overlayEligible = wasOn ? aspect < 0.985 : aspect < WobbleOverlay.AMP_GATE
+          this.overlayOn.set(r.id, overlayEligible)
           view.fill.setVisible(!overlayEligible).setTexture(tex.fillKey).setPosition(c.x, c.y).setScale(s * aspect, s)
           view.outline.setVisible(false)
           if (overlayEligible) {
