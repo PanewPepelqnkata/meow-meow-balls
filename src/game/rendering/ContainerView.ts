@@ -184,6 +184,8 @@ export class ContainerView {
   private readonly frameImage: Phaser.GameObjects.Image
   private readonly glowG: Phaser.GameObjects.Graphics
   private lastHeight = -1
+  /** Fast-mode repaint while the wall animation is in flight. */
+  private wallAnimAnimating = false
   /** Interior corners at the current height: [tl, tr, br, bl]. */
   private corners: Pt[] | null = null
   /** Combo glow sweep: elapsed ms, < 0 = inactive. */
@@ -227,7 +229,12 @@ export class ContainerView {
     // pixels (up to ~1.6× texture px on a DPR-3 phone), so a 1× bake
     // softened the ink edges. The paint math is unchanged: scale the
     // context once, draw in stage units as before.
-    const dpr = window.devicePixelRatio > 1.5 ? 2 : 1
+    // PERF (iOS): mid-animation repaints are the wall-raise lag —
+    // each step uploads the full canvas. Fast mode: texScale 1 (4×
+    // smaller upload) while animating; the endpoint redraw (exact
+    // height, done flag) rebakes crisp at dpr 2.
+    const fast = this.wallAnimAnimating === true
+    const dpr = fast ? 1 : window.devicePixelRatio > 1.5 ? 2 : 1
     const texScale = dpr
     if (canvas.width !== 720 * texScale || canvas.height !== 1280 * texScale) {
       canvas.width = 720 * texScale

@@ -89,6 +89,13 @@ export class WallAnimator {
 
   private lastRedrawH = -1
 
+  /** True while a raise/lower animation is in flight (between the
+   * phase endpoints) — ContainerView uses it to switch to fast-mode
+   * repaints (texScale 1). */
+  get animating(): boolean {
+    return this.phase === 'raising' || this.phase === 'lowering'
+  }
+
   private applyHeight(h: number): void {
     this.currentHeight = h
     const specs = wallCollidersAt(h)
