@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { faceLayoutFor, INK } from './BallAppearance'
+import { ballLookFor, faceLayoutFor, INK } from './BallAppearance'
 import type { BallLook, FaceLayout, EyeLayout } from './BallAppearance'
 import { SPRITE_FILL_DEPTH, SPRITE_OUTLINE_DEPTH } from './TierBaker'
 
@@ -65,7 +65,15 @@ export interface SpriteBallView {
 }
 
 export class FacePool {
-  private readonly atlases = new Map<number, FaceAtlas>()
+  /** Deterministic per-look atlas key (ballLookFor is deterministic per
+   * tier+seed, so the look's numbers identify the atlas). */
+  private static lookSignature(look: BallLook): string {
+    return `br-face-${look.lobes1}-${look.lobes2}-${look.amp1}-${look.amp2}-${look.phase1}`
+  }
+
+  private readonly atlases = new Map<string, FaceAtlas>()
+  /** ballId → atlas look-key (for atlas() lookups). */
+  private readonly ballLookKeys = new Map<number, string>()
   private readonly views = new Map<number, SpriteBallView>()
   private readonly tempG: Phaser.GameObjects.Graphics
 
@@ -76,7 +84,8 @@ export class FacePool {
   /** Baked atlas for a ball (null for tiers whose face came out empty —
    * impossible in practice: every look has eyes + mouth). */
   atlas(ballId: number): FaceAtlas | undefined {
-    return this.atlases.get(ballId)
+    const key = this.ballLookKeys.get(ballId)
+    return key ? this.atlases.get(key) : undefined
   }
 
   view(ballId: number): SpriteBallView | undefined {
@@ -93,7 +102,10 @@ export class FacePool {
 
     const r = FACE_ATLAS_R
     const L = faceLayoutFor(look, r, 1)
-    const prefix = `br-face-${ballId}`
+    // Atlas keyed by the LOOK (deterministic per tier+seed) — shared
+    // across balls with identical looks, pre-baked at queue rotation.
+    const lookKeyStr = FacePool.lookSignature(look)
+    const prefix = lookKeyStr
     const scleraKey = `${prefix}-sclera`
     const pupilKey = `${prefix}-pupil`
     const mouthKey = `${prefix}-mouth`
@@ -141,11 +153,12 @@ export class FacePool {
     this.tempG.generateTexture(mouthKey, 256, 256)
     this.tempG.clear()
 
-    let atlas = this.atlases.get(ballId)
+    let atlas = this.atlases.get(lookKeyStr)
     if (!atlas) {
       atlas = { prefix, scleraKey, pupilKey, mouthKey, layout: L, look }
-      this.atlases.set(ballId, atlas)
+      this.atlases.set(lookKeyStr, atlas)
     }
+    this.ballLookKeys.set(ballId, lookKeyStr)
 
     const view: SpriteBallView = {
       fill: this.scene.add.image(0, 0, '__DEFAULT').setDepth(SPRITE_FILL_DEPTH),
@@ -215,14 +228,25 @@ export class FacePool {
    * Drop one ball's atlas + sprites (unregister / restart / game-over
    * removal). Texture keys are per ball id; ids are never reused.
    */
+  /**
+   * PERF (iOS): pre-bake the atlas for a FUTURE ball (tier + seed are
+   * known at queue-rotation time, long before the drop). The drop frame
+   * then reuses the atlas — no generateTexture in the event frame.
+   */
+  prewarm(tier: number, seed: number): void {
+    const look = ballLookFor(tier, seed)
+    const lookKeyStr = FacePool.lookSignature(look)
+    if (this.atlases.has(lookKeyStr)) return
+    const syntheticId = -1 - Math.abs(seed % 100000)
+    this.ensure(syntheticId, look)
+    this.drop(syntheticId) // atlas persists (shared); view was throwaway
+    void lookKeyStr
+  }
+
   drop(ballId: number): void {
-    const atlas = this.atlases.get(ballId)
-    if (atlas) {
-      this.scene.textures.remove(atlas.scleraKey)
-      this.scene.textures.remove(atlas.pupilKey)
-      this.scene.textures.remove(atlas.mouthKey)
-      this.atlases.delete(ballId)
-    }
+    // Atlases are LOOK-keyed and SHARED (bounded by distinct looks) —
+    // merged/removed balls release only their sprite views + id mapping.
+    this.ballLookKeys.delete(ballId)
     const view = this.views.get(ballId)
     if (view) {
       view.fill.destroy()

@@ -133,6 +133,12 @@ export class SoftBallRenderer {
     this.spriteViews.set(ball.id, this.faces.view(ball.id)!)
   }
 
+  /** PERF (iOS): pre-bake the NEXT ball's face atlas off the drop
+   * frame (see FacePool.prewarm). */
+  prewarmFace(tier: number, seed: number): void {
+    this.faces.prewarm(tier, seed)
+  }
+
   unregister(ballId: number): void {
     this.renderables.delete(ballId)
     this.looks.delete(ballId)

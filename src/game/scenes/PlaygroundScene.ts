@@ -874,6 +874,10 @@ export class PlaygroundScene extends Phaser.Scene {
     // Queue rotation: previous next becomes current; a fresh ball enters next.
     this.currentBall = { ...this.nextBallState }
     this.nextBallState = { tier: randomSpawnTier(), seed: randomSeed() }
+    // PERF (iOS): pre-bake the new NEXT ball's face atlas NOW (idle
+    // frame) — the drop frame then reuses it instead of rasterizing
+    // 3×256² textures mid-event.
+    this.ballRenderer.prewarmFace(this.nextBallState.tier, this.nextBallState.seed)
     // Phase 2.14.0: leaderboard bookkeeping — spawned tiers count too.
     if (tier.tier > this.bestTierRun) this.bestTierRun = tier.tier
     this.publishQueue()
