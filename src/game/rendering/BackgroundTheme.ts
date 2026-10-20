@@ -1613,10 +1613,7 @@ export class BackgroundTheme {
     // Device-px texture, LOGICAL display size (CSS px from the same z).
     this.gridImage.setDisplaySize(Math.ceil(this.scene.scale.width / z), Math.ceil(this.scene.scale.height / z))
     const spaceActive = (this.toTheme ?? this.currentTheme) === 'space'
-    // The composite carries the grid — the standalone gridImage stays
-    // hidden (it exists for the legacy non-composite path).
-    this.gridImage.setVisible(false)
-    void spaceActive
+    this.gridImage.setVisible(spaceActive)
   }
 
   private drawStars(): void {
