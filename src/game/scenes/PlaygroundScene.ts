@@ -688,14 +688,15 @@ export class PlaygroundScene extends Phaser.Scene {
       // Soft bodies deform physically — the 2.4 visual-impact feeding is retired.
       const events = this.physicsWorld.takeCollisionEvents()
       const ballBodyIds: number[] = []
-      for (const { bodyA, bodyB } of events) {
+      for (const { bodyA, bodyB, normalX, normalY, approachSpeed } of events) {
         ballBodyIds.push(bodyA.id, bodyB.id)
-        // JELLY: feed the deform springs (visual only) — the approach
-        // speed comes from the relative velocity along the contact.
+        // JELLY: feed the deform springs (visual only) — the contact
+        // normal + approach speed are captured at collisionStart. The
+        // normal points A→B; flip for B's perspective.
         const bA = this.balls.getBallByBodyId(bodyA.id)
         const bB = this.balls.getBallByBodyId(bodyB.id)
-        if (bA) this.ballRenderer.registerBallImpact(bA, bodyB, Math.hypot(bodyA.velocity.x - bodyB.velocity.x, bodyA.velocity.y - bodyB.velocity.y))
-        if (bB) this.ballRenderer.registerBallImpact(bB, bodyA, Math.hypot(bodyA.velocity.x - bodyB.velocity.x, bodyA.velocity.y - bodyB.velocity.y))
+        if (bA) this.ballRenderer.registerBallImpact(bA, { x: -normalX, y: -normalY }, approachSpeed)
+        if (bB) this.ballRenderer.registerBallImpact(bB, { x: normalX, y: normalY }, approachSpeed)
       }
       if (ballBodyIds.length) this.balls.markTouched(ballBodyIds)
       this.mergeSystem.processMerges(events)

@@ -52,7 +52,7 @@ describe('merge eligibility (first-contact rule)', () => {
     balls.spawnBall(360 - r1 - 1, top + 120, 1, true)
     balls.spawnBall(360 + r1 - 2, top + 120, 1, true)
     const fakePair = [
-      { bodyA: balls.getBalls()[0]!.body, bodyB: balls.getBalls()[1]!.body },
+      { bodyA: balls.getBalls()[0]!.body, bodyB: balls.getBalls()[1]!.body, normalX: 0, normalY: 1, approachSpeed: 8 },
     ]
     const outcomes = merges.processMerges(fakePair)
     expect(outcomes).toHaveLength(0)
@@ -68,7 +68,7 @@ describe('merge eligibility (first-contact rule)', () => {
     balls.spawnBall(360 - r1 - 1, top + 120, 1, true)
     balls.spawnBall(360 + r1 - 2, top + 120, 1, true)
     const [a, b] = [balls.getBalls()[0]!, balls.getBalls()[1]!]
-    const fakePair = [{ bodyA: a.body, bodyB: b.body }]
+    const fakePair = [{ bodyA: a.body, bodyB: b.body, normalX: 0, normalY: 1, approachSpeed: 8 }]
     expect(merges.processMerges(fakePair)).toHaveLength(0)
     // First physical contact happens (scene marks touched from the event drain)
     balls.markTouched([a.body.id, b.body.id])

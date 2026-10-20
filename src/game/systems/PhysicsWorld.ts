@@ -11,6 +11,11 @@ export interface RectSpec {
 export interface CollisionPair {
   bodyA: Matter.Body
   bodyB: Matter.Body
+  /** Contact normal (unit, from A toward B) — captured at collisionStart. */
+  normalX: number
+  normalY: number
+  /** Relative approach speed along the normal (px/step, ≥ 0). */
+  approachSpeed: number
 }
 
 /**
@@ -107,7 +112,20 @@ export class PhysicsWorld {
     }
     this.onCollisionStart = (event) => {
       for (const pair of event.pairs) {
-        this.collisionQueue.push({ bodyA: pair.bodyA, bodyB: pair.bodyB })
+        // Contact normal (unit, A→B) — Matter computes it in the collision.
+        const n = pair.collision.normal
+        // Relative approach speed along the normal (pre-resolution
+        // velocities are still on the bodies at collisionStart).
+        const rvx = pair.bodyA.velocity.x - pair.bodyB.velocity.x
+        const rvy = pair.bodyA.velocity.y - pair.bodyB.velocity.y
+        const approach = Math.abs(rvx * n.x + rvy * n.y)
+        this.collisionQueue.push({
+          bodyA: pair.bodyA,
+          bodyB: pair.bodyB,
+          normalX: n.x,
+          normalY: n.y,
+          approachSpeed: approach,
+        })
       }
     }
     Matter.Events.on(this.engine, 'collisionStart', this.onCollisionStart)
@@ -209,7 +227,8 @@ export class PhysicsWorld {
     const pairs: CollisionPair[] = []
     for (const p of this.engine.pairs.list) {
       if (!p.isActive) continue
-      pairs.push({ bodyA: p.bodyA, bodyB: p.bodyB })
+      const n = p.collision.normal
+      pairs.push({ bodyA: p.bodyA, bodyB: p.bodyB, normalX: n.x, normalY: n.y, approachSpeed: 0 })
     }
     return pairs
   }

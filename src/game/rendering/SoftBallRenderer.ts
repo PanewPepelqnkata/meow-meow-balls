@@ -147,7 +147,7 @@ export class SoftBallRenderer {
    * Called from PlaygroundScene's per-frame collision drain. */
   registerBallImpact(
     r: SoftBallEntity,
-    otherBody: Matter.Body,
+    contactNormal: { x: number; y: number },
     approachSpeed: number,
   ): void {
     let d = this.deforms.get(r.id)
@@ -155,11 +155,8 @@ export class SoftBallRenderer {
       d = createDeformState()
       this.deforms.set(r.id, d)
     }
-    const c = r.soft.center.position
-    const dx = c.x - otherBody.position.x
-    const dy = c.y - otherBody.position.y
-    const dist = Math.hypot(dx, dy) || 1
-    registerImpact(d, dx / dist, dy / dist, approachSpeed, r.soft.radius, 0)
+    const bodyAngle = r.soft.center.angle ?? 0
+    registerImpact(d, contactNormal.x, contactNormal.y, approachSpeed, r.soft.radius, bodyAngle)
   }
 
   unregister(ballId: number): void {
