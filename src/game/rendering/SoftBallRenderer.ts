@@ -322,7 +322,11 @@ export class SoftBallRenderer {
           }
           // AWAKE: the LIVE particle-ring contour — the drawn shape IS
           // the physics shape (dents, bulges, wobble), the praised
-          // pre-sprite look. Bounded: awake balls are the minority.
+          // pre-sprite look. The fill quad ALSO shows (positioned/scaled
+          // every frame) so balls beyond the overlay's top-N cap still
+          // have a visible body.
+          view.fill.setVisible(true).setTexture(tex.fillKey).setPosition(c.x, c.y).setScale(s * aspect, s)
+          view.outline.setVisible(false)
           const { poly, cx, cy } = this.liveContour(r, look, drawR)
           overlayItems.push({ entity: r, look, r: drawR, poly, cx, cy, color, aspect })
           this.bakeSweep.add(r.id)
