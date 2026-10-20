@@ -184,8 +184,6 @@ export class ContainerView {
   private readonly frameImage: Phaser.GameObjects.Image
   private readonly glowG: Phaser.GameObjects.Graphics
   private lastHeight = -1
-  /** Fast-mode repaint while the wall animation is in flight. */
-  private wallAnimAnimating = false
   /** Interior corners at the current height: [tl, tr, br, bl]. */
   private corners: Pt[] | null = null
   /** Combo glow sweep: elapsed ms, < 0 = inactive. */
@@ -230,10 +228,12 @@ export class ContainerView {
     // softened the ink edges. The paint math is unchanged: scale the
     // context once, draw in stage units as before.
     // PERF (iOS): mid-animation repaints are the wall-raise lag —
-    // each step uploads the full canvas. Fast mode: texScale 1 (4×
-    // smaller upload) while animating; the endpoint redraw (exact
-    // height, done flag) rebakes crisp at dpr 2.
-    const fast = this.wallAnimAnimating === true
+    // each step uploads the full canvas. Fast mode: texScale 1 while
+    // the height is BETWEEN the rest constants (mid-animation); the
+    // endpoint redraws fire at the exact rest heights and rebake
+    // crisp at dpr 2. Derived locally — no setter to keep in sync.
+    const midAnimation = height !== CONTAINER.height && height !== CONTAINER.raisedHeight
+    const fast = midAnimation
     const dpr = fast ? 1 : window.devicePixelRatio > 1.5 ? 2 : 1
     const texScale = dpr
     if (canvas.width !== 720 * texScale || canvas.height !== 1280 * texScale) {
