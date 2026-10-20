@@ -44,12 +44,14 @@ export class BackgroundScene extends Phaser.Scene {
   // NOTE: this.scale.width/height are still the CONFIG stage dims
   // (720×1280 — portrait!) when create() runs; the real viewport arrives
   // via applyDprResize on READY. Use the actual window viewport here.
-  const pinned = themeSetting()
-  // PORTRAIT AUTO (user spec): start LIGHT — the first ball discovery
-  // transitions to space (see themeMilestone). A pinned theme still
-  // applies immediately on portrait; 'auto' on desktop keeps light.
-  const bootTheme = pinned !== 'auto' ? pinned : 'light'
-  this.background = new BackgroundTheme(this, bootTheme)
+  const isPortrait = window.innerWidth < window.innerHeight
+  this.background = new BackgroundTheme(this, isPortrait ? 'space' : 'light')
+  if (!isPortrait) {
+    // Phase 2.14.0: a pinned theme (SETTINGS screen, persisted) overrides
+    // the progression opening theme at boot; 'auto' keeps the default.
+    const pinned = themeSetting()
+    if (pinned !== 'auto') this.background.setTheme(pinned)
+  }
     // Phaser auto-starts only the FIRST configured scene — this one. The
     // gameplay scene (which in turn launches UIScene) must be launched here.
     this.scene.launch('playground')

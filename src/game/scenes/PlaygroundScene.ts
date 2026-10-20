@@ -795,15 +795,7 @@ export class PlaygroundScene extends Phaser.Scene {
     // run-progression milestones only apply on AUTO. Phase 2.19: portrait
     // phones are pinned to space (their composition theme) — no cycling.
     if (themeSetting() !== 'auto') return
-    // PORTRAIT AUTO (user spec): start light; the FIRST ball discovery
-    // transitions to space (the portrait composition theme), once —
-    // after that, no further portrait cycling.
-    if (window.innerWidth < window.innerHeight) {
-      if (firstTime) {
-        this.backgroundScene.setTheme('space', THEME_PROGRESS.fadeMs)
-      }
-      return
-    }
+    if (window.innerWidth < window.innerHeight) return
     const steps = firstTime ? (THEME_PROGRESS.advanceOnTier[tier] ?? 0) : 0
     if (steps > 0) {
       this.backgroundScene.advanceTheme(steps)
