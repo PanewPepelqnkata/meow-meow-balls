@@ -100,44 +100,47 @@ export class ScoreFeedback {
     // `+N` in the merged tier's color — bold, outlined, offset shadow.
     const tierColor = getTier(tier)?.color ?? 0xffeb3b
     const scoreSize = Math.min(style.scoreSize, COMBO_FEEDBACK.maxScoreSize)
+    // PERF (iOS): popups are transient — resolution 1 + no shadowBlur
+    // cuts the raster to ~1/9 and kills the multiplicative blur pass
+    // (measured 2-4ms per popup at dpr 3).
     const scoreText = this.scene.add.text(0, 0, `+${points}`, {
+      resolution: 1,
       fontFamily: 'Lilita One, Arial Black, sans-serif',
       fontSize: `${scoreSize}px`,
       color: '#' + tierColor.toString(16).padStart(6, '0'),
       stroke: '#000000',
       strokeThickness: style.scoreStroke,
-      resolution: window.devicePixelRatio || 1,
     })
     scoreText.setOrigin(0.5)
-    scoreText.setShadow(style.shadowOffset, style.shadowOffset, '#000000', style.shadowOffset * 2, true, true)
+    scoreText.setShadow(style.shadowOffset, style.shadowOffset, '#000000', 0, false, false)
     container.add(scoreText)
 
     if (showGrade) {
       const { grade, color } = gradeForChain(depth)
       const gradeText = this.scene.add.text(0, scoreSize * 0.62, grade, {
+        resolution: 1,
         fontFamily: 'Lilita One, Arial Black, sans-serif',
         fontSize: `${Math.min(style.gradeSize, COMBO_FEEDBACK.maxGradeSize)}px`,
         color,
         stroke: '#000000',
         strokeThickness: style.gradeStroke,
-        resolution: window.devicePixelRatio || 1,
       })
       gradeText.setOrigin(0.5)
-      gradeText.setShadow(style.shadowOffset, style.shadowOffset, '#000000', style.shadowOffset * 2, true, true)
+      gradeText.setShadow(style.shadowOffset, style.shadowOffset, '#000000', 0, false, false)
       container.add(gradeText)
 
       if (depth >= 2) {
         const comboY = scoreSize * 0.62 + Math.min(style.comboSize, COMBO_FEEDBACK.maxComboSize) * 1.15
         const comboText = this.scene.add.text(0, comboY, `${depth}x Combo!`, {
+          resolution: 1,
           fontFamily: 'Lilita One, Arial Black, sans-serif',
           fontSize: `${Math.min(style.comboSize, COMBO_FEEDBACK.maxComboSize)}px`,
           color: style.comboColor,
           stroke: '#000000',
           strokeThickness: style.comboStroke,
-          resolution: window.devicePixelRatio || 1,
         })
         comboText.setOrigin(0.5)
-        comboText.setShadow(style.shadowOffset, style.shadowOffset, '#000000', style.shadowOffset * 2, true, true)
+        comboText.setShadow(style.shadowOffset, style.shadowOffset, '#000000', 0, false, false)
         container.add(comboText)
         // Combo line gets its own delayed mini-punch (staggered energy).
         comboText.setScale(0.4)

@@ -87,6 +87,8 @@ export class WallAnimator {
     this.applyHeight(CONTAINER.height)
   }
 
+  private lastRedrawH = -1
+
   private applyHeight(h: number): void {
     this.currentHeight = h
     const specs = wallCollidersAt(h)
@@ -132,7 +134,19 @@ export class WallAnimator {
     // pairs are skipped by Matter's wake logic), so wake everything while the
     // rim is in motion — a settled pile must re-settle against the new rim.
     this.manager?.wakeAll()
-    this.onGeometryChange?.(h)
+    // PERF: the container-frame canvas is 1440×2560 — a full repaint +
+    // 14.7MB upload PER FRAME during the 1.8s animation ≈ 0.8-1.5GB of
+    // uploads (measured: continuous dropped frames on iPhone 14 Pro).
+    // Quantize the REDRAW to 12px height steps (~14 repaints per
+    // phase): the physics geometry stays per-frame exact; the VISUAL
+    // frame trails the physics by ≤12px during the 900ms motion —
+    // imperceptible at animation speed. The phase endpoints always
+    // redraw exactly (raised/lowered rest heights are constants).
+    const q = Math.round(h / 12) * 12
+    if (q !== this.lastRedrawH || h === CONTAINER.raisedHeight || h === CONTAINER.height) {
+      this.lastRedrawH = q
+      this.onGeometryChange?.(h)
+    }
   }
 
   private easeInOut(t: number): number {

@@ -58,6 +58,14 @@ export class BackgroundScene extends Phaser.Scene {
     // Phaser auto-starts only the FIRST configured scene — this one. The
     // gameplay scene (which in turn launches UIScene) must be launched here.
     this.scene.launch('playground')
+
+    // PERF (iOS): portrait-AUTO transitions to space at the first ball
+    // discovery — warming the space bakes NOW (menu time, off the
+    // gameplay frame) prevents a ~60-150ms bake+upload storm in the
+    // discovery frame.
+    if (window.innerWidth < window.innerHeight && themeSetting() === 'auto') {
+      this.time.delayedCall(50, () => this.background?.prewarmTheme('space'))
+    }
   }
 
   override update(_time: number, delta: number): void {

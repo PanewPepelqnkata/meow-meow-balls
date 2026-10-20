@@ -1050,6 +1050,23 @@ export class BackgroundTheme {
     })
   }
 
+  /**
+   * PERF (iOS): pre-bake a theme's textures (art, stars, grid, gradient)
+   * OFF the gameplay frame — used at boot to warm the theme a portrait
+   * auto game will transition to at first discovery (the bake storm
+   * otherwise lands mid-gameplay: ~60-150ms of uploads in one frame).
+   */
+  prewarmTheme(theme: ThemeName): void {
+    const prev = this.currentTheme
+    this.currentTheme = theme
+    this.updateGradImage()
+    this.bakeThemeArt(theme)
+    this.drawGrid()
+    this.currentTheme = prev
+    this.updateGradImage()
+    this.bakeThemeArt(this.currentTheme)
+  }
+
   /** The settled theme name (mid-transition reports the target). */
   get themeName(): ThemeName {
     return this.toTheme ?? this.currentTheme
