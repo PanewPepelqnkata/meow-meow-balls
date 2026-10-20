@@ -16,7 +16,7 @@ import {
   drawFantasyBall,
 } from './BallAppearance'
 import type { BallLook } from './BallAppearance'
-import { createDeformState, registerImpact, stepDeform, contourRadii } from './deform'
+import { createDeformState, registerImpact, stepDeform } from './deform'
 import type { DeformState } from './deform'
 import { variantIdFor } from '../state/runVariant'
 import { TierBaker } from './TierBaker'
@@ -311,41 +311,20 @@ export class SoftBallRenderer {
           // damped deform crosses the single threshold repeatedly after
           // impact; without the band the ball flickers
           // squished↔circle on every crossing.
-          const wasOn = this.overlayOn.get(r.id) === true
-          // ENTER only on genuinely strong impacts (aspect < 0.90):
-          // mild impacts stay on the smoothly-scaled sprite — the old
-          // 0.955 gate engaged the overlay on nearly every touch, and
-          // the baked-circle→live-contour mode flip read as 'no deform,
-          // then snap'. Exit band at 0.93 (just above enter).
-          const overlayEligible = wasOn ? aspect < 0.93 : aspect < 0.90
-          this.overlayOn.set(r.id, overlayEligible)
-          // Quads stay VISIBLE here — after the loop, only the balls the
-          // overlay will actually draw (top-N ranked) get their quads
-          // hidden (previously every gate-eligible ball was hidden, so
-          // the 4th+ deformed ball vanished: the overlay draws top-3).
-          // JELLY DEFORM: apply the deform spring's squashed radii to
-          // the sprite transform — the sticker deforms on impact like
-          // the pre-sprite renderer. The deform state's axis gives the
-          // squash direction; volume-preserving cross-axis handled by
-          // the contourRadii profile (sampled at 4 cardinal angles in
-          // the deform's local frame, then rotated by the axis angle).
-          const d = this.deforms.get(r.id)
-          if (d && (Math.abs(d.squash) > 0.005 || Math.abs(d.cross) > 0.005)) {
-            const radii = contourRadii(d, tex.textureRadius, 4)
-            // radii[0] = deform-axis direction, radii[1] = 45°, etc.
-            // Primary axis scale vs cross scale (volume-ish preserving):
-            const axisScale = radii[0]! / tex.textureRadius
-            const crossScale = radii[2]! / tex.textureRadius
-            const rot = Math.atan2(d.axisY, d.axisX)
-            view.fill.setVisible(true).setTexture(tex.fillKey).setPosition(c.x, c.y).setScale(s * axisScale, s * crossScale).setRotation(rot)
-          } else {
-            view.fill.setVisible(true).setTexture(tex.fillKey).setPosition(c.x, c.y).setScale(s * aspect, s).setRotation(0)
+          // SLEEPING: the frozen sticker quad — zero tessellation, the
+          // perf win for the dominant settled state.
+          if (softBallSleeping(r.soft)) {
+            view.fill.setVisible(true).setTexture(tex.fillKey).setPosition(c.x, c.y).setScale(s * aspect, s)
+            view.outline.setVisible(false)
+            this.bakeSweep.add(r.id)
+            this.drawSpriteFace(view, r, drawR, aspect, now)
+            continue
           }
-          view.outline.setVisible(false)
-          if (overlayEligible) {
-            const { poly, cx, cy } = this.liveContour(r, look, drawR)
-            overlayItems.push({ entity: r, look, r: drawR, poly, cx, cy, color, aspect })
-          }
+          // AWAKE: the LIVE particle-ring contour — the drawn shape IS
+          // the physics shape (dents, bulges, wobble), the praised
+          // pre-sprite look. Bounded: awake balls are the minority.
+          const { poly, cx, cy } = this.liveContour(r, look, drawR)
+          overlayItems.push({ entity: r, look, r: drawR, poly, cx, cy, color, aspect })
           this.bakeSweep.add(r.id)
           this.drawSpriteFace(view, r, drawR, aspect, now)
           continue
@@ -376,16 +355,9 @@ export class SoftBallRenderer {
       this.drawLiveFace(g, r, look, drawR, aspect, now, cx, cy)
     }
 
-    // Impact wobble overlay: bounded live-contour redraw for the most
-    // deformed balls only (sprite balls pre-register their live contours
-    // when the aspect gate opens; tier 8/9 live balls append theirs too).
-    // Hide quads ONLY for the balls the overlay will draw (top-N by
-    // aspect) — beyond-N balls keep their quads so no body vanishes.
-    const drawn = this.wobble.rank(overlayItems)
-    for (const it of drawn) {
-      this.hideSprites(it.entity.id)
-    }
-    this.wobble.draw(overlayItems)
+    // Wobble overlay: draws the LIVE contours collected above (awake
+    // balls, deformed tiers 8/9). No sprite hiding — awake balls are
+    // drawn by the overlay itself this frame.
   }
 
   // -------------------------------------------------------------------------
