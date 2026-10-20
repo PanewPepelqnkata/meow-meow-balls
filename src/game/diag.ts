@@ -98,6 +98,18 @@ export function installDiag(game: Phaser.Game): void {
         )
       }
       lines.push(`MODE ${standalone ? 'PWA-standalone' : 'browser-tab'}`)
+      // WALL-ID: physics ms vs render ms per frame + baked ball count —
+      // the device readout that splits 'physics dominates' from
+      // 'rendering dominates' from 'bake retention failed'.
+      try {
+        const pg = game.scene.getScene('playground') as Phaser.Scene & { perf?: { physicsMs: number; renderMs: number }; balls?: { getBalls(): Array<{ state: string }> }; ballRenderer?: { bakedSize: number } }
+        if (pg) {
+          const p = pg.perf
+          const baked = pg.ballRenderer?.bakedSize ?? -1
+          const alive = pg.balls?.getBalls().filter((b) => b.state !== 'removed').length ?? -1
+          lines.push(`WALL phys ${p ? p.physicsMs.toFixed(1) : '?'}ms render ${p ? p.renderMs.toFixed(1) : '?'}ms balls ${alive} baked ${baked}`)
+        }
+      } catch { /* playground not booted yet */ }
       const bg = game.scene.getScene('BackgroundScene') as Phaser.Scene & { background?: Record<string, unknown> }
       const th = bg?.background
       const intro = game.scene.getScene('StartIntroScene') as Phaser.Scene & { scene: { settings: { status: number; data?: { introDiag?: { outerR: number; innerR: number; r: number; phase: string } } } } }
