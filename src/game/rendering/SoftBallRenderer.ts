@@ -17,7 +17,7 @@ import {
 } from './BallAppearance'
 import type { BallLook } from './BallAppearance'
 import { variantIdFor } from '../state/runVariant'
-import { TierBaker, BAKE_TEXTURE_RADIUS } from './TierBaker'
+import { TierBaker } from './TierBaker'
 import type { TierTextures } from './TierBaker'
 import { FacePool } from './FacePool'
 import type { SpriteBallView } from './FacePool'
@@ -266,9 +266,9 @@ export class SoftBallRenderer {
       // ---- SPRITE PATH (tiers 1–7): two batched quads + 5 face sprites.
       if (r.tier !== 8 && r.tier !== 9) {
         const view = this.spriteViews.get(r.id)
-        const tex = this.tierBaker.ensure(r.tier, color)
+        const tex = this.tierBaker.ensure(r.tier, color, r.soft.radius)
         if (view) {
-          const s = drawR / BAKE_TEXTURE_RADIUS
+          const s = drawR / tex.textureRadius
           // Impact transient (aspect below the gate): the wobble overlay
           // will draw this ball's live fill+outline (ranked top-N below) —
           // hide the quads so the overlay is the only body.

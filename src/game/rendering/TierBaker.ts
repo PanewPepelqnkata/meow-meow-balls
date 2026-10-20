@@ -83,11 +83,17 @@ export class TierBaker {
    * measured rest wobble is ≤1.8% of R, invisible as motion but visible as
    * character). Deterministic per tier.
    */
-  ensure(tier: number, color: number): TierTextures {
+  ensure(tier: number, color: number, tierRadius: number): TierTextures {
     const existing = this.baked.get(tier)
     if (existing) return existing
 
-    const r = BAKE_TEXTURE_RADIUS
+    // PERF/correctness: bake at the TIER's own radius (not a fixed 256
+    // px): the sprite then displays at ~1:1 and the baked stroke width
+    // (ballOutlineWidth(tierRadius)) matches the live path's
+    // ballOutlineWidth(liveR) exactly — the impact 'thick then thin'
+    // outline glitch was the 256-bake's clamped-7px stroke displayed at
+    // 0.12× (hairline) vs the live path's 4.8px.
+    const r = tierRadius
     const pad = ballOutlineWidth(r) / 2 + 3
     const size = Math.ceil(r * 2 + pad * 2)
     const center = r + pad
