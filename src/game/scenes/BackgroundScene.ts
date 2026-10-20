@@ -45,7 +45,10 @@ export class BackgroundScene extends Phaser.Scene {
   // (720×1280 — portrait!) when create() runs; the real viewport arrives
   // via applyDprResize on READY. Use the actual window viewport here.
   const isPortrait = window.innerWidth < window.innerHeight
-  this.background = new BackgroundTheme(this, isPortrait ? 'space' : 'light')
+  // PORTRAIT AUTO: start light — first ball discovery advances to
+  // space (themeMilestone). Pinned themes still apply on any orientation.
+  const pinned = themeSetting()
+  this.background = new BackgroundTheme(this, pinned !== 'auto' ? pinned : 'light')
   if (!isPortrait) {
     // Phase 2.14.0: a pinned theme (SETTINGS screen, persisted) overrides
     // the progression opening theme at boot; 'auto' keeps the default.
