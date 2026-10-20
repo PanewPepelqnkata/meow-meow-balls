@@ -480,6 +480,9 @@ export class PlaygroundScene extends Phaser.Scene {
          * bakedSize → ball count; a wake must clear the id same-frame. */
         bakedSize: () => this.ballRenderer?.bakedSize ?? -1,
         isBaked: (id: number) => this.ballRenderer?.isBaked(id) ?? false,
+        /** DEV-ONLY QA hook (SpriteBalls, read-only): live sprite transform
+         * of one ball (acceptance §3 — squash/stretch verification). */
+        spriteView: (id: number) => this.ballRenderer?.debugSpriteView(id) ?? null,
         /** DEV-ONLY QA hook: where the claw currently holds the next ball
          * (stage coords) — appearance-consistency probes. */
         spawnInfo: (tier: number) => ({
