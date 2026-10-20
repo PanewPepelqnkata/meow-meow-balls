@@ -303,7 +303,7 @@ export class SoftBallRenderer {
             overlayItems.push({ entity: r, look, r: drawR, poly, cx, cy, color, aspect })
           }
           this.bakeSweep.add(r.id)
-          this.drawSpriteFace(view, r, look, drawR, aspect, now)
+          this.drawSpriteFace(view, r, drawR, aspect, now)
           continue
         }
       }
@@ -317,7 +317,7 @@ export class SoftBallRenderer {
         const s = drawR / special.textureRadius
         this.drawSpecialQuads(r.id, special, c.x, c.y, s)
         this.bakeSweep.add(r.id)
-        this.drawSpriteFace(this.spriteViews.get(r.id)!, r, look, drawR, aspect, now)
+        this.drawSpriteFace(this.spriteViews.get(r.id)!, r, drawR, aspect, now)
         continue
       }
 
@@ -447,22 +447,19 @@ export class SoftBallRenderer {
   private drawSpriteFace(
     view: SpriteBallView,
     r: SoftBallEntity,
-    look: BallLook,
     drawR: number,
     aspect: number,
     now: number,
   ): void {
     const atlas = this.faces.atlas(r.id)
     if (!atlas) return
-    const panic = this.gameOverSequence?.panicOverride ?? this.emotion.panicOf(r.id)
-    const expr = expressionAt(r.seed, now)
-    if (panic > 0 || expr !== 'normal') {
-      // Transient emotional states: full live face (drawBallFace handles
-      // the morphs + sweat). Hide the sprites for these frames.
-      this.faces.hideFace(view)
-      this.drawLiveFace(this.layer, r, look, drawR, aspect, now)
-      return
-    }
+    // PERF/UX: the face sprites stay visible in ALL states — the
+    // previous fallback (hide sprites + drawBallFace on the shared
+    // layer during easter eggs/panic) made the face vanish for the
+    // morph's duration on iOS (the shared layer's per-frame clear
+    // races the sprite visibility on overlay-eligible frames). The
+    // atlas face is the neutral expression; the impact window shows
+    // it instead of a vanishing scared face.
     const c = softBallCentroid(r.soft, this.centroidScratch)
     this.faces.layoutFace(view, atlas, c.x, c.y, drawR, aspect, gazeAt(r.seed, now))
   }
@@ -494,12 +491,15 @@ export class SoftBallRenderer {
   }
 
   /** Hide a ball's sprite set (removed / popped / live-path frames). */
+  /** Hide only the body quads — face sprites stay visible in BOTH
+   * render modes (hiding them for overlay members made faces vanish
+   * for the overlay's duration: the sprite face draw ran before this
+   * post-pass and nothing redrew them). */
   private hideSprites(ballId: number): void {
     const view = this.spriteViews.get(ballId)
     if (!view) return
     view.fill.setVisible(false)
     view.outline.setVisible(false)
-    this.faces.hideFace(view)
   }
 
   private lookFor(ball: SoftBallEntity): BallLook {
