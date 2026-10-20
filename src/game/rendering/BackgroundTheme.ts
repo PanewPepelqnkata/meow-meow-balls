@@ -1065,6 +1065,11 @@ export class BackgroundTheme {
     this.currentTheme = prev
     this.updateGradImage()
     this.bakeThemeArt(this.currentTheme)
+    // Restore live-layer visibility: the bake created the prewarmed
+    // theme's art Image VISIBLE (Phaser default) — without this, a
+    // full-screen 780×1688 stale layer draws every frame from boot
+    // until the theme transition.
+    this.applyCloudAlphas()
   }
 
   /** The settled theme name (mid-transition reports the target). */
