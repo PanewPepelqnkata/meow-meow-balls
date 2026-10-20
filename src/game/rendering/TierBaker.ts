@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { INK, ballOutlineWidth, wobbleContour, ballLookFor } from './BallAppearance'
+import { INK, ballOutlineWidth } from './BallAppearance'
 
 /**
  * PER-TIER BAKED SLIME TEXTURES (SpriteBalls, Phase 2.24) — the follow-up
@@ -96,14 +96,18 @@ export class TierBaker {
     // renderer applies at rest (`restContour` semantics via renderContour on
     // a synthetic round SoftBall is overkill — wobbleContour on a sampled
     // circle reproduces the identical silhouette shape function).
-    const steps = 48
+    // 96 points (was 48) + NO wobble displacement: the baked rest cover
+    // is a TRUE circle — the static wobble lobes frozen into the texture
+    // read as hexagonal facets on device (user report). The soft-body
+    // wobble on AWAKE balls comes from the live contour; sleeping balls
+    // show the clean circle.
+    const steps = 96
     const base: Array<{ x: number; y: number }> = []
     for (let i = 0; i < steps; i++) {
       const a = (i / steps) * Math.PI * 2
       base.push({ x: Math.cos(a) * r, y: Math.sin(a) * r })
     }
-    const look = ballLookFor(tier, tier * 0x9e3779b9)
-    const poly = wobbleContour(look, base, 0, 0, r, 1.5)
+    const poly = base
 
     const fillKey = `br-tier-fill-${tier}`
     const outlineKey = `br-tier-out-${tier}`
