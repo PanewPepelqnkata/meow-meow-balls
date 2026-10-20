@@ -16,7 +16,7 @@ import {
   drawFantasyBall,
 } from './BallAppearance'
 import type { BallLook } from './BallAppearance'
-import { createDeformState, registerImpact, stepDeform } from './deform'
+import { createDeformState, registerImpact, stepDeform, contourRadii } from './deform'
 import type { DeformState } from './deform'
 import { variantIdFor } from '../state/runVariant'
 import { TierBaker } from './TierBaker'
@@ -293,6 +293,7 @@ export class SoftBallRenderer {
       // cleanly; pops are transient, ≤ a handful of balls).
       if (popScale != null) {
         this.hideSprites(r.id)
+        this.faces.hideFace(this.spriteViews.get(r.id)!)
         this.drawLiveBody(g, r, look, drawR, color)
         this.drawLiveFace(g, r, look, drawR, aspect, now)
         continue
@@ -325,7 +326,20 @@ export class SoftBallRenderer {
           // pre-sprite look. The fill quad ALSO shows (positioned/scaled
           // every frame) so balls beyond the overlay's top-N cap still
           // have a visible body.
-          view.fill.setVisible(true).setTexture(tex.fillKey).setPosition(c.x, c.y).setScale(s * aspect, s)
+          view.fill.setVisible(true).setTexture(tex.fillKey).setPosition(c.x, c.y)
+          // JELLY DEFORM: the deform spring's squash/cross drive the
+          // sprite transform — volume-preserving squash along the
+          // impact axis, cross-axis bulge, rotation to the axis angle.
+          const d = this.deforms.get(r.id)
+          if (d && (Math.abs(d.squash) > 0.004 || Math.abs(d.cross) > 0.004)) {
+            const radii = contourRadii(d, tex.textureRadius, 4)
+            const axisScale = radii[0]! / tex.textureRadius
+            const crossScale = radii[2]! / tex.textureRadius
+            const rot = Math.atan2(d.axisY, d.axisX)
+            view.fill.setScale(s * axisScale, s * crossScale).setRotation(rot)
+          } else {
+            view.fill.setScale(s * aspect, s).setRotation(0)
+          }
           view.outline.setVisible(false)
           const { poly, cx, cy } = this.liveContour(r, look, drawR)
           overlayItems.push({ entity: r, look, r: drawR, poly, cx, cy, color, aspect })
@@ -362,6 +376,7 @@ export class SoftBallRenderer {
     // Wobble overlay: draws the LIVE contours collected above (awake
     // balls, deformed tiers 8/9). No sprite hiding — awake balls are
     // drawn by the overlay itself this frame.
+    this.wobble.draw(overlayItems)
   }
 
   // -------------------------------------------------------------------------
