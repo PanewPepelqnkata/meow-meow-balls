@@ -51,7 +51,7 @@ export function hudText(
       color: opts.color,
       stroke: '#111111',
       strokeThickness: Math.max(1, stroke * fontScale),
-      resolution: window.devicePixelRatio || 1,
+      resolution: Math.min(window.devicePixelRatio || 1, 2),
     })
     .setOrigin(opts.origin?.[0] ?? 0, opts.origin?.[1] ?? 0)
   if (opts.pad) t.setPadding(opts.pad, opts.pad, opts.pad, opts.pad)
