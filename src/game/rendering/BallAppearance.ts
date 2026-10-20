@@ -481,7 +481,7 @@ export function drawBallFace(
     g.fillStyle(0xffffff, 1)
     g.fillEllipse(X(e.x), Y(e.y), e.a * 2, e.b * 2)
     g.lineStyle(e.rim, INK, 1)
-    g.strokeEllipse(X(e.x), Y(e.y), e.a * 2, e.b * 2, 12)
+    g.strokeEllipse(X(e.x), Y(e.y), e.a * 2, e.b * 2)
     g.fillStyle(INK, 1)
     g.fillEllipse(X(e.x + e.px), Y(e.y + e.py), e.pa * 2, e.pb * 2)
     // Main highlight near the pupil's upper-left + tiny secondary dot.

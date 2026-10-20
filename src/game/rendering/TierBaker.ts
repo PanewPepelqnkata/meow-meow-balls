@@ -96,7 +96,10 @@ export class TierBaker {
     // renderer applies at rest (`restContour` semantics via renderContour on
     // a synthetic round SoftBall is overkill — wobbleContour on a sampled
     // circle reproduces the identical silhouette shape function).
-    const steps = 48
+    // 128 samples (was 48): the bake upscales onto big balls where
+    // 48-pt facets were visible as straight edges (user report). The
+    // wobble displacement stays — only the sampling density rises.
+    const steps = 128
     const base: Array<{ x: number; y: number }> = []
     for (let i = 0; i < steps; i++) {
       const a = (i / steps) * Math.PI * 2
