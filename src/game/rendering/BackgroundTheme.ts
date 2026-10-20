@@ -1204,11 +1204,6 @@ export class BackgroundTheme {
     }
 
     this.transitionTween?.stop()
-    // During the crossfade the OLD individual layers animate (the
-    // composite is a settled-state bake — it cannot fade between
-    // themes). Hide the composite for the transition; drawBackground()
-    // at onComplete rebuilds + re-shows it.
-    this.compositeImage?.setVisible(false)
     this.gradImage?.setVisible(false)
     this.transitionTween = this.scene.tweens.add({
       targets: this,
@@ -1457,12 +1452,7 @@ export class BackgroundTheme {
         ga = this.currentTheme === 'space' ? 1 : 0
       }
       this.gradImage.setAlpha(ga)
-      // With the composite live, the settled gradient lives in the
-      // composite texture — the standalone grad layer only shows during
-      // an active crossfade (it fades with ga; the composite is hidden
-      // mid-fade and re-shown at settle).
-      const settled = !this.toTheme && this.compositeImage?.visible
-      this.gradImage.setVisible(ga > 0.005 && !settled)
+      this.gradImage.setVisible(ga > 0.005)
     }
     for (const [name, group] of Object.entries(this.cloudGroups)) {
       if (!group) continue
@@ -1533,83 +1523,6 @@ export class BackgroundTheme {
   /** Baked static art per theme (depth -99, screen-space). */
   private artImages: Partial<Record<ThemeName, Phaser.GameObjects.Image>> = {}
 
-  /**
-   * PERF (wave 4): the 5 stacked full-screen layers (grad, art, 3
-   * nebulas, grid) cost ~5 texture binds + ~2.5-3× overdraw per frame
-   * on a 1170×2532 buffer — the fill-rate ceiling on A-series iPhones.
-   * They change ONLY on resize/theme change, so composite them into
-   * ONE 'br-bg-composite' texture (rebuilt on the same triggers) and
-   * render that single Image instead. Pixels identical; stars keep
-   * their own layer (twinkle).
-   */
-  private compositeImage: Phaser.GameObjects.Image | null = null
-  private compositeVersion = 0
-
-  private compositeBackground(): void {
-    const z = this.scene.game.scale.displayScale.x || 1
-    const dpr = Math.min(window.devicePixelRatio || 1, 2)
-    const w = Math.ceil((this.scene.scale.width / z) * dpr)
-    const h = Math.ceil((this.scene.scale.height / z) * dpr)
-    // VERSIONED key: even remove+recreate can leave the GPU sampling
-    // stale memory if the driver recycles texture handles (observed:
-    // canvas content correct, rendered frame stale). A new key per
-    // bake guarantees a genuinely new GL texture object.
-    this.compositeVersion = (this.compositeVersion ?? 0) + 1
-    const key = 'br-bg-composite-v' + this.compositeVersion
-    const prev = this.compositeImage
-    this.compositeImage = null
-    if (prev) {
-      const oldKey = prev.texture.key
-      prev.destroy()
-      if (this.scene.textures.exists(oldKey)) this.scene.textures.remove(oldKey)
-    }
-    this.scene.textures.createCanvas(key, w, h)
-    const dst = this.scene.textures.get(key).getSourceImage() as HTMLCanvasElement
-    const dctx = dst.getContext('2d')!
-    dctx.setTransform(1, 0, 0, 1, 0, 0)
-    dctx.clearRect(0, 0, w, h)
-    // Compose in depth order: gradient (space) or theme art fill, then
-    // art bakes, then nebulas, then grid. Layers come from the SAME
-    // canvases the individual Images used — pixel-identical composite.
-    const theme = this.currentTheme
-    // Depth order: base fill (space gradient | theme art's own base),
-    // then the theme art (planet/moon/horizon or scenery), then
-    // nebulas, then grid — mirroring the live layer stack exactly.
-    if (theme === 'space') {
-      const grad = this.scene.textures.exists('br-space-grad')
-        ? (this.scene.textures.get('br-space-grad').getSourceImage() as HTMLCanvasElement)
-        : null
-      if (grad) dctx.drawImage(grad, 0, 0)
-    }
-    const art = this.scene.textures.exists('br-art-' + theme)
-      ? (this.scene.textures.get('br-art-' + theme).getSourceImage() as HTMLCanvasElement)
-      : null
-    if (art) dctx.drawImage(art, 0, 0)
-    // Nebulas are EXCLUDED: they drift per frame (live Images, ~3 small
-    // textures — negligible cost). Baking them would freeze the drift
-    // and double-draw over their live selves.
-    // Grid.
-    const grid = this.scene.textures.exists('br-grid')
-      ? (this.scene.textures.get('br-grid').getSourceImage() as HTMLCanvasElement)
-      : null
-    if (grid) {
-      const spaceActive = (this.toTheme ?? this.currentTheme) === 'space'
-      dctx.globalAlpha = spaceActive ? 1 : 0
-      if (spaceActive) dctx.drawImage(grid, 0, 0)
-      dctx.globalAlpha = 1
-    }
-    const tex = this.scene.textures.get(key) as Phaser.Textures.CanvasTexture
-    tex.refresh()
-    if (!this.compositeImage) {
-      this.compositeImage = this.scene.add
-        .image(0, 0, key)
-        .setOrigin(0, 0)
-        .setDepth(-96)
-        .setScrollFactor(0)
-    }
-    this.compositeImage.setDisplaySize(Math.ceil(w / dpr), Math.ceil(h / dpr))
-  }
-
   private drawBackground(): void {
     // Bake every theme the current state shows, then drive visibility
     // through applyCloudAlphas (which also handles the art Images).
@@ -1618,36 +1531,6 @@ export class BackgroundTheme {
     if (this.toTheme) wanted.push(this.toTheme)
     for (const t of wanted) this.bakeThemeArt(t)
     this.applyCloudAlphas()
-    this.rebuildComposite()
-  }
-
-  /** Rebuild + show the composite layer (only on bake triggers). */
-  private rebuildComposite(): void {
-    this.compositeBackground()
-    this.compositeImage?.setVisible(true)
-    // Individual layers hide — the composite replaces them per frame.
-    // (updateGradImage may have re-shown gradImage earlier in this
-    // rebuild; hide it again AFTER that.)
-    this.applyCompositeVisibility()
-    this.gradImage?.setVisible(false)
-  }
-
-  private applyCompositeVisibility(): void {
-    // The composite carries grad + art + grid — the individual layers
-    // must ALL be hidden (an art Image left visible double-draws its
-    // identical pixels over the composite; during theme switches the
-    // composite refreshes before the old art hides = 'doubled on top
-    // left'). Nebulas stay LIVE (per-frame drift) and visible.
-    this.gradImage?.setVisible(false)
-    for (const img of Object.values(this.artImages)) {
-      img?.setVisible(false)
-    }
-    for (const group of Object.values(this.cloudGroups)) {
-      for (const obj of group) {
-        const go = obj as Phaser.GameObjects.Image
-        if (go.texture && go.texture.key.indexOf('br-nebula') === 0) go.setVisible(true)
-      }
-    }
   }
 
   private drawGrid(): void {
