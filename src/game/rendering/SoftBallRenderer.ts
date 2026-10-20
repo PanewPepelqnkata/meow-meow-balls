@@ -292,7 +292,11 @@ export class SoftBallRenderer {
           const wasOn = this.overlayOn.get(r.id) === true
           const overlayEligible = wasOn ? aspect < 0.985 : aspect < WobbleOverlay.AMP_GATE
           this.overlayOn.set(r.id, overlayEligible)
-          view.fill.setVisible(!overlayEligible).setTexture(tex.fillKey).setPosition(c.x, c.y).setScale(s * aspect, s)
+          // Quads stay VISIBLE here — after the loop, only the balls the
+          // overlay will actually draw (top-N ranked) get their quads
+          // hidden (previously every gate-eligible ball was hidden, so
+          // the 4th+ deformed ball vanished: the overlay draws top-3).
+          view.fill.setVisible(true).setTexture(tex.fillKey).setPosition(c.x, c.y).setScale(s * aspect, s)
           view.outline.setVisible(false)
           if (overlayEligible) {
             const { poly, cx, cy } = this.liveContour(r, look, drawR)
@@ -331,6 +335,12 @@ export class SoftBallRenderer {
     // Impact wobble overlay: bounded live-contour redraw for the most
     // deformed balls only (sprite balls pre-register their live contours
     // when the aspect gate opens; tier 8/9 live balls append theirs too).
+    // Hide quads ONLY for the balls the overlay will draw (top-N by
+    // aspect) — beyond-N balls keep their quads so no body vanishes.
+    const drawn = this.wobble.rank(overlayItems)
+    for (const it of drawn) {
+      this.hideSprites(it.entity.id)
+    }
     this.wobble.draw(overlayItems)
   }
 

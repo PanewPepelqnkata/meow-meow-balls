@@ -877,7 +877,11 @@ export class PlaygroundScene extends Phaser.Scene {
     // PERF (iOS): pre-bake the new NEXT ball's face atlas NOW (idle
     // frame) — the drop frame then reuses it instead of rasterizing
     // 3×256² textures mid-event.
-    this.ballRenderer.prewarmFace(this.nextBallState.tier, this.nextBallState.seed)
+    // PERF: defer the atlas bake to the NEXT frame — it rides the
+    // input frame otherwise (measured 1.5-3.5ms).
+    this.time.delayedCall(1, () =>
+      this.ballRenderer.prewarmFace(this.nextBallState.tier, this.nextBallState.seed),
+    )
     // Phase 2.14.0: leaderboard bookkeeping — spawned tiers count too.
     if (tier.tier > this.bestTierRun) this.bestTierRun = tier.tier
     this.publishQueue()

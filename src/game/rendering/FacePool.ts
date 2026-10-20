@@ -110,6 +110,29 @@ export class FacePool {
     const pupilKey = `${prefix}-pupil`
     const mouthKey = `${prefix}-mouth`
 
+    // PERF: the look atlas already exists (prewarmed at queue rotation
+    // or baked for a previous identical look) — skip the 3×256²
+    // re-raster + upload entirely; just create this ball's sprite set
+    // against the shared textures.
+    if (
+      this.scene.textures.exists(scleraKey) &&
+      this.scene.textures.exists(pupilKey) &&
+      this.scene.textures.exists(mouthKey)
+    ) {
+      this.ballLookKeys.set(ballId, lookKeyStr)
+      const view: SpriteBallView = {
+        fill: this.scene.add.image(0, 0, '__DEFAULT').setDepth(SPRITE_FILL_DEPTH),
+        outline: this.scene.add.image(0, 0, '__DEFAULT').setDepth(SPRITE_OUTLINE_DEPTH),
+        scleraL: this.scene.add.image(0, 0, scleraKey).setDepth(FACE_DEPTH),
+        scleraR: this.scene.add.image(0, 0, scleraKey).setDepth(FACE_DEPTH),
+        pupilL: this.scene.add.image(0, 0, pupilKey).setDepth(FACE_DEPTH),
+        pupilR: this.scene.add.image(0, 0, pupilKey).setDepth(FACE_DEPTH),
+        mouth: this.scene.add.image(0, 0, mouthKey).setDepth(FACE_DEPTH),
+      }
+      this.views.set(ballId, view)
+      return view
+    }
+
     // SCLERA: white oval + thick ink rim, centered in the tile. Baked at
     // layout scale (r = FACE_ATLAS_R); displayed scaled by (liveR / r).
     const e0: EyeLayout = L.eyes[0]!

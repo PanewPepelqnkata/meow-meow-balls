@@ -19,6 +19,17 @@ import { softBallCentroid } from '../systems/SoftBall'
  * An overlay ball's outline is drawn here; the sprite outline quad for
  * that ball is hidden by the renderer while the overlay is active.
  */
+export interface OverlayItem {
+  entity: SoftBallEntity
+  look: BallLook
+  r: number
+  poly: Phaser.Math.Vector2[]
+  cx: number
+  cy: number
+  color: number
+  aspect: number
+}
+
 export class WobbleOverlay {
   /** Max balls whose live wobble contour draws per frame (bounded cost). */
   static readonly MAX_BALLS = 3
@@ -38,24 +49,20 @@ export class WobbleOverlay {
    * SoftBallRenderer.update() AFTER the sprite pass; `items` carries every
    * drawn ball's live geometry (already computed for the transform pass).
    */
-  draw(
-    items: Array<{
-      entity: SoftBallEntity
-      look: BallLook
-      r: number
-      poly: Phaser.Math.Vector2[]
-      cx: number
-      cy: number
-      color: number
-      aspect: number
-    }>,
-  ): number {
-    this.g.clear()
-    // Rank by deform amplitude (furthest from round), take the top N.
-    const active = items
-      .filter((it) => it.aspect < WobbleOverlay.AMP_GATE)
+  /** Rank candidates by deform amplitude, return the top-N the
+   * overlay will draw — the renderer hides quads ONLY for these. */
+  rank(items: OverlayItem[]): OverlayItem[] {
+    return items
+      .slice()
       .sort((a, b) => a.aspect - b.aspect)
       .slice(0, WobbleOverlay.MAX_BALLS)
+  }
+
+  draw(
+    items: OverlayItem[],
+  ): number {
+    this.g.clear()
+    const active = this.rank(items)
     for (const it of active) {
       this.g.fillStyle(it.color, 1)
       this.g.fillPoints(it.poly, true)
