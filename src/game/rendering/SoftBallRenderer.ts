@@ -290,7 +290,12 @@ export class SoftBallRenderer {
           // impact; without the band the ball flickers
           // squished↔circle on every crossing.
           const wasOn = this.overlayOn.get(r.id) === true
-          const overlayEligible = wasOn ? aspect < 0.985 : aspect < WobbleOverlay.AMP_GATE
+          // ENTER only on genuinely strong impacts (aspect < 0.90):
+          // mild impacts stay on the smoothly-scaled sprite — the old
+          // 0.955 gate engaged the overlay on nearly every touch, and
+          // the baked-circle→live-contour mode flip read as 'no deform,
+          // then snap'. Exit band at 0.93 (just above enter).
+          const overlayEligible = wasOn ? aspect < 0.93 : aspect < 0.90
           this.overlayOn.set(r.id, overlayEligible)
           // Quads stay VISIBLE here — after the loop, only the balls the
           // overlay will actually draw (top-N ranked) get their quads
