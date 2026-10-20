@@ -1543,24 +1543,27 @@ export class BackgroundTheme {
    * their own layer (twinkle).
    */
   private compositeImage: Phaser.GameObjects.Image | null = null
+  private compositeVersion = 0
 
   private compositeBackground(): void {
     const z = this.scene.game.scale.displayScale.x || 1
     const dpr = Math.min(window.devicePixelRatio || 1, 2)
     const w = Math.ceil((this.scene.scale.width / z) * dpr)
     const h = Math.ceil((this.scene.scale.height / z) * dpr)
-    const key = 'br-bg-composite'
-    const existing = this.scene.textures.exists(key)
-      ? (this.scene.textures.get(key).getSourceImage() as HTMLCanvasElement | null)
-      : null
-    if (existing && (existing.width !== w || existing.height !== h)) {
-      this.scene.textures.remove(key)
-      this.compositeImage?.destroy()
-      this.compositeImage = null
+    // VERSIONED key: even remove+recreate can leave the GPU sampling
+    // stale memory if the driver recycles texture handles (observed:
+    // canvas content correct, rendered frame stale). A new key per
+    // bake guarantees a genuinely new GL texture object.
+    this.compositeVersion = (this.compositeVersion ?? 0) + 1
+    const key = 'br-bg-composite-v' + this.compositeVersion
+    const prev = this.compositeImage
+    this.compositeImage = null
+    if (prev) {
+      const oldKey = prev.texture.key
+      prev.destroy()
+      if (this.scene.textures.exists(oldKey)) this.scene.textures.remove(oldKey)
     }
-    if (!this.scene.textures.exists(key)) {
-      this.scene.textures.createCanvas(key, w, h)
-    }
+    this.scene.textures.createCanvas(key, w, h)
     const dst = this.scene.textures.get(key).getSourceImage() as HTMLCanvasElement
     const dctx = dst.getContext('2d')!
     dctx.setTransform(1, 0, 0, 1, 0, 0)
@@ -1630,11 +1633,14 @@ export class BackgroundTheme {
   }
 
   private applyCompositeVisibility(): void {
-    // The composite carries grad + art + grid. Nebulas stay LIVE
-    // (per-frame drift) and visible.
+    // The composite carries grad + art + grid — the individual layers
+    // must ALL be hidden (an art Image left visible double-draws its
+    // identical pixels over the composite; during theme switches the
+    // composite refreshes before the old art hides = 'doubled on top
+    // left'). Nebulas stay LIVE (per-frame drift) and visible.
     this.gradImage?.setVisible(false)
-    for (const [name, img] of Object.entries(this.artImages)) {
-      img?.setVisible(name === this.currentTheme)
+    for (const img of Object.values(this.artImages)) {
+      img?.setVisible(false)
     }
     for (const group of Object.values(this.cloudGroups)) {
       for (const obj of group) {

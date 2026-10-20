@@ -105,19 +105,22 @@ export class FacePool {
     this.tempG.clear()
     this.tempG.setPosition(128, 128)
     this.tempG.fillStyle(0xffffff, 1)
-    this.tempG.fillEllipse(0, 0, e0.a * 2, e0.b * 2)
+    // 64-pt smoothness: the sclera displays at up to ~1:3 css→device
+    // scale on dpr-3 phones; 32-pt faceting was visible as hexagonal
+    // edges (user report). One bake per ball — cost is nil.
+    this.tempG.fillEllipse(0, 0, e0.a * 2, e0.b * 2, 64)
     this.tempG.lineStyle(e0.rim, INK, 1)
-    this.tempG.strokeEllipse(0, 0, e0.a * 2, e0.b * 2, 24)
+    this.tempG.strokeEllipse(0, 0, e0.a * 2, e0.b * 2, 64)
     this.tempG.generateTexture(scleraKey, 256, 256)
     // PUPIL: ink oval + main highlight + tiny secondary dot, centered.
     if (this.scene.textures.exists(pupilKey)) this.scene.textures.remove(pupilKey)
     this.tempG.clear()
     this.tempG.setPosition(128, 128)
     this.tempG.fillStyle(INK, 1)
-    this.tempG.fillEllipse(0, 0, e0.pa * 2, e0.pb * 2)
+    this.tempG.fillEllipse(0, 0, e0.pa * 2, e0.pb * 2, 64)
     this.tempG.fillStyle(0xffffff, 1)
-    this.tempG.fillEllipse(-e0.pa * 0.32, -e0.pb * 0.34, e0.pa * 0.6, e0.pa * 0.6, 24)
-    this.tempG.fillEllipse(-e0.pa * 0.1, -e0.pb * 0.38, e0.pa * 0.24, e0.pa * 0.24, 16)
+    this.tempG.fillEllipse(-e0.pa * 0.32, -e0.pb * 0.34, e0.pa * 0.6, e0.pa * 0.6, 48)
+    this.tempG.fillEllipse(-e0.pa * 0.1, -e0.pb * 0.38, e0.pa * 0.24, e0.pa * 0.24, 32)
     this.tempG.generateTexture(pupilKey, 256, 256)
     // MOUTH: the ink marker stroke, centered on its bounding arc.
     const m = L.mouth
