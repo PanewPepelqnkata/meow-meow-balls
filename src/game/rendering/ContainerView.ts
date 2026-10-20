@@ -300,11 +300,21 @@ export class ContainerView {
     let off = this.offCanvas
     if (!off) {
       off = document.createElement('canvas')
+      off.width = 720
+      off.height = 1280
       this.offCanvas = off
+    } else {
+      // Reuse: clearRect on resize would realloc the backing store
+      // (the allocation spike this reuse exists to avoid) — clear the
+      // drawn region and reset composite state instead.
+      const octx0 = off.getContext('2d')!
+      octx0.setTransform(1, 0, 0, 1, 0, 0)
+      octx0.globalCompositeOperation = 'source-over'
+      octx0.clearRect(0, 0, 720, 1280)
     }
-    off.width = 720
-    off.height = 1280
     const octx = off.getContext('2d')!
+    octx.setTransform(1, 0, 0, 1, 0, 0)
+    octx.globalCompositeOperation = 'source-over'
     octx.strokeStyle = '#f4ead0'
     octx.lineWidth = PANEL_W
     octx.lineJoin = 'round'
