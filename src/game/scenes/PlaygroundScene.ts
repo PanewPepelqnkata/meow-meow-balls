@@ -690,6 +690,12 @@ export class PlaygroundScene extends Phaser.Scene {
       const ballBodyIds: number[] = []
       for (const { bodyA, bodyB } of events) {
         ballBodyIds.push(bodyA.id, bodyB.id)
+        // JELLY: feed the deform springs (visual only) — the approach
+        // speed comes from the relative velocity along the contact.
+        const bA = this.balls.getBallByBodyId(bodyA.id)
+        const bB = this.balls.getBallByBodyId(bodyB.id)
+        if (bA) this.ballRenderer.registerBallImpact(bA, bodyB, Math.hypot(bodyA.velocity.x - bodyB.velocity.x, bodyA.velocity.y - bodyB.velocity.y))
+        if (bB) this.ballRenderer.registerBallImpact(bB, bodyA, Math.hypot(bodyA.velocity.x - bodyB.velocity.x, bodyA.velocity.y - bodyB.velocity.y))
       }
       if (ballBodyIds.length) this.balls.markTouched(ballBodyIds)
       this.mergeSystem.processMerges(events)
@@ -710,7 +716,7 @@ export class PlaygroundScene extends Phaser.Scene {
       gameBus.emit('walls:countdown', { remainingMs: this.walls.remainingMs })
     }
     const renderStart = this.perf ? performance.now() : 0
-    this.ballRenderer.update()
+    this.ballRenderer.update(delta)
     // Game-over pop sequence fx (pooled particles/rings) — no-op while idle.
     this.gameOverSequence?.update(delta)
     // Combo glow sweep (no-op unless a sweep is running).

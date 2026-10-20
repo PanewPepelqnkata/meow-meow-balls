@@ -16,6 +16,8 @@ import {
   drawFantasyBall,
 } from './BallAppearance'
 import type { BallLook } from './BallAppearance'
+import { createDeformState, registerImpact, stepDeform, contourRadii } from './deform'
+import type { DeformState } from './deform'
 import { variantIdFor } from '../state/runVariant'
 import { TierBaker } from './TierBaker'
 import type { TierTextures } from './TierBaker'
@@ -114,6 +116,8 @@ export class SoftBallRenderer {
    * the two render modes have different silhouettes (baked circle vs
    * wobbled poly) = the 'squished↔normal' flicker. */
   private readonly overlayOn = new Map<number, boolean>()
+  /** Per-ball jelly deform spring (dent + bulge, fed by collision events). */
+  private readonly deforms = new Map<number, DeformState>()
   /** Scene ref for texture removal (tier-8/9 per-ball bakes). */
   private readonly scene: Phaser.Scene
 
@@ -137,6 +141,25 @@ export class SoftBallRenderer {
    * frame (see FacePool.prewarm). */
   prewarmFace(tier: number, seed: number): void {
     this.faces.prewarm(tier, seed)
+  }
+
+  /** Feed a collision event into the ball's jelly deform spring.
+   * Called from PlaygroundScene's per-frame collision drain. */
+  registerBallImpact(
+    r: SoftBallEntity,
+    otherBody: Matter.Body,
+    approachSpeed: number,
+  ): void {
+    let d = this.deforms.get(r.id)
+    if (!d) {
+      d = createDeformState()
+      this.deforms.set(r.id, d)
+    }
+    const c = r.soft.center.position
+    const dx = c.x - otherBody.position.x
+    const dy = c.y - otherBody.position.y
+    const dist = Math.hypot(dx, dy) || 1
+    registerImpact(d, dx / dist, dy / dist, approachSpeed, r.soft.radius, 0)
   }
 
   unregister(ballId: number): void {
@@ -219,13 +242,15 @@ export class SoftBallRenderer {
     this.layer.destroy()
   }
 
-  update(): void {
+  update(deltaMs = 16): void {
     const g = this.layer
     g.clear()
     // Advance the per-ball emotion (danger-zone panic) BEFORE drawing so
     // faces use this frame's eased panic value. Visual-only: the system
     // never touches physics state.
     this.emotion.update(this.renderables.values())
+    // Step the jelly deform springs (visual only).
+    for (const d of this.deforms.values()) stepDeform(d, deltaMs)
     this.lastDrawnIds.clear()
     this.bakeSweep.clear()
     const now = Date.now()
@@ -301,7 +326,24 @@ export class SoftBallRenderer {
           // overlay will actually draw (top-N ranked) get their quads
           // hidden (previously every gate-eligible ball was hidden, so
           // the 4th+ deformed ball vanished: the overlay draws top-3).
-          view.fill.setVisible(true).setTexture(tex.fillKey).setPosition(c.x, c.y).setScale(s * aspect, s)
+          // JELLY DEFORM: apply the deform spring's squashed radii to
+          // the sprite transform — the sticker deforms on impact like
+          // the pre-sprite renderer. The deform state's axis gives the
+          // squash direction; volume-preserving cross-axis handled by
+          // the contourRadii profile (sampled at 4 cardinal angles in
+          // the deform's local frame, then rotated by the axis angle).
+          const d = this.deforms.get(r.id)
+          if (d && (Math.abs(d.squash) > 0.005 || Math.abs(d.cross) > 0.005)) {
+            const radii = contourRadii(d, tex.textureRadius, 4)
+            // radii[0] = deform-axis direction, radii[1] = 45°, etc.
+            // Primary axis scale vs cross scale (volume-ish preserving):
+            const axisScale = radii[0]! / tex.textureRadius
+            const crossScale = radii[2]! / tex.textureRadius
+            const rot = Math.atan2(d.axisY, d.axisX)
+            view.fill.setVisible(true).setTexture(tex.fillKey).setPosition(c.x, c.y).setScale(s * axisScale, s * crossScale).setRotation(rot)
+          } else {
+            view.fill.setVisible(true).setTexture(tex.fillKey).setPosition(c.x, c.y).setScale(s * aspect, s).setRotation(0)
+          }
           view.outline.setVisible(false)
           if (overlayEligible) {
             const { poly, cx, cy } = this.liveContour(r, look, drawR)
