@@ -140,7 +140,11 @@ export class WallAnimator {
     // Moving wall vertices never wake sleeping soft balls (static/sleeping
     // pairs are skipped by Matter's wake logic), so wake everything while the
     // rim is in motion — a settled pile must re-settle against the new rim.
-    this.manager?.wakeAll()
+    // PERF: wake only balls in the rim's swept band — the moving wall
+    // tops can only touch balls between the normal rim and the raised
+    // rim (+ ball radius margin). wakeAll() re-simulated the whole
+    // pile (floor-resting balls included) for the full 1.8s.
+    this.manager?.wakeNearRimBand(h)
     // PERF: the container-frame canvas is 1440×2560 — a full repaint +
     // 14.7MB upload PER FRAME during the 1.8s animation ≈ 0.8-1.5GB of
     // uploads (measured: continuous dropped frames on iPhone 14 Pro).

@@ -12,7 +12,7 @@ import {
   softBallSleeping,
   SOFT,
 } from './SoftBall'
-import { CONTAINER, containerBounds, clampBallInside } from '../../config/container'
+import { CONTAINER, containerBounds, clampBallInside, interiorCorners } from '../../config/container'
 import { GAME_OVER } from '../../config/gameOver'
 import type { SoftBall } from './SoftBall'
 
@@ -221,6 +221,22 @@ export class SoftBallManager {
   /** Wake every ball (support changed globally: walls moved). */
   wakeAll(): void {
     for (const ball of this.balls) this.wakeBall(ball.id)
+  }
+
+  /** PERF: wake only balls whose centroid is inside the rim's swept
+   * band — the Raise Walls ability moves only the wall TOPS; balls
+   * resting on the floor/lower walls are untouched by the motion. */
+  wakeNearRimBand(currentTopY: number): void {
+    const margin = 80
+    const raisedTop = CONTAINER.raisedHeight !== undefined
+      ? interiorCorners(CONTAINER.raisedHeight).topLeft.y
+      : currentTopY
+    const normalTop = interiorCorners().topLeft.y
+    const bandTop = Math.min(raisedTop, normalTop, currentTopY) - margin
+    for (const ball of this.balls) {
+      const c = softBallCentroid(ball.soft, this.centroidScratch)
+      if (c.y >= bandTop) this.wakeBall(ball.id)
+    }
   }
 
   /**
