@@ -274,7 +274,7 @@ export class SoftBallRenderer {
           // hide the quads so the overlay is the only body.
           const overlayEligible = aspect < WobbleOverlay.AMP_GATE
           view.fill.setVisible(!overlayEligible).setTexture(tex.fillKey).setPosition(c.x, c.y).setScale(s * aspect, s)
-          view.outline.setVisible(!overlayEligible).setTexture(tex.outlineKey).setPosition(c.x, c.y).setScale(s)
+          view.outline.setVisible(false)
           if (overlayEligible) {
             const { poly, cx, cy } = this.liveContour(r, look, drawR)
             overlayItems.push({ entity: r, look, r: drawR, poly, cx, cy, color, aspect })
@@ -453,7 +453,7 @@ export class SoftBallRenderer {
     const ox = (tex.center - tex.textureRadius) * s
     const oy = ox // square special canvases: same offset both axes
     view.fill.setTexture(tex.fillKey).setVisible(true).setPosition(cx - ox, cy - oy).setScale(s)
-    view.outline.setTexture(tex.outlineKey).setVisible(true).setPosition(cx - ox, cy - oy).setScale(s)
+    view.outline.setVisible(false)
   }
 
   private dropSpecialTextures(ballId: number): void {

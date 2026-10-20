@@ -114,26 +114,24 @@ export class TierBaker {
     const look = ballLookFor(tier, tier * 0x9e3779b9)
     const poly = wobbleContour(look, base, 0, 0, r, 1.5)
 
-    const fillKey = `br-tier-fill-${tier}`
-    const outlineKey = `br-tier-out-${tier}`
-    if (this.scene.textures.exists(fillKey)) this.scene.textures.remove(fillKey)
-    if (this.scene.textures.exists(outlineKey)) this.scene.textures.remove(outlineKey)
+    // ONE combined texture (fill + ink outline baked together): the ball
+    // is a single 'sticker' — y-sorted rendering keeps each ball's
+    // outline attached to its own body (separate fill/outline quads let
+    // a back ball's outline draw over a front ball's fill — the
+    // interpenetration the user reported). Suika-class standard.
+    const bodyKey = `br-tier-body-${tier}`
+    if (this.scene.textures.exists(bodyKey)) this.scene.textures.remove(bodyKey)
 
-    // The offline pass draws at the Graphics' own position (identity camera):
-    // shift by +center so the ball center lands on canvas (center, center).
     this.tempG.clear()
     this.tempG.setPosition(center, center)
     this.tempG.fillStyle(color, 1)
     this.tempG.fillPoints(poly as unknown as Phaser.Math.Vector2[], true)
-    this.tempG.generateTexture(fillKey, size, size)
-
-    this.tempG.clear()
     this.tempG.lineStyle(ballOutlineWidth(r), INK, 1)
     this.tempG.strokePoints(poly as unknown as Phaser.Math.Vector2[], true, true)
-    this.tempG.generateTexture(outlineKey, size, size)
+    this.tempG.generateTexture(bodyKey, size, size)
     this.tempG.clear()
 
-    const tex: TierTextures = { fillKey, outlineKey, size, center, textureRadius: r }
+    const tex: TierTextures = { fillKey: bodyKey, outlineKey: bodyKey, size, center, textureRadius: r }
     this.baked.set(tier, tex)
     return tex
   }
