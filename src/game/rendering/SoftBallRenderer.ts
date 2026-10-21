@@ -23,7 +23,6 @@ import { TierBaker } from './TierBaker'
 import type { TierTextures } from './TierBaker'
 import { FacePool } from './FacePool'
 import type { SpriteBallView } from './FacePool'
-import { WobbleOverlay } from './WobbleOverlay'
 
 /**
  * Phase 2.24 SPRITE-BALLS renderer (per-tier baked slime textures) — the
@@ -91,8 +90,6 @@ export class SoftBallRenderer {
   private readonly tierBaker: TierBaker
   /** Pooled face sprites per ball. */
   private readonly faces: FacePool
-  /** Impact wobble overlay (bounded live-contour redraws). */
-  private readonly wobble: WobbleOverlay
   /** Per-ball sprite views (body quads + face sprites). */
   private readonly spriteViews = new Map<number, SpriteBallView>()
   /** Per-ball texture override for tiers 8/9 (per-ball live-contour bakes). */
@@ -126,7 +123,6 @@ export class SoftBallRenderer {
     this.layer = scene.add.graphics().setDepth(10)
     this.tierBaker = new TierBaker(scene)
     this.faces = new FacePool(scene)
-    this.wobble = new WobbleOverlay(scene)
   }
 
   register(ball: SoftBallEntity): void {
@@ -235,7 +231,6 @@ export class SoftBallRenderer {
   destroy(): void {
     this.tierBaker.destroy()
     this.faces.destroy()
-    this.wobble.destroy()
     this.layer.destroy()
   }
 
@@ -251,18 +246,6 @@ export class SoftBallRenderer {
     this.lastDrawnIds.clear()
     this.bakeSweep.clear()
     const now = Date.now()
-    /** Live-contour items for the wobble overlay (only impact balls draw). */
-    const overlayItems: Array<{
-      entity: SoftBallEntity
-      look: BallLook
-      r: number
-      poly: Phaser.Math.Vector2[]
-      cx: number
-      cy: number
-      color: number
-      aspect: number
-    }> = []
-
     for (const r of this.renderables.values()) {
       // Lifecycle guard: a REMOVED ball must never appear (not even for one
       // frame) beside or inside its replacement. A 'merging' ball is a
@@ -299,34 +282,13 @@ export class SoftBallRenderer {
         continue
       }
 
-      // ---- SPRITE PATH (tiers 1–7): two batched quads + 5 face sprites.
+      // ---- LIVE CONTOUR PATH (tiers 1–7): ALL balls draw the live
+      // particle-ring contour. Sleeping balls hit the Phase 2.20 contour
+      // cache (frozen geometry, zero rebuild) — no sleep/wake mode
+      // switch, no sticker/contour snap.
       if (r.tier !== 8 && r.tier !== 9) {
         const view = this.spriteViews.get(r.id)
-        const tex = this.tierBaker.ensure(r.tier, color, r.soft.radius)
         if (view) {
-          const s = drawR / tex.textureRadius
-          // Impact transient (aspect below the gate): the wobble overlay
-          // will draw this ball's live fill+outline (ranked top-N below) —
-          // hide the quads so the overlay is the only body.
-          // HYSTERESIS: enter < AMP_GATE (0.955), exit at 0.985 — the
-          // damped deform crosses the single threshold repeatedly after
-          // impact; without the band the ball flickers
-          // squished↔circle on every crossing.
-          // SLEEPING: the frozen sticker quad — zero tessellation, the
-          // perf win for the dominant settled state.
-          if (softBallSleeping(r.soft)) {
-            view.fill.setVisible(true).setTexture(tex.fillKey).setPosition(c.x, c.y).setScale(s * aspect, s)
-            view.outline.setVisible(false)
-            this.bakeSweep.add(r.id)
-            this.drawSpriteFace(view, r, drawR, aspect, now)
-            continue
-          }
-          // AWAKE: the body is drawn DIRECTLY on the shared layer —
-          // fillPoints + strokePoints from the live particle ring. No
-          // fill quad (it would double-draw the baked outline), no
-          // overlay cap (every awake ball is drawn, unconditionally).
-          view.fill.setVisible(false).setTexture(tex.fillKey).setPosition(c.x, c.y)
-          view.outline.setVisible(false)
           const { poly } = this.liveContour(r, look, drawR)
           g.fillStyle(color, 1)
           g.fillPoints(poly, true)
@@ -356,16 +318,8 @@ export class SoftBallRenderer {
         this.bakeSpecial(r, poly, color)
       }
       this.drawLiveBody(g, r, look, drawR, color, poly, cx, cy)
-      if (aspect < WobbleOverlay.AMP_GATE) {
-        overlayItems.push({ entity: r, look, r: drawR, poly, cx, cy, color, aspect })
-      }
       this.drawLiveFace(g, r, look, drawR, aspect, now, cx, cy)
     }
-
-    // Wobble overlay: draws the LIVE contours collected above (awake
-    // balls, deformed tiers 8/9). No sprite hiding — awake balls are
-    // drawn by the overlay itself this frame.
-    this.wobble.draw(overlayItems)
   }
 
   // -------------------------------------------------------------------------
