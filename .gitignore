@@ -15,6 +15,17 @@ coverage
 # QA artifacts (screenshots, smoke scripts, diagnostics)
 qa
 qa.zip
+# ...except the PERMANENT regression guards: they must be committed and
+# runnable, or the crash they guard can be reintroduced with no failing
+# test. The browser-level invariants (a texture removed while a live
+# sprite is bound to it) need a real Phaser runtime, which vitest cannot
+# provide — so these scripts are the guard.
+!qa/
+qa/*
+!qa/verify-tier8-bake.mjs
+!qa/verify-fault-containment.mjs
+!qa/verify-deferred-merge.mjs
+!qa/lib-game.mjs
 
 # Reference material / design docs outside the game source
 refference

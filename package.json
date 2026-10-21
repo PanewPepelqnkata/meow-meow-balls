@@ -9,6 +9,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
+    "qa:tier8": "node qa/verify-tier8-bake.mjs",
+    "qa:containment": "node qa/verify-fault-containment.mjs",
+    "qa:merge": "node qa/verify-deferred-merge.mjs",
     "format": "prettier --write ."
   },
   "dependencies": {
