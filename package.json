@@ -14,6 +14,9 @@
     "qa:merge": "node qa/verify-deferred-merge.mjs",
     "qa:tier8cycle": "node qa/verify-tier8-cycling.mjs",
     "qa:wallraise": "node qa/verify-wall-raise.mjs",
+    "qa:fear": "node qa/verify-fear-phases.mjs",
+    "qa:gameoverpanic": "node qa/verify-gameover-panic.mjs",
+    "qa:fearplay": "node qa/verify-fear-in-play.mjs",
     "format": "prettier --write ."
   },
   "dependencies": {

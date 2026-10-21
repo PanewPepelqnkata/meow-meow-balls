@@ -1,6 +1,8 @@
 import Phaser from 'phaser'
 import { ballLookFor, faceLayoutFor, INK } from './BallAppearance'
 import type { BallLook, FaceLayout, EyeLayout } from './BallAppearance'
+import { BALL_EMOTION } from '../../config/ballEmotion'
+import type { EmotionLevel } from '../../config/ballEmotion'
 import { SPRITE_FILL_DEPTH, SPRITE_OUTLINE_DEPTH } from './TierBaker'
 
 /**
@@ -36,6 +38,10 @@ const FACE_ATLAS_R = 120
 
 /** Sclera/pupil sprite depth — above fills (9.5) and outlines (10.5). */
 const FACE_DEPTH = 11
+
+/** The fear layer's depth — above the face sprites (11), so the frightened
+ * mouth and sweat always draw over the neutral face. */
+const FEAR_DEPTH = 12
 
 interface FaceAtlas {
   /** Atlas key prefix (`br-face-<id>-`). */
@@ -76,9 +82,19 @@ export class FacePool {
   private readonly ballLookKeys = new Map<number, string>()
   private readonly views = new Map<number, SpriteBallView>()
   private readonly tempG: Phaser.GameObjects.Graphics
+  /** The FEAR layer: the frightened mouth + sweat, drawn ABOVE the face
+   * sprites (depth 12) so the feared mouth always covers the neutral
+   * mouth sprite — no visibility race, so the face can never vanish. */
+  private readonly fearG: Phaser.GameObjects.Graphics
 
   constructor(private readonly scene: Phaser.Scene) {
     this.tempG = scene.add.graphics().setVisible(false)
+    this.fearG = scene.add.graphics().setDepth(FEAR_DEPTH)
+  }
+
+  /** Clear the fear layer — called once per frame before the face pass. */
+  clearFearLayer(): void {
+    this.fearG.clear()
   }
 
   /** Baked atlas for a ball (null for tiers whose face came out empty —
@@ -218,6 +234,16 @@ export class FacePool {
    * `liveR` is the ball's live radius; the atlas was baked at FACE_ATLAS_R
    * so every sprite scales by liveR / FACE_ATLAS_R (uniform — the squash
    * comes from the layout's own aspect-scaled geometry).
+   *
+   * `fear` (0..1) is the ball's eased danger measure and `level` its
+   * discrete phase (worried / scared / panic). The fear morph is applied
+   * to the SPRITE face (not the live Graphics path): the eyes widen, the
+   * pupils shrink and pin upward, and the mouth is replaced by the
+   * frightened O (drawn on the pool's own fear layer, above the face
+   * sprites). Doing it here — instead of hiding the sprites and redrawing
+   * on the shared body layer — keeps the face visible in every state: the
+   * old fallback made the face VANISH for the morph's duration because the
+   * shared layer's per-frame clear raced the sprite visibility.
    */
   layoutFace(
     view: SpriteBallView,
@@ -227,32 +253,137 @@ export class FacePool {
     liveR: number,
     aspect: number,
     gaze: { x: number; y: number },
+    fear = 0,
+    level: EmotionLevel = 'normal',
   ): void {
     const s = liveR / FACE_ATLAS_R
     // Recompute the layout at the LIVE radius + aspect: positions/sizes
     // carry the squash exactly like the live path (faceLayoutFor is pure).
     const L = faceLayoutFor(atlas.look, liveR, aspect, gaze)
     const asym = atlas.look.eyeAsym
+    // --- FEAR MORPH (sprite path) -------------------------------------
+    // The same morph the live path applies (drawBallFace), expressed as
+    // sprite transforms so no vector redraw is needed per frame.
+    const em = Math.min(1, fear * BALL_EMOTION.criticalPanicIntensity)
+    const eyeGrow = 1 + (BALL_EMOTION.eyeScaleMax - 1) * em
+    const pupilShrink = 1 - (1 - BALL_EMOTION.pupilScaleMax) * em
+    // The pupils pin toward the TOP of the eye (gaze.y = -1 is the top).
+    const up = BALL_EMOTION.pupilUpwardGaze * em
 
     const placeSclera = (img: Phaser.GameObjects.Image, e: EyeLayout, sy: number): void => {
       img.setVisible(true)
       img.setPosition(cx + e.x, cy + e.y)
-      img.setScale(s, s * sy)
+      img.setScale(s * eyeGrow, s * sy * eyeGrow)
     }
     placeSclera(view.scleraL, L.eyes[0]!, 1)
     placeSclera(view.scleraR, L.eyes[1]!, asym)
 
     const placePupil = (img: Phaser.GameObjects.Image, e: EyeLayout, sy: number): void => {
       img.setVisible(true)
-      img.setPosition(cx + e.x + e.px, cy + e.y + e.py)
-      img.setScale(s, s * sy)
+      // Pin the pupil upward inside the sclera as the fear rises.
+      const slackY = Math.max(0, e.b - e.pb - e.rim * 0.5)
+      const py = fear > 0 ? e.py * (1 - em) + -up * slackY * em : e.py
+      img.setPosition(cx + e.x + e.px, cy + e.y + py)
+      img.setScale(s * pupilShrink, s * sy * pupilShrink)
     }
     placePupil(view.pupilL, L.eyes[0]!, 1)
     placePupil(view.pupilR, L.eyes[1]!, asym)
 
+    // The MOUTH: the marker stroke is the neutral face. Under fear it is
+    // replaced by the frightened O, drawn on the pool's own fear layer.
+    // The per-PHASE treatment is what makes the ladder readable:
+    //   worried — a small tight "o" (uneasy)
+    //   scared  — a wider open O
+    //   panic   — the full agape O (with tongue) + sweat drops
+    if (fear > 0.05) {
+      view.mouth.setVisible(false)
+      this.drawFearMouth(view, atlas, L, cx, cy, liveR, fear, level)
+      return
+    }
     view.mouth.setVisible(true)
     view.mouth.setPosition(cx + L.mouth.x, cy + L.mouth.y + L.mouth.depth / 2)
     view.mouth.setScale(s)
+  }
+
+  /**
+   * Draw one ball's feared mouth (+ sweat) on the pool's fear layer.
+   *
+   * The fear layer sits ABOVE the face sprites, so the frightened mouth
+   * always covers the neutral mouth sprite without any visibility race.
+   * The tremble offset (the same deterministic jitter the live path uses)
+   * is applied to the whole face — the BODY never moves.
+   */
+  private drawFearMouth(
+    view: SpriteBallView,
+    atlas: FaceAtlas,
+    L: FaceLayout,
+    cx: number,
+    cy: number,
+    liveR: number,
+    fear: number,
+    level: EmotionLevel,
+  ): void {
+    const g = this.fearG
+    const E = BALL_EMOTION
+    const m = L.mouth
+    const em = Math.min(1, fear * E.criticalPanicIntensity)
+    // The tremble: deterministic (sine pair — smooth and loopable), the
+    // same signal the live path uses. It moves the FACE, never the body.
+    const t = Date.now() / 1000
+    const amp = E.shakeIntensity * fear * fear * (level === 'panic' ? E.criticalShakeBoost : 1)
+    const jx = Math.sin(t * E.shakeFrequency * 6.283) * amp
+    const jy = Math.cos(t * E.shakeFrequency * 6.283 * 1.17) * amp * 0.7
+    const X = (v: number): number => cx + v + jx
+    const Y = (v: number): number => cy + v + jy
+
+    // Per-phase mouth size: worried is a small tight o, scared opens up,
+    // panic is the full agape O.
+    //
+    // The base is the NEUTRAL MOUTH'S FULL WIDTH (m.halfW * 2) — the
+    // config's mouthScaleMax/mouthOpenMax are multipliers ON THE MOUTH,
+    // and a 2.6x/3.2x scared mouth is only readable if it starts from the
+    // mouth's own width. (The pre-sprite live path used m.halfW — HALF
+    // the mouth — so its frightened mouth came out at ~12px on an 88px
+    // ball: a dot, not a face.)
+    const base = m.halfW * 2
+    const phase = level === 'panic' ? 1 : level === 'scared' ? 0.8 : 0.55
+    const mw = base * E.mouthScaleMax * (0.6 + 0.4 * em) * phase
+    const mh = base * E.mouthOpenMax * (0.55 + 0.45 * em) * phase
+    const my = m.y + liveR * 0.1 * em
+    // Gasping: the O pulses slightly with the shake phase.
+    const gasp = 1 + Math.sin(t * E.shakeFrequency * 6.283 * 0.5) * 0.08 * fear
+
+    g.fillStyle(INK, 1)
+    g.fillEllipse(X(m.x), Y(my), mw * gasp, mh * gasp)
+    // Inner mouth (dark red) for depth.
+    g.fillStyle(0x8c2f39, 1)
+    g.fillEllipse(X(m.x), Y(my + mh * 0.08), mw * gasp * 0.72, mh * gasp * 0.62)
+    // Tongue tip peeking from the bottom of the O (panic only).
+    if (level === 'panic') {
+      g.fillStyle(0xff7fa5, 1)
+      g.fillEllipse(X(m.x), Y(my + mh * 0.34), mw * gasp * 0.5, mh * gasp * 0.34)
+    }
+
+    // SWEAT DROPS: the cartoon panic tell. They appear from 'scared' up.
+    if (level !== 'normal' && fear > E.sweatAt * (level === 'scared' ? 0.75 : 1)) {
+      const sweatA = Math.min(1, (fear - E.sweatAt * 0.75) / Math.max(0.01, 1 - E.sweatAt * 0.75))
+      const dropPhase = t * 2.2
+      for (let i = 0; i < E.sweatDrops; i++) {
+        const side = i % 2 === 0 ? -1 : 1
+        const ph = dropPhase + i * 1.7
+        const k = ph - Math.floor(ph) // 0..1 loop
+        const dist = liveR * (0.72 + k * 0.5)
+        const dxp = side * dist
+        const dyp = -liveR * (0.55 + Math.sin(k * Math.PI) * 0.45) - i * liveR * 0.04
+        const dropR = liveR * 0.055 * (0.7 + 0.3 * Math.sin(i * 3.1))
+        g.fillStyle(0x9fdcff, 0.95 * sweatA)
+        g.fillCircle(X(dxp), Y(dyp), dropR)
+        g.fillStyle(0xffffff, 0.85 * sweatA)
+        g.fillCircle(X(dxp - dropR * 0.25), Y(dyp - dropR * 0.3), dropR * 0.38)
+      }
+    }
+    void view
+    void atlas
   }
 
   /** Hide every face sprite of one ball (live-graphics fallback frames). */
@@ -307,6 +438,7 @@ export class FacePool {
   destroy(): void {
     this.clear()
     this.tempG.destroy()
+    this.fearG.destroy()
   }
 }
 

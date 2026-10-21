@@ -27,6 +27,9 @@ qa/*
 !qa/verify-deferred-merge.mjs
 !qa/verify-tier8-cycling.mjs
 !qa/verify-wall-raise.mjs
+!qa/verify-fear-phases.mjs
+!qa/verify-gameover-panic.mjs
+!qa/verify-fear-in-play.mjs
 !qa/lib-game.mjs
 
 # Reference material / design docs outside the game source

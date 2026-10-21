@@ -291,6 +291,10 @@ export class SoftBallRenderer {
   update(deltaMs = 16): void {
     const g = this.layer
     g.clear()
+    // The fear layer (the frightened mouths + sweat) is redrawn per frame
+    // by the face pass — clear it here so a ball that left the feared
+    // state does not keep a stale mouth on screen.
+    this.faces.clearFearLayer()
     // Advance the per-ball emotion (danger-zone panic) BEFORE drawing so
     // faces use this frame's eased panic value. Visual-only: the system
     // never touches physics state.
@@ -566,8 +570,17 @@ export class SoftBallRenderer {
     })
   }
 
-  /** Sprite face draw: gaze repositions pupils; easter egg / panic falls
-   * back to the live face for that ball (transient — bounded count). */
+  /** Sprite face draw: gaze repositions pupils; the FEAR phases
+   * (worried / scared / panic) morph the sprite face in place.
+   *
+   * The fear morph used to fall back to the live Graphics face (hide the
+   * sprites + redraw on the shared layer). That made the face VANISH for
+   * the morph's duration on iOS: the shared layer's per-frame clear races
+   * the sprite visibility, so the face was blank until the morph ended.
+   * The morph now runs on the SPRITE face itself (FacePool.layoutFace),
+   * with the feared mouth on the pool's own fear layer above the face
+   * sprites — the face is visible in every state, and the ladder
+   * (normal → worried → scared → panic) is readable. */
   private drawSpriteFace(
     view: SpriteBallView,
     r: SoftBallEntity,
@@ -577,15 +590,11 @@ export class SoftBallRenderer {
   ): void {
     const atlas = this.faces.atlas(r.id)
     if (!atlas) return
-    // PERF/UX: the face sprites stay visible in ALL states — the
-    // previous fallback (hide sprites + drawBallFace on the shared
-    // layer during easter eggs/panic) made the face vanish for the
-    // morph's duration on iOS (the shared layer's per-frame clear
-    // races the sprite visibility on overlay-eligible frames). The
-    // atlas face is the neutral expression; the impact window shows
-    // it instead of a vanishing scared face.
     const c = softBallCentroid(r.soft, this.centroidScratch)
-    this.faces.layoutFace(view, atlas, c.x, c.y, drawR, aspect, gazeAt(r.seed, now))
+    // The game-over sequence forces EVERY survivor into full panic.
+    const fear = this.gameOverSequence?.panicOverride ?? this.emotion.panicOf(r.id)
+    const level = this.gameOverSequence?.panicOverride ? 'panic' : this.emotion.levelOf(r.id)
+    this.faces.layoutFace(view, atlas, c.x, c.y, drawR, aspect, gazeAt(r.seed, now), fear, level)
   }
 
   /** Per-ball bake for tiers 8/9 at first frozen frame. */
