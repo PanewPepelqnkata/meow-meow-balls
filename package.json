@@ -13,6 +13,7 @@
     "qa:containment": "node qa/verify-fault-containment.mjs",
     "qa:merge": "node qa/verify-deferred-merge.mjs",
     "qa:tier8cycle": "node qa/verify-tier8-cycling.mjs",
+    "qa:wallraise": "node qa/verify-wall-raise.mjs",
     "format": "prettier --write ."
   },
   "dependencies": {

@@ -191,17 +191,37 @@ export class SoftBallManager {
    * states persisting because the old version only woke fully-sleeping
    * balls).
    */
-  wakeBall(id: number): void {
+  wakeBall(id: number, preserveRest = false): void {
     const ball = this.getBallById(id)
     if (!ball) return
     this.onBallWake?.(id)
-    this.restCounters.set(id, 0)
-    this.restWar.delete(id)
-    this.warSurrendered.delete(id)
-    this.restLastReset.set(id, 'woken')
-    this.restAnchorY.delete(id)
-    this.restAnchorX.delete(id)
-    this.pendingSleep.delete(id)
+    // Was the ball actually ASLEEP? Only a genuine disturbance (a ball
+    // that was resting and is now moved) should clear the war-surrender
+    // evidence. Waking an already-awake ball must NOT wipe it: the war
+    // counter is the ONLY escape for a ball that is permanently fast
+    // (a standing solver war), and the Raise Walls path wakes the rim
+    // band on every animation frame — wiping the counter there meant a
+    // ball in the band could never surrender and churned at the speed
+    // cap forever (measured: war counter oscillating 106..480, the
+    // ball never sleeping).
+    //
+    // `preserveRest` is for the PARTIAL-WAKE REPAIR (a ball with some
+    // bodies asleep and some awake). That is not a disturbance — it is
+    // Matter's per-body auto-wake inside a standing war — so the quiet
+    // window must survive, or the ball can never complete it and the
+    // cycle repeats forever.
+    const wasSleeping = softBallSleeping(ball.soft)
+    if (!preserveRest) {
+      this.restCounters.set(id, 0)
+      if (wasSleeping) {
+        this.restWar.delete(id)
+        this.warSurrendered.delete(id)
+      }
+      this.restLastReset.set(id, 'woken')
+      this.restAnchorY.delete(id)
+      this.restAnchorX.delete(id)
+      this.pendingSleep.delete(id)
+    }
     for (const p of ball.soft.particles) Matter.Sleeping.set(p, false)
     Matter.Sleeping.set(ball.soft.center, false)
   }
@@ -215,7 +235,12 @@ export class SoftBallManager {
    */
   private ensureAwake(id: number): void {
     const ball = this.getBallById(id)
-    if (ball && softBallSleeping(ball.soft)) this.wakeBall(id)
+    if (!ball || !softBallSleeping(ball.soft)) return
+    // A ball that has already SURRENDERED (it is in a standing solver
+    // war) keeps its rest window: the equilibrium corrections that wake
+    // it are part of the standing balance, not a disturbance, so wiping
+    // the window would restart the quiet countdown forever.
+    this.wakeBall(id, this.warSurrendered.has(id))
   }
 
   /** Wake every ball (support changed globally: walls moved). */
@@ -235,7 +260,7 @@ export class SoftBallManager {
     const bandTop = Math.min(raisedTop, normalTop, currentTopY) - margin
     for (const ball of this.balls) {
       const c = softBallCentroid(ball.soft, this.centroidScratch)
-      if (c.y >= bandTop) this.wakeBall(ball.id)
+      if (c.y >= bandTop) this.ensureAwake(ball.id)
     }
   }
 
@@ -747,7 +772,7 @@ export class SoftBallManager {
       const touching =
         contactBodyIds.has(ball.soft.center.id) ||
         ball.soft.particles.some((p) => contactBodyIds.has(p.id))
-      if (!touching) this.wakeBall(ball.id)
+      if (!touching) this.wakeBall(ball.id, this.warSurrendered.has(ball.id))
     }
   }
 
@@ -760,8 +785,17 @@ export class SoftBallManager {
       // Matter auto-wakes individual particle bodies on impact (per-body).
       // Repair partial wakes coherently: the resting state is all-or-nothing
       // per logical ball, never per particle.
+      //
+      // The repair PRESERVES the rest window for a ball that has already
+      // surrendered: a partial wake is not a disturbance (it is Matter's
+      // per-body auto-wake inside a standing solver war), and resetting
+      // the window on every repair meant the ball could never complete
+      // the 240-substep quiet window — it slept, was woken by the repair,
+      // and the cycle repeated forever, so the pile churned at the speed
+      // cap indefinitely (measured: the war counter climbing to 528, then
+      // dropping to 5 as the ball slept and was re-woken).
       const anySleeping = ball.soft.center.isSleeping || ball.soft.particles.some((p) => p.isSleeping)
-      if (anySleeping) this.wakeBall(id)
+      if (anySleeping) this.wakeBall(id, this.warSurrendered.has(id))
       // Contact-aware speed cap: balls with active contacts run at the
       // stable pile cap; balls in free fall get the faster drop cap (see
       // clampSoftBallSpeed). Without a contact oracle (contactBodyIds
@@ -805,12 +839,31 @@ export class SoftBallManager {
       // area gates are untouched and still veto sleep.
       const warCount = fast ? (this.restWar.get(id) ?? 0) + 1 : (this.restWar.get(id) ?? 0)
       this.restWar.set(id, warCount)
-      const surrendered =
-        fast &&
-        warCount > SOFT.restWarSurrenderSteps &&
+      // The AREA gate: the ball's area must still be ~at rest. A ball
+      // that is genuinely being squashed (or stretched) by a real load is
+      // NOT standing in a solver war and must never be allowed to sleep
+      // mid-distortion.
+      const areaOk =
         Math.abs(1 - ball.soft.area / ball.soft.restArea) < SOFT.restWarSurrenderAreaTolerance
-      if (surrendered) this.warSurrendered.add(id)
-      else if (!fast) this.warSurrendered.delete(id)
+      if (fast && warCount > SOFT.restWarSurrenderSteps && areaOk) {
+        this.warSurrendered.add(id)
+      } else if (this.warSurrendered.has(id) && !areaOk) {
+        // The area gate failed: the ball is really being deformed, so the
+        // surrender is revoked (it may be re-earned later).
+        this.warSurrendered.delete(id)
+      }
+      // The surrender is STICKY: once earned it is NOT revoked by a brief
+      // quiet substep. A ball grinding at the cap dips below
+      // restSpeedFast occasionally (the exact case Phase 2.11.2 gave the
+      // COUNTER protection for), and revoking the surrender on that
+      // substep re-engaged the speed gate, which reset the rest counter —
+      // so the escape hatch could never complete and the ball churned at
+      // the speed cap forever, keeping its whole neighbourhood awake
+      // (measured: the pile's max speed pinned at 7.93 after a wall
+      // raise). The only revocations are a genuine disturbance
+      // (wakeBall, which clears it for a ball that was actually asleep)
+      // and the area gate above.
+      const surrendered = this.warSurrendered.has(id)
       const speedGate = fast && !surrendered
       // A missing anchor (just woken / just spawned) means the window is
       // STARTING: initialize it here — never count quiet steps without drift
@@ -825,8 +878,20 @@ export class SoftBallManager {
         anchorX == null || anchorY == null
           ? false
           : Math.hypot(c.x - anchorX, c.y - anchorY) > SOFT.restDrift
+      // The drift gate applies to every ball, fast or slow: a coherently
+      // drifting ball is genuinely moving and must not sleep mid-slide
+      // (pinned by rest-surrender.test.ts Phase B). A ball in a standing
+      // solver war has a BOUNDED centroid wander (measured: ~0.2px/step
+      // with the particles churning at 7.5), so it does not trip the
+      // gate — the drift measure is a bound on the CENTROID, not on the
+      // particles.
       if (!ball.touched || speedGate || drifted) {
-        // (re)start the window: anchor refreshes to now
+        // (re)start the window: the counter AND the anchor refresh to now.
+        // The anchor refresh is what makes the drift measure a BOUNDED
+        // wander (~0 net) rather than a net displacement — a standing
+        // solver war oscillates around a point, so it reads as no drift,
+        // while a coherently sliding ball keeps moving past the refreshed
+        // anchor and trips the gate (pinned by rest-surrender.test.ts).
         this.restCounters.set(id, 0)
         this.restAnchorX.set(id, c.x)
         this.restAnchorY.set(id, c.y)
