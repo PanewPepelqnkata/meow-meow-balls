@@ -27,14 +27,3 @@ export function cycleColor(timeMs: number): number {
   const step = Math.floor(timeMs / CYCLE_STEP_MS)
   return CYCLE_COLORS[step % CYCLE_COLORS.length]!
 }
-
-/** The dark shade of the current cycle colour (for the ball's shading). */
-export function cycleShade(timeMs: number): number {
-  const c = cycleColor(timeMs)
-  // A fixed darkening factor keeps the shade in the tier's palette style.
-  const r = (c >> 16) & 0xff
-  const g = (c >> 8) & 0xff
-  const b = c & 0xff
-  const dark = (v: number): number => Math.round(v * 0.72)
-  return (dark(r) << 16) | (dark(g) << 8) | dark(b)
-}

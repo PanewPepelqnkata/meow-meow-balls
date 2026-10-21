@@ -70,14 +70,5 @@ export function runVariantFor(tier: number): number | null {
 // renderer uses.
 // ---------------------------------------------------------------------------
 
-/** Rainbow (T8) variants: color-ring rotation + stripe count/width. */
-export function rainbowVariant(id: number): { rotate: number; stripes: number; stripeWidth: number } {
-  return {
-    rotate: id % 7,
-    stripes: 6 + (id % 3) * 2,
-    stripeWidth: 0.5 + ((id * 3) % 4) * 0.14,
-  }
-}
-
 // Fantasy (T9) variant palettes live WITH the draw code
 // (BallAppearance.drawFantasyBall) — one source of truth for the visuals.

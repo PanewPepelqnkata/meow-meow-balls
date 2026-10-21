@@ -57,7 +57,7 @@ import { StartIntroScene } from './StartIntroScene'
  *   LEADERBOARD  → lifetime top runs (persisted save).
  *   JOURNAL      → the DISCOVERY LOG: every ball look met, with dates.
  *   COLLECTION   → the COLLECTED gallery: tier cards + the rare
- *                  randomized tier 8–9 variant hunt.
+ *                  randomized tier 9 variant hunt.
  *   SETTINGS     → theme (auto/fixed) + reset progress.
  *
  * Restarts never re-show the menu: this scene launches once per game boot
@@ -1010,7 +1010,7 @@ export class TitleScene extends Phaser.Scene {
       journal: 'every ball look you have discovered — variants included',
       leaderboard: 'your ten best runs',
       settings: 'theme, progress and data',
-      collection: 'your collected balls — hunt the rare tier 8–9 variants',
+      collection: 'your collected balls — hunt the rare tier 9 variants',
     }
     const sub = hudText(this, 0, 0, subs[this.screen] ?? '', 1, {
       color: '#aeb4c9',
@@ -1098,8 +1098,10 @@ export class TitleScene extends Phaser.Scene {
       st.setPosition(cx - colW / 2 + 6 + iconR * 2 + 26, cy + rowH * 0.18)
       this.panelContent.add(st)
 
-      // Tiers 8–9: the collected per-run VARIANTS row.
-      if (tier === 8 || tier === 9) {
+      // TIER 9: the collected per-run VARIANTS row. Tier 8 is the
+      // cycling RGB ball — it has no per-run variant, so it must not
+      // show an (empty) variant chip row.
+      if (tier === 9) {
         const chips: number[] = []
         for (let v = 0; v < VARIANT_COUNT; v++) {
           if (save.variants[`${tier}:${v}`] != null) chips.push(v)
@@ -1379,7 +1381,7 @@ export class TitleScene extends Phaser.Scene {
     const cols = vw >= 760 ? 5 : vw >= 480 ? 4 : 3
     const cardW = Math.min(140, (vw * 0.88) / cols)
     const rows = Math.ceil(total / cols)
-    // Phase 2.15.0: the grid shares the panel with the tier 8–9 variant
+    // Phase 2.15.0: the grid shares the panel with the tier 9 variant
     // showcase below it, so it gets a bounded share of the height.
     const cardH = Math.min(150, (vh * 0.42) / rows)
     const topY = vh * 0.205
@@ -1399,7 +1401,7 @@ export class TitleScene extends Phaser.Scene {
       g.fillRoundedRect(cx - cardW / 2 + 4, cy - cardH / 2 + 4, cardW - 8, cardH - 8, 12)
       g.lineStyle(
         2.5,
-        has && !locked ? (tier === 8 || tier === 9 ? t.color : 0x2a2d42) : 0x23252f,
+        has && !locked ? (tier === 9 ? t.color : 0x2a2d42) : 0x23252f,
         1,
       )
       g.strokeRoundedRect(cx - cardW / 2 + 4, cy - cardH / 2 + 4, cardW - 8, cardH - 8, 12)
@@ -1444,10 +1446,11 @@ export class TitleScene extends Phaser.Scene {
   }
 
   /**
-   * Phase 2.15.0: the heart of COLLECTION — the rare randomized tier 8–9
-   * variants. Every run rolls a fresh look for tiers 8 and 9 (8 variants
-   * each); the ones the player has COLLECTED render in full color, the rest
-   * stay mystery chips. Tiers 10–12 stay reserved (12 is the final secret).
+   * Phase 2.15.0: the heart of COLLECTION — the rare randomized tier 9
+   * variants. Every run rolls a fresh look for tier 9 (8 variants); the
+   * ones the player has COLLECTED render in full color, the rest stay
+   * mystery chips. Tier 8 (the cycling RGB ball) has no per-run variant,
+   * and tiers 10–12 stay reserved (12 is the final secret).
    */
   private buildVariantShowcase(vw: number, vh: number, gridBottom: number): void {
     const save = loadSave()
@@ -1471,10 +1474,9 @@ export class TitleScene extends Phaser.Scene {
     head.setPosition(vw / 2, topY)
     this.panelContent.add(head)
 
-    const tiers: Array<[number, string]> = [
-      [8, 'T8'],
-      [9, 'T9'],
-    ]
+    // TIER 9 ONLY: tier 8 is the cycling RGB ball and has no per-run
+    // variant, so it has no variant chips to show.
+    const tiers: Array<[number, string]> = [[9, 'T9']]
     tiers.forEach(([tier, tag], r) => {
       const cy = topY + headH + rowH / 2 + r * rowH
       const totalW = VARIANT_COUNT * spacing - 8
