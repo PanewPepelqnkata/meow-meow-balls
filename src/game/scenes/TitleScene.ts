@@ -18,7 +18,7 @@ import { loadSave, resetSave, setThemeSetting } from '../state/save'
 import { runVariantFor, variantIdFor, VARIANT_COUNT } from '../state/runVariant'
 import { session } from '../state/session'
 import { bakeCanvas, roundedRectPath } from '../rendering/RoughArt'
-import { bakeIrisCover } from './StartIntroScene'
+import { bakeIrisCover, IRIS_COVER_KEY } from './StartIntroScene'
 import { StartIntroScene } from './StartIntroScene'
 
 /**
@@ -1545,7 +1545,7 @@ export class TitleScene extends Phaser.Scene {
     // that class. See bakeIrisCover() in StartIntroScene (shared bake).
     const baked = bakeIrisCover(this, outerR, innerR)
     const iris = this.add
-      .image(cx, cy, 'br-intro-cover')
+      .image(cx, cy, IRIS_COVER_KEY)
       .setOrigin(0.5, 0.5)
       .setDepth(5000)
       .setScale(outerR / innerR)

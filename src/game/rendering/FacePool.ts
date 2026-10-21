@@ -141,7 +141,14 @@ export class FacePool {
     // SCLERA: white oval + thick ink rim, centered in the tile. Baked at
     // layout scale (r = FACE_ATLAS_R); displayed scaled by (liveR / r).
     const e0: EyeLayout = L.eyes[0]!
-    if (this.scene.textures.exists(scleraKey)) this.scene.textures.remove(scleraKey)
+    // The old texture is NOT removed: the atlas is SHARED between every
+    // ball with the same look, and other balls' face sprites are still
+    // bound to it. Phaser's remove() nulls the texture source, so the
+    // next render of one of those sprites throws "Cannot read properties
+    // of null (reading 'resolution')" inside the render pass — which
+    // kills the game loop and the whole UI with it. generateTexture()
+    // overwrites the key in place, so the removal is unnecessary: the
+    // existing sprites keep a valid texture and show the new bake.
     this.tempG.clear()
     this.tempG.setPosition(128, 128)
     this.tempG.fillStyle(0xffffff, 1)
@@ -153,7 +160,11 @@ export class FacePool {
     this.tempG.strokeEllipse(0, 0, e0.a * 2, e0.b * 2, 64)
     this.tempG.generateTexture(scleraKey, 256, 256)
     // PUPIL: ink oval + main highlight + tiny secondary dot, centered.
-    if (this.scene.textures.exists(pupilKey)) this.scene.textures.remove(pupilKey)
+    // The old texture is NOT removed (see the SCLERA note above): the
+    // atlas is shared between every ball with this look, and removing it
+    // nulls the source of a texture other balls' face sprites are still
+    // bound to — the next render then throws inside the render pass and
+    // kills the whole game loop.
     this.tempG.clear()
     this.tempG.setPosition(128, 128)
     this.tempG.fillStyle(INK, 1)
@@ -164,7 +175,7 @@ export class FacePool {
     this.tempG.generateTexture(pupilKey, 256, 256)
     // MOUTH: the ink marker stroke, centered on its bounding arc.
     const m = L.mouth
-    if (this.scene.textures.exists(mouthKey)) this.scene.textures.remove(mouthKey)
+    // The old texture is NOT removed (see the SCLERA note above).
     this.tempG.clear()
     this.tempG.setPosition(128, 128)
     const steps = 14

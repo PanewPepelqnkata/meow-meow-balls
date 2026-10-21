@@ -1,5 +1,6 @@
 import Phaser from 'phaser'
 import { INK, ballOutlineWidth, wobbleContour, ballLookFor } from './BallAppearance'
+import { isSpecialBakeTier, specialBakeExtent, specialBakeGeometry } from './bakeGeometry'
 
 /**
  * PER-TIER BAKED SLIME TEXTURES (SpriteBalls, Phase 2.24) — the follow-up
@@ -120,7 +121,10 @@ export class TierBaker {
     // a back ball's outline draw over a front ball's fill — the
     // interpenetration the user reported). Suika-class standard.
     const bodyKey = `br-tier-body-${tier}`
-    if (this.scene.textures.exists(bodyKey)) this.scene.textures.remove(bodyKey)
+    // The old texture is NOT removed: generateTexture overwrites the key
+    // in place, so any sprite still bound to it keeps a valid texture.
+    // Removing it would null the source of a live sprite and kill the
+    // render pass (see FaultContainment.ts for the full mechanism).
 
     this.tempG.clear()
     this.tempG.setPosition(center, center)
@@ -153,33 +157,71 @@ export class TierBaker {
   ): TierTextures {
     const fillKey = `br-ball-fill-${ballId}`
     const outlineKey = `br-ball-out-${ballId}`
-    if (this.scene.textures.exists(fillKey)) this.scene.textures.remove(fillKey)
-    if (this.scene.textures.exists(outlineKey)) this.scene.textures.remove(outlineKey)
+    // The old textures are NOT removed here. A sprite may still reference
+    // them (the ball's body quad is bound to `fillKey`): Phaser's
+    // TextureManager.remove() destroys the texture and nulls its source,
+    // and the next WebGL render of that sprite throws
+    // "Cannot read properties of null (reading 'resolution')" — which
+    // kills the whole Phaser game loop, so the entire UI vanishes with
+    // it. generateTexture() OVERWRITES an existing key in place, so the
+    // old texture does not need to be removed at all: the sprite keeps a
+    // valid texture and simply displays the new bake. The stale texture
+    // is released in dropSpecialTextures() when the ball is gone.
+    void fillKey
+    void outlineKey
 
     const r = soft.radius
-    const pad = ballOutlineWidth(r) / 2 + 3
-    let minX = Infinity
-    let maxX = -Infinity
-    let minY = Infinity
-    let maxY = -Infinity
-    for (const p of poly) {
-      if (p.x < minX) minX = p.x
-      if (p.x > maxX) maxX = p.x
-      if (p.y < minY) minY = p.y
-      if (p.y > maxY) maxY = p.y
-    }
-    if (tier === 9) {
-      // Fantasy extras reach beyond the contour (horn to −1.35r, mane to
-      // ±0.95r): widen so nothing clips — same margins as BallBaker.
-      minX = Math.min(minX, -r * 1.05)
-      maxX = Math.max(maxX, r * 1.05)
-      minY = Math.min(minY, -r * 1.4)
-      maxY = Math.max(maxY, r * 1.15)
+    const isSpecial = isSpecialBakeTier(tier)
+    const specialGeo = isSpecial ? specialBakeGeometry(tier, r) : null
+    const pad = specialGeo ? specialGeo.pad : ballOutlineWidth(r) / 2 + 3
+    // TWO coordinate spaces, and mixing them is what broke the tier 8/9
+    // bake (the ball vanished):
+    //
+    //  - The tier 8/9 procedural fills (drawRainbowInto / drawFantasyInto)
+    //    are drawn in LOCAL space, centred on (0,0) with the ball radius r.
+    //  - The contour polygon is in WORLD space.
+    //
+    // The old code sized the texture from the WORLD contour but drew the
+    // fill at LOCAL (0,0) while tempG was offset to (-originX, -originY) —
+    // so the body was rasterized at texture coordinates far outside the
+    // canvas and clipped away (an EMPTY texture, measured: 0 painted
+    // pixels), and `center: -originX` returned a negated world coordinate
+    // instead of the ball centre's offset inside the texture. The sprite
+    // was then placed ~350px away from the ball (measured: tier 8 at ball
+    // x=355, sprite at x=707 — off the 720-wide stage).
+    //
+    // For tiers 8/9 the whole bake is therefore done in LOCAL space: the
+    // texture is sized from the local drawing's extents and the ball centre
+    // sits at the middle of it.
+    let minX: number
+    let maxX: number
+    let minY: number
+    let maxY: number
+    if (specialGeo) {
+      // Local extents of the procedural drawing. They are SYMMETRIC about
+      // the ball centre so the ball lands at the texture's middle (the
+      // sprite is origin-centred, so it is placed at the ball's centroid).
+      const ex = specialBakeExtent(tier, r)
+      minX = -ex
+      maxX = ex
+      minY = -ex
+      maxY = ex
+    } else {
+      minX = Infinity
+      maxX = -Infinity
+      minY = Infinity
+      maxY = -Infinity
+      for (const p of poly) {
+        if (p.x < minX) minX = p.x
+        if (p.x > maxX) maxX = p.x
+        if (p.y < minY) minY = p.y
+        if (p.y > maxY) maxY = p.y
+      }
     }
     const originX = minX - pad
     const originY = minY - pad
-    const w = Math.ceil(maxX - minX) + pad * 2
-    const h = Math.ceil(maxY - minY) + pad * 2
+    const w = specialGeo ? specialGeo.w : Math.ceil(maxX - minX) + pad * 2
+    const h = specialGeo ? specialGeo.h : Math.ceil(maxY - minY) + pad * 2
 
     // Draw contour-relative (contour is absolute world coords; the temp
     // Graphics is positioned at −origin so world (originX, originY) → (0,0)).
@@ -187,30 +229,47 @@ export class TierBaker {
     // callbacks) — here we only need fill/stroke of the given poly; the
     // renderer draws tier-8/9 specials into a Graphics and we rasterize it.
     this.tempG.clear()
-    this.tempG.setPosition(-originX, -originY)
     const g = this.tempG
-    if (tier === 8) {
-      drawRainbowInto(g, 0, 0, r, variant)
-    } else if (tier === 9) {
-      drawFantasyInto(g, 0, 0, r, variant)
+    if (isSpecial) {
+      // LOCAL space: the procedural fill is centred on the texture.
+      g.setPosition(pad, pad)
+      if (tier === 8) {
+        drawRainbowInto(g, 0, 0, r, variant)
+      } else {
+        drawFantasyInto(g, 0, 0, r, variant)
+      }
+      g.generateTexture(fillKey, w, h)
+      this.tempG.clear()
+      // The ink outline: the tier 9 fantasy body strokes its own horn and
+      // mane, but the tier 8 rainbow wedges have NO border of their own —
+      // without this pass the tier 8 ball loses its thick ink silhouette
+      // that every other tier has. The outline is a circle of the ball's
+      // radius in local space.
+      g.setPosition(pad, pad)
+      g.lineStyle(ballOutlineWidth(r), INK, 1)
+      g.strokeCircle(0, 0, r)
+      g.generateTexture(outlineKey, w, h)
     } else {
+      g.setPosition(-originX, -originY)
       g.fillStyle(color, 1)
       g.fillPoints(poly, true)
+      g.generateTexture(fillKey, w, h)
+      this.tempG.clear()
+      g.setPosition(-originX, -originY)
+      g.lineStyle(ballOutlineWidth(r), INK, 1)
+      g.strokePoints(poly, true, true)
+      g.generateTexture(outlineKey, w, h)
     }
-    g.generateTexture(fillKey, w, h)
-    this.tempG.clear()
-    this.tempG.lineStyle(ballOutlineWidth(r), INK, 1)
-    this.tempG.strokePoints(poly, true, true)
-    this.tempG.generateTexture(outlineKey, w, h)
     this.tempG.clear()
 
     return {
       fillKey,
       outlineKey,
       size: Math.max(w, h),
-      // Center offset from the texture origin (contour-relative draw used
-      // (0,0) as ball center → center sits at −origin inside the texture).
-      center: -originX,
+      // The ball centre's offset FROM THE TEXTURE TOP-LEFT. For the local
+      // (tier 8/9) bake that is the texture's own middle; for the
+      // world-space bake it is the ball centre's position inside it.
+      center: specialGeo ? specialGeo.center : -originX,
       textureRadius: r,
     }
   }

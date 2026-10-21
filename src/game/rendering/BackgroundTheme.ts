@@ -1161,9 +1161,14 @@ export class BackgroundTheme {
       (this.scene.textures.get('br-space-grad').getSourceImage() as HTMLCanvasElement).width === w &&
       (this.scene.textures.get('br-space-grad').getSourceImage() as HTMLCanvasElement).height === h
     if (this.scene.textures.exists('br-space-grad') && !dimsMatch) {
-      this.scene.textures.remove('br-space-grad')
+      // DESTROY THE IMAGE FIRST, then remove the texture: removing a
+      // texture while its Image is still alive nulls the texture source,
+      // and the next render of that Image throws "Cannot read properties
+      // of null (reading 'resolution')" inside the render pass — which
+      // kills the Phaser game loop and the whole UI with it.
       this.gradImage?.destroy()
       this.gradImage = null
+      this.scene.textures.remove('br-space-grad')
     }
     if (!this.gradImage) {
       if (!this.scene.textures.exists('br-space-grad')) {
@@ -1516,9 +1521,9 @@ export class BackgroundTheme {
       ? (this.scene.textures.get(key).getSourceImage() as HTMLCanvasElement)
       : null
     if (existing && (existing.width !== w || existing.height !== h)) {
-      this.scene.textures.remove(key)
       this.artImages[theme]?.destroy()
       delete this.artImages[theme]
+      this.scene.textures.remove(key)
     }
     if (!this.scene.textures.exists(key)) {
       this.scene.textures.createCanvas(key, w, h)
@@ -1592,9 +1597,9 @@ export class BackgroundTheme {
       ? (this.scene.textures.get(key).getSourceImage() as HTMLCanvasElement)
       : null
     if (existingGrid && (existingGrid.width !== w || existingGrid.height !== h)) {
-      this.scene.textures.remove(key)
       this.gridImage?.destroy()
       this.gridImage = null
+      this.scene.textures.remove(key)
     }
     if (!this.scene.textures.exists(key)) {
       this.scene.textures.createCanvas(key, w, h)
@@ -1657,9 +1662,9 @@ export class BackgroundTheme {
       ? (this.scene.textures.get(key).getSourceImage() as HTMLCanvasElement)
       : null
     if (existingStars && (existingStars.width !== w || existingStars.height !== h)) {
-      this.scene.textures.remove(key)
       this.starImage?.destroy()
       this.starImage = null
+      this.scene.textures.remove(key)
     }
     if (!this.scene.textures.exists(key)) {
       this.scene.textures.createCanvas(key, w, h)

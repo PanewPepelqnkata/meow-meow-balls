@@ -8,6 +8,7 @@ import { UIScene } from './scenes/UIScene'
 import { SoftBallScene } from './scenes/SoftBallScene'
 import { TitleScene } from './scenes/TitleScene'
 import { installDiag } from './diag'
+import { installFaultContainment } from './FaultContainment'
 
 /**
  * The single approved boundary between React and the game engine
@@ -125,6 +126,7 @@ export function createGame(parent: HTMLElement): Phaser.Game {
       new URLSearchParams(window.location.search).get('softbody') === '1') {
     game.scene.add('softball', SoftBallScene, true)
   }
+  installFaultContainment(game)
   if (import.meta.env.DEV) {
     ;(window as unknown as Record<string, unknown>).__brGame = game
   }

@@ -372,7 +372,11 @@ export class SoftBallRenderer {
       }
 
       const { poly, cx, cy } = this.liveContour(r, look, drawR)
-      if (sleeping && !this.bakingSuspended) {
+      if (sleeping && !this.bakingSuspended && !this.specialTextures.has(r.id)) {
+        // Bake ONCE per ball. Re-baking every sleeping frame removed the
+        // ball's live texture out from under its own body quad, which
+        // nulled the texture source and threw during the next render —
+        // killing the game loop and the whole UI.
         this.bakeSpecial(r, poly, color)
       }
       this.drawLiveBody(g, r, look, drawR, color, poly, cx, cy)
@@ -526,8 +530,10 @@ export class SoftBallRenderer {
       g.lineStyle(ballOutlineWidth(drawR), INK, 1)
       g.strokePoints(built.poly, true, true)
     } else {
-      // Tier 8/9 outlines stroke the same live contour in INK (special
-      // bodies previously drew no second-pass stroke — preserved as-is).
+      // Tier 8/9 keep their own silhouettes: the rainbow wedges reach
+      // 1.2r and the fantasy body strokes its own horn and mane, so
+      // neither takes a separate ink pass (an added circle at r would
+      // cut across the wedges).
     }
   }
 
@@ -581,21 +587,34 @@ export class SoftBallRenderer {
     this.specialTextures.set(r.id, tex)
   }
 
-  /** Position the special (tier 8/9) quads for a frozen ball. The texture
-   * was drawn contour-relative with the ball center at `center` px from
-   * the texture's top-left, so the sprite origin moves there. */
+  /** Position the special (tier 8/9) quads for a frozen ball.
+   *
+   * The tier 8/9 bake is drawn in LOCAL space: the texture is sized to the
+   * procedural body's extents and the ball's centre is at the texture's
+   * MIDDLE. The sprite is origin-centred (0.5/0.5), so it is placed
+   * directly on the ball's centroid.
+   */
   private drawSpecialQuads(ballId: number, tex: TierTextures, cx: number, cy: number, s: number): void {
     const view = this.spriteViews.get(ballId)
     if (!view) return
-    const ox = (tex.center - tex.textureRadius) * s
-    const oy = ox // square special canvases: same offset both axes
-    view.fill.setTexture(tex.fillKey).setVisible(true).setPosition(cx - ox, cy - oy).setScale(s)
+    view.fill.setTexture(tex.fillKey).setVisible(true).setPosition(cx, cy).setScale(s)
     view.outline.setVisible(false)
   }
 
   private dropSpecialTextures(ballId: number): void {
     const tex = this.specialTextures.get(ballId)
     if (!tex) return
+    // HIDE the body quad FIRST. Removing a texture that a visible sprite
+    // still references nulls the texture source, and the next WebGL
+    // render of that sprite throws "Cannot read properties of null
+    // (reading 'resolution')" — which kills the Phaser game loop and
+    // takes the whole UI with it. Hiding first means the sprite is not
+    // rendered at all, so the removal is safe.
+    const view = this.spriteViews.get(ballId)
+    if (view) {
+      view.fill.setVisible(false)
+      view.outline.setVisible(false)
+    }
     this.scene.textures.remove(tex.fillKey)
     this.scene.textures.remove(tex.outlineKey)
     this.specialTextures.delete(ballId)

@@ -31,18 +31,32 @@ import { getTier } from '../../config/ballTiers'
  * behind the blanking menu (WebKit canvas-pool exhaustion + Phaser
  * #6051/#6914 per-frame Graphics). Hole radius at scale s = innerR·s.
  */
+/**
+ * The texture key for the intro iris cover. TitleScene's iris Image and
+ * StartIntroScene's iris Image are alive at the SAME time (the title's
+ * cover stays painted until this scene stops) and they share the texture
+ * manager, so this key is shared deliberately.
+ */
+export const IRIS_COVER_KEY = 'br-intro-cover'
+
 export function bakeIrisCover(
   scene: Phaser.Scene,
   outerR: number,
   innerR: number,
 ): HTMLCanvasElement {
-  const key = 'br-intro-cover'
   const size = Math.ceil(outerR * 2)
+  const key = IRIS_COVER_KEY
   const existing = scene.textures.exists(key)
     ? (scene.textures.get(key).getSourceImage() as HTMLCanvasElement | null)
     : null
   if (existing && existing.width >= size) return existing
-  if (scene.textures.exists(key)) scene.textures.remove(key)
+  // The old texture is removed from the MANAGER only — `removeKey`
+  // deletes the entry WITHOUT destroying the texture, so a live Image
+  // that is still bound to it keeps a valid source. `textures.remove()`
+  // would DESTROY the texture (nulling the frame's source), and the next
+  // render of that Image would throw inside the render pass, which kills
+  // the Phaser game loop and the whole canvas UI with it.
+  if (scene.textures.exists(key)) scene.textures.removeKey(key)
   // dpr 1: the texture is 2·outerR square; at dpr 2+ it would exceed
   // the iOS canvas pool for negligible sharpness gain on a moving
   // ring. NO cream ring stroke — the user wants a plain solid cover
@@ -108,7 +122,7 @@ export class StartIntroScene extends Phaser.Scene {
     // #6914) is eliminated from the transition entirely.
     bakeIrisCover(this, outerR, innerR)
     const cover = this.add
-      .image(cx, cy, 'br-intro-cover')
+      .image(cx, cy, IRIS_COVER_KEY)
       .setOrigin(0.5, 0.5)
       .setDepth(-1)
     const drawCover = (holeR: number): void => {
