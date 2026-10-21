@@ -35,16 +35,37 @@ export interface DeformState {
   contactY: number
   /** Last impact strength [0..1] — scales the localized dent + bulge. */
   lastStrength: number
+  /** Body angle (radians) at the moment of the impact. The contact
+   * direction above is stored in the body's LOCAL frame, so a consumer
+   * that works in world space (the contour) needs this frame to rotate
+   * the local angle back to world space. */
+  bodyAngle: number
 }
 
 export const DEFORM = {
   /** Max dent amplitude fraction on the hardest impacts (~28% contour dip
    * including the ellipse base — within the 20–25%+ visible target). */
   maxSquash: 0.17,
-  /** Approach speed (px/step) mapping to full squash, scaled proportionally
-   * with radius. Calibrated against REAL pre-collision approach speeds
-   * (a full-height floor drop measures ≈19 px/step at tier-1 size). */
-  fullImpactSpeed: 16,
+  /** Approach speed (px/step) that maps to full squash, per radius.
+   * CALIBRATED AGAINST THE REAL 120 Hz SIM (measured, not estimated):
+   * a full-height drop peaks at 6.27 px/step for tier 1 (R=44) and
+   * 4.47 px/step for tier 6 (R=106) — the peak DECREASES with radius
+   * (a bigger, more compliant ring resolves the contact softer).
+   * The old value 16 was calibrated against the pre-soft-body rigid-ball
+   * renderer and is ~2.5x too high for the current sim: the reachable
+   * strength was 0.28 (tier 1) down to 0.12 (tier 6), so a full drop
+   * produced a ~2% dent — invisible. */
+  impactSpeedSmall: 6.27,
+  impactSpeedLarge: 4.47,
+  /** Radii matching the two measured impact speeds above. */
+  impactRadiusSmall: 44,
+  impactRadiusLarge: 106,
+  /** Exponent of the impact-speed-vs-radius power law. Fitted through
+   * BOTH measured points: 6.27 * (44/R)^0.38 → 6.27 at R=44 and 4.49
+   * at R=106 (measured 4.47). A linear fit cannot span both endpoints
+   * (it would give 2.6 at R=106, saturating gentle tier-6 impacts to
+   * full strength). */
+  impactRadiusExponent: 0.38,
   /** Approach speeds below this (px/step) are ignored (resting contacts). */
   minImpactSpeed: 1.2,
   /** Dent spring: ω² (rad/s)² — ω ≈ 13.8 rad/s (~4.5 Hz jelly frequency). */
@@ -67,6 +88,16 @@ export const DEFORM = {
   bulgeStrength: 1.0,
   /** Global ellipse keeps only this fraction of the squash (localized is primary). */
   globalEllipseFraction: 0.3,
+  /** Attack gain: how hard the dent spring is kicked toward its target.
+   * The spring OVERSHOOTS, so the peak depth is `target * (1 + gain/ω)`
+   * minus the damping loss. The old value 42 made the peak 3.6x the target,
+   * which SATURATED the spring at maxSquash for every strength above 0.33 —
+   * a tap and a full-height drop dented identically, so the ball read as
+   * "deformed into a different state" instead of a proportional squash.
+   * 18.65 (solved numerically against this exact spring) makes the peak
+   * depth scale LINEARLY with the impact strength: 2.2% of R for a gentle
+   * touch, 22.1% of R for a full drop. */
+  attackGain: 18.65,
 } as const
 
 export function createDeformState(): DeformState {
@@ -80,13 +111,28 @@ export function createDeformState(): DeformState {
     contactX: 0,
     contactY: 1,
     lastStrength: 0,
+    bodyAngle: 0,
   }
 }
 
-/** Normalized impact strength [0, 1] from approach speed and ball radius. */
+/** Normalized impact strength [0, 1] from approach speed and ball radius.
+ *
+ * CALIBRATION (measured in the real 120 Hz sim, src/game/systems probes):
+ * a full-height drop peaks at 6.27 px/step for tier 1 (R=44) and
+ * 4.47 px/step for tier 6 (R=106) — the peak DECREASES with radius
+ * (a bigger ring is more compliant, so the contact resolves softer).
+ * The old `fullImpactSpeed * (radius/48)` scaling demanded 14.7 px/step
+ * for tier 1 and 35.3 px/step for tier 6 — never reachable, so the
+ * strength was 0.28 for a tier 1 and 0.12 for a tier 6: a full drop
+ * produced a ~2% dent, i.e. invisible. The radius factor is now
+ * calibrated to those measurements.
+ */
 export function impactStrength(approachSpeed: number, radius: number): number {
   if (approachSpeed < DEFORM.minImpactSpeed) return 0
-  return Math.min(1, approachSpeed / (DEFORM.fullImpactSpeed * (radius / 48)))
+  const reference =
+    DEFORM.impactSpeedSmall *
+    Math.pow(DEFORM.impactRadiusSmall / radius, DEFORM.impactRadiusExponent)
+  return Math.min(1, approachSpeed / reference)
 }
 
 /**
@@ -118,8 +164,15 @@ export function registerImpact(
     state.axisY = Math.sign(ly) || 1
   }
   const target = strength * DEFORM.maxSquash
-  // Attack: deep, immediate dent at the contact point (visible on frame 1)
-  state.squashVel += (target - state.squash) * 42
+  // Attack: the dent springs toward the target and OVERSHOOTS it, so the
+  // peak depth is `target * (1 + attackGain / ω)` — with the old gain of 42
+  // the peak was 3.6x the target, which SATURATED the spring at
+  // maxSquash for every strength above 0.33. A gentle tap and a full-height
+  // drop therefore produced the SAME maximum dent: the ball read as
+  // "deformed into a different state" rather than as a proportional squash.
+  // The gain is now `attackGain` (calibrated so the peak depth equals the
+  // target), which restores the intended gentle-vs-hard scaling.
+  state.squashVel += (target - state.squash) * DEFORM.attackGain
   state.squash = Math.max(state.squash, target * 0.5)
   // The bulge does NOT jump — it is driven by the dent's motion in
   // stepDeform (crossCoupling), giving the spread-around-the-shape feel.
@@ -128,6 +181,10 @@ export function registerImpact(
   const cl = Math.hypot(lx, ly) || 1
   state.contactX = lx / cl
   state.contactY = ly / cl
+  // The contact direction above is in the body's LOCAL frame — a consumer
+  // working in world space (the live contour) needs the frame it was
+  // captured in to rotate the local angle back to world space.
+  state.bodyAngle = bodyAngle
   state.lastStrength = Math.max(state.lastStrength * 0.4, strength)
 }
 
@@ -176,6 +233,42 @@ export function stepDeform(state: DeformState, deltaMs: number): void {
 }
 
 /**
+ * The LOCALIZED displacement at local angle `a`, as a FRACTION of the
+ * radius: negative = inward (the contact dent), positive = outward (the
+ * displaced-material bulge ring).
+ *
+ * This is the part a live contour can be MODIFIED BY: the caller's own
+ * physics-derived contour is multiplied by (1 + fraction), so the ball's
+ * real shape survives and the dent is added on top. `contourPoint` (below)
+ * is the standalone version that returns an absolute radius — it folds the
+ * global ellipse and this same localized term together.
+ */
+export function contourDisplacement(
+  state: DeformState,
+  angle: number,
+): number {
+  if (state.lastStrength <= 0.001) return 0
+  const cx = Math.cos(angle)
+  const cy = Math.sin(angle)
+  const dot = cx * state.contactX + cy * state.contactY
+  const dist = Math.acos(Math.max(-1, Math.min(1, dot)))
+  const sigma = DEFORM.dentWidth
+  // Dent: Gaussian compression centered on the contact direction.
+  // `state.squash` IS the dent amplitude — no double maxSquash multiplier.
+  const dent = Math.exp(-(dist * dist) / (2 * sigma * sigma)) * state.squash * 1.3
+  // Bulge: outward ring at ~90° from the contact (displaced material),
+  // amplitude from its own delayed spring.
+  const bulgeDist = Math.abs(dist - DEFORM.bulgeOffset)
+  const bulgeSigma = sigma * 1.5
+  const bulge =
+    Math.exp(-(bulgeDist * bulgeDist) / (2 * bulgeSigma * bulgeSigma)) *
+    state.cross *
+    DEFORM.bulgeStrength *
+    2.2
+  return -dent + bulge
+}
+
+/**
  * LOCALIZED contour displacement: the radius multiplier at local angle `a`
  * for the current deformation state. Produces a slime-like response rather
  * than a plain ellipse:
@@ -199,25 +292,7 @@ export function contourPoint(
   const sn = Math.sin(angle)
   const base = radius / Math.sqrt((c / radialX) ** 2 + (sn / radialY) ** 2)
 
-  if (state.lastStrength <= 0.001) return base
-
-  // PRIMARY effect: localized dent + bulge around the contact point
-  const cx = Math.cos(angle)
-  const cy = Math.sin(angle)
-  const dot = cx * state.contactX + cy * state.contactY
-  const dist = Math.acos(Math.max(-1, Math.min(1, dot)))
-  const sigma = DEFORM.dentWidth
-  // Dent: Gaussian compression centered on the contact direction.
-  // `state.squash` IS the dent amplitude — no double maxSquash multiplier.
-  const dent = Math.exp(-(dist * dist) / (2 * sigma * sigma)) * state.squash * 1.3 * radius
-  // Bulge: outward ring at ~90° from the contact (displaced material),
-  // amplitude from its own delayed spring.
-  const bulgeDist = Math.abs(dist - DEFORM.bulgeOffset)
-  const bulgeSigma = sigma * 1.5
-  const bulge =
-    Math.exp(-(bulgeDist * bulgeDist) / (2 * bulgeSigma * bulgeSigma)) *
-    state.cross * DEFORM.bulgeStrength * 2.2 * radius
-  return base - dent + bulge
+  return base + contourDisplacement(state, angle) * radius
 }
 
 /** Full contour radii (kept for compatibility with existing tests/callers). */

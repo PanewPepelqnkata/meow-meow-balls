@@ -11,7 +11,12 @@ export interface RectSpec {
 export interface CollisionPair {
   bodyA: Matter.Body
   bodyB: Matter.Body
-  /** Contact normal (unit, from A toward B) — captured at collisionStart. */
+  /** Contact normal (unit) — captured at collisionStart. Matter's
+   * Collision.js flips it so that dot(normal, B - A) < 0: the normal
+   * points FROM bodyB TOWARD bodyA. Measured against raw Matter: with
+   * bodyA = the floor, dot(normal, A->B) = -79.9 — the normal points at
+   * the floor. The contact direction ON a body must point TOWARD the
+   * other body, so bodyA uses -normal and bodyB uses +normal. */
   normalX: number
   normalY: number
   /** Relative approach speed along the normal (px/step, ≥ 0). */
@@ -112,7 +117,9 @@ export class PhysicsWorld {
     }
     this.onCollisionStart = (event) => {
       for (const pair of event.pairs) {
-        // Contact normal (unit, A→B) — Matter computes it in the collision.
+        // Contact normal (unit) — Matter computes it in the collision and
+        // flips it so dot(normal, B - A) < 0: it points FROM bodyB TOWARD
+        // bodyA.
         const n = pair.collision.normal
         // Relative approach speed along the normal (pre-resolution
         // velocities are still on the bodies at collisionStart).

@@ -16,7 +16,13 @@ import {
   drawFantasyBall,
 } from './BallAppearance'
 import type { BallLook } from './BallAppearance'
-import { createDeformState, registerImpact, stepDeform } from './deform'
+import {
+  createDeformState,
+  registerImpact,
+  stepDeform,
+  contourDisplacement,
+  impactStrength,
+} from './deform'
 import type { DeformState } from './deform'
 import { variantIdFor } from '../state/runVariant'
 import { TierBaker } from './TierBaker'
@@ -115,6 +121,16 @@ export class SoftBallRenderer {
   private readonly overlayOn = new Map<number, boolean>()
   /** Per-ball jelly deform spring (dent + bulge, fed by collision events). */
   private readonly deforms = new Map<number, DeformState>()
+  /** Per-ball ACCUMULATED impact for the current frame: the strength-weighted
+   * normal sum, the peak approach speed, and the peak strength. A soft body
+   * is 16 particles, so one landing yields several collision events in the
+   * same frame — they are summed here and applied ONCE per ball per frame
+   * (flushImpacts) so the dent points at the real contact side and its
+   * strength scales with the approach speed instead of the event count. */
+  private readonly pendingImpacts = new Map<
+    number,
+    { x: number; y: number; speed: number }
+  >()
   /** Scene ref for texture removal (tier-8/9 per-ball bakes). */
   private readonly scene: Phaser.Scene
 
@@ -140,19 +156,53 @@ export class SoftBallRenderer {
   }
 
   /** Feed a collision event into the ball's jelly deform spring.
-   * Called from PlaygroundScene's per-frame collision drain. */
+   * Called from PlaygroundScene's per-frame collision drain.
+   *
+   * AGGREGATION: a soft body is 16 particles, so ONE landing produces
+   * several particle-pair collision events in the same frame, each with a
+   * slightly different normal. Exciting the spring per event would (a)
+   * point the dent at whichever particle contacted LAST — a random side of
+   * the ring, not the impact side — and (b) add a squash kick per event,
+   * slamming the spring to max strength regardless of the approach speed
+   * and destroying the gentle-vs-hard scaling. So the events are ACCUMULATED
+   * per ball here and applied ONCE per ball per frame, in update().
+   */
   registerBallImpact(
     r: SoftBallEntity,
     contactNormal: { x: number; y: number },
     approachSpeed: number,
   ): void {
-    let d = this.deforms.get(r.id)
-    if (!d) {
-      d = createDeformState()
-      this.deforms.set(r.id, d)
+    const strength = impactStrength(approachSpeed, r.soft.radius)
+    if (strength <= 0) return
+    let p = this.pendingImpacts.get(r.id)
+    if (!p) {
+      p = { x: 0, y: 0, speed: 0 }
+      this.pendingImpacts.set(r.id, p)
     }
-    const bodyAngle = r.soft.center.angle ?? 0
-    registerImpact(d, contactNormal.x, contactNormal.y, approachSpeed, r.soft.radius, bodyAngle)
+    // Strength-weighted normal sum: the dominant contact direction wins,
+    // and the mean speed is the representative approach speed.
+    p.x += contactNormal.x * strength
+    p.y += contactNormal.y * strength
+    p.speed = Math.max(p.speed, approachSpeed)
+  }
+
+  /** Apply the frame's accumulated impacts to the deform springs. */
+  private flushImpacts(): void {
+    if (this.pendingImpacts.size === 0) return
+    for (const [id, p] of this.pendingImpacts) {
+      const r = this.renderables.get(id)
+      if (!r) continue
+      const len = Math.hypot(p.x, p.y)
+      if (len < 1e-6) continue
+      let d = this.deforms.get(id)
+      if (!d) {
+        d = createDeformState()
+        this.deforms.set(id, d)
+      }
+      const bodyAngle = r.soft.center.angle ?? 0
+      registerImpact(d, p.x / len, p.y / len, p.speed, r.soft.radius, bodyAngle)
+    }
+    this.pendingImpacts.clear()
   }
 
   unregister(ballId: number): void {
@@ -160,6 +210,8 @@ export class SoftBallRenderer {
     this.looks.delete(ballId)
     this.contourPool.delete(ballId)
     this.overlayOn.delete(ballId)
+    this.deforms.delete(ballId)
+    this.pendingImpacts.delete(ballId)
     this.faces.drop(ballId)
     this.spriteViews.delete(ballId)
     this.dropSpecialTextures(ballId)
@@ -170,6 +222,8 @@ export class SoftBallRenderer {
     this.looks.clear()
     this.contourPool.clear()
     this.overlayOn.clear()
+    this.deforms.clear()
+    this.pendingImpacts.clear()
     this.faces.clear()
     this.spriteViews.clear()
     for (const id of [...this.specialTextures.keys()]) this.dropSpecialTextures(id)
@@ -241,7 +295,10 @@ export class SoftBallRenderer {
     // faces use this frame's eased panic value. Visual-only: the system
     // never touches physics state.
     this.emotion.update(this.renderables.values())
-    // Step the jelly deform springs (visual only).
+    // Step the jelly deform springs (visual only). The frame's accumulated
+    // impacts are applied FIRST (one excitation per ball per frame), then
+    // the springs advance.
+    this.flushImpacts()
     for (const d of this.deforms.values()) stepDeform(d, deltaMs)
     this.lastDrawnIds.clear()
     this.bakeSweep.clear()
@@ -282,10 +339,11 @@ export class SoftBallRenderer {
         continue
       }
 
-      // ---- LIVE CONTOUR PATH (tiers 1–7): ALL balls draw the live
-      // particle-ring contour. Sleeping balls hit the Phase 2.20 contour
-      // cache (frozen geometry, zero rebuild) — no sleep/wake mode
-      // switch, no sticker/contour snap.
+      // ---- LIVE CONTOUR PATH (tiers 1–7): EVERY ball draws the live
+      // particle-ring contour, awake or asleep — one render path, so
+      // there is no sleep/wake mode switch and no sticker/contour snap.
+      // (The contour is rebuilt from the physics every frame; the vertex
+      // arrays are pooled, not cached.)
       if (r.tier !== 8 && r.tier !== 9) {
         const view = this.spriteViews.get(r.id)
         if (view) {
@@ -366,7 +424,82 @@ export class SoftBallRenderer {
       }
     }
     this.contourPool.set(r.id, reuse)
+    // JELLY DENT: the deform spring's LOCALIZED contact dent (Gaussian
+    // dip at the contact point + delayed bulge ring) is applied ON TOP of
+    // the live physics contour. This is what makes a hit ball read as
+    // jelly instead of a rigid body that silently changes shape. The
+    // spring is stepped in update() and fed from real collision events
+    // (registerBallImpact) — see PlaygroundScene's collision drain.
+    const d = this.deforms.get(r.id)
+    if (d && d.lastStrength > 0.001) {
+      // The bulge is clamped per vertex against the particle collision
+      // discs (the Phase 2.9.8 envelope invariant, pinned by
+      // softball.test.ts) — the rendered surface can never cut into a
+      // neighbour's.
+      this.applyDent(reuse, d, c.x, c.y, r.soft.particles)
+    }
     return { poly: reuse, cx: c.x, cy: c.y }
+  }
+
+  /**
+   * Apply the deform spring's LOCALIZED displacement to a contour polygon.
+   *
+   * The contour is the LIVE physics-derived shape — this MODIFIES it by the
+   * dent profile (a multiplicative factor on each vertex's radius from the
+   * centroid), it does not replace it with a synthetic oval. The live
+   * physics contour is what makes the ball read as a soft body; the dent is
+   * the impact accent on top of it.
+   *
+   * The profile lives in the ball's LOCAL frame (the deform state stores
+   * the contact direction rotated into that frame), so each vertex's world
+   * angle is converted back to local before sampling.
+   *
+   * OUTWARD CLAMP: the rendered contour may never extend past the ball's
+   * particle collision discs (the Phase 2.9.8 envelope invariant, pinned
+   * by softball.test.ts) — a ball's visible surface must never cut into a
+   * neighbour's.
+   *
+   * The rule is PER VERTEX and applies to the dent too, not just the
+   * bulge: a vertex near the mid-edge between two particles, moved inward
+   * toward the centroid, moves AWAY from both particles, so the dent can
+   * breach the envelope as well. So each candidate position is TESTED
+   * against the particle discs, and a vertex that would breach falls back
+   * to its base position. The invariant then holds by construction: every
+   * vertex is either the base point or a point proven inside the envelope.
+   */
+  private applyDent(
+    poly: Phaser.Math.Vector2[],
+    d: DeformState,
+    cx: number,
+    cy: number,
+    particles: Matter.Body[],
+  ): void {
+    const n = poly.length
+    const bodyR = particles.length ? (particles[0]!.circleRadius ?? 0) : 0
+    for (let i = 0; i < n; i++) {
+      const p = poly[i]!
+      const dx = p.x - cx
+      const dy = p.y - cy
+      const dist = Math.hypot(dx, dy)
+      if (dist < 1e-4) continue
+      // World angle -> ball-local angle (counter-rotate by the body angle)
+      const localAngle = Math.atan2(dy, dx) - d.bodyAngle
+      const frac = contourDisplacement(d, localAngle)
+      if (frac === 0) continue
+      const scale = 1 + frac
+      const nx = cx + dx * scale
+      const ny = cy + dy * scale
+      // The candidate must stay within every particle disc.
+      let inside = true
+      for (const part of particles) {
+        if (Math.hypot(nx - part.position.x, ny - part.position.y) > bodyR) {
+          inside = false
+          break
+        }
+      }
+      if (!inside) continue // keep the base position
+      p.set(nx, ny)
+    }
   }
 
   /** Live Graphics body draw (tiers 8/9 awake, pops, fallbacks). */

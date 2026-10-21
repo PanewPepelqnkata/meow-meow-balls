@@ -691,8 +691,15 @@ export class PlaygroundScene extends Phaser.Scene {
       for (const { bodyA, bodyB, normalX, normalY, approachSpeed } of events) {
         ballBodyIds.push(bodyA.id, bodyB.id)
         // JELLY: feed the deform springs (visual only) — the contact
-        // normal + approach speed are captured at collisionStart. The
-        // normal points A→B; flip for B's perspective.
+        // normal + approach speed are captured at collisionStart.
+        //
+        // NORMAL DIRECTION (verified against raw Matter, not assumed):
+        // Matter flips the normal so that dot(normal, B - A) < 0 — the
+        // normal points FROM bodyB TOWARD bodyA. The contact direction ON
+        // a body must point TOWARD the other body, so bodyA gets -normal
+        // (which points at bodyB) and bodyB gets +normal (which points at
+        // bodyA). Measured: with bodyA = the floor, dot(normal, A->B) =
+        // -79.9, i.e. the normal points at the floor.
         const bA = this.balls.getBallByBodyId(bodyA.id)
         const bB = this.balls.getBallByBodyId(bodyB.id)
         if (bA) this.ballRenderer.registerBallImpact(bA, { x: -normalX, y: -normalY }, approachSpeed)
