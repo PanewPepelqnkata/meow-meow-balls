@@ -3,6 +3,7 @@ import type { UiLayout } from './ResponsiveLayout'
 import { BALL_TIERS } from '../config/ballTiers'
 import { hudText, WHITE } from './Typography'
 import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK } from '../game/rendering/BallAppearance'
+import { cycleColor } from '../game/rendering/rgbCycle'
 
 /**
  * Phase 2.13.2 (spec §4) — polished tier progression path.
@@ -212,32 +213,18 @@ export class TierProgression {
     const poly = restContour(look, rr, 0, 0, 24)
     const pts = poly.map((p) => new Phaser.Math.Vector2(p.x, p.y))
 
-    if (tier === 8) {
-      this.drawRainbowNode(g, rr)
-    } else if (tier === 9) {
+    if (tier === 9) {
       this.drawFantasyNode(g, rr)
     } else {
-      g.fillStyle(color, 1)
+      // Tier 8 is a plain ball whose colour cycles (same as the others);
+      // the tier progression strip shows its current cycle colour.
+      g.fillStyle(tier === 8 ? cycleColor(Date.now()) : color, 1)
       g.fillPoints(pts, true)
     }
 
     g.lineStyle(Math.max(2.5, ballOutlineWidth(rr)), INK, 1)
     g.strokePoints(pts, true, true)
     drawBallFace(g, look, { x: 0, y: 0 }, rr, 1)
-  }
-
-  /** Tier 8 progression identity: saturated rainbow ring segments. */
-  private drawRainbowNode(g: Phaser.GameObjects.Graphics, rr: number): void {
-    const colors = [0xff4444, 0xff9933, 0xffee44, 0x66dd44, 0x44ccff, 0xaa66ff]
-    const seg = (Math.PI * 2) / colors.length
-    for (let i = 0; i < colors.length; i++) {
-      g.fillStyle(colors[i]!, 1)
-      g.beginPath()
-      g.moveTo(0, 0)
-      g.arc(0, 0, rr, i * seg, (i + 1) * seg)
-      g.closePath()
-      g.fillPath()
-    }
   }
 
   /** Tier 9 progression identity: pastel body with a small gold horn. */

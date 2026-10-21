@@ -49,9 +49,11 @@ export function variantIdFor(tier: number): number {
   return hash(runSeed, tier) % VARIANT_COUNT
 }
 
-/** Variants only exist for the randomized high tiers. */
+/** Variants only exist for the randomized high tiers.
+ *  TIER 8 IS NOT ONE: it is the cycling RGB ball, whose look is a
+ *  continuous colour cycle, not a per-run variant. */
 export function isVariantTier(tier: number): boolean {
-  return tier === 8 || tier === 9
+  return tier === 9
 }
 
 /**

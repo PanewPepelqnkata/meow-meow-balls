@@ -12,6 +12,7 @@
     "qa:tier8": "node qa/verify-tier8-bake.mjs",
     "qa:containment": "node qa/verify-fault-containment.mjs",
     "qa:merge": "node qa/verify-deferred-merge.mjs",
+    "qa:tier8cycle": "node qa/verify-tier8-cycling.mjs",
     "format": "prettier --write ."
   },
   "dependencies": {

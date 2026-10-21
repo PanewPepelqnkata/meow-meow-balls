@@ -33,15 +33,14 @@ import { ballOutlineWidth } from './BallAppearance'
  * The geometry is a pure function, so it is directly testable here.
  */
 describe('tier 8/9 bake geometry', () => {
-  it('only tiers 8 and 9 use the procedural local-space bake', () => {
-    expect(isSpecialBakeTier(8)).toBe(true)
+  it('only tier 9 uses the procedural local-space bake', () => {
+    // TIER 8 IS NOT BAKED: it is the cycling RGB ball, a plain ball whose
+    // colour animates — a baked texture would freeze one colour. It draws
+    // through the live Graphics path like every other tier.
     expect(isSpecialBakeTier(9)).toBe(true)
-    for (const t of [1, 2, 3, 4, 5, 6, 7]) expect(isSpecialBakeTier(t)).toBe(false)
-  })
-
-  it('the tier 8 extent covers the rainbow wedges (1.2r)', () => {
-    const R = getTier(8)!.radius
-    expect(specialBakeExtent(8, R)).toBeCloseTo(R * 1.2, 6)
+    for (const t of [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12]) {
+      expect(isSpecialBakeTier(t)).toBe(false)
+    }
   })
 
   it('the tier 9 extent covers the horn (-1.35r) and the mane (±0.95r)', () => {
@@ -53,7 +52,7 @@ describe('tier 8/9 bake geometry', () => {
   })
 
   it('the texture is square and the ball sits at its middle', () => {
-    for (const tier of [8, 9]) {
+    for (const tier of [9]) {
       const R = getTier(tier)!.radius
       const geo = specialBakeGeometry(tier, R)
       expect(geo.w).toBe(geo.h)
@@ -63,7 +62,7 @@ describe('tier 8/9 bake geometry', () => {
   })
 
   it('the ball centre is INSIDE the texture, clear of the edges', () => {
-    for (const tier of [8, 9]) {
+    for (const tier of [9]) {
       const R = getTier(tier)!.radius
       const geo = specialBakeGeometry(tier, R)
       expect(geo.center).toBeGreaterThan(geo.pad)
@@ -75,17 +74,17 @@ describe('tier 8/9 bake geometry', () => {
     // The old bake sized the texture from the WORLD contour, so a ball
     // near the stage edge produced a different (and wrongly offset)
     // texture than the same ball in the middle.
-    const R = getTier(8)!.radius
-    const geo = specialBakeGeometry(8, R)
+    const R = getTier(9)!.radius
+    const geo = specialBakeGeometry(9, R)
     const expectedPad = ballOutlineWidth(R) / 2 + 3
     expect(geo.pad).toBeCloseTo(expectedPad, 6)
     // the size is a pure function of the tier and the radius
-    expect(specialBakeGeometry(8, R).w).toBe(geo.w)
-    expect(specialBakeGeometry(8, R).center).toBe(geo.center)
+    expect(specialBakeGeometry(9, R).w).toBe(geo.w)
+    expect(specialBakeGeometry(9, R).center).toBe(geo.center)
   })
 
   it('the texture is big enough to hold the body plus its ink outline', () => {
-    for (const tier of [8, 9]) {
+    for (const tier of [9]) {
       const R = getTier(tier)!.radius
       const geo = specialBakeGeometry(tier, R)
       const body = specialBakeExtent(tier, R) * 2

@@ -12,7 +12,6 @@ import {
   expressionAt,
   gazeAt,
   wobbleContour,
-  drawRainbowBall,
   drawFantasyBall,
 } from './BallAppearance'
 import type { BallLook } from './BallAppearance'
@@ -29,6 +28,7 @@ import { TierBaker } from './TierBaker'
 import type { TierTextures } from './TierBaker'
 import { FacePool } from './FacePool'
 import type { SpriteBallView } from './FacePool'
+import { cycleColor } from './rgbCycle'
 
 /**
  * Phase 2.24 SPRITE-BALLS renderer (per-tier baked slime textures) — the
@@ -320,7 +320,9 @@ export class SoftBallRenderer {
       }
       this.lastDrawnIds.add(r.id)
       const look = this.lookFor(r)
-      const color = this.tierColor(r.tier)
+      // TIER 8 cycles its colour through the clock (red/blue every 0.25s);
+      // every other tier uses its fixed tier colour.
+      const color = r.tier === 8 ? cycleColor(now) : this.tierColor(r.tier)
       const drawR = popScale != null ? r.soft.radius * popScale : r.soft.radius
 
       // Live transform measurement: centroid + particle-bounds aspect
@@ -344,7 +346,15 @@ export class SoftBallRenderer {
       // there is no sleep/wake mode switch and no sticker/contour snap.
       // (The contour is rebuilt from the physics every frame; the vertex
       // arrays are pooled, not cached.)
-      if (r.tier !== 8 && r.tier !== 9) {
+      //
+      // TIER 8 (the cycling RGB ball) uses this SAME path: it is a plain
+      // ball that only differs in its COLOUR, so it needs no special
+      // procedural body, no per-ball texture bake and no second render
+      // path. That is also why it can no longer lose its body (the old
+      // rainbow had no ink outline and its own baked-texture path, which
+      // is where the "colour disappears, only the face stays" symptom
+      // came from).
+      if (r.tier !== 9) {
         const view = this.spriteViews.get(r.id)
         if (view) {
           const { poly } = this.liveContour(r, look, drawR)
@@ -518,23 +528,20 @@ export class SoftBallRenderer {
     cy?: number,
   ): void {
     const built = poly ? { poly, cx: cx!, cy: cy! } : this.liveContour(r, look, drawR)
-    if (r.tier === 8) {
-      drawRainbowBall(g, built.poly.map((v) => ({ x: v.x, y: v.y })), built.cx, built.cy, r.soft.radius, Date.now(), variantIdFor(8))
-    } else if (r.tier === 9) {
+    if (r.tier === 9) {
       drawFantasyBall(g, built.cx, built.cy, r.soft.radius, variantIdFor(9))
-    } else {
-      g.fillStyle(color, 1)
-      g.fillPoints(built.poly, true)
+      // The fantasy body strokes its own horn and mane, so it takes no
+      // separate ink pass.
+      return
     }
-    if (r.tier !== 8 && r.tier !== 9) {
-      g.lineStyle(ballOutlineWidth(drawR), INK, 1)
-      g.strokePoints(built.poly, true, true)
-    } else {
-      // Tier 8/9 keep their own silhouettes: the rainbow wedges reach
-      // 1.2r and the fantasy body strokes its own horn and mane, so
-      // neither takes a separate ink pass (an added circle at r would
-      // cut across the wedges).
-    }
+    // Every other tier (including the tier 8 cycling RGB ball) is a
+    // plain ball: the tier colour fills the live contour and the thick
+    // INK outline strokes the SAME contour, so the body can never lose
+    // its colour while the face stays.
+    g.fillStyle(color, 1)
+    g.fillPoints(built.poly, true)
+    g.lineStyle(ballOutlineWidth(drawR), INK, 1)
+    g.strokePoints(built.poly, true, true)
   }
 
   /** Live Graphics face draw (easter eggs, panic, pops, tier 8/9). */

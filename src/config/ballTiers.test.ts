@@ -7,7 +7,7 @@ import { SOFT } from '../game/systems/SoftBall'
  * for all twelve tiers — validity, ordering, and downstream derivation.
  */
 describe('ballTiers: single source of truth for tiers 1–12', () => {
-  it('defines exactly 12 sequential, strictly-increasing, positive radii', () => {
+  it('defines exactly 12 sequential tiers with positive radii', () => {
     expect(() => validateBallTiers()).not.toThrow()
     expect(BALL_TIERS).toHaveLength(12)
     expect(BALL_TIERS.map((t) => t.tier)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
@@ -24,13 +24,24 @@ describe('ballTiers: single source of truth for tiers 1–12', () => {
   it('has explicit entries for tiers 8–12 (8–9 playable, 10–12 reserved)', () => {
     for (const t of [8, 9]) {
       const tier = getTier(t)!
-      expect(tier.radius).toBeGreaterThan(getTier(t - 1)!.radius)
-      // Phase 2.13.0 (spec §10): rainbow (8) and fantasy unicorn (9) slimes
-      // are real merge destinations; drops still only spawn tiers 1–3.
+      // Phase 2.13.0 (spec §10): the cycling RGB (8) and fantasy unicorn
+      // (9) slimes are real merge destinations; drops still only spawn
+      // tiers 1–3.
       expect(tier.playable).toBe(true)
     }
     // Tiers 10–12 stay reserved placeholders until their designs land.
     for (const t of [10, 11, 12]) expect(getTier(t)!.playable).toBe(false)
+  })
+
+  it('tiers 8–12 are all the SAME SIZE as tier 3 (user spec)', () => {
+    // The top tiers are distinguished by their score and their look, not
+    // by being bigger. This also makes them fit the container: the old
+    // tier 9 (r=205, diameter 410) exceeded the 405px desktop floor and
+    // the 340px portrait floor, so it could never be placed.
+    const tier3 = getTier(3)!.radius
+    for (const t of [8, 9, 10, 11, 12]) {
+      expect(getTier(t)!.radius).toBe(tier3)
+    }
   })
 
   it('gameplay progression uses tiers 1–9 (tiers 10–12 stay reserved)', () => {

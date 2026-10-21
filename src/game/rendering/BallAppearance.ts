@@ -578,62 +578,6 @@ export function drawBallFace(
 // ---------------------------------------------------------------------------
 
 /**
- * Draw Tier 8 rainbow/iridescent ball with multicolor gradient body.
- *
- * Phase 2.14.0: `variant` (0..7, rolled per RUN via runVariant) rotates the
- * color ring and varies the wedge count — variant 0 is the original look.
- */
-export function drawRainbowBall(
-  g: Phaser.GameObjects.Graphics,
-  _pts: Array<{ x: number; y: number }>,
-  cx: number,
-  cy: number,
-  r: number,
-  _time: number,
-  variant = 0,
-): void {
-  // Rainbow gradient (shifted by _time for subtle shimmer)
-  const colors = [
-    0x4fc3f7, // Cyan
-    0x5fd437, // Green
-    0xffeb3b, // Yellow
-    0xff9800, // Orange
-    0xf44336, // Red
-    0xf96ec0, // Pink
-    0x9c27b0, // Purple
-  ]
-
-  // Per-run variant: rotate the ring (starting hue) + wedge count.
-  const rotate = variant % colors.length
-  const segments = 7 + ((variant * 3) % 3) * 2
-  const ring = colors.map((_, i) => colors[(i + rotate) % colors.length]!)
-
-  const shift = ((_time * 0.0001) % 1)
-
-  // Fill with smooth color transitions
-  for (let i = 0; i < segments; i++) {
-    const angle = ((i + shift) / segments) * Math.PI * 2
-    const nextAngle = ((i + 1 + shift) / segments) * Math.PI * 2
-    const color = ring[i % ring.length]!
-
-    g.fillStyle(color, 1)
-    g.beginPath()
-    g.moveTo(cx, cy)
-    const steps = 12
-    for (let j = 0; j <= steps; j++) {
-      const a = angle + (nextAngle - angle) * (j / steps)
-      g.lineTo(cx + Math.cos(a) * r * 1.2, cy + Math.sin(a) * r * 1.2)
-    }
-    g.closePath()
-    g.fillPath()
-  }
-
-  // Blend with a radial gradient overlay for smoothness
-  g.fillStyle(0xffffff, 0.15)
-  g.fillCircle(cx, cy, r * 0.7)
-}
-
-/**
  * Draw Tier 9 fantasy/unicorn ball with horn and colorful mane.
  *
  * Phase 2.14.0: `variant` (0..7, rolled per RUN via runVariant) selects the

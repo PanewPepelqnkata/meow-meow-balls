@@ -8,7 +8,6 @@ import {
   ballOutlineWidth,
   drawBallFace,
   drawFantasyBall,
-  drawRainbowBall,
   restContour,
 } from '../rendering/BallAppearance'
 import { BALL_TIERS, getTier } from '../../config/ballTiers'
@@ -18,6 +17,7 @@ import { loadSave, resetSave, setThemeSetting } from '../state/save'
 import { runVariantFor, variantIdFor, VARIANT_COUNT } from '../state/runVariant'
 import { session } from '../state/session'
 import { bakeCanvas, roundedRectPath } from '../rendering/RoughArt'
+import { cycleColor } from '../rendering/rgbCycle'
 import { bakeIrisCover, IRIS_COVER_KEY } from './StartIntroScene'
 import { StartIntroScene } from './StartIntroScene'
 
@@ -1698,12 +1698,12 @@ function drawBallIcon(
   if (opts.silhouette || tier >= 10) {
     g.fillStyle(0x23242e, 1)
     g.fillPoints(pts, true)
-  } else if (tier === 8) {
-    drawRainbowBall(g, poly, cx, cy, r, 0, variant ?? variantIdFor(8))
   } else if (tier === 9) {
     drawFantasyBall(g, cx, cy, r, variant ?? variantIdFor(9))
   } else {
-    g.fillStyle(t.color, 1)
+    // Tier 8 is a plain ball whose colour cycles; the body fills the
+    // CONTOUR (so it matches its ink outline) in the current cycle colour.
+    g.fillStyle(tier === 8 ? cycleColor(Date.now()) : t.color, 1)
     g.fillPoints(pts, true)
   }
 

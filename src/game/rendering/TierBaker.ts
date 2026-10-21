@@ -232,19 +232,16 @@ export class TierBaker {
     const g = this.tempG
     if (isSpecial) {
       // LOCAL space: the procedural fill is centred on the texture.
+      // TIER 9 ONLY: the tier 8 cycling RGB ball is a plain ball that
+      // animates its colour, so it is never baked (a baked texture would
+      // freeze one colour) — it draws through the live Graphics path.
       g.setPosition(pad, pad)
-      if (tier === 8) {
-        drawRainbowInto(g, 0, 0, r, variant)
-      } else {
-        drawFantasyInto(g, 0, 0, r, variant)
-      }
+      drawFantasyInto(g, 0, 0, r, variant)
       g.generateTexture(fillKey, w, h)
       this.tempG.clear()
       // The ink outline: the tier 9 fantasy body strokes its own horn and
-      // mane, but the tier 8 rainbow wedges have NO border of their own —
-      // without this pass the tier 8 ball loses its thick ink silhouette
-      // that every other tier has. The outline is a circle of the ball's
-      // radius in local space.
+      // mane, so the outline is a circle of the ball's radius in local
+      // space.
       g.setPosition(pad, pad)
       g.lineStyle(ballOutlineWidth(r), INK, 1)
       g.strokeCircle(0, 0, r)
@@ -286,34 +283,11 @@ export class TierBaker {
 }
 
 // ---------------------------------------------------------------------------
-// Tier-8/9 procedural fills, re-rasterizable into the offline Graphics.
-// Mirrors BallAppearance.drawRainbowBall / drawFantasyBall but anchored at
-// (0,0) and parameterized so the baker can reuse them verbatim (kept in
-// sync by test: same variant math — see TierBaker placement of extras).
+// Tier-9 procedural fill, re-rasterizable into the offline Graphics.
+// Mirrors BallAppearance.drawFantasyBall but anchored at (0,0) and
+// parameterized so the baker can reuse it verbatim (kept in sync by test:
+// same variant math — see TierBaker placement of extras).
 // ---------------------------------------------------------------------------
-
-function drawRainbowInto(g: Phaser.GameObjects.Graphics, cx: number, cy: number, r: number, variant: number): void {
-  const colors = [0x4fc3f7, 0x5fd437, 0xffeb3b, 0xff9800, 0xf44336, 0xf96ec0, 0x9c27b0]
-  const rotate = variant % colors.length
-  const segments = 7 + ((variant * 3) % 3) * 2
-  const ring = colors.map((_, i) => colors[(i + rotate) % colors.length]!)
-  for (let i = 0; i < segments; i++) {
-    const angle = (i / segments) * Math.PI * 2
-    const nextAngle = ((i + 1) / segments) * Math.PI * 2
-    g.fillStyle(ring[i % ring.length]!, 1)
-    g.beginPath()
-    g.moveTo(cx, cy)
-    const steps = 12
-    for (let j = 0; j <= steps; j++) {
-      const a = angle + (nextAngle - angle) * (j / steps)
-      g.lineTo(cx + Math.cos(a) * r * 1.2, cy + Math.sin(a) * r * 1.2)
-    }
-    g.closePath()
-    g.fillPath()
-  }
-  g.fillStyle(0xffffff, 0.15)
-  g.fillCircle(cx, cy, r * 0.7)
-}
 
 function drawFantasyInto(g: Phaser.GameObjects.Graphics, cx: number, cy: number, r: number, variant: number): void {
   // Local palette copy — MUST stay index-aligned with BallAppearance's

@@ -61,19 +61,25 @@ export const BALL_TIERS: readonly BallTier[] = [
   { tier: 6, radius: 106, color: 0xffeb3b, shade: 0xe0c200, score: 64, face: 'calm', playable: true, physics: basePhysics },
   { tier: 7, radius: 130, color: 0xff8c2e, shade: 0xd65f0a, score: 128, face: 'sleepy', playable: true },
   // Phase 2.13.0 (spec §10): tiers 8 and 9 are REAL merge destinations now —
-  // the rainbow slime and the fantasy unicorn slime. `playable: true` lets a
+  // the cycling RGB slime and the fantasy unicorn slime. `playable: true` lets a
   // T7 pair merge into T8 and a T8 pair into T9 (drops spawn tiers 1–4 via
   // the weighted SPAWN_WEIGHTS table in config/spawn.ts, so gameplay entry
   // is unchanged apart from the rare tier-4 drop). Tier 10 stays a reserved
   // placeholder until its final design is specified.
-  { tier: 8, radius: 165, color: 0x9c27b0, shade: 0x7b1fa2, score: 256, face: 'calm', playable: true },
-  { tier: 9, radius: 205, color: 0x795548, shade: 0x5d4037, score: 512, face: 'calm', playable: true },
+  //
+  // SIZE (user spec): tiers 8–12 are all the SAME SIZE as tier 3 — the top
+  // tiers are distinguished by their score, their special look and their
+  // merge level, NOT by being bigger. The old radii (165/205/250/305/370)
+  // also did not fit the container at all (a tier 9's 410px diameter
+  // exceeded the 405px desktop floor and the 340px portrait floor).
+  { tier: 8, radius: 62, color: 0xf44336, shade: 0xb71c1c, score: 256, face: 'calm', playable: true },
+  { tier: 9, radius: 62, color: 0x795548, shade: 0x5d4037, score: 512, face: 'calm', playable: true },
   // Tiers 10–12: RESERVED placeholders (the user's spec: 12 tiers total;
   // designs beyond tier 9 are not yet made). They never spawn and never
   // merge INTO — the merge chain ends at tier 9 until they are specified.
-  { tier: 10, radius: 250, color: 0x212121, shade: 0x000000, score: 1024, face: 'calm', playable: false },
-  { tier: 11, radius: 305, color: 0x212121, shade: 0x000000, score: 2048, face: 'calm', playable: false },
-  { tier: 12, radius: 370, color: 0x212121, shade: 0x000000, score: 4096, face: 'calm', playable: false },
+  { tier: 10, radius: 62, color: 0x212121, shade: 0x000000, score: 1024, face: 'calm', playable: false },
+  { tier: 11, radius: 62, color: 0x212121, shade: 0x000000, score: 2048, face: 'calm', playable: false },
+  { tier: 12, radius: 62, color: 0x212121, shade: 0x000000, score: 4096, face: 'calm', playable: false },
 ]
 
 export function getTier(tier: number): BallTier | undefined {
@@ -126,8 +132,15 @@ export function validateBallTiers(): void {
         throw new Error(`Playable tier ${t.tier} needs a color and a positive score`)
       }
     }
-    if (i > 0 && t.radius <= BALL_TIERS[i - 1]!.radius) {
+    // SIZE ORDERING: tiers 1–7 grow strictly. Tiers 8–12 are all the SAME
+    // size as tier 3 (the user's spec) — they are distinguished by their
+    // score and their look, not by being bigger. So the strict-growth rule
+    // applies to tiers 1–7 only, and 8–12 must match tier 3's radius.
+    if (i > 0 && i < 7 && t.radius <= BALL_TIERS[i - 1]!.radius) {
       throw new Error(`Tier ${t.tier} radius ${t.radius} must be larger than tier ${t.tier - 1} radius ${BALL_TIERS[i - 1]!.radius}`)
+    }
+    if (i >= 7 && t.radius !== BALL_TIERS[2]!.radius) {
+      throw new Error(`Tier ${t.tier} radius ${t.radius} must equal tier 3's radius ${BALL_TIERS[2]!.radius} (tiers 8–12 are the same size as tier 3)`)
     }
   })
 }

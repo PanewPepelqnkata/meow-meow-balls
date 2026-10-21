@@ -1,7 +1,8 @@
 import Phaser from 'phaser'
 import type { UiLayout } from './ResponsiveLayout'
 import { getTier } from '../config/ballTiers'
-import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK, drawRainbowBall, drawFantasyBall } from '../game/rendering/BallAppearance'
+import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK, drawFantasyBall } from '../game/rendering/BallAppearance'
+import { cycleColor } from '../game/rendering/rgbCycle'
 import { variantIdFor } from '../game/state/runVariant'
 import { hudText, WHITE } from './Typography'
 
@@ -67,8 +68,10 @@ export class NextBall {
     // Phase 2.12.1: Special rendering for Tier 8/9 in preview.
     // Phase 2.14.0: per-run variant (tiers 8-9 randomize each run).
     if (this.tier === 8) {
+      // The cycling RGB ball: one solid colour, stepping every 0.25s.
       const pts = poly.map(p => ({ x: p.x, y: p.y }))
-      drawRainbowBall(g, pts, this.pos.x, this.pos.y, r, Date.now(), variantIdFor(8))
+      g.fillStyle(cycleColor(Date.now()), 1)
+      g.fillPoints(pts.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)
     } else if (this.tier === 9) {
       drawFantasyBall(g, this.pos.x, this.pos.y, r, variantIdFor(9))
     } else {

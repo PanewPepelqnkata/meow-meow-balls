@@ -25,6 +25,7 @@ qa/*
 !qa/verify-tier8-bake.mjs
 !qa/verify-fault-containment.mjs
 !qa/verify-deferred-merge.mjs
+!qa/verify-tier8-cycling.mjs
 !qa/lib-game.mjs
 
 # Reference material / design docs outside the game source

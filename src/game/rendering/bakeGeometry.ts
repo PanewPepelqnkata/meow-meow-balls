@@ -37,7 +37,6 @@ export interface BakeGeometry {
  *            1.4r covers both sides.
  */
 export function specialBakeExtent(tier: number, radius: number): number {
-  if (tier === 8) return radius * 1.2
   if (tier === 9) return radius * 1.4
   return radius
 }
@@ -53,7 +52,10 @@ export function specialBakeGeometry(tier: number, radius: number): BakeGeometry 
   return { w: size, h: size, center: size / 2, pad }
 }
 
-/** True for the tiers that use the procedural local-space bake. */
+/** True for the tiers that use the procedural local-space bake.
+ *  ONLY tier 9: the tier 8 cycling RGB ball is a plain ball whose colour
+ *  animates, so it is never baked (a baked texture would freeze one
+ *  colour) — it draws through the live Graphics path. */
 export function isSpecialBakeTier(tier: number): boolean {
-  return tier === 8 || tier === 9
+  return tier === 9
 }

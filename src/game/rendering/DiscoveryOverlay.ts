@@ -1,5 +1,6 @@
 import Phaser from 'phaser'
-import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK, drawRainbowBall, drawFantasyBall } from './BallAppearance'
+import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK, drawFantasyBall } from './BallAppearance'
+import { cycleColor } from './rgbCycle'
 import { variantIdFor } from '../state/runVariant'
 import { getTier } from '../../config/ballTiers'
 import { FONT_FAMILY } from '../../ui/Typography'
@@ -535,12 +536,13 @@ export class DiscoveryOverlay {
     const look = ballLookFor(tier, seed)
     const poly = restContour(look, radius, x, y, 48)
 
-    if (tier === 8) {
-      drawRainbowBall(g, poly, x, y, radius, 0, variantIdFor(8))
-    } else if (tier === 9) {
+    if (tier === 9) {
       drawFantasyBall(g, x, y, radius, variantIdFor(9))
     } else {
-      g.fillStyle(getTier(tier)?.color ?? 0xffffff, 1)
+      // Tier 8 is a plain ball whose colour cycles; the body fills the
+      // CONTOUR (so it matches its ink outline) in the current cycle
+      // colour, exactly like every other tier.
+      g.fillStyle(tier === 8 ? cycleColor(Date.now()) : (getTier(tier)?.color ?? 0xffffff), 1)
       g.fillPoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)
     }
 
