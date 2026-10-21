@@ -16,7 +16,7 @@ import {
   drawFantasyBall,
 } from './BallAppearance'
 import type { BallLook } from './BallAppearance'
-import { createDeformState, registerImpact, stepDeform, contourRadii } from './deform'
+import { createDeformState, registerImpact, stepDeform } from './deform'
 import type { DeformState } from './deform'
 import { variantIdFor } from '../state/runVariant'
 import { TierBaker } from './TierBaker'
@@ -321,24 +321,12 @@ export class SoftBallRenderer {
             this.drawSpriteFace(view, r, drawR, aspect, now)
             continue
           }
-          // AWAKE: the LIVE particle-ring contour stroke draws the
-          // deforming outline on top of the fill quad — the fill quad
-          // STAYS VISIBLE (hiding it made colors flicker invisible when
-          // the overlay's top-3 cap skipped balls).
-          view.fill.setVisible(true).setTexture(tex.fillKey).setPosition(c.x, c.y)
-          // JELLY DEFORM: the deform spring's squash/cross drive the
-          // sprite transform — volume-preserving squash along the
-          // impact axis, cross-axis bulge, rotation to the axis angle.
-          const d = this.deforms.get(r.id)
-          if (d && (Math.abs(d.squash) > 0.004 || Math.abs(d.cross) > 0.004)) {
-            const radii = contourRadii(d, tex.textureRadius, 4)
-            const axisScale = radii[0]! / tex.textureRadius
-            const crossScale = radii[2]! / tex.textureRadius
-            const rot = Math.atan2(d.axisY, d.axisX)
-            view.fill.setScale(s * axisScale, s * crossScale).setRotation(rot)
-          } else {
-            view.fill.setScale(s * aspect, s).setRotation(0)
-          }
+          // AWAKE: the fill quad is HIDDEN — the live contour stroke
+          // (fillPoints + strokePoints below) IS the body and outline.
+          // Showing the baked sticker alongside it = two outlines at
+          // different deform states = the flicker the user reported.
+          // One render path per ball, always.
+          view.fill.setVisible(false).setTexture(tex.fillKey).setPosition(c.x, c.y)
           view.outline.setVisible(false)
           const { poly, cx, cy } = this.liveContour(r, look, drawR)
           overlayItems.push({ entity: r, look, r: drawR, poly, cx, cy, color, aspect })
