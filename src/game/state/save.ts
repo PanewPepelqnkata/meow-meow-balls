@@ -92,19 +92,40 @@ function write(): void {
  * flushes immediately (run end, settings change, tab hide); high-frequency
  * callers use writeSoon() which coalesces to one store write per second.
  * The in-memory cache is ALWAYS current — only the disk copy may lag ≤1 s.
+ *
+ * PERF (iOS, 2026-10-22): the deferred write is scheduled on the IDLE
+ * callback, not a bare setTimeout. A setTimeout fires between frames and
+ * its synchronous IPC lands in the middle of the frame budget — a 5-20 ms
+ * hitch on the device, on a frame the player did not cause. requestIdle-
+ * Callback runs the write when the main thread has slack (and with a
+ * timeout, so it still happens promptly if the game goes idle).
  */
 let writeTimer: ReturnType<typeof setTimeout> | null = null
+let idleHandle: number | null = null
 function writeSoon(): void {
-  if (writeTimer) return
-  writeTimer = setTimeout(() => {
+  if (writeTimer || idleHandle !== null) return
+  const flushSoon = (): void => {
+    idleHandle = null
     writeTimer = null
     write()
-  }, 1000)
+  }
+  if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+    idleHandle = window.requestIdleCallback(flushSoon, { timeout: 1000 })
+  } else {
+    // No requestIdleCallback (older Safari): fall back to the timer.
+    writeTimer = setTimeout(flushSoon, 1000)
+  }
 }
 function writeNow(): void {
   if (writeTimer) {
     clearTimeout(writeTimer)
     writeTimer = null
+  }
+  // A pending idle write must be cancelled too, or it would fire a
+  // SECOND write right after this one (the idle callback would still run).
+  if (idleHandle !== null && typeof window !== 'undefined' && window.cancelIdleCallback) {
+    window.cancelIdleCallback(idleHandle)
+    idleHandle = null
   }
   write()
 }

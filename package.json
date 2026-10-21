@@ -17,6 +17,8 @@
     "qa:fear": "node qa/verify-fear-phases.mjs",
     "qa:gameoverpanic": "node qa/verify-gameover-panic.mjs",
     "qa:fearplay": "node qa/verify-fear-in-play.mjs",
+    "qa:themebake": "node qa/verify-theme-bake.mjs",
+    "qa:savewrite": "node qa/verify-save-write.mjs",
     "format": "prettier --write ."
   },
   "dependencies": {

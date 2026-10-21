@@ -30,6 +30,8 @@ qa/*
 !qa/verify-fear-phases.mjs
 !qa/verify-gameover-panic.mjs
 !qa/verify-fear-in-play.mjs
+!qa/verify-theme-bake.mjs
+!qa/verify-save-write.mjs
 !qa/lib-game.mjs
 
 # Reference material / design docs outside the game source

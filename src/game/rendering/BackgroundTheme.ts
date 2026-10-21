@@ -1055,6 +1055,20 @@ export class BackgroundTheme {
    * OFF the gameplay frame — used at boot to warm the theme a portrait
    * auto game will transition to at first discovery (the bake storm
    * otherwise lands mid-gameplay: ~60-150ms of uploads in one frame).
+   *
+   * PERF (iOS, 2026-10-22): the NEBULA textures are prewarmed too. The
+   * space theme's cloud group bakes THREE 900×520 nebula composites
+   * (canvas-baked multi-blob radial gradients), and that bake was NOT
+   * covered by this prewarm — so it landed in the frame that triggered
+   * the theme transition, which on a portrait phone is the MERGE frame
+   * (the first tier-4+ discovery calls setTheme('space')). Measured: that
+   * single bake cost 54.3 ms of the 70 ms transition, and the transition
+   * ran inside the merge frame — a 70-80 ms hitch on the exact frame the
+   * player merges.
+   *
+   * The prewarm bakes the textures only (the same `ensureNebulaTexture`
+   * path the cloud group uses), so the later transition finds them
+   * already present and skips the bake.
    */
   prewarmTheme(theme: ThemeName): void {
     const prev = this.currentTheme
@@ -1062,6 +1076,10 @@ export class BackgroundTheme {
     this.updateGradImage()
     this.bakeThemeArt(theme)
     this.drawGrid()
+    // Bake the theme's cloud/nebula textures (see the note above). The
+    // cloud GROUP (the Image layers) is still built by the transition —
+    // only the expensive texture bakes happen here.
+    this.prewarmCloudTextures(theme)
     this.currentTheme = prev
     this.updateGradImage()
     this.bakeThemeArt(this.currentTheme)
@@ -1070,6 +1088,27 @@ export class BackgroundTheme {
     // full-screen 780×1688 stale layer draws every frame from boot
     // until the theme transition.
     this.applyCloudAlphas()
+  }
+
+  /**
+   * Bake a theme's cloud/nebula TEXTURES without building the live
+   * layers. The space theme's nebula banks are three 900×520
+   * multi-blob gradient composites — the single most expensive part of
+   * the theme transition (measured 54.3 ms), and it is deterministic
+   * (seeded), so it can be baked ahead of time.
+   */
+  private prewarmCloudTextures(theme: ThemeName): void {
+    if (theme !== 'space') return
+    // The seeds and sizes must match buildCloudGroup exactly, or the
+    // transition will bake a DIFFERENT texture under the same key.
+    const banks = [
+      { seed: 20260261 },
+      { seed: 20260262 },
+      { seed: 20260263 },
+    ]
+    for (const b of banks) {
+      ensureNebulaTexture(this.scene, 'br-nebula-' + b.seed, b.seed, 900, 520)
+    }
   }
 
   /** The settled theme name (mid-transition reports the target). */
