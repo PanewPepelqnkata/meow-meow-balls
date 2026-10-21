@@ -315,18 +315,17 @@ export class SoftBallRenderer {
           // SLEEPING: the frozen sticker quad — zero tessellation, the
           // perf win for the dominant settled state.
           if (softBallSleeping(r.soft)) {
-            view.fill.setVisible(false).setTexture(tex.fillKey).setPosition(c.x, c.y).setScale(s * aspect, s)
+            view.fill.setVisible(true).setTexture(tex.fillKey).setPosition(c.x, c.y).setScale(s * aspect, s)
             view.outline.setVisible(false)
             this.bakeSweep.add(r.id)
             this.drawSpriteFace(view, r, drawR, aspect, now)
             continue
           }
-          // AWAKE: the LIVE particle-ring contour — the drawn shape IS
-          // the physics shape (dents, bulges, wobble), the praised
-          // pre-sprite look. The fill quad is hidden: its baked texture
-          // contains the outline, which would double-draw and drift
-          // against the live stroke.
-          view.fill.setVisible(false).setTexture(tex.fillKey).setPosition(c.x, c.y)
+          // AWAKE: the LIVE particle-ring contour stroke draws the
+          // deforming outline on top of the fill quad — the fill quad
+          // STAYS VISIBLE (hiding it made colors flicker invisible when
+          // the overlay's top-3 cap skipped balls).
+          view.fill.setVisible(true).setTexture(tex.fillKey).setPosition(c.x, c.y)
           // JELLY DEFORM: the deform spring's squash/cross drive the
           // sprite transform — volume-preserving squash along the
           // impact axis, cross-axis bulge, rotation to the axis angle.
