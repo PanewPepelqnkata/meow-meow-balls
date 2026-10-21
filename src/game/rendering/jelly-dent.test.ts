@@ -11,6 +11,7 @@ import {
   registerImpact,
   stepDeform,
   contourDisplacement,
+  DEFORM,
 } from './deform'
 
 /**
@@ -97,8 +98,8 @@ describe('jelly dent', () => {
     const gentle = createDeformState()
     const hard = createDeformState()
     // The measured full-drop peak approach speed at this radius is ~4.5
-    // px/step; a gentle touch is ~1.6.
-    registerImpact(gentle, 0, -1, 1.6, R, 0)
+    // px/step; a gentle touch is just above the trigger gate (1.8).
+    registerImpact(gentle, 0, -1, 1.9, R, 0)
     registerImpact(hard, 0, -1, 4.5, R, 0)
 
     let gentlePeak = 0
@@ -151,7 +152,7 @@ describe('jelly dent', () => {
       }
     }
     // The impact is real and above the trigger threshold, so the ball dents.
-    expect(peak).toBeGreaterThan(DEFORM_MIN_IMPACT)
+    expect(peak).toBeGreaterThan(DEFORM.minImpactSpeed)
 
     // THE SIGN: Matter's normal points FROM bodyB TOWARD bodyA, so the
     // contact direction on bodyA is -normal and on bodyB it is +normal
@@ -190,7 +191,7 @@ describe('jelly dent', () => {
         }
       }
     }
-    expect(peak).toBeGreaterThan(DEFORM_MIN_IMPACT)
+    expect(peak).toBeGreaterThan(DEFORM.minImpactSpeed)
     const dir = ballIsBodyA ? { x: -normal.x, y: -normal.y } : { x: normal.x, y: normal.y }
     const dentDeg = dentAngle(dir.x, dir.y, R)
     // The floor is below the ball (screen y grows downward) => the dent
@@ -262,7 +263,3 @@ describe('jelly dent', () => {
     }
   })
 })
-
-/** The deform model's minimum impact speed (kept local so this file does
- * not depend on the constant's name in DEFORM). */
-const DEFORM_MIN_IMPACT = 1.2

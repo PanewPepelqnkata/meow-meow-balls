@@ -46,28 +46,33 @@ export const DEFORM = {
   /** Max dent amplitude fraction on the hardest impacts (~28% contour dip
    * including the ellipse base — within the 20–25%+ visible target). */
   maxSquash: 0.17,
-  /** Approach speed (px/step) that maps to full squash, per radius.
-   * CALIBRATED AGAINST THE REAL 120 Hz SIM (measured, not estimated):
-   * a full-height drop peaks at 6.27 px/step for tier 1 (R=44) and
-   * 4.47 px/step for tier 6 (R=106) — the peak DECREASES with radius
-   * (a bigger, more compliant ring resolves the contact softer).
-   * The old value 16 was calibrated against the pre-soft-body rigid-ball
-   * renderer and is ~2.5x too high for the current sim: the reachable
-   * strength was 0.28 (tier 1) down to 0.12 (tier 6), so a full drop
-   * produced a ~2% dent — invisible. */
+  /** Reference speed (px/step) that maps to full squash, at the reference
+   * radius. CALIBRATED AGAINST THE REAL 120 Hz SIM (measured, not
+   * estimated): a full-height drop peaks at 6.27 px/step for tier 1
+   * (R=44) and 4.47 px/step for tier 6 (R=106) — the peak DECREASES
+   * with radius (a bigger, more compliant ring resolves the contact
+   * softer). The old value 16 was calibrated against the pre-soft-body
+   * rigid-ball renderer and is ~2.5x too high for the current sim: the
+   * reachable strength was 0.28 (tier 1) down to 0.12 (tier 6), so a
+   * full drop produced a ~2% dent — invisible. */
   impactSpeedSmall: 6.27,
-  impactSpeedLarge: 4.47,
-  /** Radii matching the two measured impact speeds above. */
+  /** Radius matching `impactSpeedSmall`. */
   impactRadiusSmall: 44,
-  impactRadiusLarge: 106,
-  /** Exponent of the impact-speed-vs-radius power law. Fitted through
-   * BOTH measured points: 6.27 * (44/R)^0.38 → 6.27 at R=44 and 4.49
-   * at R=106 (measured 4.47). A linear fit cannot span both endpoints
-   * (it would give 2.6 at R=106, saturating gentle tier-6 impacts to
-   * full strength). */
+  /** Exponent of the impact-speed-vs-radius power law:
+   *   reference speed = 6.27 * (44/R)^0.38
+   * fitted through the measured full-drop peaks of 6.27 px/step at R=44
+   * (tier 1) and 4.47 px/step at R=106 (tier 6). A linear fit cannot span
+   * both endpoints (it would give 2.6 at R=106, which would saturate
+   * gentle tier-6 impacts to full strength). */
   impactRadiusExponent: 0.38,
-  /** Approach speeds below this (px/step) are ignored (resting contacts). */
-  minImpactSpeed: 1.2,
+  /** Approach speeds below this (px/step) are ignored (resting contacts).
+   * MEASURED: a settled pile fires ZERO contact events, but a CHURNING
+   * pile fires 700 events over 900 frames with p90 = 2.06 px/step —
+   * 132 of them above 1.2 and only 55 above 2.6. Real landings peak at
+   * 3.66-6.8 px/step. The gate therefore sits at 1.8: above the rolling
+   * noise, comfortably below the real-impact floor, so a settling ball is
+   * not left visibly dented. */
+  minImpactSpeed: 1.8,
   /** Dent spring: ω² (rad/s)² — ω ≈ 13.8 rad/s (~4.5 Hz jelly frequency). */
   stiffness: 190,
   /** Dent spring damping: c = 2ζω with ζ ≈ 0.35 (c ≈ 9.6):
@@ -89,14 +94,14 @@ export const DEFORM = {
   /** Global ellipse keeps only this fraction of the squash (localized is primary). */
   globalEllipseFraction: 0.3,
   /** Attack gain: how hard the dent spring is kicked toward its target.
-   * The spring OVERSHOOTS, so the peak depth is `target * (1 + gain/ω)`
-   * minus the damping loss. The old value 42 made the peak 3.6x the target,
-   * which SATURATED the spring at maxSquash for every strength above 0.33 —
-   * a tap and a full-height drop dented identically, so the ball read as
-   * "deformed into a different state" instead of a proportional squash.
-   * 18.65 (solved numerically against this exact spring) makes the peak
-   * depth scale LINEARLY with the impact strength: 2.2% of R for a gentle
-   * touch, 22.1% of R for a full drop. */
+   * The kick adds VELOCITY, so the spring overshoots its target. The old
+   * value 42 made the peak 3.6x the target, which SATURATED the spring at
+   * maxSquash for every strength above 0.33 — a tap and a full-height
+   * drop dented identically, so the ball read as "deformed into a
+   * different state" instead of a proportional squash. 18.65 (solved
+   * NUMERICALLY against this exact spring, not from a closed form) makes
+   * the measured peak depth equal the target: 2.2% of R for a gentle
+   * touch (strength 0.1) and 22.1% of R for a full drop (strength 1.0). */
   attackGain: 18.65,
 } as const
 
