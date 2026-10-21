@@ -321,15 +321,17 @@ export class SoftBallRenderer {
             this.drawSpriteFace(view, r, drawR, aspect, now)
             continue
           }
-          // AWAKE: the fill quad is HIDDEN — the live contour stroke
-          // (fillPoints + strokePoints below) IS the body and outline.
-          // Showing the baked sticker alongside it = two outlines at
-          // different deform states = the flicker the user reported.
-          // One render path per ball, always.
+          // AWAKE: the body is drawn DIRECTLY on the shared layer —
+          // fillPoints + strokePoints from the live particle ring. No
+          // fill quad (it would double-draw the baked outline), no
+          // overlay cap (every awake ball is drawn, unconditionally).
           view.fill.setVisible(false).setTexture(tex.fillKey).setPosition(c.x, c.y)
           view.outline.setVisible(false)
-          const { poly, cx, cy } = this.liveContour(r, look, drawR)
-          overlayItems.push({ entity: r, look, r: drawR, poly, cx, cy, color, aspect })
+          const { poly } = this.liveContour(r, look, drawR)
+          g.fillStyle(color, 1)
+          g.fillPoints(poly, true)
+          g.lineStyle(ballOutlineWidth(drawR), INK, 1)
+          g.strokePoints(poly, true, true)
           this.bakeSweep.add(r.id)
           this.drawSpriteFace(view, r, drawR, aspect, now)
           continue
