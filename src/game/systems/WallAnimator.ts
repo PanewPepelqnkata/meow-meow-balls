@@ -148,12 +148,20 @@ export class WallAnimator {
     // PERF: the container-frame canvas is 1440×2560 — a full repaint +
     // 14.7MB upload PER FRAME during the 1.8s animation ≈ 0.8-1.5GB of
     // uploads (measured: continuous dropped frames on iPhone 14 Pro).
-    // Quantize the REDRAW to 12px height steps (~14 repaints per
-    // phase): the physics geometry stays per-frame exact; the VISUAL
-    // frame trails the physics by ≤12px during the 900ms motion —
-    // imperceptible at animation speed. The phase endpoints always
-    // redraw exactly (raised/lowered rest heights are constants).
-    const q = Math.round(h / 12) * 12
+    // Quantize the REDRAW to 24px height steps (~7 repaints per phase):
+    // the physics geometry stays per-frame exact; the VISUAL frame trails
+    // the physics by ≤24px during the 900ms motion — imperceptible at
+    // animation speed (the wall is travelling 160px in 900ms, so the
+    // frame moves ~4px per repaint).
+    //
+    // The step was 12px (~14 repaints); each repaint costs ~4.2 ms of
+    // paint (six gradient stroke layers of the U-path + one stripe
+    // composite + one upload), so the finer step cost ~60 ms of the
+    // animation. At 24px it costs ~30 ms, and the wall's motion is
+    // unchanged.
+    // The phase endpoints always redraw exactly (raised/lowered rest
+    // heights are constants).
+    const q = Math.round(h / 24) * 24
     if (q !== this.lastRedrawH || h === CONTAINER.raisedHeight || h === CONTAINER.height) {
       this.lastRedrawH = q
       this.onGeometryChange?.(h)
