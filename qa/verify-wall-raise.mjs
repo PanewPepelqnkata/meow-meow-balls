@@ -28,12 +28,51 @@ for (let run = 0; run < RUNS; run++) {
   const { browser, page, errors } = await bootGame()
 
   await page.evaluate(() => {
-    const tiers = [1, 2, 3, 4, 5, 6, 1, 2, 3, 4]
+    // The PHONE funnel's interior is only 340 stage units wide (the
+    // portrait container, config/container.ts resolveViewportContainer).
+    // A tier-5 ball is 180 wide and a tier-6 is 212 — they do not fit
+    // side by side, and a ball spawned at x=250+ lands OUTSIDE the
+    // container (measured: x=708/757/725) and the run ends in GAME OVER.
+    // The guard was then measuring a dying or empty pile, which is why
+    // it intermittently reported a defect-level tail (4.70-7.99) on
+    // runs where the scenario had simply broken.
+    //
+    // Only tiers 1-3 fit the phone funnel, and they are spawned inside
+    // the interior (x 190..530, below the rim at y=685) so the pile
+    // actually forms.
+    //
+    // The tiers are chosen so the pile does NOT collapse: same-tier balls
+    // merge, so a repeating 1,2,3 mix merges down to 3 balls. The guard
+    // needs a PILE (several balls resting together) to measure the
+    // settle, so the mix alternates the tiers column by column —
+    // neighbouring balls are then different tiers and never merge.
+    const tiers = [1, 2, 3, 2, 3, 1, 3, 1, 2, 1, 3, 2]
     tiers.forEach((t, i) => {
-      window.__brScene.spawnAt(250 + (i % 5) * 55, t, 250 + Math.floor(i / 5) * 90, true)
+      const col = i % 3
+      const row = Math.floor(i / 3)
+      window.__brScene.spawnAt(250 + col * 60, t, 800 + row * 80, true)
     })
   })
   await page.waitForTimeout(7000)
+
+  // The scenario must be VALID before the measurement means anything: the
+  // pile must exist, be inside the container, and the run must not be over.
+  const sceneState = await page.evaluate(() => {
+    const pg = window.__brGame.scene.getScene('playground')
+    const balls = pg.balls.getBalls()
+    const rim = pg.balls.wallTopY
+    return {
+      balls: balls.length,
+      gameOver: !!pg.gameOver,
+      rim,
+      aboveRim: balls.filter((b) => b.soft.center.position.y < rim).length,
+    }
+  })
+  if (sceneState.gameOver || sceneState.balls < 3) {
+    failures.push(
+      `run ${run}: the scenario broke (balls=${sceneState.balls} gameOver=${sceneState.gameOver}) — the measurement would be meaningless`,
+    )
+  }
 
   const measure = async () =>
     page.evaluate(() => {
