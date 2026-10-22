@@ -10,6 +10,7 @@ import {
   tintColor,
   type DiscoveryStyle,
 } from './discoveryStyles'
+import { buildBallCard } from './ballCard'
 
 /**
  * Phase 2.13.4 (spec §2) — SUBTLE BUT DRAMATIC discovery presentation.
@@ -56,6 +57,10 @@ const DIM_ALPHA = 0.42
 const COMIC_INK = 0x101014
 /** Cream spot-disc behind the character (pops against the tier band). */
 const DISC_COLOR = 0xfff6e0
+/** The collectible card's paper stock — a warm cream, like the disc. */
+const CARD_PAPER = 0xfff3d6
+/** The card's portrait-window backdrop — a soft warm sky wash. */
+const CARD_SKY = 0xffeec2
 /** Sparkle/highlight flash color. */
 const FLASH_YELLOW = 0xffeb3b
 
@@ -364,10 +369,22 @@ export class DiscoveryOverlay {
     const { vw, vh, cx, ballY, displayRadius, bandH, titleY, labelY } = this.layout()
     const color = getTier(tier)?.color ?? 0xffffff
     const charYRel = ballY - vh / 2 // character y relative to screen center
+    const style = this.style
 
-    // 1) Gentle dim — the game background stays visible.
+    // 1) The dim behind the presentation.
+    // The COLLECTIBLE CARD wants a DARK backdrop (the user asked for a
+    // darkened background) so the cream card pops like a collectible in a
+    // display case. The other styles keep the gentle dim, with the game
+    // still readable behind.
+    const dimAlpha = style === 'card' ? 0.74 : DIM_ALPHA
+    // The dim must cover the WHOLE camera, in the camera's WORLD units —
+    // the UIScene's camera is zoomed (the buffer is at dpr), so a
+    // CSS-px-sized rectangle only covers a quarter of the screen.
+    const cam = this.scene.cameras.main
+    const camW = cam ? cam.width : vw
+    const camH = cam ? cam.height : vh
     this.dimRect = this.scene.add
-      .rectangle(cx, vh / 2, vw, vh, 0x101018, DIM_ALPHA)
+      .rectangle(camW / 2, camH / 2, camW, camH, 0x0a0c14, dimAlpha)
       .setDepth(DIM_DEPTH)
     this.objs.push(this.dimRect)
 
@@ -376,7 +393,6 @@ export class DiscoveryOverlay {
     this.panel = this.scene.add.container(cx, vh / 2).setDepth(PANEL_DEPTH)
     this.objs.push(this.panel)
 
-    const style = this.style
     if (style === 'band') {
       const bandG = this.scene.add.graphics()
       this.drawBand(bandG, vw, bandH, charYRel, color)
@@ -434,7 +450,8 @@ export class DiscoveryOverlay {
       this.drawDiscoveryBall(ballG, 0, charYRel, displayRadius, tier, this.activeSeed)
       this.panel.add(ballG)
     } else {
-      // 'card' — a small rounded card holding the character.
+      // 'card' — a COLLECTIBLE CARD: a Pokédex-style entry with a name
+      // plate, a sun-glow portrait window, a stat block and a flavour line.
       const cardG = this.scene.add.graphics()
       this.drawCard(cardG, charYRel, displayRadius, color)
       this.panel.add(cardG)
@@ -465,6 +482,11 @@ export class DiscoveryOverlay {
     // it): title + tier label.
     this.content = this.scene.add.container(0, 0).setDepth(CONTENT_DEPTH)
     this.objs.push(this.content)
+
+    if (style === 'card') {
+      this.buildCardText(cx, ballY, displayRadius)
+      return
+    }
 
     const headline = this.scene.add
       .text(cx, titleY, 'NEW BALL DISCOVERED!', {
@@ -553,8 +575,113 @@ export class DiscoveryOverlay {
   }
 
   /**
-   * The CARD furniture: a rounded cream card with a thick ink border and a
-   * tier-coloured header stripe — a "collector card" look.
+   * The collectible card's TEXT: the name plate, the stat block's labels
+   * and values, and the flavour line.
+   *
+   * The card's geometry mirrors drawCard()'s, so the text lands exactly
+   * on the bars and the plate.
+   */
+  private buildCardText(cx: number, ballY: number, rBall: number): void {
+    const content = this.content
+    if (!content) return
+    const tier = this.activeTier ?? 1
+    const card = buildBallCard(tier, this.activeSeed)
+    const w = rBall * 4.1
+    const h = rBall * 5.4
+    const x = cx - w / 2
+    const y = ballY - h / 2
+    const plateH = rBall * 0.92
+    const winTop = y + plateH + rBall * 0.24
+    const winH = h * 0.42
+    const winX = x + rBall * 0.24
+    const winW = w - rBall * 0.48
+    const statTop = winTop + winH + rBall * 0.3
+    const statH = h * 0.2
+    const statW = winW * 0.58
+    const gap = statH / 7
+    const barH = Math.max(3, rBall * 0.1)
+
+    // The NAME plate: the species name, big, in the game's font. It is
+    // drawn over the tier-coloured plate in white with an ink outline.
+    const nameText = this.scene.add
+      .text(cx, y + 6 + plateH * 0.42, card.name.toUpperCase(), {
+        fontFamily: FONT_FAMILY,
+        fontSize: `${Math.round(Math.min(30, Math.max(15, w * 0.105)))}px`,
+        color: '#ffffff',
+        stroke: '#111111',
+        strokeThickness: 6,
+        resolution: Math.min(window.devicePixelRatio || 1, 2),
+      })
+      .setOrigin(0.5, 0.5)
+      .setShadow(0, 3, '#00000055', 0, false, true)
+    if (nameText.width > winW) nameText.setScale(winW / nameText.width)
+    content.add(nameText)
+
+    // The TYPE line, small, just under the name.
+    const kindText = this.scene.add
+      .text(cx, y + 6 + plateH * 0.84, card.kind, {
+        fontFamily: FONT_FAMILY,
+        fontSize: `${Math.round(Math.min(18, Math.max(10, w * 0.058)))}px`,
+        color: '#111111',
+        resolution: Math.min(window.devicePixelRatio || 1, 2),
+      })
+      .setOrigin(0.5, 0.5)
+    content.add(kindText)
+
+    // The STAT BLOCK: the label on the bar, the value at its end.
+    const stats = card.stats
+    for (let i = 0; i < stats.length; i++) {
+      const s = stats[i]
+      if (!s) continue
+      const by = statTop + i * gap + barH * 1.2
+      const label = this.scene.add
+        .text(winX + 3, by, s.label, {
+          fontFamily: FONT_FAMILY,
+          fontSize: `${Math.round(Math.min(13, Math.max(8, w * 0.042)))}px`,
+          color: '#111111',
+          resolution: Math.min(window.devicePixelRatio || 1, 2),
+        })
+        .setOrigin(0, 0.5)
+      content.add(label)
+      const value = this.scene.add
+        .text(winX + statW - 3, by, String(s.value), {
+          fontFamily: FONT_FAMILY,
+          fontSize: `${Math.round(Math.min(14, Math.max(9, w * 0.046)))}px`,
+          color: '#111111',
+          resolution: Math.min(window.devicePixelRatio || 1, 2),
+        })
+        .setOrigin(1, 0.5)
+      content.add(value)
+    }
+
+    // The FLAVOUR line, under the stat block — the character's dex entry.
+    const footY = statTop + statH + rBall * 0.2
+    const flavour = this.scene.add
+      .text(cx, footY, card.flavour, {
+        fontFamily: FONT_FAMILY,
+        fontSize: `${Math.round(Math.min(13, Math.max(8, w * 0.043)))}px`,
+        color: '#3a3020',
+        stroke: '#fff3d6',
+        strokeThickness: 3,
+        resolution: Math.min(window.devicePixelRatio || 1, 2),
+        wordWrap: { width: winW, useAdvancedWrap: true },
+        align: 'center',
+      })
+      .setOrigin(0.5, 0)
+    content.add(flavour)
+  }
+
+  /**
+   * THE COLLECTIBLE CARD — a Pokédex-style entry, drawn in the game's own
+   * hand-drawn style.
+   *
+   * The layout follows the collectible-card language so it reads
+   * instantly: a thick ink frame, a NAME plate across the top, a framed
+   * portrait window with a SUN GLOW behind the character, a stat block
+   * down the left of the lower half, and a flavour line at the bottom.
+   *
+   * Everything is in the game's ink + cream + tier-colour palette, with
+   * the wobbled hand-drawn edges the rest of the game uses.
    */
   private drawCard(
     g: Phaser.GameObjects.Graphics,
@@ -562,21 +689,112 @@ export class DiscoveryOverlay {
     rBall: number,
     color: number,
   ): void {
-    const w = rBall * 3.1
-    const h = rBall * 3.5
+    const card = buildBallCard(this.activeTier ?? 1, this.activeSeed)
+    // The card's proportions: a portrait card, a bit taller than wide.
+    // It is BIG — a collectible card wants presence, and the phone has
+    // the room now that the band is gone.
+    const w = rBall * 4.1
+    const h = rBall * 5.4
     const x = -w / 2
     const y = charY - h / 2
-    const r = rBall * 0.42
-    // The card body.
-    g.fillStyle(DISC_COLOR, 1)
+    const r = rBall * 0.34
+    const ink = COMIC_INK
+
+    // ---- The card body -------------------------------------------------
+    // A soft drop shadow behind the card (it lifts off the dark background).
+    g.fillStyle(0x000000, 0.35)
+    g.fillRoundedRect(x + 5, y + 7, w, h, r)
+    // The card stock: warm cream.
+    g.fillStyle(CARD_PAPER, 1)
     g.fillRoundedRect(x, y, w, h, r)
-    g.lineStyle(6, COMIC_INK, 1)
+    // The thick ink frame.
+    g.lineStyle(7, ink, 1)
     g.strokeRoundedRect(x, y, w, h, r)
-    // The tier-coloured header stripe at the top of the card.
+
+    // ---- The NAME plate (top) ------------------------------------------
+    const plateH = rBall * 0.92
     g.fillStyle(color, 1)
-    g.fillRoundedRect(x, y, w, h * 0.16, { tl: r, tr: r, bl: 0, br: 0 })
-    g.fillStyle(COMIC_INK, 1)
-    g.fillRect(x, y + h * 0.16, w, 3)
+    g.fillRoundedRect(x + 6, y + 6, w - 12, plateH, { tl: r * 0.7, tr: r * 0.7, bl: 0, br: 0 })
+    g.lineStyle(4, ink, 1)
+    g.strokeRoundedRect(x + 6, y + 6, w - 12, plateH, { tl: r * 0.7, tr: r * 0.7, bl: 0, br: 0 })
+    // The name text lives on the plate (added by build() as a Text object).
+
+    // ---- The portrait window (with the SUN GLOW) ------------------------
+    const winTop = y + plateH + rBall * 0.24
+    const winH = h * 0.42
+    const winX = x + rBall * 0.24
+    const winW = w - rBall * 0.48
+    const winR = rBall * 0.26
+
+    // The window's backdrop: a warm sky wash.
+    g.fillStyle(CARD_SKY, 1)
+    g.fillRoundedRect(winX, winTop, winW, winH, winR)
+
+    // THE SUN GLOW — concentric warm rings behind the character, brighter
+    // in the middle. This is the "it is catching the light" halo.
+    const glowX = winX + winW / 2
+    const glowY = winTop + winH / 2
+    const sunR = Math.min(winW, winH) * 0.46
+    g.fillStyle(tintColor(FLASH_YELLOW, 0.35), 0.28)
+    g.fillCircle(glowX, glowY, sunR)
+    g.fillStyle(tintColor(FLASH_YELLOW, 0.6), 0.34)
+    g.fillCircle(glowX, glowY, sunR * 0.74)
+    g.fillStyle(FLASH_YELLOW, 0.4)
+    g.fillCircle(glowX, glowY, sunR * 0.48)
+    // A few sun rays radiating out of the glow.
+    g.lineStyle(3, tintColor(FLASH_YELLOW, 0.5), 0.5)
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2 + 0.2
+      const r0 = sunR * 0.62
+      const r1 = sunR * 1.02
+      g.beginPath()
+      g.moveTo(glowX + Math.cos(a) * r0, glowY + Math.sin(a) * r0)
+      g.lineTo(glowX + Math.cos(a) * r1, glowY + Math.sin(a) * r1)
+      g.strokePath()
+    }
+
+    // The window's ink frame.
+    g.lineStyle(5, ink, 1)
+    g.strokeRoundedRect(winX, winTop, winW, winH, winR)
+
+    // ---- The stat block (lower left) -----------------------------------
+    // The label and the numbers are Text objects (added by build()); the
+    // BARS are drawn here, behind them.
+    const statTop = winTop + winH + rBall * 0.34
+    const statH = h * 0.24
+    const statW = winW * 0.66
+    const barH = Math.max(2.5, rBall * 0.055)
+    const gap = statH / 7
+    for (let i = 0; i < card.stats.length; i++) {
+      const s = card.stats[i]!
+      const by = statTop + i * gap
+      // The bar's track — a thin line UNDER the label and value, so the
+      // text stays legible (the old version drew the bar over the text).
+      g.fillStyle(0xd8d0bd, 1)
+      g.fillRoundedRect(winX, by + barH * 3.2, statW, barH, barH / 2)
+      // The bar's fill — the tier colour, so the block reads as one thing.
+      g.fillStyle(color, 1)
+      g.fillRoundedRect(winX, by + barH * 3.2, (statW * s.value) / 99, barH, barH / 2)
+      g.lineStyle(1.5, ink, 0.7)
+      g.strokeRoundedRect(winX, by + barH * 3.2, statW, barH, barH / 2)
+    }
+
+    // ---- The footer rule + the flavour line's underline ----------------
+    const footY = statTop + statH + rBall * 0.16
+    g.lineStyle(3, ink, 0.65)
+    g.beginPath()
+    g.moveTo(winX, footY)
+    g.lineTo(winX + winW, footY)
+    g.strokePath()
+
+    // A small tier badge in the bottom-right corner.
+    const badgeR = rBall * 0.32
+    const badgeX = x + w - badgeR - rBall * 0.26
+    const badgeY = y + h - badgeR - rBall * 0.3
+    g.fillStyle(color, 1)
+    g.fillCircle(badgeX, badgeY, badgeR)
+    g.lineStyle(4, ink, 1)
+    g.strokeCircle(badgeX, badgeY, badgeR)
   }
 
   /**
@@ -720,7 +938,10 @@ export class DiscoveryOverlay {
     // visibly started — the change read as a hard cut.
     this.scene.tweens.add({
       targets: dim,
-      alpha: DIM_ALPHA,
+      // The dim's target alpha is per-style: the collectible card wants a
+      // DARK backdrop (the old fixed DIM_ALPHA left the game fully
+      // visible behind the card).
+      alpha: this.style === 'card' ? 0.74 : DIM_ALPHA,
       duration: 420,
       ease: 'Sine.easeInOut',
     })
