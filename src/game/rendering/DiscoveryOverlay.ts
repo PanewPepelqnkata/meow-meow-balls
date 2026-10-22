@@ -75,6 +75,13 @@ const MAX_DISC_WIDTH_FRACTION = 0.34
 const DISC_BAND_FILL = 0.86
 const MIN_DISPLAY_RADIUS = 34
 const MAX_DISPLAY_RADIUS = 110
+/**
+ * The narrow-viewport band is a slim stripe (the user asked for the
+ * presentation to be "much thinner on phone", with the ball "basically
+ * getting out of the line behind it"). This is its floor, so the ball
+ * always has room to break out of the band.
+ */
+const BAND_MIN_H_NARROW = 96
 
 /** Darken a color by a factor (band's lower shade). */
 function shade(color: number, f: number): number {
@@ -246,8 +253,25 @@ export class DiscoveryOverlay {
     const cx = vw / 2
     const slotH = slotBottom - slotTop
     const slotMid = slotTop + slotH / 2
-    const bandH = Math.min(slotH * 0.86, Math.max(150, vh * 0.26))
-    const ballY = slotMid + slotH * 0.04
+    // The BAND is thinner on a phone. The user asked for the presentation
+    // to be "much thinner on phone" with the ball "basically getting out
+    // of the line behind it" — the band is a stripe the ball sits in, not
+    // a panel the ball sits on.
+    //
+    // So the band's height is a fraction of the VIEWPORT (not the slot):
+    // on a phone it is a slim stripe, and on a wide screen it can be the
+    // full dramatic band. The narrow-viewport band is also what lets the
+    // ball sit ON the band (its centre on the band's centre line) with
+    // the disc's top and bottom just kissing the band's edges.
+    const narrow = vw < 560
+    const bandH = narrow
+      ? Math.max(BAND_MIN_H_NARROW, Math.min(vh * 0.15, slotH * 0.3))
+      : Math.min(slotH * 0.86, Math.max(150, vh * 0.26))
+    // The character's CENTRE is a little above the band's centre line, so
+    // the disc breaks out of the band's TOP edge (the "the ball gets out
+    // of the line behind it" look) and the tier label has room inside the
+    // band below it.
+    const ballY = slotMid + slotH * 0.04 - (narrow ? bandH * 0.12 : 0)
     // The character's radius is bounded by THREE things, and the smallest
     // one wins (the old code only had the first two, so the cream disc
     // spilled over the band's edges):
@@ -273,8 +297,13 @@ export class DiscoveryOverlay {
       MIN_DISPLAY_RADIUS,
       Math.min(MAX_DISPLAY_RADIUS, maxByWidth, maxByBand, maxBySlot),
     )
+    // The TITLE sits above the band (it is the headline), and the TIER
+    // LABEL sits INSIDE the band, tucked under the character. On the
+    // narrow band the label used to hang below the band's bottom edge,
+    // which read as a separate floating caption.
     const titleY = slotTop + Math.max(26, slotH * 0.1)
-    const labelY = Math.min(slotBottom - 24, ballY + displayRadius * discScale + 22)
+    const bandBottom = ballY + bandH / 2
+    const labelY = Math.min(bandBottom - 10, ballY + displayRadius * discScale + 18)
     return { vw, vh, cx, ballY, displayRadius, bandH, titleY, labelY }
   }
 
@@ -486,8 +515,28 @@ export class DiscoveryOverlay {
     dim.setAlpha(0)
     panel.setAlpha(0)
 
-    this.scene.tweens.add({ targets: dim, alpha: DIM_ALPHA, duration: 110, ease: 'Sine.easeIn' })
-    this.scene.tweens.add({ targets: panel, alpha: 1, duration: 90, ease: 'Sine.easeIn' })
+    // The DIM fades in over the background's theme crossfade, so the scene
+    // behind the presentation changes WITH a transition instead of
+    // snapping. The theme milestone fires in the same frame as the
+    // discovery (the merge that discovers the tier also advances the
+    // background), and the old 110ms dim was over before the crossfade
+    // had visibly started — the change read as a hard cut.
+    this.scene.tweens.add({
+      targets: dim,
+      alpha: DIM_ALPHA,
+      duration: 420,
+      ease: 'Sine.easeInOut',
+    })
+    // The PANEL waits for the background to have started changing, then
+    // snaps in — so the eye reads "the world changed, and here is the
+    // new ball" as one moment.
+    this.scene.tweens.add({
+      targets: panel,
+      alpha: 1,
+      duration: 90,
+      delay: 180,
+      ease: 'Sine.easeIn',
+    })
 
     // QUICK PUNCH-IN: snap up from 0.74 with a Back overshoot.
     panel.setScale(0.74)
@@ -495,6 +544,7 @@ export class DiscoveryOverlay {
       targets: panel,
       scale: 1.05,
       duration: 240,
+      delay: 180,
       ease: 'Back.easeOut',
       onComplete: () => {
         this.scene.tweens.add({ targets: panel, scale: 1, duration: 90, ease: 'Sine.easeOut' })
@@ -507,6 +557,7 @@ export class DiscoveryOverlay {
         targets: flash,
         alpha: { from: 0, to: 1 },
         duration: 70,
+        delay: 240,
         ease: 'Sine.easeOut',
         onComplete: () => {
           this.scene.tweens.add({
@@ -524,7 +575,7 @@ export class DiscoveryOverlay {
       })
     }
 
-    this.scene.tweens.add({ targets: content, alpha: 1, duration: 180, delay: 90, ease: 'Sine.easeIn' })
+    this.scene.tweens.add({ targets: content, alpha: 1, duration: 180, delay: 260, ease: 'Sine.easeIn' })
 
     // Character pop inside the panel.
     const ballG = panel.list[2] as Phaser.GameObjects.Graphics | undefined
@@ -534,7 +585,7 @@ export class DiscoveryOverlay {
         targets: ballG,
         scale: 1.12,
         duration: 260,
-        delay: 110,
+        delay: 280,
         ease: 'Back.easeOut',
         onComplete: () => {
           this.scene.tweens.add({ targets: ballG, scale: 1, duration: 100, ease: 'Sine.easeOut' })

@@ -7,18 +7,28 @@ import { bootGame, report } from './lib-game.mjs'
  * takeover" (the overlay's own design note), and the character sits on a
  * cream spot-disc ON the band — so the disc must fit INSIDE the band.
  *
- * The defect: the character's radius and the band's height were scaled
- * independently, and the disc was never checked against either. On a
- * 390px phone the character was 94px in radius — a 253px disc, 65% of the
- * screen width — in a 219px band, so the disc spilled 33px over the
- * band's top and bottom edges. Measured on the desktop reference too:
- * a 297px disc in a 243px band (54px over). The phone version looked
- * unported.
+ * The defects this pins:
+ *  1. the character's radius and the band's height were scaled
+ *     independently, and the disc was never checked against either. On a
+ *     390px phone the character was 94px in radius — a 253px disc, 65%
+ *     of the screen width — in a 219px band, so the disc spilled 33px
+ *     over the band's top and bottom edges. The phone version looked
+ *     unported.
+ *  2. the band was too TALL on a phone (219px). The user asked for it to
+ *     be "much thinner on phone" with the ball "basically getting out of
+ *     the line behind it" — so on a narrow viewport the band is a slim
+ *     stripe and the character's centre sits ABOVE the band's centre line
+ *     (the disc breaks out of the band's top edge).
+ *  3. the tier label hung BELOW the band's bottom edge, reading as a
+ *     separate floating caption. It must sit inside the band.
  *
  * The guard asserts, at a phone AND a desktop viewport:
- *  1. the disc fits inside the band (both edges),
+ *  1. the disc fits inside the band,
  *  2. the disc does not take more than its share of the screen width,
- *  3. the character is drawn and the overlay is active.
+ *  3. on a narrow viewport the band is a slim stripe (<= 18% of the
+ *     viewport height),
+ *  4. the tier label sits inside the band,
+ *  5. the character is drawn and the overlay is active.
  */
 const failures = []
 const { browser, errors } = await bootGame()
@@ -82,6 +92,9 @@ for (const [name, w, h] of VIEWPORTS) {
       vh: Math.round(vh),
       radius: L ? L.displayRadius : null,
       bandH: L ? L.bandH : null,
+      ballY: L ? L.ballY : null,
+      labelY: L ? L.labelY : null,
+      titleY: L ? L.titleY : null,
       active: ov?.isShowing?.() ?? false,
       ballVisible: panel.list[2]?.visible,
     }
@@ -93,8 +106,10 @@ for (const [name, w, h] of VIEWPORTS) {
   }
   const discD = m.radius * 1.35 * 2
   const widthPct = (discD / m.vw) * 100
+  const bandTop = m.ballY - m.bandH / 2
+  const bandBottom = m.ballY + m.bandH / 2
   console.log(
-    `${name.padEnd(12)} vw=${m.vw} radius=${m.radius?.toFixed(1)} disc=${discD.toFixed(0)}px (${widthPct.toFixed(0)}% of width) band=${m.bandH?.toFixed(0)}px`,
+    `${name.padEnd(12)} vw=${m.vw} radius=${m.radius?.toFixed(1)} disc=${discD.toFixed(0)}px (${widthPct.toFixed(0)}% of width) band=${m.bandH?.toFixed(0)}px (${((m.bandH / m.vh) * 100).toFixed(0)}% of height)`,
   )
   if (!m.active) failures.push(`${name}: the overlay is not active`)
   // 1. The disc must fit inside the band.
@@ -104,6 +119,16 @@ for (const [name, w, h] of VIEWPORTS) {
   // 2. It must not take over the screen.
   if (widthPct > 36) {
     failures.push(`${name}: the disc takes ${widthPct.toFixed(0)}% of the screen width (must be ≤ 36%)`)
+  }
+  // 3. On a narrow viewport the band must be a SLIM stripe.
+  if (m.vw < 560 && m.bandH / m.vh > 0.18) {
+    failures.push(
+      `${name}: the band is ${m.bandH.toFixed(0)}px (${((m.bandH / m.vh) * 100).toFixed(0)}% of the height) — it must be a slim stripe on a phone`,
+    )
+  }
+  // 4. The tier label must sit INSIDE the band.
+  if (m.labelY > bandBottom || m.labelY < bandTop) {
+    failures.push(`${name}: the tier label (y=${m.labelY?.toFixed(0)}) is outside the band (${bandTop.toFixed(0)}..${bandBottom.toFixed(0)})`)
   }
   // The character must actually be drawn.
   if (m.ballVisible === false) failures.push(`${name}: the character is not visible`)
