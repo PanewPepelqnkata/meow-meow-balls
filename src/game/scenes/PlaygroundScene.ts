@@ -89,6 +89,21 @@ export class PlaygroundScene extends Phaser.Scene {
   private perfFrameStart = 0
   private perfPhysicsMs = 0
   private perfRenderMs = 0
+  /**
+   * PROD-READABLE frame timings.
+   *
+   * The physics/render split is the measurement that says which half of
+   * the frame budget to attack, and it was only reachable through the
+   * DEV-only PerfOverlay — so in a production build the `?diag=1` WALL
+   * line printed `phys ?ms render ?ms` and the device could not report
+   * it. These two fields are ALWAYS collected (the timers above run
+   * unconditionally; only the OVERLAY is dev-gated), so the prod diag
+   * can read them directly.
+   *
+   * Cost: two `performance.now()` calls per frame, which the scene
+   * already paid unconditionally for these very values.
+   */
+  readonly frameTimings = { physicsMs: 0, renderMs: 0 }
   /** Last emitted walls countdown — suppresses per-frame no-change events. */
   private lastWallsMs = Number.NaN
   private readonly devDiagnostics: Array<Record<string, unknown>> = []
@@ -680,9 +695,15 @@ export class PlaygroundScene extends Phaser.Scene {
       this.balls.wallTopY = wallTopY
       // The danger zone rides the rim: Raise Walls moves the panic line.
       this.ballRenderer.emotion.wallTopY = wallTopY
-      const physStart = this.perf ? performance.now() : 0
+      // The frame timings are ALWAYS measured (two performance.now() calls
+      // per frame) so the production `?diag=1` readout can report the
+      // physics/render split — that split is the measurement that says
+      // which half of the frame budget to attack, and it was unreachable
+      // in prod before. The dev-only PerfOverlay reads the same values.
+      const physStart = performance.now()
       this.physicsWorld.step(delta)
-      if (this.perf) this.perfPhysicsMs = performance.now() - physStart
+      this.perfPhysicsMs = performance.now() - physStart
+      this.frameTimings.physicsMs = this.perfPhysicsMs
 
       // One drain per frame: mark first contact (merge eligibility), then merge.
       // Soft bodies deform physically — the 2.4 visual-impact feeding is retired.
@@ -723,7 +744,7 @@ export class PlaygroundScene extends Phaser.Scene {
       this.lastWallsMs = this.walls.remainingMs
       gameBus.emit('walls:countdown', { remainingMs: this.walls.remainingMs })
     }
-    const renderStart = this.perf ? performance.now() : 0
+    const renderStart = performance.now()
     this.ballRenderer.update(delta)
     // Game-over pop sequence fx (pooled particles/rings) — no-op while idle.
     this.gameOverSequence?.update(delta)
@@ -732,8 +753,9 @@ export class PlaygroundScene extends Phaser.Scene {
     // Phase 2.12.1: background animates inside BackgroundScene's own update
     // loop — nothing to drive from here anymore.
     this.debug?.update(delta)
+    this.perfRenderMs = performance.now() - renderStart
+    this.frameTimings.renderMs = this.perfRenderMs
     if (this.perf) {
-      this.perfRenderMs = performance.now() - renderStart
       this.perf?.sample(this.perfFrameStart, this.perfPhysicsMs, this.perfRenderMs)
       this.perf?.tick()
     }

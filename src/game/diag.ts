@@ -102,15 +102,30 @@ export function installDiag(game: Phaser.Game): void {
       // the device readout that splits 'physics dominates' from
       // 'rendering dominates' from 'bake retention failed'.
       try {
-        const pg = game.scene.getScene('playground') as Phaser.Scene & { perf?: { physicsMs: number; renderMs: number }; balls?: { getBalls(): Array<{ state: string }> }; ballRenderer?: { bakedSize: number }; containerView?: { frameImage?: { texture: { getSourceImage(): HTMLCanvasElement } } } }
+        const pg = game.scene.getScene('playground') as Phaser.Scene & {
+          perf?: { physicsMs: number; renderMs: number }
+          // The prod-readable timings — the scene always collects these
+          // (the OVERLAY is dev-gated, but the measurements are not).
+          frameTimings?: { physicsMs: number; renderMs: number }
+          balls?: { getBalls(): Array<{ state: string }> }
+          ballRenderer?: { bakedSize: number }
+          containerView?: { frameImage?: { texture: { getSourceImage(): HTMLCanvasElement } } }
+        }
         if (pg) {
+          // The prod path reads frameTimings (always live); the dev path
+          // may also have the dev-only PerfOverlay's rolling averages.
+          const ft = pg.frameTimings
           const p = pg.perf
+          const phys = ft ? ft.physicsMs : p ? p.physicsMs : null
+          const rend = ft ? ft.renderMs : p ? p.renderMs : null
           const baked = pg.ballRenderer?.bakedSize ?? -1
           const alive = pg.balls?.getBalls().filter((b) => b.state !== 'removed').length ?? -1
           // containerW: 720 = fast-mode repaint fired (mid-animation);
           // 1440 = crisp dpr-2 bake. Verifies the wall fast branch.
           const containerW = (pg as unknown as { containerView?: { frameImage?: { texture: { getSourceImage(): HTMLCanvasElement } } } }).containerView?.frameImage?.texture.getSourceImage().width ?? -1
-          lines.push(`WALL phys ${p ? p.physicsMs.toFixed(1) : '?'}ms render ${p ? p.renderMs.toFixed(1) : '?'}ms balls ${alive} baked ${baked} wallW ${containerW}`)
+          lines.push(
+            `WALL phys ${phys != null ? phys.toFixed(1) : '?'}ms render ${rend != null ? rend.toFixed(1) : '?'}ms balls ${alive} baked ${baked} wallW ${containerW}`,
+          )
         }
       } catch { /* playground not booted yet */ }
       const bg = game.scene.getScene('BackgroundScene') as Phaser.Scene & { background?: Record<string, unknown> }

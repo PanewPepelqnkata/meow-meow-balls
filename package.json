@@ -19,6 +19,7 @@
     "qa:fearplay": "node qa/verify-fear-in-play.mjs",
     "qa:themebake": "node qa/verify-theme-bake.mjs",
     "qa:savewrite": "node qa/verify-save-write.mjs",
+    "qa:proddiag": "node qa/verify-prod-diag.mjs",
     "format": "prettier --write ."
   },
   "dependencies": {

@@ -242,19 +242,31 @@ is no constraint leak.
 
 ---
 
-## Finding 3 — the physics substep count is the frame-time multiplier
+## Finding 3 — the physics substep count is NOT a spike amplifier (measured, and it was a wrong lead)
 
 **Evidence.** The physics runs on a fixed 120 Hz accumulator (`PHYSICS.stepHz: 120`,
 `maxSubSteps: 10`). Measured per substep at a 10-ball settled pile: **0.592 ms**.
 
-At 120 Hz the game needs 2 substeps per frame → ~1.2 ms of physics. But a slow frame accumulates
-more time, so the next frame runs more substeps.
+**The accumulator does NOT spiral.** Measured over a 133-frame window with a live pile:
 
-**The spiral was tested and does NOT happen:** the correlation between frame N's cost and frame N+1's
-substep count is **0.101** (≈0). The accumulator's `maxSubSteps` cap plus the remainder drop
-(`PhysicsWorld.step` lines 312-315) break the cycle correctly.
+```
+substeps/frame histogram: {"7":102,"8":31}      <- a tight band, no bursts
+frames at the maxSubSteps cap (10): 0 (0.0%)
+SPIRAL TEST: corr(frame N cost, frame N+1 substeps) = 0.081   <- ~0, no cascade
+```
 
-**But the substep count is not free.** The measured per-substep cost is 0.592 ms, of which the soft
+The reason is **Phaser's delta smoothing** (`TimeStep.smoothDelta`, on by default): the delta is
+averaged over 10 frames before the scene sees it, and the `_min` clamp only discards outliers
+**above** 200 ms. So a single 33 ms hitch is *spread across ~10 frames* rather than dumped as four
+catch-up substeps in the next one. The accumulator's `maxSubSteps` cap plus the remainder drop
+(`PhysicsWorld.step` lines 312-315) are the second line of defence, and the histogram shows they are
+never reached.
+
+**Consequence:** the substep count is a steady function of the *smoothed* frame rate, not a
+function of the worst recent frame. The physics cost is therefore a **floor** (0.592 ms × the
+substeps the display rate requires), not a spike amplifier.
+
+**The real cost is the floor itself.** The measured per-substep cost is 0.592 ms, of which the soft
 passes (`stepAll` + `separateContacts` + `expandShape` + `clampToContainer`) are ~0.10 ms and the rest
 is Matter. The growth with pile size is quadratic-ish in the number of *touching* pairs:
 `separateContacts` is O(pairs × 16 × 16 particles × 8 iterations).
@@ -262,12 +274,17 @@ is Matter. The growth with pile size is quadratic-ish in the number of *touching
 **Why it matters on an iPhone:** the physics is pure CPU on the main thread, and at 120 Hz there is
 twice as much of it per second as at 60 Hz.
 
-**Proposed fix.** None yet — this is the *floor*, and the iteration budget is load-bearing
+**Proposed fix.** None — this is the floor, and the iteration budget is load-bearing
 (`src/config/physics.ts`: a retune to 8/8/2 or 10/10/3 "BOTH fail the settled-pile battery"). The
 adaptive-iterations design that comment calls for is a real opportunity but is a physics change, and
 the brief says not to change gameplay physics unless necessary.
 
 **Risk.** High. Documented as the reason not to touch it.
+
+**Side effect worth knowing (not a bug):** because the delta is smoothed, the simulated time drifts
+slightly from the wall clock after a hitch. The game is a puzzle, not a deterministic replay, so
+this is acceptable — but it means "substeps per frame" is not a proxy for "how much sim time
+elapsed".
 
 ---
 
@@ -368,6 +385,48 @@ contour seed, is read only by the renderer and cannot affect physics).
 
 ---
 
+## Finding 9 — the device readout could not report the physics/render split in production
+
+**The gap.** The `?diag=1` overlay runs in **production** (it is the only frame-delivery measurement
+the user can make on the phone), and its `WALL` line carries the physics-vs-render split — the
+number that says which half of the frame budget to attack. But that split came from the
+**dev-only** `PerfOverlay`:
+
+```ts
+if (import.meta.env.DEV) {
+  this.perf = new PerfOverlay(this, this.ballRenderer, this.balls)   // DEV only
+}
+```
+
+and the scene's own timers were gated on it:
+
+```ts
+const physStart = this.perf ? performance.now() : 0
+```
+
+So in a production build the timers **never ran** and the line printed `phys ?ms render ?ms`.
+Verified against a real production build (`vite preview`):
+
+```
+WALL phys ?ms render ?ms balls 0 baked 0 wallW 1440     <- BEFORE
+WALL phys 1.4ms render 0.1ms balls 4 baked 4 wallW 1440  <- AFTER
+```
+
+**The fix.** The scene now measures the frame timings **unconditionally** and exposes them through a
+`readonly frameTimings` field that the prod diag reads. The dev-only *overlay* stays dev-only; only
+the two `performance.now()` calls became unconditional.
+
+**Cost, measured** (interleaved A/B, 164 vs 162 frames): **9.0 µs per frame** — 0.1% of the 8.33 ms
+120 Hz budget.
+
+**Risk.** Very low. Two `performance.now()` calls per frame, and one extra object read per frame by
+the diag overlay (which only runs with `?diag=1`).
+
+**Guard:** `npm run qa:proddiag` (needs a production preview on port 5199; it SKIPs cleanly if there
+is none).
+
+---
+
 ## Priority
 
 | # | Finding | Impact | Risk | Status |
@@ -375,12 +434,13 @@ contour seed, is read only by the renderer and cannot affect physics).
 | 2 | **Theme bake storm in the merge frame** (`buildCloudGroup` → 3 nebula textures) | 70 ms → 17.7 ms; worst frame 81.9 → 29.6 ms | Low | **Fixed** |
 | 2b | Save write scheduled between frames (iOS IPC) | unmeasurable here; 5-20 ms/call on iOS | Very low | **Fixed** (moved to idle) |
 | 1 | Live contour rebuilt for every ball every frame | 69 µs/ball/frame | — | **Tried and reverted** — the cache could not hit (the pile does not stay asleep) |
-| 3 | Physics substep cost | 0.592 ms/substep × 2/frame @120 Hz | High (load-bearing) | Not touched — documented |
+| 3 | Physics substep cost (a FLOOR, not a spike amplifier) | 0.592 ms/substep × the substeps the display rate needs | High (load-bearing) | Not touched — documented |
 | 4 | GC pressure | 0.3% of CPU, 52 KB/s | — | Ruled out |
 | 5 | Background rendering (steady state) | 0.02 ms | — | Ruled out |
 | 6 | Wall-raise repaint | already quantized | — | Ruled out |
 | 7 | 120 Hz budget | halves the per-frame allowance | — | Context for the above |
 | 8 | Dense-pile test flake (a 5 s timeout, not an assertion) | ~1 in 3 full-suite runs | Very low | **Fixed** (30 s timeout) |
+| 9 | The prod `?diag=1` readout could not report the physics/render split | the device could not attribute frame time | Very low | **Fixed** (9 µs/frame) |
 
 ## What is still open
 
@@ -389,8 +449,9 @@ contour seed, is read only by the renderer and cannot affect physics).
   soft-body deformation. A fix that keeps the deformation *and* avoids the per-frame rebuild needs
   a visual design decision, which this audit did not make.
 - **The physics substep cost (Finding 3).** 0.592 ms per substep at a 10-ball pile, and the pile
-  grows. The iteration budget is load-bearing (`src/config/physics.ts`: 8/8/2 and 10/10/3 both fail
-  the settled-pile battery), so the adaptive-iterations design that comment calls for is the real
+  grows. It is a FLOOR, not a spike source (the accumulator does not spiral — measured). The
+  iteration budget is load-bearing (`src/config/physics.ts`: 8/8/2 and 10/10/3 both fail the
+  settled-pile battery), so the adaptive-iterations design that comment calls for is the real
   opportunity — and it is a physics change the brief excludes.
 - **The remaining 29.6 ms worst frame** is a rare, non-reproducible event. It was not attributed
   before this audit ended. It is 2.8× the 120 Hz budget, so it is worth chasing on-device with the
