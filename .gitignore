@@ -35,6 +35,7 @@ qa/*
 !qa/verify-prod-diag.mjs
 !qa/verify-discovery-size.mjs
 !qa/verify-collectible-card.mjs
+!qa/verify-mystery-reveal.mjs
 !qa/verify-wall-raise-perf.mjs
 !qa/lib-game.mjs
 

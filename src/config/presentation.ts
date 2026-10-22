@@ -9,8 +9,17 @@ export const DISCOVERY = {
   /** First tier that earns the discovery presentation (tiers 1–4 merge
    * silently — 4 is discovered by default). */
   minTier: 5,
-  /** Total presentation time before the fade-out begins (spec: 1.4–2.0s). */
+  /** Total presentation time before the fade-out begins (spec: 1.4–2.0s).
+   * The collectible card is LONGER: its reveal has a beat before the
+   * card arrives (the "?" holds for ~1s), then the card is on screen for
+   * the player to read it. */
   showMs: 1800,
+  /** How long the mystery reveal runs before the card arrives (ms) —
+   * the "?" holds on the black stage, then the card pops over it. */
+  cardRevealMs: 980,
+  /** How long the card itself stays on screen after it arrives (ms) —
+   * long enough to read the name, the stats and the flavour. */
+  cardShowMs: 3600,
   /** Fade-out duration. */
   fadeMs: 300,
 } as const

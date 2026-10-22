@@ -51,6 +51,7 @@ import { buildBallCard } from './ballCard'
 export const DISCOVERY_OVERLAY_DEPTH = 78
 const DIM_DEPTH = 78
 const GLOW_DEPTH = 79
+const MYSTERY_DEPTH = 79.5
 const PANEL_DEPTH = 80.5
 const FLASH_DEPTH = 81
 const CONTENT_DEPTH = 82
@@ -109,6 +110,9 @@ export class DiscoveryOverlay {
   private readonly scene: Phaser.Scene
   private objs: Phaser.GameObjects.GameObject[] = []
   private dimRect: Phaser.GameObjects.Rectangle | null = null
+  /** The full-screen dim (an Image with scrollFactor 0, so it is anchored
+   * to the camera's viewport whatever its zoom). */
+  private dimImage: Phaser.GameObjects.Image | null = null
   /** Band + disc + character + ticks — the punched-in panel. */
   private panel: Phaser.GameObjects.Container | null = null
   /** Sparkles + edge highlights — the brief flashing accents. */
@@ -116,6 +120,14 @@ export class DiscoveryOverlay {
   /** The light BEHIND the card (the 'found a collectible' glow) — it sits
    * UNDER the card, so the card is held up in a beam of light. */
   private glowG: Phaser.GameObjects.Graphics | null = null
+  /** The MYSTERY layer — the huge "?" that is revealed first, before the
+   * card itself pops. It is a separate layer ABOVE the dim but BELOW the
+   * card, so the card can cover it when it arrives. */
+  private mysteryG: Phaser.GameObjects.Graphics | null = null
+  private mysteryText: Phaser.GameObjects.Text | null = null
+  /** The "?"'s pulse tween — stopped when the card lands (it repeats
+   * forever, so it would keep the "?" alive after the wipe). */
+  private mysteryPulse: Phaser.Tweens.Tween | null = null
   private content: Phaser.GameObjects.Container | null = null
   private active = false
   private activeTier: number | null = null
@@ -129,6 +141,9 @@ export class DiscoveryOverlay {
    * is the shipped 'band' presentation.
    */
   private readonly style: DiscoveryStyle = selectedDiscoveryStyle()
+  /** QA: how many times the overlay was rebuilt (a resize during the
+   * presentation would restart it). */
+  __resizeCount = 0
 
   /** Optional gameplay-slot bounds provider (portrait): returns the
    * viewport-px region between the HUD block and the control stack, where
@@ -192,7 +207,18 @@ export class DiscoveryOverlay {
       })
     }
 
-    this.dismissTimer = this.scene.time.delayedCall(DISCOVERY.showMs, () => this.hide())
+    // The dismiss timer starts when the presentation BEGINS for the
+    // simple styles, but for the card it must start when the CARD
+    // ARRIVES — the reveal eats the first second, and the card was
+    // therefore on screen for less than a second (unreadable).
+    if (this.style === 'card') {
+      this.dismissTimer = this.scene.time.delayedCall(
+        DISCOVERY.cardRevealMs + DISCOVERY.cardShowMs,
+        () => this.hide(),
+      )
+    } else {
+      this.dismissTimer = this.scene.time.delayedCall(DISCOVERY.showMs, () => this.hide())
+    }
   }
 
   /** Fade out and clean up (normal end of the presentation). */
@@ -202,7 +228,7 @@ export class DiscoveryOverlay {
     // The HUD comes back.
     this.setHudVisible?.(true)
     const content = this.content
-    const dim = this.dimRect
+    const dim = this.dimImage ?? this.dimRect
     const panel = this.panel
     const flash = this.flashG
     if (!content || !dim || !panel) {
@@ -239,10 +265,13 @@ export class DiscoveryOverlay {
   private destroyNow(): void {
     this.dismissTimer?.remove()
     this.dismissTimer = null
+    this.mysteryPulse?.stop()
+    this.mysteryPulse = null
     this.scene.tweens.killTweensOf(this.objs)
     for (const o of this.objs) o.destroy()
     this.objs = []
     this.dimRect = null
+    this.dimImage = null
     this.panel = null
     this.flashG = null
     this.content = null
@@ -251,12 +280,16 @@ export class DiscoveryOverlay {
   }
 
   private onResize(): void {
+    this.__resizeCount = (this.__resizeCount ?? 0) + 1
     if (!this.active) return
     if (this.activeTier == null) return
+    this.mysteryPulse?.stop()
+    this.mysteryPulse = null
     this.scene.tweens.killTweensOf(this.objs)
     for (const o of this.objs) o.destroy()
     this.objs = []
     this.dimRect = null
+    this.dimImage = null
     this.panel = null
     this.flashG = null
     this.content = null
@@ -550,14 +583,32 @@ export class DiscoveryOverlay {
     // (0,0) — its world origin is the view's top-left, not its middle
     // (the scroll offset is the zoom's internal bookkeeping). So the dim
     // is a rectangle at (0,0) sized to the view in world units.
+    // The dim covers EXACTLY the camera's visible area. The camera's
+    // worldView is the authoritative rectangle (it accounts for the
+    // camera's zoom and centre), and the dim is placed at its TOP-LEFT
+    // with origin (0,0).
+    // The dim covers the WHOLE camera. It is an IMAGE with scrollFactor 0,
+    // so it is anchored to the camera's viewport (whatever the camera's
+    // zoom and centre) — a shape in a zoomed camera has to fight the
+    // camera's world space, and the dim did not cover the screen.
     const cam = this.scene.cameras.main
-    const worldW = cam ? cam.worldView.width : vw
-    const worldH = cam ? cam.worldView.height : vh
-    this.dimRect = this.scene.add
-      .rectangle(0, 0, worldW, worldH, 0x000000, dimAlpha)
-      .setOrigin(0, 0) // the world view starts at (0,0) — the top-left
+    const bufW = cam ? cam.width : vw
+    const bufH = cam ? cam.height : vh
+    const dimTex = this.scene.textures.createCanvas('br-discovery-dim', 2, 2)
+    if (dimTex) {
+      const c = dimTex.getContext()
+      c.fillStyle = '#000000'
+      c.fillRect(0, 0, 2, 2)
+      dimTex.refresh()
+    }
+    this.dimImage = this.scene.add
+      .image(0, 0, 'br-discovery-dim')
+      .setOrigin(0, 0)
+      .setDisplaySize(bufW, bufH)
+      .setScrollFactor(0)
       .setDepth(DIM_DEPTH)
-    this.objs.push(this.dimRect)
+      .setAlpha(dimAlpha)
+    this.objs.push(this.dimImage)
 
     // 2) The GLOW layer — UNDER the panel, so the light is behind the
     //    card (and behind the character).
@@ -566,7 +617,26 @@ export class DiscoveryOverlay {
     this.glowG = this.scene.add.graphics().setDepth(GLOW_DEPTH).setPosition(0, 0)
     this.objs.push(this.glowG)
 
-    // 3) The panel: the style's own furniture (band, disc, stamp, rays…)
+    // 3) The MYSTERY layer (the card style only) — the huge "?" that is
+    //    revealed first, before the card pops in over it.
+    if (style === 'card') {
+      this.mysteryG = this.scene.add.graphics().setDepth(MYSTERY_DEPTH).setPosition(0, 0)
+      this.objs.push(this.mysteryG)
+      this.mysteryText = this.scene.add
+        .text(cx, vh / 2, '?', {
+          fontFamily: FONT_FAMILY,
+          fontSize: `${Math.round(Math.min(vh * 0.42, vw * 0.72))}px`,
+          color: '#ffffff',
+          stroke: '#000000',
+          strokeThickness: 14,
+          resolution: Math.min(window.devicePixelRatio || 1, 2),
+        })
+        .setOrigin(0.5, 0.5)
+        .setDepth(MYSTERY_DEPTH + 0.1)
+      this.objs.push(this.mysteryText)
+    }
+
+    // 4) The panel: the style's own furniture (band, disc, stamp, rays…)
     //    plus the character, punched in around the screen center.
     this.panel = this.scene.add.container(cx, vh / 2).setDepth(PANEL_DEPTH)
     this.objs.push(this.panel)
@@ -712,6 +782,34 @@ export class DiscoveryOverlay {
     const maxLabelW = vw * 0.6
     if (tierLabel.width > maxLabelW) tierLabel.setScale(maxLabelW / tierLabel.width)
     this.content.add(tierLabel)
+  }
+
+  /**
+   * THE MYSTERY MARK — the glow and rings behind the huge "?".
+   *
+   * Drawn in the camera's world space (the layer is at the world origin,
+   * which is the view's top-left), so the mark is centred on the screen.
+   */
+  private drawMysteryMark(g: Phaser.GameObjects.Graphics, cx: number, cy: number, r: number): void {
+    // A soft halo.
+    g.fillStyle(tintColor(FLASH_YELLOW, 0.4), 0.14)
+    g.fillCircle(cx, cy, r * 1.5)
+    g.fillStyle(tintColor(FLASH_YELLOW, 0.55), 0.16)
+    g.fillCircle(cx, cy, r * 1.05)
+    // Two thin rings — the "mystery seal".
+    g.lineStyle(4, COMIC_INK, 0.85)
+    g.strokeCircle(cx, cy, r * 0.92)
+    g.lineStyle(2, FLASH_YELLOW, 0.7)
+    g.strokeCircle(cx, cy, r * 0.78)
+    // Twelve ticks around the ring.
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2
+      g.lineStyle(3, COMIC_INK, 0.7)
+      g.beginPath()
+      g.moveTo(cx + Math.cos(a) * r * 0.92, cy + Math.sin(a) * r * 0.92)
+      g.lineTo(cx + Math.cos(a) * r * 1.05, cy + Math.sin(a) * r * 1.05)
+      g.strokePath()
+    }
   }
 
   /**
@@ -1160,7 +1258,7 @@ export class DiscoveryOverlay {
    */
   private playEntrance(): void {
     const content = this.content
-    const dim = this.dimRect
+    const dim = this.dimImage ?? this.dimRect
     const panel = this.panel
     const flash = this.flashG
     if (!content || !dim || !panel) return
@@ -1174,20 +1272,21 @@ export class DiscoveryOverlay {
     // discovery (the merge that discovers the tier also advances the
     // background), and a short dim was over before the crossfade had
     // visibly started — the change read as a hard cut.
-    this.scene.tweens.add({
-      targets: dim,
-      // The dim's target alpha is per-style: the collectible card wants a
-      // DARK backdrop (the old fixed DIM_ALPHA left the game fully
-      // visible behind the card).
-      alpha: this.style === 'card' ? 0.82 : DIM_ALPHA,
-      duration: 420,
-      ease: 'Sine.easeInOut',
-    })
+    // The card drives the dim ITSELF (it goes fully black for the
+    // reveal), so it must not run this tween — it would override the
+    // reveal's black stage.
+    const style: DiscoveryStyle = this.style
+    if (style !== 'card') {
+      this.scene.tweens.add({
+        targets: dim,
+        alpha: DIM_ALPHA,
+        duration: 420,
+        ease: 'Sine.easeInOut',
+      })
+    }
 
-    const style = this.style
     const ballG = panel.list[panel.list.length - 1] as Phaser.GameObjects.Graphics | undefined
     const headline = content.list[0] as Phaser.GameObjects.Text | undefined
-    const label = content.list[1] as Phaser.GameObjects.Text | undefined
 
     if (style === 'stamp') {
       // The character SLAMS down onto its medallion.
@@ -1267,7 +1366,7 @@ export class DiscoveryOverlay {
       return
     }
 
-    if (style === 'reveal') {
+    if ((style as DiscoveryStyle) === 'reveal') {
       // An IRIS opens out from the character's centre.
       panel.setAlpha(1)
       if (ballG) {
@@ -1319,105 +1418,207 @@ export class DiscoveryOverlay {
     }
 
     if (style === 'card') {
-      // The card springs up from below.
-      panel.setAlpha(1)
-      panel.setScale(0.82)
-      // The panel's own position, nudged down — the card springs UP from
-      // below. (An absolute y would be wrong: the container lives at the
-      // screen centre, not the origin.)
-      const restY = panel.y
-      panel.y = restY + 70
+      // THE REVEAL: the screen goes black with a huge "?" and a mystery
+      // seal; the mark pulses; then the CARD POPS in over it, the "?"
+      // is wiped away, and the sun glow blooms.
+      const mystery = this.mysteryText
+      const mysteryGfx = this.mysteryG
+      panel.setAlpha(0)
+      panel.setScale(0.6)
+      content.setAlpha(0)
+
+      // The BLACK STAGE: the dim goes FULLY OPAQUE for the reveal (it
+      // provably covers the whole screen), then eases back to the card's
+      // dim when the card lands — so the reveal is pure black and the
+      // card is then seen against the dimmed game.
+      if (dim) {
+        dim.setAlpha(1)
+        this.scene.tweens.add({
+          targets: dim,
+          alpha: 0.82,
+          duration: 360,
+          delay: DISCOVERY.cardRevealMs,
+          ease: 'Sine.easeOut',
+        })
+      }
+
+      // The mystery mark: the seal behind the "?".
+      const L = this.layout()
+      const markR = Math.min(L.vh * 0.16, L.vw * 0.3)
+      if (mysteryGfx) {
+        mysteryGfx.clear()
+        this.drawMysteryMark(mysteryGfx, L.cx, L.vh / 2, markR)
+      }
+      if (mystery) {
+        mystery.setAlpha(0)
+        mystery.setScale(0.5)
+        this.scene.tweens.add({
+          targets: mystery,
+          alpha: 1,
+          scale: 1,
+          duration: 420,
+          ease: 'Back.easeOut',
+        })
+        // A slow pulse on the "?" while it waits. The handle is kept so
+        // the pulse can be STOPPED when the card lands — an infinite
+        // tween kept the "?" alive after the wipe.
+        this.mysteryPulse = this.scene.tweens.add({
+          targets: mystery,
+          scale: 1.06,
+          duration: 620,
+          delay: 460,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.easeInOut',
+        })
+      }
+
+      // The card POPS in over the "?" — a hard scale punch with a Back
+      // overshoot, plus a shake. The delay is the reveal's length, so
+      // the dismiss timer (which counts from the same moment) agrees.
+      const popAt = DISCOVERY.cardRevealMs
       this.scene.tweens.add({
         targets: panel,
-        y: restY,
-        duration: 420,
-        delay: 100,
-        ease: 'Back.easeOut',
+        alpha: 1,
+        duration: 120,
+        delay: popAt,
+        ease: 'Sine.easeIn',
       })
       this.scene.tweens.add({
         targets: panel,
-        scale: 1,
-        duration: 420,
-        delay: 100,
+        scale: 1.08,
+        duration: 260,
+        delay: popAt,
         ease: 'Back.easeOut',
+        onComplete: () => {
+          this.scene.tweens.add({ targets: panel, scale: 1, duration: 120, ease: 'Sine.easeOut' })
+        },
       })
+      this.scene.tweens.add({
+        targets: content,
+        alpha: 1,
+        duration: 180,
+        delay: popAt + 80,
+        ease: 'Sine.easeIn',
+      })
+      // The character pops inside the card.
       if (ballG) {
-        ballG.setScale(0.5)
+        ballG.setScale(0.4)
+        this.scene.tweens.add({
+          targets: ballG,
+          scale: 1.14,
+          duration: 280,
+          delay: popAt + 100,
+          ease: 'Back.easeOut',
+          onComplete: () => {
+            this.scene.tweens.add({ targets: ballG, scale: 1, duration: 110, ease: 'Sine.easeOut' })
+          },
+        })
+      }
+      // The "?" is wiped away as the card lands: the pulse stops, the
+      // text fades and blows up, and it is hidden outright (an infinite
+      // pulse tween kept it on screen after the wipe).
+      if (mystery) {
+        this.mysteryPulse?.stop()
+        this.mysteryPulse = null
+        this.scene.tweens.add({
+          targets: mystery,
+          alpha: 0,
+          scale: 1.5,
+          duration: 220,
+          delay: popAt,
+          ease: 'Quad.easeIn',
+          onComplete: () => mystery.setVisible(false),
+        })
+      }
+      if (mysteryGfx) {
+        this.scene.tweens.add({
+          targets: mysteryGfx,
+          alpha: 0,
+          duration: 200,
+          delay: popAt,
+          ease: 'Quad.easeIn',
+          onComplete: () => mysteryGfx.setVisible(false),
+        })
+      }
+      // The sun glow blooms as the card lands.
+      if (this.glowG) {
+        this.glowG.setAlpha(0)
+        this.scene.tweens.add({
+          targets: this.glowG,
+          alpha: 1,
+          duration: 420,
+          delay: popAt + 20,
+          ease: 'Sine.easeOut',
+        })
+      }
+      // A hard impact shake when the card lands.
+      if (!this.reducedMotion) {
+        this.scene.tweens.add({
+          targets: content,
+          x: { from: -7, to: 7 },
+          duration: 34,
+          delay: popAt + 20,
+          yoyo: true,
+          repeat: 3,
+          ease: 'Sine.easeInOut',
+          onComplete: () => content.setX(0),
+        })
+      }
+      return
+    }
+
+    if ((style as DiscoveryStyle) === 'reveal') {
+      // An IRIS opens out from the character's centre.
+      panel.setAlpha(1)
+      if (ballG) {
+        // The character starts tiny and grows as the iris opens.
+        ballG.setScale(0.05)
         this.scene.tweens.add({
           targets: ballG,
           scale: 1,
-          duration: 300,
-          delay: 220,
-          ease: 'Back.easeOut',
+          duration: 380,
+          delay: 120,
+          ease: 'Cubic.easeOut',
+        })
+      }
+      const ringG = panel.list[0] as Phaser.GameObjects.Graphics | undefined
+      if (ringG) {
+        ringG.setScale(0.05)
+        ringG.setAlpha(0)
+        this.scene.tweens.add({
+          targets: ringG,
+          scale: 1,
+          alpha: 1,
+          duration: 380,
+          delay: 120,
+          ease: 'Cubic.easeOut',
         })
       }
       this.scene.tweens.add({
         targets: content,
         alpha: 1,
         duration: 200,
-        delay: 200,
+        delay: 260,
         ease: 'Sine.easeIn',
       })
       if (headline) {
         const base = headline.scaleX
-        headline.setScale(base * 0.9)
+        headline.setAlpha(0)
         this.scene.tweens.add({
           targets: headline,
-          scale: base,
-          duration: 240,
-          delay: 240,
-          ease: 'Back.easeOut',
+          alpha: 1,
+          duration: 220,
+          delay: 300,
+          ease: 'Sine.easeIn',
+          onComplete: () => {
+            this.scene.tweens.add({ targets: headline, scale: base * 1.04, duration: 120, yoyo: true, ease: 'Sine.easeOut' })
+          },
         })
       }
       return
     }
 
-    if (style === 'spot') {
-      // The character simply GROWS into place — nothing else moves.
-      panel.setAlpha(1)
-      if (ballG) {
-        ballG.setScale(0.2)
-        ballG.setAlpha(0)
-        this.scene.tweens.add({
-          targets: ballG,
-          scale: 1,
-          alpha: 1,
-          duration: 340,
-          delay: 140,
-          ease: 'Back.easeOut',
-        })
-      }
-      this.scene.tweens.add({
-        targets: content,
-        alpha: 1,
-        duration: 220,
-        delay: 200,
-        ease: 'Sine.easeIn',
-      })
-      if (headline) {
-        const base = headline.scaleX
-        headline.setScale(base * 0.94)
-        this.scene.tweens.add({
-          targets: headline,
-          scale: base,
-          duration: 260,
-          delay: 220,
-          ease: 'Back.easeOut',
-        })
-      }
-      if (label) {
-        const base = label.scaleX
-        label.setScale(base * 0.9)
-        this.scene.tweens.add({
-          targets: label,
-          scale: base,
-          duration: 260,
-          delay: 280,
-          ease: 'Back.easeOut',
-        })
-      }
-      return
-    }
 
     // 'band' — the shipped presentation: the band slides in from the side
     // and the character punches up through it.
