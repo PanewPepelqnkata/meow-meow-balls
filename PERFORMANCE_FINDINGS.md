@@ -2,6 +2,39 @@
 
 Audit date: 2026-10-22 · Baseline commit: `394549a` · Host: Apple M4, headless Chromium (software GL)
 
+## Summary — the answer first
+
+**The frame-time spike was a background-theme bake that landed inside the merge frame.**
+
+On a portrait phone, the first tier-4+ discovery (created by a merge) triggers the background's
+transition to the space theme — *inside the merge frame*. The transition baked three 900×520 nebula
+textures on the spot, because the boot prewarm that already existed for exactly this purpose did not
+include them.
+
+| | before | after |
+|---|---|---|
+| `setTheme('space')` | 70.2 ms | **17.7 ms** |
+| the nebula bake (`buildCloudGroup`) | 54.3 ms | 3.4 ms |
+| the worst frame in a 40-drop session | 81.9 ms | **29.6 ms** |
+| p95 frame | — | 11.1 ms |
+
+A second, iOS-specific fix: the save's deferred write was scheduled on a plain `setTimeout`, so
+Safari's synchronous `localStorage` IPC (5–20 ms) landed *between* frames. It now runs on
+`requestIdleCallback`.
+
+**Everything else was ruled out by measurement**, so it is not re-investigated: GC pressure (0.3%
+of CPU), the background's steady-state render cost (0.02 ms), the wall-raise repaint (already
+quantized), the accumulator spiral (it does not spiral — Phaser's delta smoothing spreads hitches),
+and every other candidate inside the merge path.
+
+**One cost remains open**: the live contour (69 µs/ball/frame). The only fix that removes it is the
+transform-only sprite path, which was reverted for a good reason (it hid the soft-body deformation).
+It needs a visual design decision, not a performance one.
+
+**One measurement fix**: the device readout (`?diag=1`) could not report the physics/render split in
+a production build — so the number that says which half of the frame budget to attack was
+unavailable on the phone. It now works (9 µs/frame).
+
 ## How this was measured
 
 Everything below is measured, not inferred. The harness (`qa/_*.mjs`, throwaway) instruments the
@@ -464,5 +497,28 @@ The frame-time numbers above are from headless Chromium with software GL. The **
 this is called fixed, check on the device:
 
 - `?diag=1` → the `FPS` line (`p50` / `p95` / `SPIKE`) and the `WALL` line (physics vs render ms).
+  **The `WALL` line only works in a production build since Finding 9 was fixed** — before that it
+  printed `?ms` on the device, which is why the earlier version of this note was not actionable.
 - The worst frame should no longer be a one-off ~70-80 ms spike on the first tier-4+ merge.
 - The `p95` should sit under 8.33 ms for 120 Hz.
+
+**How to reproduce the audit's own measurements on the device:** the guard
+`npm run qa:proddiag` builds the production bundle, serves it, drives the shipped game with real
+touch input, and prints the same panel the phone shows. Point it at a device-reachable build (or
+read the numbers off the phone directly — they are the same lines).
+
+## The guards this audit added
+
+Every fix has a permanent guard, so the defect cannot come back silently:
+
+| Guard | What it pins |
+|---|---|
+| `npm run qa:proddiag` | the production `?diag=1` reports a real physics/render split (Finding 9) |
+| `npm run qa:themebake` | the nebula textures are prewarmed and the transition stays under 30 ms (Finding 2) |
+| `npm run qa:savewrite` | the save write happens, and happens OUTSIDE a frame (Finding 2b) |
+| `npm run qa:wallraise` | the pile's balls come to rest after a wall raise (the scenario was also corrected — the old one put tier 5/6 balls outside the 340-wide phone funnel, so it was measuring a broken pile) |
+| `npm run qa:fear` | the four fear phases are reachable AND the morph is visible, and the face never vanishes |
+| `npm run qa:fearplay` | the ladder is climbed in REAL PLAY (no QA hooks) |
+| `npm run qa:gameoverpanic` | every survivor shows the panic face at game over |
+
+Plus `vitest.config.ts` (a 30 s timeout) for the dense-pile battery — Finding 8.
