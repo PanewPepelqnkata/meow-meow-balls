@@ -40,6 +40,14 @@ const VIEWPORTS = [
   ['desktop', 1440, 900],
 ]
 
+/**
+ * The presentation STYLE, selected with ?discovery=<style>. Every style
+ * must satisfy the same invariants: the character fits, the title clears
+ * the art, and the tier label is placed sensibly.
+ */
+const STYLES = ['band', 'spot', 'stamp', 'reveal', 'card']
+
+for (const style of STYLES) {
 for (const [name, w, h] of VIEWPORTS) {
   // A FRESH page per viewport: resizing a live Phaser game tears down its
   // cameras (the scene's resize handler runs against a stale camera), so
@@ -47,7 +55,7 @@ for (const [name, w, h] of VIEWPORTS) {
   const vp = await browser.newPage({ viewport: { width: w, height: h }, hasTouch: true, isMobile: w < 900 })
   const vpErrors = []
   vp.on('pageerror', (e) => vpErrors.push(e.message))
-  await vp.goto(`${process.env.QA_URL ?? 'http://localhost:5188'}/`, { waitUntil: 'networkidle' })
+  await vp.goto(`${process.env.QA_URL ?? 'http://localhost:5188'}/?discovery=${style}`, { waitUntil: 'networkidle' })
   await vp.waitForFunction(
     () => {
       const c = document.querySelector('.game-container canvas')
@@ -101,7 +109,7 @@ for (const [name, w, h] of VIEWPORTS) {
   })
   await vp.close()
   if (!m) {
-    failures.push(`${name}: the overlay's layout could not be read`)
+    failures.push(`${style}/${name}: the overlay's layout could not be read`)
     continue
   }
   const discD = m.radius * 1.35 * 2
@@ -109,36 +117,46 @@ for (const [name, w, h] of VIEWPORTS) {
   const bandTop = m.ballY - m.bandH / 2
   const bandBottom = m.ballY + m.bandH / 2
   console.log(
-    `${name.padEnd(12)} vw=${m.vw} radius=${m.radius?.toFixed(1)} disc=${discD.toFixed(0)}px (${widthPct.toFixed(0)}% of width) band=${m.bandH?.toFixed(0)}px (${((m.bandH / m.vh) * 100).toFixed(0)}% of height)`,
+    `${(style + '/' + name).padEnd(22)} vw=${m.vw} radius=${m.radius?.toFixed(1)} disc=${discD.toFixed(0)}px (${widthPct.toFixed(0)}% of width) band=${m.bandH?.toFixed(0)}px (${((m.bandH / m.vh) * 100).toFixed(0)}% of height)`,
   )
-  if (!m.active) failures.push(`${name}: the overlay is not active`)
+  if (!m.active) failures.push(`${style}/${name}: the overlay is not active`)
   // 1. The disc must fit inside the band.
   if (discD > m.bandH) {
-    failures.push(`${name}: the disc (${discD.toFixed(0)}px) does not fit the band (${m.bandH.toFixed(0)}px)`)
+    failures.push(`${style}/${name}: the disc (${discD.toFixed(0)}px) does not fit the band (${m.bandH.toFixed(0)}px)`)
   }
   // 2. It must not take over the screen.
   if (widthPct > 36) {
-    failures.push(`${name}: the disc takes ${widthPct.toFixed(0)}% of the screen width (must be ≤ 36%)`)
+    failures.push(`${style}/${name}: the disc takes ${widthPct.toFixed(0)}% of the screen width (must be ≤ 36%)`)
   }
   // 3. On a narrow viewport the band must be a SLIM stripe.
-  if (m.vw < 560 && m.bandH / m.vh > 0.18) {
+  if (style === 'band' && m.vw < 560 && m.bandH / m.vh > 0.18) {
     failures.push(
-      `${name}: the band is ${m.bandH.toFixed(0)}px (${((m.bandH / m.vh) * 100).toFixed(0)}% of the height) — it must be a slim stripe on a phone`,
+      `${style}/${name}: the band is ${m.bandH.toFixed(0)}px (${((m.bandH / m.vh) * 100).toFixed(0)}% of the height) — it must be a slim stripe on a phone`,
     )
   }
   // 4. The tier label must sit INSIDE the band.
-  if (m.labelY > bandBottom || m.labelY < bandTop) {
-    failures.push(`${name}: the tier label (y=${m.labelY?.toFixed(0)}) is outside the band (${bandTop.toFixed(0)}..${bandBottom.toFixed(0)})`)
+  if (style === 'band' && (m.labelY > bandBottom || m.labelY < bandTop)) {
+    failures.push(`${style}/${name}: the tier label (y=${m.labelY?.toFixed(0)}) is outside the band (${bandTop.toFixed(0)}..${bandBottom.toFixed(0)})`)
+  }
+  // The TITLE must clear the character in every style (it overlapped it
+  // in the first non-band drafts).
+  const artR = m.radius * (style === 'stamp' ? 1.55 : style === 'reveal' ? 1.5 : style === 'card' ? 1.6 : 1.35)
+  const titleHalf = Math.max(18, m.vw * 0.032 * 0.62)
+  if (m.titleY + titleHalf > m.ballY - artR) {
+    failures.push(
+      `${style}/${name}: the title (y=${m.titleY?.toFixed(0)}) overlaps the character (top=${(m.ballY - artR).toFixed(0)})`,
+    )
   }
   // The character must actually be drawn.
-  if (m.ballVisible === false) failures.push(`${name}: the character is not visible`)
+  if (m.ballVisible === false) failures.push(`${style}/${name}: the character is not visible`)
+}
 }
 
 if (errors.length) failures.push(`page errors: ${errors.slice(0, 2).join(' | ')}`)
 
 await browser.close()
 report(
-  'discovery overlay: the character fits its band on every viewport',
+  'discovery overlay: every style fits, at every viewport',
   failures,
-  `${VIEWPORTS.length} viewports`,
+  `${STYLES.length} styles x ${VIEWPORTS.length} viewports`,
 )

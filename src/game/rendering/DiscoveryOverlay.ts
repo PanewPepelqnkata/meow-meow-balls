@@ -5,6 +5,11 @@ import { variantIdFor } from '../state/runVariant'
 import { getTier } from '../../config/ballTiers'
 import { FONT_FAMILY } from '../../ui/Typography'
 import { DISCOVERY } from '../../config/presentation'
+import {
+  selectedDiscoveryStyle,
+  tintColor,
+  type DiscoveryStyle,
+} from './discoveryStyles'
 
 /**
  * Phase 2.13.4 (spec §2) — SUBTLE BUT DRAMATIC discovery presentation.
@@ -106,6 +111,12 @@ export class DiscoveryOverlay {
   private reducedMotion = false
   private dismissTimer: Phaser.Time.TimerEvent | null = null
   private resizeRegistered = false
+  /**
+   * Which presentation to use. Read once from the URL (?discovery=spot)
+   * so a style can be tried on the device without a rebuild; the default
+   * is the shipped 'band' presentation.
+   */
+  private readonly style: DiscoveryStyle = selectedDiscoveryStyle()
 
   /** Optional gameplay-slot bounds provider (portrait): returns the
    * viewport-px region between the HUD block and the control stack, where
@@ -264,14 +275,24 @@ export class DiscoveryOverlay {
     // ball sit ON the band (its centre on the band's centre line) with
     // the disc's top and bottom just kissing the band's edges.
     const narrow = vw < 560
-    const bandH = narrow
-      ? Math.max(BAND_MIN_H_NARROW, Math.min(vh * 0.15, slotH * 0.3))
-      : Math.min(slotH * 0.86, Math.max(150, vh * 0.26))
-    // The character's CENTRE is a little above the band's centre line, so
-    // the disc breaks out of the band's TOP edge (the "the ball gets out
-    // of the line behind it" look) and the tier label has room inside the
-    // band below it.
-    const ballY = slotMid + slotH * 0.04 - (narrow ? bandH * 0.12 : 0)
+    const style = this.style
+    // Only the 'band' style HAS a band. The others (spot / stamp / reveal /
+    // card) are a character and its furniture, so they get MORE room for
+    // the character and a taller band-free composition.
+    const bandH = style === 'band'
+      ? narrow
+        ? Math.max(BAND_MIN_H_NARROW, Math.min(vh * 0.15, slotH * 0.3))
+        : Math.min(slotH * 0.86, Math.max(150, vh * 0.26))
+      : Math.max(BAND_MIN_H_NARROW, Math.min(vh * 0.18, slotH * 0.34))
+    // The character's CENTRE. For the 'band' style it sits a little ABOVE
+    // the band's centre line, so the disc breaks out of the band's TOP
+    // edge (the "the ball gets out of the line behind it" look). For the
+    // other styles there is no band, and the title needs room ABOVE the
+    // character — so the character sits lower in the slot.
+    let ballY =
+      style === 'band'
+        ? slotMid + slotH * 0.04 - (narrow ? bandH * 0.12 : 0)
+        : slotMid + slotH * 0.16
     // The character's radius is bounded by THREE things, and the smallest
     // one wins (the old code only had the first two, so the cream disc
     // spilled over the band's edges):
@@ -297,13 +318,43 @@ export class DiscoveryOverlay {
       MIN_DISPLAY_RADIUS,
       Math.min(MAX_DISPLAY_RADIUS, maxByWidth, maxByBand, maxBySlot),
     )
-    // The TITLE sits above the band (it is the headline), and the TIER
-    // LABEL sits INSIDE the band, tucked under the character. On the
-    // narrow band the label used to hang below the band's bottom edge,
-    // which read as a separate floating caption.
-    const titleY = slotTop + Math.max(26, slotH * 0.1)
+    // The TITLE and the TIER LABEL are placed per style. The title must
+    // CLEAR the character (it used to overlap it in every non-band
+    // style), and the label sits under the character.
     const bandBottom = ballY + bandH / 2
-    const labelY = Math.min(bandBottom - 10, ballY + displayRadius * discScale + 18)
+    // The character's visual extent (the disc/medallion around it).
+    const artR = displayRadius * (style === 'stamp' ? 1.55 : style === 'reveal' ? 1.5 : style === 'card' ? 1.6 : discScale)
+    const charTop = ballY - artR
+    const charBottom = ballY + artR
+    // The title's own half-height, so it can be placed to CLEAR the art.
+    const titleHalf = Math.max(18, vw * 0.032 * 0.62)
+    let titleY: number
+    let labelY: number
+    if (style === 'band') {
+      // The title is high, above the band; the label is inside the band.
+      titleY = slotTop + Math.max(26, slotH * 0.1)
+      labelY = Math.min(bandBottom - 10, charBottom + 18)
+    } else {
+      // Every other style: the title sits ABOVE the art with a clear gap,
+      // and the label below it.
+      //
+      // The title is placed by INVERTING the constraint (the title's
+      // bottom edge must clear the art's top edge), and if that would
+      // push the title off the top of the slot, the ART is pushed DOWN
+      // instead — so the title never overlaps the character on any
+      // viewport.
+      const wantTitleY = charTop - titleHalf - 12
+      const minTitleY = slotTop + titleHalf + 6
+      if (wantTitleY >= minTitleY) {
+        titleY = wantTitleY
+      } else {
+        // Not enough room above: move the character down to make it.
+        const shift = minTitleY - wantTitleY
+        ballY += shift
+        titleY = minTitleY
+      }
+      labelY = Math.min(slotBottom - 20, ballY + artR + 26)
+    }
     return { vw, vh, cx, ballY, displayRadius, bandH, titleY, labelY }
   }
 
@@ -311,7 +362,7 @@ export class DiscoveryOverlay {
     const tier = this.activeTier
     if (tier == null) return
     const { vw, vh, cx, ballY, displayRadius, bandH, titleY, labelY } = this.layout()
-    const tierColor = getTier(tier)?.color ?? 0xffffff
+    const color = getTier(tier)?.color ?? 0xffffff
     const charYRel = ballY - vh / 2 // character y relative to screen center
 
     // 1) Gentle dim — the game background stays visible.
@@ -320,29 +371,78 @@ export class DiscoveryOverlay {
       .setDepth(DIM_DEPTH)
     this.objs.push(this.dimRect)
 
-    // 2) The panel: band + disc + character + emphasis ticks, punched in
-    // around the screen center.
+    // 2) The panel: the style's own furniture (band, disc, stamp, rays…)
+    //    plus the character, punched in around the screen center.
     this.panel = this.scene.add.container(cx, vh / 2).setDepth(PANEL_DEPTH)
     this.objs.push(this.panel)
 
-    const bandG = this.scene.add.graphics()
-    this.drawBand(bandG, vw, bandH, charYRel, tierColor)
-    this.panel.add(bandG)
+    const style = this.style
+    if (style === 'band') {
+      const bandG = this.scene.add.graphics()
+      this.drawBand(bandG, vw, bandH, charYRel, color)
+      this.panel.add(bandG)
 
-    const discG = this.scene.add.graphics()
-    discG.fillStyle(DISC_COLOR, 1)
-    discG.fillCircle(0, charYRel, displayRadius * DISC_SCALE)
-    discG.lineStyle(5, INK, 1)
-    discG.strokeCircle(0, charYRel, displayRadius * DISC_SCALE)
-    this.panel.add(discG)
+      const discG = this.scene.add.graphics()
+      discG.fillStyle(DISC_COLOR, 1)
+      discG.fillCircle(0, charYRel, displayRadius * DISC_SCALE)
+      discG.lineStyle(5, INK, 1)
+      discG.strokeCircle(0, charYRel, displayRadius * DISC_SCALE)
+      this.panel.add(discG)
 
-    const ballG = this.scene.add.graphics()
-    this.drawDiscoveryBall(ballG, 0, charYRel, displayRadius, tier, this.activeSeed)
-    this.panel.add(ballG)
+      const ballG = this.scene.add.graphics()
+      this.drawDiscoveryBall(ballG, 0, charYRel, displayRadius, tier, this.activeSeed)
+      this.panel.add(ballG)
 
-    const ticksG = this.scene.add.graphics()
-    this.drawEmphasisTicks(ticksG, charYRel, displayRadius)
-    this.panel.add(ticksG)
+      const ticksG = this.scene.add.graphics()
+      this.drawEmphasisTicks(ticksG, charYRel, displayRadius)
+      this.panel.add(ticksG)
+    } else if (style === 'spot') {
+      // NO band — the character alone, on a soft glow disc, with a burst of
+      // tapered rays behind it. The calmest option: nothing covers the
+      // game behind it.
+      const glowG = this.scene.add.graphics()
+      glowG.fillStyle(tintColor(color, 0.55), 0.5)
+      glowG.fillCircle(0, charYRel, displayRadius * 1.9)
+      glowG.fillStyle(tintColor(color, 0.3), 0.45)
+      glowG.fillCircle(0, charYRel, displayRadius * 2.5)
+      this.panel.add(glowG)
+
+      const raysG = this.scene.add.graphics()
+      this.drawEmphasisTicks(raysG, charYRel, displayRadius)
+      this.panel.add(raysG)
+
+      const ballG = this.scene.add.graphics()
+      this.drawDiscoveryBall(ballG, 0, charYRel, displayRadius, tier, this.activeSeed)
+      this.panel.add(ballG)
+    } else if (style === 'stamp') {
+      // A round INK STAMP the character slams down onto.
+      const stampG = this.scene.add.graphics()
+      this.drawStamp(stampG, charYRel, displayRadius, color)
+      this.panel.add(stampG)
+
+      const ballG = this.scene.add.graphics()
+      this.drawDiscoveryBall(ballG, 0, charYRel, displayRadius, tier, this.activeSeed)
+      this.panel.add(ballG)
+    } else if (style === 'reveal') {
+      // An IRIS: a hole opens out from the centre and reveals the
+      // character (the iris ring is a separate layer above it).
+      const ringG = this.scene.add.graphics()
+      this.drawIrisRing(ringG, charYRel, displayRadius, color)
+      this.panel.add(ringG)
+
+      const ballG = this.scene.add.graphics()
+      this.drawDiscoveryBall(ballG, 0, charYRel, displayRadius, tier, this.activeSeed)
+      this.panel.add(ballG)
+    } else {
+      // 'card' — a small rounded card holding the character.
+      const cardG = this.scene.add.graphics()
+      this.drawCard(cardG, charYRel, displayRadius, color)
+      this.panel.add(cardG)
+
+      const ballG = this.scene.add.graphics()
+      this.drawDiscoveryBall(ballG, 0, charYRel, displayRadius, tier, this.activeSeed)
+      this.panel.add(ballG)
+    }
 
     // 3) Brief flashing accents: sparkles + band edge highlight lines.
     this.flashG = this.scene.add.graphics().setDepth(FLASH_DEPTH).setPosition(cx, vh / 2)
@@ -396,6 +496,87 @@ export class DiscoveryOverlay {
     const maxLabelW = vw * 0.6
     if (tierLabel.width > maxLabelW) tierLabel.setScale(maxLabelW / tierLabel.width)
     this.content.add(tierLabel)
+  }
+
+  /**
+   * The STAMP furniture: a round ink medallion the character slams down
+   * onto — a medal / rubber-stamp look, with a double ink ring, a scalloped
+   * edge and small tick marks around the rim.
+   */
+  private drawStamp(
+    g: Phaser.GameObjects.Graphics,
+    charY: number,
+    rBall: number,
+    color: number,
+  ): void {
+    const r = rBall * 1.42
+    // The scalloped edge: 24 short radial teeth around the rim.
+    const teeth = 24
+    g.fillStyle(color, 1)
+    for (let i = 0; i < teeth; i++) {
+      const a = (i / teeth) * Math.PI * 2
+      const rr = r * 1.1
+      g.fillCircle(Math.cos(a) * rr, charY + Math.sin(a) * rr, r * 0.1)
+    }
+    // The medallion: a lighter disc with a thick ink rim.
+    g.fillStyle(tintColor(color, 0.45), 1)
+    g.fillCircle(0, charY, r)
+    g.lineStyle(6, COMIC_INK, 1)
+    g.strokeCircle(0, charY, r)
+    // A second, thinner ring inside it.
+    g.lineStyle(3, COMIC_INK, 0.55)
+    g.strokeCircle(0, charY, r * 0.88)
+    // Four small bolts at the diagonals.
+    for (let i = 0; i < 4; i++) {
+      const a = Math.PI / 4 + (i * Math.PI) / 2
+      g.fillStyle(COMIC_INK, 0.75)
+      g.fillCircle(Math.cos(a) * r * 0.78, charY + Math.sin(a) * r * 0.78, r * 0.07)
+    }
+  }
+
+  /**
+   * The IRIS furniture: a thick ring the character is revealed inside. The
+   * iris hole is drawn by the ANIMATION (a mask that opens out), and this
+   * is the ring that stays once it has opened.
+   */
+  private drawIrisRing(
+    g: Phaser.GameObjects.Graphics,
+    charY: number,
+    rBall: number,
+    color: number,
+  ): void {
+    const r = rBall * 1.5
+    g.lineStyle(7, COMIC_INK, 1)
+    g.strokeCircle(0, charY, r)
+    g.lineStyle(3, tintColor(color, 0.5), 0.9)
+    g.strokeCircle(0, charY, r - 6)
+  }
+
+  /**
+   * The CARD furniture: a rounded cream card with a thick ink border and a
+   * tier-coloured header stripe — a "collector card" look.
+   */
+  private drawCard(
+    g: Phaser.GameObjects.Graphics,
+    charY: number,
+    rBall: number,
+    color: number,
+  ): void {
+    const w = rBall * 3.1
+    const h = rBall * 3.5
+    const x = -w / 2
+    const y = charY - h / 2
+    const r = rBall * 0.42
+    // The card body.
+    g.fillStyle(DISC_COLOR, 1)
+    g.fillRoundedRect(x, y, w, h, r)
+    g.lineStyle(6, COMIC_INK, 1)
+    g.strokeRoundedRect(x, y, w, h, r)
+    // The tier-coloured header stripe at the top of the card.
+    g.fillStyle(color, 1)
+    g.fillRoundedRect(x, y, w, h * 0.16, { tl: r, tr: r, bl: 0, br: 0 })
+    g.fillStyle(COMIC_INK, 1)
+    g.fillRect(x, y + h * 0.16, w, 3)
   }
 
   /**
@@ -505,6 +686,22 @@ export class DiscoveryOverlay {
     sparkle(hw - vw * 0.38, charY - bandH * 0.24, Math.max(10, rBall * 0.2))
   }
 
+  /**
+   * The entrance choreography, per style.
+   *
+   * Every style shares the same beat structure — the dim fades in over the
+   * background's theme crossfade, the panel arrives, the character pops,
+   * the title lands — but the CHARACTERISATION differs:
+   *
+   * - band:   the band slides in from the side and the character punches
+   *           up through it (the current presentation).
+   * - spot:   the character simply grows into place from nothing, with a
+   *           soft pulse around it. The calmest option.
+   * - stamp:  the character SLAMS down from above onto its medallion, with
+   *           a shockwave ring and a hard impact shake.
+   * - reveal: an iris opens out from a point and reveals the character.
+   * - card:   the card springs up from below with a gentle bounce.
+   */
   private playEntrance(): void {
     const content = this.content
     const dim = this.dimRect
@@ -519,17 +716,252 @@ export class DiscoveryOverlay {
     // behind the presentation changes WITH a transition instead of
     // snapping. The theme milestone fires in the same frame as the
     // discovery (the merge that discovers the tier also advances the
-    // background), and the old 110ms dim was over before the crossfade
-    // had visibly started — the change read as a hard cut.
+    // background), and a short dim was over before the crossfade had
+    // visibly started — the change read as a hard cut.
     this.scene.tweens.add({
       targets: dim,
       alpha: DIM_ALPHA,
       duration: 420,
       ease: 'Sine.easeInOut',
     })
-    // The PANEL waits for the background to have started changing, then
-    // snaps in — so the eye reads "the world changed, and here is the
-    // new ball" as one moment.
+
+    const style = this.style
+    const ballG = panel.list[panel.list.length - 1] as Phaser.GameObjects.Graphics | undefined
+    const headline = content.list[0] as Phaser.GameObjects.Text | undefined
+    const label = content.list[1] as Phaser.GameObjects.Text | undefined
+
+    if (style === 'stamp') {
+      // The character SLAMS down onto its medallion.
+      panel.setAlpha(1)
+      if (ballG) {
+        ballG.setScale(2.1)
+        ballG.setAlpha(0)
+        this.scene.tweens.add({
+          targets: ballG,
+          scale: 1,
+          alpha: 1,
+          duration: 200,
+          delay: 120,
+          ease: 'Quad.easeIn',
+        })
+      }
+      // The medallion arrives just behind it.
+      const stampG = panel.list[0] as Phaser.GameObjects.Graphics | undefined
+      if (stampG) {
+        stampG.setScale(1.5)
+        stampG.setAlpha(0)
+        this.scene.tweens.add({
+          targets: stampG,
+          scale: 1,
+          alpha: 1,
+          duration: 260,
+          delay: 160,
+          ease: 'Back.easeOut',
+        })
+      }
+      // A shockwave ring expanding out of the impact.
+      const wave = this.scene.add.graphics().setDepth(FLASH_DEPTH).setPosition(panel.x, panel.y)
+      this.objs.push(wave)
+      const L = this.layout()
+      wave.lineStyle(6, COMIC_INK, 0.9)
+      wave.strokeCircle(0, L.ballY - L.vh / 2, L.displayRadius)
+      wave.setAlpha(0)
+      this.scene.tweens.add({
+        targets: wave,
+        scale: 2.6,
+        alpha: 0,
+        duration: 420,
+        delay: 300,
+        ease: 'Cubic.easeOut',
+      })
+      this.scene.tweens.add({
+        targets: content,
+        alpha: 1,
+        duration: 140,
+        delay: 300,
+        ease: 'Sine.easeIn',
+      })
+      if (headline) {
+        const base = headline.scaleX
+        headline.setScale(base * 0.6)
+        this.scene.tweens.add({
+          targets: headline,
+          scale: base,
+          duration: 220,
+          delay: 300,
+          ease: 'Back.easeOut',
+        })
+      }
+      // A hard impact shake.
+      if (!this.reducedMotion) {
+        this.scene.tweens.add({
+          targets: content,
+          x: { from: -6, to: 6 },
+          duration: 30,
+          delay: 320,
+          yoyo: true,
+          repeat: 3,
+          ease: 'Sine.easeInOut',
+          onComplete: () => content.setX(0),
+        })
+      }
+      return
+    }
+
+    if (style === 'reveal') {
+      // An IRIS opens out from the character's centre.
+      panel.setAlpha(1)
+      if (ballG) {
+        // The character starts tiny and grows as the iris opens.
+        ballG.setScale(0.05)
+        this.scene.tweens.add({
+          targets: ballG,
+          scale: 1,
+          duration: 380,
+          delay: 120,
+          ease: 'Cubic.easeOut',
+        })
+      }
+      const ringG = panel.list[0] as Phaser.GameObjects.Graphics | undefined
+      if (ringG) {
+        ringG.setScale(0.05)
+        ringG.setAlpha(0)
+        this.scene.tweens.add({
+          targets: ringG,
+          scale: 1,
+          alpha: 1,
+          duration: 380,
+          delay: 120,
+          ease: 'Cubic.easeOut',
+        })
+      }
+      this.scene.tweens.add({
+        targets: content,
+        alpha: 1,
+        duration: 200,
+        delay: 260,
+        ease: 'Sine.easeIn',
+      })
+      if (headline) {
+        const base = headline.scaleX
+        headline.setAlpha(0)
+        this.scene.tweens.add({
+          targets: headline,
+          alpha: 1,
+          duration: 220,
+          delay: 300,
+          ease: 'Sine.easeIn',
+          onComplete: () => {
+            this.scene.tweens.add({ targets: headline, scale: base * 1.04, duration: 120, yoyo: true, ease: 'Sine.easeOut' })
+          },
+        })
+      }
+      return
+    }
+
+    if (style === 'card') {
+      // The card springs up from below.
+      panel.setAlpha(1)
+      panel.setScale(0.82)
+      // The panel's own position, nudged down — the card springs UP from
+      // below. (An absolute y would be wrong: the container lives at the
+      // screen centre, not the origin.)
+      const restY = panel.y
+      panel.y = restY + 70
+      this.scene.tweens.add({
+        targets: panel,
+        y: restY,
+        duration: 420,
+        delay: 100,
+        ease: 'Back.easeOut',
+      })
+      this.scene.tweens.add({
+        targets: panel,
+        scale: 1,
+        duration: 420,
+        delay: 100,
+        ease: 'Back.easeOut',
+      })
+      if (ballG) {
+        ballG.setScale(0.5)
+        this.scene.tweens.add({
+          targets: ballG,
+          scale: 1,
+          duration: 300,
+          delay: 220,
+          ease: 'Back.easeOut',
+        })
+      }
+      this.scene.tweens.add({
+        targets: content,
+        alpha: 1,
+        duration: 200,
+        delay: 200,
+        ease: 'Sine.easeIn',
+      })
+      if (headline) {
+        const base = headline.scaleX
+        headline.setScale(base * 0.9)
+        this.scene.tweens.add({
+          targets: headline,
+          scale: base,
+          duration: 240,
+          delay: 240,
+          ease: 'Back.easeOut',
+        })
+      }
+      return
+    }
+
+    if (style === 'spot') {
+      // The character simply GROWS into place — nothing else moves.
+      panel.setAlpha(1)
+      if (ballG) {
+        ballG.setScale(0.2)
+        ballG.setAlpha(0)
+        this.scene.tweens.add({
+          targets: ballG,
+          scale: 1,
+          alpha: 1,
+          duration: 340,
+          delay: 140,
+          ease: 'Back.easeOut',
+        })
+      }
+      this.scene.tweens.add({
+        targets: content,
+        alpha: 1,
+        duration: 220,
+        delay: 200,
+        ease: 'Sine.easeIn',
+      })
+      if (headline) {
+        const base = headline.scaleX
+        headline.setScale(base * 0.94)
+        this.scene.tweens.add({
+          targets: headline,
+          scale: base,
+          duration: 260,
+          delay: 220,
+          ease: 'Back.easeOut',
+        })
+      }
+      if (label) {
+        const base = label.scaleX
+        label.setScale(base * 0.9)
+        this.scene.tweens.add({
+          targets: label,
+          scale: base,
+          duration: 260,
+          delay: 280,
+          ease: 'Back.easeOut',
+        })
+      }
+      return
+    }
+
+    // 'band' — the shipped presentation: the band slides in from the side
+    // and the character punches up through it.
     this.scene.tweens.add({
       targets: panel,
       alpha: 1,
@@ -537,8 +969,6 @@ export class DiscoveryOverlay {
       delay: 180,
       ease: 'Sine.easeIn',
     })
-
-    // QUICK PUNCH-IN: snap up from 0.74 with a Back overshoot.
     panel.setScale(0.74)
     this.scene.tweens.add({
       targets: panel,
@@ -578,7 +1008,6 @@ export class DiscoveryOverlay {
     this.scene.tweens.add({ targets: content, alpha: 1, duration: 180, delay: 260, ease: 'Sine.easeIn' })
 
     // Character pop inside the panel.
-    const ballG = panel.list[2] as Phaser.GameObjects.Graphics | undefined
     if (ballG) {
       ballG.setScale(0.4)
       this.scene.tweens.add({
@@ -594,7 +1023,6 @@ export class DiscoveryOverlay {
     }
 
     // Title slam.
-    const headline = content.list[0] as Phaser.GameObjects.Text | undefined
     if (headline) {
       const base = headline.scaleX
       headline.setScale(base * 0.5)
