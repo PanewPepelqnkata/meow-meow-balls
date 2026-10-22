@@ -202,6 +202,17 @@ export class ContainerView {
    * full-canvas composites per repaint, measured at 18 ms in one frame.
    */
   private readonly stripeCanvas: HTMLCanvasElement
+  /**
+   * PERF (iOS + PC): the shared 1x RENDER LAYER.
+   *
+   * The container frame's six gradient stroke layers are drawn HERE, at
+   * 1x, and then blitted into the target canvas (scaled up for the crisp
+   * texture). Drawing them straight onto the target made the repaint cost
+   * scale with the target's pixel count — ~4.2 ms on a 1x phone target and
+   * ~4x that on a 2x desktop target, which is why the wall raise lagged
+   * on the PC as well as the phone.
+   */
+  private readonly frameLayer: HTMLCanvasElement
   private readonly glowG: Phaser.GameObjects.Graphics
   private lastHeight = -1
   /**
@@ -286,6 +297,10 @@ export class ContainerView {
     this.stripeCanvas = document.createElement('canvas')
     this.stripeCanvas.width = 720
     this.stripeCanvas.height = 1280
+    // The shared 1x render layer — sized ONCE, never resized.
+    this.frameLayer = document.createElement('canvas')
+    this.frameLayer.width = 720
+    this.frameLayer.height = 1280
     // The RAISED crisp frame — baked HERE, at boot, off the gameplay
     // frame. The walls rest at exactly two heights, so both crisp frames
     // can be prepared in advance and swapped in when the animation ends.
@@ -376,8 +391,17 @@ export class ContainerView {
   /**
    * Paint the container frame into `target` at the given scale.
    *
-   * Split out of redrawWalls so the DEFERRED CRISP BAKE paints the exact
-   * same image into the crisp canvas — one paint routine, two canvases.
+   * PERF (iOS + PC): the frame is ALWAYS rendered at 1x into a shared
+   * layer, and that layer is then SCALED into the target. The six
+   * gradient stroke layers of the U-path are the expensive part, and they
+   * were drawn directly on the target canvas — so the cost scaled with
+   * the target's pixel count: a 1x phone target cost ~4.2 ms per repaint
+   * and a 2x desktop target cost ~4x that (4x the pixels to rasterize).
+   *
+   * Rendering once at 1x makes the repaint cost IDENTICAL on every
+   * device. The crisp 2x texture is then a single scaled blit of the
+   * 1x render — a bilinear upscale, which is exactly what a 2x texture of
+   * vector art looks like anyway.
    */
   private paintFrame(
     target: Phaser.GameObjects.Image,
@@ -397,7 +421,14 @@ export class ContainerView {
     const ctx = canvas.getContext('2d')!
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, canvas.width, canvas.height)
-    ctx.scale(texScale, texScale)
+    // The strokes are drawn into the shared 1x layer, then blitted here
+    // (scaled up for the crisp texture). So the stroke cost never scales
+    // with the target's size.
+    const layer = this.frameLayer
+    const lctx = layer.getContext('2d')!
+    lctx.setTransform(1, 0, 0, 1, 0, 0)
+    lctx.globalCompositeOperation = 'source-over'
+    lctx.clearRect(0, 0, 720, 1280)
 
 
     // Stroke layers on the concentric U paths (see uPath). Ink and body
@@ -414,7 +445,7 @@ export class ContainerView {
     const sweep = 0.72
     // Gentle vertical body gradient — lighter where light falls (top),
     // deeper toward the floor. Canvas-space, so walls and floor share it.
-    const bodyGrad = ctx.createLinearGradient(0, inner[0]!.y - T, 0, inner[3]!.y + T)
+    const bodyGrad = lctx.createLinearGradient(0, inner[0]!.y - T, 0, inner[3]!.y + T)
     bodyGrad.addColorStop(0, '#4b98f4')
     bodyGrad.addColorStop(0.55, '#3b8df2')
     bodyGrad.addColorStop(1, '#2f7de0')
@@ -424,11 +455,11 @@ export class ContainerView {
       color: string | CanvasGradient,
       opts: { trim?: number; peel?: number; sweep?: number } = {},
     ): void => {
-      ctx.strokeStyle = color
-      ctx.lineWidth = width
-      ctx.lineJoin = 'round'
-      ctx.lineCap = 'round'
-      ctx.stroke(uPath(inner, dist, R - T / 2 + dist, opts))
+      lctx.strokeStyle = color
+      lctx.lineWidth = width
+      lctx.lineJoin = 'round'
+      lctx.lineCap = 'round'
+      lctx.stroke(uPath(inner, dist, R - T / 2 + dist, opts))
     }
 
     // 1. Bold black outline: ink stroke 6px wider than the body — its
@@ -492,12 +523,19 @@ export class ContainerView {
     octx.globalCompositeOperation = 'source-in'
     octx.drawImage(stripes, 0, 0)
     octx.globalCompositeOperation = 'source-over'
-    ctx.drawImage(off, 0, 0)
+    lctx.drawImage(off, 0, 0)
     // 5. Restrained dark shaded edge along the outer boundary: 80–97%,
     //    wrapping over the dome's outer shoulder (mirrors the cyan).
     strokeU(T * 0.885, T * 0.17, '#1e4fa8', { peel: T * 0.07, sweep })
     // 6. Glossy reflections on the wall bodies.
-    this.paintGloss(ctx)
+    this.paintGloss(lctx)
+    // The single scaled blit: the 1x layer -> the target. This is the
+    // only step whose cost scales with the target's size, and it is one
+    // image copy rather than six gradient strokes.
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(layer, 0, 0, 720 * texScale, 1280 * texScale)
     // Upload the canvas that was ACTUALLY painted (the 1x one during the
     // animation, the 2x one at the endpoints).
     ;(target.texture as Phaser.Textures.CanvasTexture).update()

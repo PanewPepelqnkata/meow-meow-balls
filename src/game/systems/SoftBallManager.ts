@@ -250,17 +250,39 @@ export class SoftBallManager {
 
   /** PERF: wake only balls whose centroid is inside the rim's swept
    * band — the Raise Walls ability moves only the wall TOPS; balls
-   * resting on the floor/lower walls are untouched by the motion. */
+   * resting on the floor/lower walls are untouched by the motion.
+   *
+   * The band is the region the wall TOP sweeps THROUGH: between the
+   * raised rim and the normal rim (plus a margin for the ball's radius).
+   * A ball BELOW that region is resting on the floor or the lower wall,
+   * which do not move, so it must keep sleeping.
+   *
+   * The old test was `c.y >= bandTop` with
+   * bandTop = min(raisedTop, normalTop, currentTopY) - margin — the
+   * HIGHEST point of the sweep, minus the margin. On a phone that put
+   * the band at y >= 445, and a ball resting on the floor sits at
+   * y ~ 1041 — so EVERY ball in the pile was woken on EVERY frame of the
+   * animation. The pile could never settle, and the physics ran at full
+   * cost for the whole 1.8 s. That was the wall raise's real lag.
+   *
+   * The correct test is the region BETWEEN the two rims: a ball is in
+   * the band when it is at or above the LOWER rim (the normal one, since
+   * y grows downward) and at or below the HIGHER one (the raised one).
+   */
   wakeNearRimBand(currentTopY: number): void {
     const margin = 80
     const raisedTop = CONTAINER.raisedHeight !== undefined
       ? interiorCorners(CONTAINER.raisedHeight).topLeft.y
       : currentTopY
     const normalTop = interiorCorners().topLeft.y
-    const bandTop = Math.min(raisedTop, normalTop, currentTopY) - margin
+    // The swept region: from the higher rim (the raised one, smaller y)
+    // down to the lower rim (the normal one) — plus a margin so a ball
+    // whose edge the rim is about to reach is woken too.
+    const bandTop = Math.min(raisedTop, normalTop) - margin
+    const bandBottom = Math.max(raisedTop, normalTop) + margin
     for (const ball of this.balls) {
       const c = softBallCentroid(ball.soft, this.centroidScratch)
-      if (c.y >= bandTop) this.ensureAwake(ball.id)
+      if (c.y >= bandTop && c.y <= bandBottom) this.ensureAwake(ball.id)
     }
   }
 
