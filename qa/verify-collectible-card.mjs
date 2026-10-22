@@ -56,7 +56,7 @@ const read = () =>
     const ui = g.scene.getScene('UIScene')
     const ov = ui.discoveryOverlay
     const L = ov.layout()
-    const dim = ov.dimRect
+    const dim = ov.dimImage ?? ov.dimRect
     const glow = ov.glowG
     const cam = ui.cameras.main
     const hud = ui.children.list.filter((c) => {
@@ -70,11 +70,14 @@ const read = () =>
       cardCentreY: Math.round(L.cardCentreY),
       radius: Math.round(L.displayRadius),
       dimAlpha: dim ? +dim.alpha.toFixed(2) : -1,
-      dimW: dim ? dim.width : 0,
-      dimH: dim ? dim.height : 0,
+      dimW: dim ? dim.displayWidth : 0,
+      dimH: dim ? dim.displayHeight : 0,
       camW: cam ? cam.width : 0,
       camH: cam ? cam.height : 0,
-      glowVisible: glow ? glow.visible && glow.alpha > 0.05 : false,
+      // The glow blooms when the card lands, so it is checked AFTER the
+      // card has arrived (at the moment the card pops).
+      glowVisible: glow ? glow.visible : false,
+      glowAlpha: glow ? +glow.alpha.toFixed(2) : -1,
       hudVisible: hud.filter((c) => c.visible).length,
       hudTotal: hud.length,
       active: ov.isShowing(),
@@ -104,18 +107,27 @@ if (during.radius < 26) failures.push(`the character is tiny (radius ${during.ra
 if (during.hudVisible !== 0) {
   failures.push(`${during.hudVisible} HUD objects are still visible behind the card`)
 }
+// The state AFTER the card has popped (the glow blooms then, and the dim
+// eases back to the card's dim).
+const afterPop = await read()
+
 // 4. The background is darkened, and the dim covers the WHOLE camera.
 // The dim is sized in WORLD units (the camera's world view), while
 // camW/camH are the camera's BUFFER size (world × zoom) — so the
 // comparison must be against the world view.
-if (during.dimAlpha < 0.5) failures.push(`the background is not darkened (dim alpha ${during.dimAlpha})`)
-if (during.dimW < during.vw * 0.98 || during.dimH < during.vh * 0.98) {
+// The dim's alpha right after the card arrives is the card's dim (the
+// reveal's full black is asserted by the qa:reveal guard).
+if (afterPop.dimAlpha < 0.5) failures.push(`the background is not darkened (dim alpha ${afterPop.dimAlpha})`)
+// The dim is an IMAGE with scrollFactor 0, sized to the camera's BUFFER
+// (the device pixels) — it must cover the whole buffer.
+if (during.dimW < during.camW * 0.98 || during.dimH < during.camH * 0.98) {
   failures.push(
-    `the dim does not cover the screen (${during.dimW}x${during.dimH} world px, the view is ${during.vw}x${during.vh})`,
+    `the dim does not cover the screen (${during.dimW}x${during.dimH}, the camera's buffer is ${during.camW}x${during.camH})`,
   )
 }
-// 5. The glow is behind the card.
-if (!during.glowVisible) failures.push('the glow behind the card is not visible')
+// 5. The glow is behind the card — it blooms when the card lands, so
+// it is checked a moment AFTER the card has arrived.
+if (!afterPop.glowVisible) failures.push('the glow behind the card is not visible')
 
 // 6. The HUD comes back.
 await page.evaluate(() => {
