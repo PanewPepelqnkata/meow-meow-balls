@@ -19,6 +19,13 @@ export class ScoreDisplay {
     this.scene = scene
   }
 
+  /** Hide the whole score display (the collectible card owns the screen). */
+  setVisible(visible: boolean): void {
+    this.best?.setVisible(visible)
+    this.global?.setVisible(visible)
+    this.score?.setVisible(visible)
+  }
+
   layout(l: UiLayout): void {
     const pop = (old: Phaser.GameObjects.Text | null, x: number, y: number): boolean =>
       old != null && Math.abs(old.x - x) < 0.5 && Math.abs(old.y - y) < 0.5

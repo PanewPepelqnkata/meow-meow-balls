@@ -21,6 +21,7 @@
     "qa:savewrite": "node qa/verify-save-write.mjs",
     "qa:proddiag": "node qa/verify-prod-diag.mjs",
     "qa:discsize": "node qa/verify-discovery-size.mjs",
+    "qa:card": "node qa/verify-collectible-card.mjs",
     "qa:wallperf": "node qa/verify-wall-raise-perf.mjs",
     "format": "prettier --write ."
   },

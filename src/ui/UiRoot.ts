@@ -40,6 +40,25 @@ export class UiRoot {
     })
   }
 
+  /**
+   * Show or hide the WHOLE HUD.
+   *
+   * The collectible-card presentation owns the screen: the score, the
+   * best, the next-ball preview, the tier track and the ability bar all
+   * sat AROUND the card and made it look broken. The HUD is hidden for the
+   * card's duration and restored afterwards.
+   *
+   * Each HUD component hides its own objects (they are spread across the
+   * scene and some have no depth of their own, so a depth band was not
+   * reliable).
+   */
+  setHudVisible(visible: boolean): void {
+    this.scores.setVisible(visible)
+    this.nextBall.setVisible(visible)
+    this.tiers.setVisible(visible)
+    this.abilities.setVisible(visible)
+  }
+
   layout(): void {
     // HiDPI: the camera frames the CSS-px region — normalize the buffer size
     // before layout (prod has no __brGame global; explicit division is the

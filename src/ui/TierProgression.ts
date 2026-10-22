@@ -36,6 +36,16 @@ export class TierProgression {
     this.scene = scene
   }
 
+  /** Hide the tier track (the collectible card owns the screen). */
+  setVisible(visible: boolean): void {
+    for (const o of this.objs) {
+      ;(o as Phaser.GameObjects.GameObject & { setVisible?: (v: boolean) => void }).setVisible?.(
+        visible,
+      )
+    }
+    for (const n of this.nodeObjs) n?.setVisible(visible)
+  }
+
   /** QA hook (read-only): currently unlocked tiers. */
   get unlocked(): number[] {
     return [...this.discovered].sort((a, b) => a - b)

@@ -21,6 +21,12 @@ export class NextBall {
   private diameter = 56
   private readonly scene: Phaser.Scene
 
+  /** Hide the next-ball preview (the collectible card owns the screen). */
+  setVisible(visible: boolean): void {
+    this.g?.setVisible(visible)
+    this.label?.setVisible(visible)
+  }
+
   constructor(scene: Phaser.Scene) {
     this.scene = scene
   }

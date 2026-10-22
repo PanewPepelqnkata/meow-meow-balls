@@ -83,6 +83,12 @@ export class UIScene extends Phaser.Scene {
         ? { top: l.stack.hudBottom, bottom: l.stack.controlsTop }
         : null
     })
+    // The collectible card owns the screen: the HUD is hidden while it is
+    // up (the score, the next-ball preview, the tier track and the ability
+    // bar all sat around the card and made it look broken).
+    this.discoveryOverlay.onHudVisibility((visible) => {
+      this.uiRoot.setHudVisible(visible)
+    })
 
     // Boot-time sync (PlaygroundScene.create ran first and populated these).
     this.lastBest = Number(this.registry.get('best') ?? 0)

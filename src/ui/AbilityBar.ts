@@ -27,6 +27,11 @@ export class AbilityBar {
   private readonly scene: Phaser.Scene
   private readonly handlers: AbilityHandlers
   private l: UiLayout | null = null
+  /** Hide the ability bar (the collectible card owns the screen). */
+  setVisible(visible: boolean): void {
+    for (const b of this.buttons) b.containerObj?.setVisible(visible)
+    this.countdownText?.setVisible(visible)
+  }
 
   constructor(scene: Phaser.Scene, handlers: AbilityHandlers) {
     this.scene = scene
