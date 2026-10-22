@@ -327,6 +327,47 @@ would be tolerable at 60 Hz — is a visible stutter source at 120 Hz.
 
 ---
 
+## Finding 8 — a test flake that was NOT a performance problem (ruled out, then fixed)
+
+During the perf work the battery intermittently failed:
+`phase297.test.ts > particles stay inside the container through dense-pile stress`.
+It looked like a regression from the perf changes. It was not.
+
+**The captured failure is always a TIMEOUT, never an assertion:**
+
+```
+Error: Test timed out in 5000ms.
+ ❯ src/game/systems/phase297.test.ts:62:3
+```
+
+Vitest's default per-test timeout is 5000 ms, and the physics battery simulates real soft-body
+piles. Measured in isolation:
+
+| Test | Duration |
+|---|---|
+| `stabilization-visual > renders the dense-pile end state` | 6059 ms |
+| `stabilization-diag > S5: dense pile under sustained pressure` | 3717 ms |
+| `stabilization-diag > S3: rapid drops into an existing pile` | 3451 ms |
+| `stabilization > a settled mixed pile holds …` | 2209 ms |
+| `phase297 > particles stay inside the container …` | 2114 ms |
+
+The slowest test was only 6.8% under the limit in isolation. Vitest runs the files in parallel, so
+under the full suite the workers contend for CPU and the dense-pile tests regularly exceed 5 s.
+
+**Proven pre-existing:** the same test fails at the pre-session commit `394549a`, checked on that
+commit directly. The flake rate was ~1 in 3 full-suite runs.
+
+**Fixed** with a `vitest.config.ts` (`testTimeout: 30_000`) — a 5× margin for the slowest measured
+test under contention, while still failing a genuinely hung test. Verified: 6 consecutive
+full-suite runs, 261/261 every time.
+
+**Ruled out along the way** (so it is not re-investigated): a physics escape (the escaped
+particles, when captured, sit 80-370 px *inside* the band); shared state between test files (the
+manager has no static state); and `Math.random()` (the only random value, the soft ball's cosmetic
+contour seed, is read only by the renderer and cannot affect physics).
+
+---
+
 ## Priority
 
 | # | Finding | Impact | Risk | Status |
@@ -339,6 +380,7 @@ would be tolerable at 60 Hz — is a visible stutter source at 120 Hz.
 | 5 | Background rendering (steady state) | 0.02 ms | — | Ruled out |
 | 6 | Wall-raise repaint | already quantized | — | Ruled out |
 | 7 | 120 Hz budget | halves the per-frame allowance | — | Context for the above |
+| 8 | Dense-pile test flake (a 5 s timeout, not an assertion) | ~1 in 3 full-suite runs | Very low | **Fixed** (30 s timeout) |
 
 ## What is still open
 
