@@ -1,4 +1,5 @@
 import { chromium } from 'playwright'
+import { spawn, spawnSync } from 'node:child_process'
 
 /**
  * Guards the PRODUCTION `?diag=1` READOUT.
@@ -9,16 +10,52 @@ import { chromium } from 'playwright'
  * PerfOverlay, so the prod WALL line printed `phys ?ms render ?ms` — the
  * user could see the FPS but not WHERE the frame time went.
  *
- * This guard runs against a production build (vite preview) and asserts:
+ * This guard builds the production bundle, serves it with `vite preview`,
+ * and asserts against it:
  *  1. the diag panel is installed in prod,
  *  2. the FPS line is live,
  *  3. the WALL line reports REAL physics and render milliseconds (not
  *     '?'), and
  *  4. the split is plausible (physics + render > 0, both finite).
  *
- * Requires a preview server: QA_PROD_URL (default http://localhost:5199).
+ * QA_PROD_URL points the guard at an ALREADY-RUNNING preview instead
+ * (then it does not build or serve anything).
  */
-const URL = process.env.QA_PROD_URL ?? 'http://localhost:5199/?diag=1'
+const EXTERNAL = process.env.QA_PROD_URL
+const PORT = Number(process.env.QA_PROD_PORT ?? 5199)
+const URL = EXTERNAL ?? `http://localhost:${PORT}/?diag=1`
+
+let preview = null
+if (!EXTERNAL) {
+  // Build the production bundle, then serve it.
+  const built = spawnSync('npm', ['run', 'build'], { stdio: 'pipe', encoding: 'utf8' })
+  if (built.status !== 0) {
+    console.log(`SKIP: the production build failed\n${built.stderr?.slice(-800) ?? ''}`)
+    process.exit(0)
+  }
+  preview = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
+    stdio: 'pipe',
+  })
+  // Wait for the server to answer.
+  let up = false
+  for (let i = 0; i < 40; i++) {
+    await new Promise((r) => setTimeout(r, 500))
+    try {
+      const res = await fetch(`http://localhost:${PORT}/`)
+      if (res.ok) {
+        up = true
+        break
+      }
+    } catch {
+      /* not up yet */
+    }
+  }
+  if (!up) {
+    console.log(`SKIP: the production preview did not come up on port ${PORT}`)
+    preview.kill()
+    process.exit(0)
+  }
+}
 
 const failures = []
 const browser = await chromium.launch()
@@ -37,6 +74,7 @@ try {
   console.log(`SKIP: no production preview at ${URL} (${e.message})`)
   console.log('  start one with: npm run build && npx vite preview --port 5199')
   await browser.close()
+  preview?.kill()
   process.exit(0)
 }
 
@@ -63,10 +101,15 @@ const play = await page.evaluate(() => {
 })
 await page.touchscreen.tap(play.x, play.y)
 await page.waitForTimeout(4000)
-// Play a little so the pile is alive and the timings are real.
+// Drop a few balls with REAL touch input — the __brScene QA hook is
+// DEV-only, so a production build has no scripting hook (which is the
+// point: the prod guard must exercise the shipped game).
+// The claw follows the pointer, so a tap at a screen x drops a ball
+// there.
 for (let i = 0; i < 6; i++) {
-  await page.evaluate((x) => window.__brScene?.dropAt(x), 280 + ((i * 37) % 180))
-  await page.waitForTimeout(500)
+  const x = 120 + i * 28
+  await page.touchscreen.tap(x, 320)
+  await page.waitForTimeout(600)
 }
 await page.waitForTimeout(1500)
 
@@ -101,6 +144,7 @@ if (!wall) {
 if (errors.length) failures.push(`page errors: ${errors.slice(0, 2).join(' | ')}`)
 
 await browser.close()
+preview?.kill()
 if (failures.length) {
   console.log(`FAIL  the production ?diag=1 readout reports the physics/render split`)
   for (const f of failures) console.log(`      - ${f}`)
