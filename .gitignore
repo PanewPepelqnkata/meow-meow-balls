@@ -33,6 +33,8 @@ qa/*
 !qa/verify-theme-bake.mjs
 !qa/verify-save-write.mjs
 !qa/verify-prod-diag.mjs
+!qa/verify-discovery-size.mjs
+!qa/verify-wall-raise-perf.mjs
 !qa/lib-game.mjs
 
 # Reference material / design docs outside the game source

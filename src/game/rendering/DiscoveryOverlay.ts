@@ -54,6 +54,28 @@ const DISC_COLOR = 0xfff6e0
 /** Sparkle/highlight flash color. */
 const FLASH_YELLOW = 0xffeb3b
 
+/**
+ * The character's presentation size, in viewport px.
+ *
+ * The character is drawn on a cream spot-disc of `radius * DISC_SCALE`
+ * across. These bounds keep the presentation a READABLE STATEMENT on
+ * every viewport instead of a full-screen takeover:
+ *
+ * - MAX_DISC_WIDTH_FRACTION: the disc may not exceed this fraction of the
+ *   viewport width. On a 390px phone that caps the disc at 0.34 * 390 =
+ *   133px across (the old code made it 253px — 65% of the screen).
+ * - DISC_BAND_FILL: the disc may not exceed this fraction of the BAND's
+ *   height — the disc is a spot-disc ON the band, so it must fit inside
+ *   it. The old code never checked this, and the disc spilled over the
+ *   band's edges on both the phone (33px) and the desktop (54px).
+ * - MIN/MAX_DISPLAY_RADIUS: the character's own radius bounds.
+ */
+const DISC_SCALE = 1.35
+const MAX_DISC_WIDTH_FRACTION = 0.34
+const DISC_BAND_FILL = 0.86
+const MIN_DISPLAY_RADIUS = 34
+const MAX_DISPLAY_RADIUS = 110
+
 /** Darken a color by a factor (band's lower shade). */
 function shade(color: number, f: number): number {
   const r = Math.round(((color >> 16) & 0xff) * f)
@@ -195,8 +217,12 @@ export class DiscoveryOverlay {
    * Layout, in viewport pixels. The panel Graphics are drawn in coordinates
    * RELATIVE to the screen center (container at vw/2, vh/2) so the punch-in
    * scales around the middle of the composition.
+   *
+   * PUBLIC (read-only) so the sizing can be asserted from a browser guard:
+   * the disc's size against the band's size is the invariant that was
+   * broken on the phone.
    */
-  private layout(): {
+  layout(): {
     vw: number
     vh: number
     cx: number
@@ -220,11 +246,35 @@ export class DiscoveryOverlay {
     const cx = vw / 2
     const slotH = slotBottom - slotTop
     const slotMid = slotTop + slotH / 2
-    const displayRadius = Math.min(110, Math.max(44, Math.min(vw * 0.24, slotH * 0.3)))
-    const ballY = slotMid + slotH * 0.04
     const bandH = Math.min(slotH * 0.86, Math.max(150, vh * 0.26))
+    const ballY = slotMid + slotH * 0.04
+    // The character's radius is bounded by THREE things, and the smallest
+    // one wins (the old code only had the first two, so the cream disc
+    // spilled over the band's edges):
+    //
+    //   1. the width:  the disc is radius * DISC_SCALE across, and it
+    //      must not eat the screen — the design calls this "one bold
+    //      comic statement, not a full-screen takeover". On a 390px
+    //      phone the old radius (94px) made a 253px disc = 65% of the
+    //      screen width.
+    //   2. the HEIGHT: the disc must FIT INSIDE the band (it is a
+    //      spot-disc ON the band). The old code never checked this — on
+    //      the phone the disc was 253px across in a 219px band (33px of
+    //      overflow), and on desktop 297px in a 243px band (54px).
+    //   3. the slot:  the character must fit the gameplay slot.
+    //
+    // The height bound is the one that was missing, and it is what made
+    // the phone version look unported.
+    const discScale = DISC_SCALE
+    const maxByWidth = (vw * MAX_DISC_WIDTH_FRACTION) / (2 * discScale)
+    const maxByBand = (bandH * DISC_BAND_FILL) / (2 * discScale)
+    const maxBySlot = (slotH * 0.3) / discScale
+    const displayRadius = Math.max(
+      MIN_DISPLAY_RADIUS,
+      Math.min(MAX_DISPLAY_RADIUS, maxByWidth, maxByBand, maxBySlot),
+    )
     const titleY = slotTop + Math.max(26, slotH * 0.1)
-    const labelY = Math.min(slotBottom - 24, ballY + displayRadius * 1.5 + 22)
+    const labelY = Math.min(slotBottom - 24, ballY + displayRadius * discScale + 22)
     return { vw, vh, cx, ballY, displayRadius, bandH, titleY, labelY }
   }
 
@@ -252,9 +302,9 @@ export class DiscoveryOverlay {
 
     const discG = this.scene.add.graphics()
     discG.fillStyle(DISC_COLOR, 1)
-    discG.fillCircle(0, charYRel, displayRadius * 1.35)
+    discG.fillCircle(0, charYRel, displayRadius * DISC_SCALE)
     discG.lineStyle(5, INK, 1)
-    discG.strokeCircle(0, charYRel, displayRadius * 1.35)
+    discG.strokeCircle(0, charYRel, displayRadius * DISC_SCALE)
     this.panel.add(discG)
 
     const ballG = this.scene.add.graphics()

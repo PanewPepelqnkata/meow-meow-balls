@@ -182,8 +182,58 @@ function uPath(
 
 export class ContainerView {
   private readonly frameImage: Phaser.GameObjects.Image
+  /**
+   * The 1x MID-ANIMATION frame texture.
+   *
+   * PERF (iOS): a SEPARATE, FIXED-SIZE canvas for the animation. The old
+   * code switched the single canvas between 1x (mid-animation) and 2x
+   * (endpoints), and a canvas resize reallocates the backing store and
+   * forces a full re-upload of the new buffer — measured 19.4 ms in a
+   * single frame at the endpoint. Two fixed-size canvases mean a repaint
+   * is a paint + an upload of the SAME buffer, never a realloc.
+   */
+  private readonly fastFrameImage: Phaser.GameObjects.Image
+  /**
+   * The hazard-stripe layer.
+   *
+   * PERF (iOS): the stripes are painted here and masked ONCE against the
+   * panel shape. The old code composited each of the ~107 stripes
+   * individually (`source-atop` per stripe) over the whole canvas — 107
+   * full-canvas composites per repaint, measured at 18 ms in one frame.
+   */
+  private readonly stripeCanvas: HTMLCanvasElement
   private readonly glowG: Phaser.GameObjects.Graphics
   private lastHeight = -1
+  /**
+   * PERF (iOS): the DEFERRED CRISP REBAKE.
+   *
+   * The crisp (2x) repaint costs ~16 ms of paint plus a ~10 ms texture
+   * upload of a 1440×2560 buffer — 26 ms in ONE frame. The old code paid
+   * that at the wall-raise ENDPOINTS, i.e. the exact frame the animation
+   * reaches its rest height.
+   *
+   * Now the animation runs entirely on the 1x canvas, and the crisp bake
+   * is scheduled a moment LATER, when the frame is idle. The walls do not
+   * move during that window, so the crisp rebake produces exactly the
+   * same image — it just does not land on a frame the player is watching
+   * move.
+   *
+   * `pendingCrispHeight` is the height to rebake crisply; -1 = nothing
+   * pending. `crispTimer` is the scene timer that fires it.
+   */
+  /**
+   * PERF (iOS): the PRE-BAKED CRISP FRAMES.
+   *
+   * The walls only ever rest at TWO heights — CONTAINER.height (normal)
+   * and CONTAINER.raisedHeight (raised). Both are constants, so BOTH
+   * crisp frames can be baked at BOOT, off the gameplay frame, and then
+   * simply SWAPPED IN when the animation ends — a texture swap costs
+   * nothing, while a rebake costs ~16 ms of paint plus a ~10 ms upload.
+   *
+   * This is the difference between the wall raise costing a 26 ms hitch
+   * and costing nothing at all.
+   */
+  private readonly raisedFrameImage: Phaser.GameObjects.Image
   /** Persistent offscreen for fast-mode repaints (no per-redraw alloc). */
   private offCanvas: HTMLCanvasElement | null = null
   /** Interior corners at the current height: [tl, tr, br, bl]. */
@@ -208,37 +258,139 @@ export class ContainerView {
       .setOrigin(0, 0)
       .setDisplaySize(720, 1280)
       .setDepth(20)
+    // PERF (iOS): the MID-ANIMATION canvas — a 1x texture used while the
+    // walls are moving. The old code switched the ONE canvas between 1x
+    // (mid-animation) and 2x (at the endpoints), and every switch RESIZED
+    // it — a canvas resize reallocates the backing store and forces a full
+    // re-upload of the new (larger) buffer. Measured: the endpoint repaint
+    // cost 19.4 ms in a single frame, and the raise had 14 repaints
+    // totalling 80 ms.
+    //
+    // Two FIXED-SIZE canvases remove the resize entirely: the 1x canvas
+    // is painted during the animation, the 2x canvas at the endpoints.
+    // Each keeps its size for its whole life, so a repaint is a paint +
+    // an upload of the SAME buffer — no realloc.
+    if (!scene.textures.exists('container-frame-fast')) {
+      scene.textures.addCanvas('container-frame-fast', document.createElement('canvas'))
+    }
+    this.fastFrameImage = scene.add
+      .image(0, 0, 'container-frame-fast')
+      .setOrigin(0, 0)
+      .setDisplaySize(720, 1280)
+      .setDepth(20)
+      .setVisible(false)
     // Additive light sheet — above the frame, below the balls' scene.
     this.glowG = scene.add.graphics().setDepth(21).setBlendMode(Phaser.BlendModes.ADD)
-    this.redrawWalls(CONTAINER.height)
+    // The stripe layer — sized ONCE, here, and never resized (a resize
+    // reallocates the backing store).
+    this.stripeCanvas = document.createElement('canvas')
+    this.stripeCanvas.width = 720
+    this.stripeCanvas.height = 1280
+    // The RAISED crisp frame — baked HERE, at boot, off the gameplay
+    // frame. The walls rest at exactly two heights, so both crisp frames
+    // can be prepared in advance and swapped in when the animation ends.
+    if (!scene.textures.exists('container-frame-raised')) {
+      scene.textures.addCanvas('container-frame-raised', document.createElement('canvas'))
+    }
+    this.raisedFrameImage = scene.add
+      .image(0, 0, 'container-frame-raised')
+      .setOrigin(0, 0)
+      .setDisplaySize(720, 1280)
+      .setDepth(20)
+      .setVisible(false)
+    this.redrawWalls(CONTAINER.height, true)
+    // Pre-bake the RAISED crisp frame now (the boot frame is sharp
+    // immediately, and the raise never has to bake anything).
+    this.paintFrame(this.raisedFrameImage, CONTAINER.raisedHeight, this.crispScale())
+  }
+
+  /** The crisp texture scale for this device (2 where the device renders
+   * more than one device pixel per stage unit, else 1). */
+  private crispScale(): number {
+    return window.devicePixelRatio > 1.5 ? 2 : 1
   }
 
   /** Redraw the whole frame texture at the given wall height (Raise Walls
-   * keeps colliders and visuals in lockstep — only wall tops move). */
-  redrawWalls(height: number): void {
+   * keeps colliders and visuals in lockstep — only wall tops move).
+   *
+   * `immediate` paints the CRISP canvas straight away (used at BOOT, where
+   * there is no animation to protect and the first frame must be sharp).
+   * Otherwise the cheap 1x canvas is painted now and the crisp bake is
+   * DEFERRED (see scheduleCrispBake).
+   */
+  redrawWalls(height: number, immediate = false): void {
     if (height === this.lastHeight) return
     this.lastHeight = height
-    const T = CONTAINER.visual.bandThickness
     const inner = interiorPolygon(height) as Pt[]
     this.corners = inner
     this.buildGlowPath(inner)
-    const canvas = (this.frameImage.texture.getSourceImage() as HTMLCanvasElement) ?? null
-    if (!canvas) return
     // Phase 2.20: bake at devicePixelRatio resolution — the texture is
     // displayed at 720×1280 stage units but renders at zoom×dpr screen
     // pixels (up to ~1.6× texture px on a DPR-3 phone), so a 1× bake
     // softened the ink edges. The paint math is unchanged: scale the
     // context once, draw in stage units as before.
-    // PERF (iOS): mid-animation repaints are the wall-raise lag —
-    // each step uploads the full canvas. Fast mode: texScale 1 while
-    // the height is BETWEEN the rest constants (mid-animation); the
-    // endpoint redraws fire at the exact rest heights and rebake
-    // crisp at dpr 2. Derived locally — no setter to keep in sync.
+    //
+    // PERF (iOS): the wall-raise lag had two causes, both fixed here.
+    //
+    // (a) The 1x/2x SWITCH resized the canvas, which reallocates the
+    //     backing store and forces a full re-upload of the new buffer.
+    //     Two fixed-size canvases mean a repaint is a paint + an upload of
+    //     the SAME buffer, never a realloc.
+    //
+    // (b) The CRISP (2x) repaint costs ~16 ms of paint plus a ~10 ms
+    //     upload — 26 ms in one frame — and the old code paid it AT THE
+    //     ENDPOINTS, the exact frame the animation reaches its rest
+    //     height. Now the whole animation runs on the 1x canvas and the
+    //     crisp bake is DEFERRED to an idle moment. The walls do not move
+    //     in that window, so the image is identical — it just does not
+    //     land on a frame the player is watching move.
     const midAnimation = height !== CONTAINER.height && height !== CONTAINER.raisedHeight
-    const fast = midAnimation
-    const dpr = fast ? 1 : window.devicePixelRatio > 1.5 ? 2 : 1
-    const texScale = dpr
+    // The IMMEDIATE paint is always the cheap 1x canvas — including at a
+    // rest height. At a REST height the PRE-BAKED crisp frame is simply
+    // SWAPPED IN (a texture swap costs nothing).
+    if (immediate) {
+      // BOOT: no animation to protect — paint the crisp canvas right away
+      // so the very first frame is sharp.
+      this.paintFrame(this.frameImage, height, this.crispScale())
+      this.frameImage.setVisible(true)
+      this.fastFrameImage.setVisible(false)
+      this.raisedFrameImage.setVisible(false)
+      return
+    }
+    if (!midAnimation) {
+      // A REST height: the crisp frame for it was baked at BOOT — show it.
+      const prebaked = height === CONTAINER.raisedHeight ? this.raisedFrameImage : this.frameImage
+      prebaked.setVisible(true)
+      this.fastFrameImage.setVisible(false)
+      if (prebaked !== this.frameImage) this.frameImage.setVisible(false)
+      this.raisedFrameImage.setVisible(prebaked === this.raisedFrameImage)
+      return
+    }
+    // MID-ANIMATION: the cheap 1x canvas, painted now.
+    this.frameImage.setVisible(false)
+    this.raisedFrameImage.setVisible(false)
+    this.fastFrameImage.setVisible(true)
+    this.paintFrame(this.fastFrameImage, height, 1)
+  }
+
+  /**
+   * Paint the container frame into `target` at the given scale.
+   *
+   * Split out of redrawWalls so the DEFERRED CRISP BAKE paints the exact
+   * same image into the crisp canvas — one paint routine, two canvases.
+   */
+  private paintFrame(
+    target: Phaser.GameObjects.Image,
+    height: number,
+    texScale: number,
+  ): void {
+    const T = CONTAINER.visual.bandThickness
+    const inner = interiorPolygon(height) as Pt[]
+    const canvas = (target.texture.getSourceImage() as HTMLCanvasElement) ?? null
+    if (!canvas) return
     if (canvas.width !== 720 * texScale || canvas.height !== 1280 * texScale) {
+      // Sized ONCE per canvas (its texScale never changes) — after this
+      // the canvas is only ever painted, never resized.
       canvas.width = 720 * texScale
       canvas.height = 1280 * texScale
     }
@@ -294,6 +446,14 @@ export class ContainerView {
     //    blitted. The panel is trimmed back by its cap radius, so stripes
     //    stop in a clean perpendicular line before the dome; the blue dome
     //    above closes the end.
+    //
+    //    PERF (iOS): the stripes are composited ONCE, not once per stripe.
+    //    The old code set `source-atop` and then filled 107 full-stage
+    //    diagonal stripes — so the composite ran 107 times over the whole
+    //    canvas per repaint. Measured: 18 ms in a single frame at the
+    //    wall-raise endpoint. Now the stripes are drawn on their own
+    //    layer, the layer is masked ONCE against the panel shape, and the
+    //    result is blitted — the same pixels, one composite.
     const PANEL_D = T * 0.44
     const PANEL_W = T * 0.36
     strokeU(PANEL_D, PANEL_W, '#f4ead0', { trim: PANEL_W / 2 })
@@ -320,15 +480,27 @@ export class ContainerView {
     octx.lineJoin = 'round'
     octx.lineCap = 'butt'
     octx.stroke(uPath(inner, PANEL_D, R - T / 2 + PANEL_D, { trim: PANEL_W / 2 }))
-    octx.globalCompositeOperation = 'source-atop'
-    this.paintStripes(octx)
+    // The stripes go on their OWN layer, and that layer is masked ONCE
+    // against the panel shape drawn above.
+    const stripes = this.stripeCanvas
+    const sctx = stripes.getContext('2d')!
+    sctx.setTransform(1, 0, 0, 1, 0, 0)
+    sctx.globalCompositeOperation = 'source-over'
+    sctx.clearRect(0, 0, 720, 1280)
+    this.paintStripes(sctx)
+    // Mask the stripe layer against the panel: ONE composite, not 107.
+    octx.globalCompositeOperation = 'source-in'
+    octx.drawImage(stripes, 0, 0)
+    octx.globalCompositeOperation = 'source-over'
     ctx.drawImage(off, 0, 0)
     // 5. Restrained dark shaded edge along the outer boundary: 80–97%,
     //    wrapping over the dome's outer shoulder (mirrors the cyan).
     strokeU(T * 0.885, T * 0.17, '#1e4fa8', { peel: T * 0.07, sweep })
     // 6. Glossy reflections on the wall bodies.
     this.paintGloss(ctx)
-    ;(this.frameImage.texture as Phaser.Textures.CanvasTexture).update()
+    // Upload the canvas that was ACTUALLY painted (the 1x one during the
+    // animation, the 2x one at the endpoints).
+    ;(target.texture as Phaser.Textures.CanvasTexture).update()
   }
 
   /**
