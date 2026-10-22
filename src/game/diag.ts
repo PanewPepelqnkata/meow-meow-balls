@@ -76,6 +76,54 @@ export function installDiag(game: Phaser.Game): void {
     return s[Math.min(s.length - 1, Math.floor(s.length * p))] ?? 0
   }
 
+  // FRAME PHASE SPLIT: how much of a frame is the game's own work
+  // (update + render) versus the browser's compositing and display wait.
+  //
+  // The rAF delta alone cannot answer "is the game slow, or is the
+  // display/compositor the limit?" — on a 60Hz ProMotion device the rAF
+  // delta is ~16.7ms even when the game finishes in 2ms, because the
+  // browser is waiting for the next vsync.
+  //
+  // This measures the game's own slice: the time from the rAF callback
+  // to POST_STEP (the scene update) and from there to the end of the
+  // frame (the render + GL submit). Whatever is LEFT of the rAF delta is
+  // the browser's compositing and display wait — the part this game
+  // cannot control.
+  const phaseUpd: number[] = []
+  const phaseRender: number[] = []
+  const phaseTotal: number[] = []
+  {
+    let frameStart = performance.now()
+    let updEnd = 0
+    const onPre = (): void => {
+      frameStart = performance.now()
+    }
+    const onPost = (): void => {
+      updEnd = performance.now()
+    }
+    const onAfter = (): void => {
+      const now = performance.now()
+      phaseUpd.push(updEnd - frameStart)
+      phaseRender.push(now - updEnd)
+      phaseTotal.push(now - frameStart)
+      if (phaseUpd.length > 120) {
+        phaseUpd.shift()
+        phaseRender.shift()
+        phaseTotal.shift()
+      }
+    }
+    game.events.on(Phaser.Core.Events.PRE_STEP, onPre)
+    game.events.on(Phaser.Core.Events.POST_STEP, onPost)
+    // The end of the frame is the end of the rAF callback — hook it by
+    // listening for the next PRE_STEP is wrong (a frame may be skipped),
+    // so measure it in the same rAF loop the FPS instrument uses.
+    const afterLoop = (): void => {
+      onAfter()
+      requestAnimationFrame(afterLoop)
+    }
+    requestAnimationFrame(afterLoop)
+  }
+
   const fmtImg = (i: { visible: boolean; alpha: number; displayWidth: number; displayHeight: number } | null | undefined): string =>
     i ? `${i.visible ? 'vis' : 'HID'} a${i.alpha.toFixed(2)} ${Math.round(i.displayWidth)}x${Math.round(i.displayHeight)}` : 'null'
 
@@ -95,6 +143,19 @@ export function installDiag(game: Phaser.Game): void {
         const lastDelta = deltas[deltas.length - 1] ?? 0
         lines.push(
           `FPS avg ${(1000 / avg).toFixed(0)} p50 ${p50.toFixed(1)}ms p95 ${p95.toFixed(1)}ms${lastDelta > 60 ? ' SPIKE' : ''}`,
+        )
+      }
+      // FRAME PHASE: the game's own work vs the browser's display wait.
+      // This is the line that answers "is the game slow, or is the
+      // compositor/vsync the limit?" — on a 60Hz ProMotion device the rAF
+      // delta is ~16.7ms even when the game finishes in 2ms.
+      if (phaseTotal.length >= 30) {
+        const gameMs = pct(phaseTotal, 0.5)
+        const updMs = pct(phaseUpd, 0.5)
+        const rendMs = pct(phaseRender, 0.5)
+        const waitMs = Math.max(0, (pct(deltas, 0.5) ?? 0) - gameMs)
+        lines.push(
+          `FRAME game ${gameMs.toFixed(1)}ms (upd ${updMs.toFixed(1)} + rend ${rendMs.toFixed(1)})  wait ${waitMs.toFixed(1)}ms`,
         )
       }
       lines.push(`MODE ${standalone ? 'PWA-standalone' : 'browser-tab'}`)
