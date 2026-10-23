@@ -370,7 +370,7 @@ export class SoftBallRenderer {
       // rainbow had no ink outline and its own baked-texture path, which
       // is where the "colour disappears, only the face stays" symptom
       // came from).
-      if (r.tier !== 9) {
+      if (!this.isCollectibleTier(r.tier)) {
         const view = this.spriteViews.get(r.id)
         if (view) {
           const { poly } = this.liveContour(r, look, drawR)
@@ -418,7 +418,7 @@ export class SoftBallRenderer {
         this.bakeSpecial(r, poly, color)
       }
       this.drawLiveBody(g, r, look, drawR, color, poly, cx, cy)
-      if (r.tier !== 9) {
+      if (!this.isCollectibleTier(r.tier)) {
         // The tier 9 shark paints its own face (part of the design);
         // every other tier gets the standard face on top.
         this.drawLiveFace(g, r, look, drawR, aspect, now, cx, cy)
@@ -429,6 +429,13 @@ export class SoftBallRenderer {
   // -------------------------------------------------------------------------
   // Internals
   // -------------------------------------------------------------------------
+
+  /** The collectible tiers (9: shark/pig, 10: crab) draw through
+   *  drawCollectibleBall — the procedural live path — never the plain
+   *  sprite-quad path. */
+  private isCollectibleTier(tier: number): boolean {
+    return tier === 9 || tier === 10
+  }
 
   /** Particle-bounds aspect (h/w, clamped exactly like the old face path). */
   private ballAspect(r: SoftBallEntity): number {
@@ -560,7 +567,7 @@ export class SoftBallRenderer {
     cy?: number,
   ): void {
     const built = poly ? { poly, cx: cx!, cy: cy! } : this.liveContour(r, look, drawR)
-    if (r.tier === 9) {
+    if (this.isCollectibleTier(r.tier)) {
       // The theme ball draws INTO the live contour (body fill, ears/tail
       // or fin, mouth all track the wobble) and paints its OWN face — no
       // separate ink pass, no standard face on top. The run's theme roll
