@@ -1054,29 +1054,41 @@ export function drawPigBall(
   }
 
   // ---- CURLY TAIL — the pig's signature: ONE clean swirly line off the
-  // LEFT side — a smooth spiral stroke (ink, round-capped) curling ~1.3
-  // turns, reaching ~0.3r past the body edge. Single stroke, no
-  // ---- CURLY TAIL — the pig's signature from the kid's movies: a
-  // corkscrew spiral LINE, not a flat coil. The tail exits the body at
-  // the LEFT, kinks UP, then spirals outward-downward in a big lazy
-  // loop with a little flick at the end — drawn as ONE smooth ink line
-  // (a parametric curve with growing radius, 36 points). Droops and
-  // loosens with fear. ----
-  const tailBaseX = cx - r * 0.98
-  const tailBaseY = cy - r * 0.1
+  // ---- CURLY TAIL — the pig's signature from the kid's movies: a true
+  // CORKSCREW. The tail exits the body at the LEFT, rises to a fixed
+  // curl centre, then coils INWARD — 2.5 clean loops around one centre,
+  // the radius tightening as it wraps (like a rolled spring). Drawn as
+  // ONE smooth ink line (48 points), slightly flattened vertically so
+  // it reads as a coil seen from the side. Loosens with fear. ----
+  const curlX = cx - r * 0.98
+  const curlY = cy - r * 0.12
   const tailS = 1 - 0.35 * panic
-  const tailN = 40
+  const tailN = 48
+  const turns = 2.5
   const tailPts: Array<{ x: number; y: number }> = []
   for (let i = 0; i <= tailN; i++) {
     const t = i / tailN
-    // Phase: a fast initial kink up, then a relaxed outward spiral.
-    const a = -0.6 + t * Math.PI * 2.2
-    // Radius grows from 0 to ~0.34r — the spiral opens outward.
-    const rad = r * 0.34 * Math.pow(t, 0.8) * tailS
-    // The whole spiral drifts down-left as it opens (gravity droop).
-    const px = tailBaseX - t * r * 0.3 * tailS + Math.cos(a) * rad
-    const py = tailBaseY + t * t * r * 0.22 * tailS + Math.sin(a) * rad
-    tailPts.push({ x: px, y: py })
+    // Entry ramp: the line leaves the body and travels to the curl's
+    // outer edge (t 0..0.12), then coils inward for the rest.
+    const entryT = 0.12
+    if (t < entryT) {
+      // Straight-ish ramp from the body edge to the coil's outer rim.
+      const k = t / entryT
+      tailPts.push({
+        x: cx - r + (curlX + r * 0.32 - (cx - r)) * k,
+        y: cy - r * 0.12 + (curlY - (cy - r * 0.12)) * k,
+      })
+      continue
+    }
+    const ct = (t - entryT) / (1 - entryT) // 0..1 within the coil
+    // Coil: full circle per turn, radius TIGHTENING to ~35% as it wraps.
+    const a = ct * turns * Math.PI * 2
+    const rad = r * 0.3 * tailS * (1 - 0.65 * ct)
+    // Slightly flattened vertically — a coil seen from the side.
+    tailPts.push({
+      x: curlX + r * 0.32 + Math.cos(a) * rad,
+      y: curlY + Math.sin(a) * rad * 0.72,
+    })
   }
   g.lineStyle(Math.max(2.5, r * 0.08), INK, 1)
   g.strokePoints(tailPts as unknown as Phaser.Math.Vector2[], false, false)
