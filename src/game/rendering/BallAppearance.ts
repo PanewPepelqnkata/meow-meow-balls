@@ -1103,19 +1103,19 @@ export function drawPigBall(
   // fear (loops open and droop). ----
   const tailY0 = cy - r * 0.08
   const tailS = 1 - 0.35 * panic
-  const tailN = 44
-  const turns = 1.5
+  const tailN = 52
+  const turns = 2.0
   // Total leftward extent: ~0.55r past the body edge.
   const extent = r * 0.6 * tailS
   // Loop amplitude: the half-height of the corkscrew's loops.
-  const amp = r * 0.3 * tailS
+  const amp = r * 0.34 * tailS
   const tailPts: Array<{ x: number; y: number }> = []
   for (let i = 0; i <= tailN; i++) {
     const t = i / tailN
     // The phase advances 2.5 full turns across the extent; a phase
     // offset of π/2 starts the tail curling UP (the pig-tail read).
     const px = cx - r - extent * t
-    const py = tailY0 + Math.sin(t * turns * Math.PI * 2 + Math.PI / 2) * amp
+    const py = tailY0 + Math.sin(t * turns * Math.PI * 2 + Math.PI / 2) * amp - t * r * 0.1 * tailS
     tailPts.push({ x: px, y: py })
   }
   g.lineStyle(Math.max(2.5, r * 0.07), INK, 1)
@@ -1123,88 +1123,90 @@ export function drawPigBall(
 
   // ---- ROSY CHEEKS REMOVED (user: cheek circles don't look good). ----
 
-  // ---- THE FACE — one integrated piece: the snout is the centrepiece,
-  // and the eyes + smile wrap AROUND it (the classic pig face: eyes high
-  // and wide, big oval snout between/below them, smile peeking from
-  // under the snout). ----
-  const eyeY = cy - r * 0.28
+  // ---- THE FACE — one integrated pig face: two eyes with soft pink
+  // upper-lid arcs high on the face, the snout seated BETWEEN and below
+  // them, and a small open smile with a tiny tongue under the snout.
+  // One coordinated pass — the face reads as a whole. ----
+  const eyeY = cy - r * 0.3
+  const eyeDx = r * 0.42
 
-  // THE SNOUT — the centrepiece: a big rounded-rect-ish oval, low and
-  // wide, with two ink nostrils and a soft top highlight.
+  // THE SNOUT — seated between the eyes, low.
   const snoutX = cx + Math.sin(now * 53) * r * 0.022 * panic * panic
-  const snoutY = cy + r * 0.14 + Math.cos(now * 47) * r * 0.012 * panic * panic
-  const snoutW = r * 0.62
-  const snoutH = r * 0.46
+  const snoutY = cy + r * 0.1 + Math.cos(now * 47) * r * 0.012 * panic * panic
+  const snoutW = r * 0.56
+  const snoutH = r * 0.4
   g.fillStyle(pal.snout, 1)
   g.fillEllipse(snoutX, snoutY, snoutW, snoutH)
   g.lineStyle(ink * 0.95, INK, 1)
   g.strokeEllipse(snoutX, snoutY, snoutW, snoutH)
-  // Nostrils: two vertical ink ovals, placed wider apart on the snout.
+  // Nostrils.
   g.fillStyle(INK, 0.9)
-  g.fillEllipse(snoutX - snoutW * 0.16, snoutY + snoutH * 0.02, r * 0.08, r * 0.15)
-  g.fillEllipse(snoutX + snoutW * 0.16, snoutY + snoutH * 0.02, r * 0.08, r * 0.15)
+  g.fillEllipse(snoutX - snoutW * 0.17, snoutY + snoutH * 0.05, r * 0.075, r * 0.14)
+  g.fillEllipse(snoutX + snoutW * 0.17, snoutY + snoutH * 0.05, r * 0.075, r * 0.14)
   // Snout highlight.
-  g.fillStyle(0xffffff, 0.2)
-  g.fillEllipse(snoutX - snoutW * 0.14, snoutY - snoutH * 0.2, snoutW * 0.5, snoutH * 0.36)
+  g.fillStyle(0xffffff, 0.22)
+  g.fillEllipse(snoutX - snoutW * 0.15, snoutY - snoutH * 0.22, snoutW * 0.48, snoutH * 0.34)
 
-  // ---- THE MOUTH — a small open smile peeking from under the snout. ----
-  const mTop = cy + r * 0.5
-  const dip = r * (0.11 - 0.07 * panic)
-  g.lineStyle(ink * 1.0, INK, 1)
-  g.beginPath()
-  g.moveTo(cx - r * 0.24, mTop)
-  quadFrom(g, cx - r * 0.24, mTop, cx, mTop + dip, cx + r * 0.24, mTop)
-  g.strokePath()
-
-  // ---- THE EYES — the game's standard eye pair (white sclera, chunky
-  // ink rim, one dark oval pupil, main + secondary glints, wink easter
-  // egg) with the PIG TWIST: no nictitating membrane — pigs blink.
-  // Every few seconds both eyes close for ~130 ms as simple closed-lid
-  // arcs. With panic the eyes WIDEN (sclera grows) while the standard
-  // panic morph (pupils pinned up, shrinking) plays underneath. ----
+  // THE EYES — the standard pair, seated above the snout with a soft
+  // pink upper-lid arc over each (the hooded pig look). Panic widens
+  // them; the blink/wink close them.
   const L = faceLayoutFor(look, r, 1, gaze)
   const em = Math.min(1, panic)
   const up = 0.45 * em
   const blinkMs = (now * 1000 + seed * 1013) % 4700
   const blinking = panic <= 0.45 && blinkMs < 130
   for (const [i, e] of L.eyes.entries()) {
-    const ex = cx + e.x * 1.14 // eyes spread a touch wider around the snout
-    const ey = eyeY + e.y
+    const exF = cx + eyeDx * (i === 0 ? -1 : 1)
+    const ey = eyeY + e.y * 0.6
     const closed = blinking || (exprPig === 'wink' && i === 1)
     if (closed) {
-      // The closed lid: one downward ink arc across the eye.
+      // Closed lid: one downward ink arc across the eye.
       g.lineStyle(e.rim * 0.95, INK, 1)
       const lid: Array<{ x: number; y: number }> = []
       for (let s = 0; s <= 12; s++) {
         const u = -1 + (2 * s) / 12
-        lid.push({ x: ex + u * e.a * 0.85, y: ey - e.b * 0.05 + (1 - u * u) * e.b * 0.4 })
+        lid.push({ x: exF + u * e.a * 0.85, y: ey - e.b * 0.05 + (1 - u * u) * e.b * 0.4 })
       }
       g.strokePoints(lid as unknown as Phaser.Math.Vector2[], false, false)
       continue
     }
-    // The standard eye, verbatim proportions from faceLayoutFor —
-    // widened with panic (the pig's fear tell).
+    // Sclera + rim, widened with panic.
     const wa = e.a * (1 + 0.12 * em)
     const wb = e.b * (1 + 0.2 * em)
     g.fillStyle(0xffffff, 1)
-    g.fillEllipse(ex, ey, wa * 2, wb * 2)
+    g.fillEllipse(exF, ey, wa * 2, wb * 2)
     g.lineStyle(e.rim, INK, 1)
-    g.strokeEllipse(ex, ey, wa * 2, wb * 2)
+    g.strokeEllipse(exF, ey, wa * 2, wb * 2)
     // Pupil: pinned up + shrunk with panic (the standard morph).
     const pb = e.pb * (1 - 0.35 * em)
     const py = e.py * (1 - em) - up * (e.b - pb - e.rim * 0.5) * em
     g.fillStyle(INK, 1)
-    g.fillEllipse(ex + e.px, ey + py, e.pa * 2, pb * 2)
+    g.fillEllipse(exF + e.px, ey + py, e.pa * 2, pb * 2)
     // Main highlight + tiny secondary dot (the standard pair).
     g.fillStyle(0xffffff, 1)
-    g.fillEllipse(ex + e.px - e.pa * 0.32, ey + py - pb * 0.34, e.pa * 0.6, e.pa * 0.6, 24)
-    g.fillEllipse(ex + e.px - e.pa * 0.1, ey + py - pb * 0.38, e.pa * 0.24, e.pa * 0.24, 16)
+    g.fillEllipse(exF + e.px - e.pa * 0.32, ey + py - pb * 0.34, e.pa * 0.6, e.pa * 0.6, 24)
+    g.fillEllipse(exF + e.px - e.pa * 0.1, ey + py - pb * 0.38, e.pa * 0.24, e.pa * 0.24, 16)
+    // The soft upper-lid arc: a pink stroke hugging the eye's top —
+    // the hooded pig expression that ties the face together.
+    g.lineStyle(e.rim * 0.7, pal.ear, 0.9)
+    g.beginPath()
+    g.arc(exF, ey, wb * 1.05, Math.PI * 1.15, Math.PI * 1.85, false)
+    g.strokePath()
   }
-  // Fear sweat: one drop at the temple as panic climbs.
-  if (panic > 0.45) {
-    const sweat = Math.min(1, (panic - 0.45) / 0.55)
-    g.fillStyle(0x9fdcff, 0.95 * sweat)
-    g.fillCircle(cx + r * 0.6, eyeY - r * 0.32, r * 0.055 * (0.7 + 0.3 * sweat))
+
+  // THE MOUTH — a small open smile under the snout, with a tiny tongue
+  // when happy. Flattens toward a tense line as panic climbs.
+  const mTop = snoutY + snoutH * 0.62
+  const dip = r * (0.1 - 0.07 * panic)
+  g.lineStyle(ink * 1.0, INK, 1)
+  g.beginPath()
+  g.moveTo(cx - r * 0.2, mTop)
+  quadFrom(g, cx - r * 0.2, mTop, cx, mTop + dip, cx + r * 0.2, mTop)
+  g.strokePath()
+  if (panic < 0.3) {
+    // Tiny tongue: a small pink half-ellipse under the smile's centre.
+    g.fillStyle(0xff9eb5, 0.95)
+    g.fillEllipse(cx, mTop + dip * 0.72, r * 0.16, r * 0.1)
   }
 
   // ---- THE INK OUTLINE — the contour itself, over everything. ----
