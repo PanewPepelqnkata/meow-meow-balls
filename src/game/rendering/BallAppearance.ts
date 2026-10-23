@@ -752,29 +752,40 @@ export function drawSharkBall(
   g.strokePath()
 
   // ---- THE MOUTH — a wide shark grin: a clean curved band with a row
-  // of triangle teeth along it (no giant open wedge — the classic
-  // cartoon-shark read). Clamps tighter and trembles with fear.
+  // of triangle teeth ALONG the curve (each tooth hangs from its exact
+  // point on the arc, so nothing pokes out of the mouth). Clamps tighter
+  // and trembles with fear.
   const mouthW = r * (0.66 + 0.06 * open)
   const mouthY = cy + r * 0.36
   const curve = r * 0.16 * open
+  // The arc: a quadratic from the left end to the right end with the
+  // control below the centre — the same curve quadFrom strokes.
+  const arcLeft = mouthY - curve * 0.35
+  const arcCtrl = mouthY + curve
+  // y on the arc at param t (0 = left end, 1 = right end).
+  const arcY = (t: number): number => {
+    const mt = 1 - t
+    return mt * mt * arcLeft + 2 * mt * t * arcCtrl + t * t * arcLeft
+  }
   // The mouth line: a shallow downward arc (a grin), stroked thick.
   g.lineStyle(ink * 1.1, INK, 1)
   g.beginPath()
-  g.moveTo(cx - mouthW / 2, mouthY - curve * 0.35)
-  quadFrom(g, cx - mouthW / 2, mouthY - curve * 0.35, cx, mouthY + curve, cx + mouthW / 2, mouthY - curve * 0.35)
+  g.moveTo(cx - mouthW / 2, arcY(0))
+  quadFrom(g, cx - mouthW / 2, arcY(0), cx, arcCtrl, cx + mouthW / 2, arcY(1))
   g.strokePath()
   // Teeth: white triangles hanging from the grin line, alternating
-  // heights — visible but tidy.
+  // heights — visible but tidy. Anchored on the arc, hanging DOWNWARD
+  // (into the jaw), never above the line.
   if (open > 0.06) {
     g.fillStyle(0xffffff, 1)
     const teeth = 5
+    // Keep the end teeth clear of the arc's tips (they'd clip the ink).
     for (let i = 0; i < teeth; i++) {
-      const t = (i + 0.5) / teeth
-      // Position along the arc: x linear, y follows the same parabola.
+      const t = 0.14 + (i / (teeth - 1)) * 0.72
       const tx = cx - mouthW / 2 + mouthW * t
-      const ty = mouthY - curve * 0.35 + (1 - (t - 0.5) * (t - 0.5) * 4) * curve * 0.55
+      const ty = arcY(t)
       const th = r * (0.11 + (i % 2) * 0.05) * open
-      const tw = (mouthW / teeth) * 0.42
+      const tw = (mouthW / teeth) * 0.4
       g.beginPath()
       g.moveTo(tx - tw, ty)
       g.lineTo(tx + tw, ty)
