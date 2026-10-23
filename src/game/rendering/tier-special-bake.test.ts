@@ -43,11 +43,11 @@ describe('tier 8/9 bake geometry', () => {
     }
   })
 
-  it('the tier 9 extent covers the dorsal fin and the gas aura', () => {
+  it('the tier 9 extent covers the dorsal fin and the soft aura', () => {
     const R = getTier(9)!.radius
-    // 2.2r must cover the dorsal fin peak (~1.87r) and the outermost gas
-    // puff (~2.09r = orbit 1.52r + radius 0.52r x the 1.1 pulse peak).
-    expect(specialBakeExtent(9, R)).toBeGreaterThanOrEqual(R * 2.09)
+    // 1.9r must cover the dorsal fin peak (~1.82r) and the aura stack
+    // outermost ring (~1.77r = 1.72r x the 1.03 breath peak).
+    expect(specialBakeExtent(9, R)).toBeGreaterThanOrEqual(R * 1.82)
   })
 
   it('the texture is square and the ball sits at its middle', () => {

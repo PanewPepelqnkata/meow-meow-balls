@@ -580,12 +580,12 @@ export interface SharkPalette {
  * baker's copy MUST stay index-aligned with this array.
  */
 export const SHARK_PALETTES: readonly SharkPalette[] = [
-  { belly: 0xdfe8ee, back: 0x5b6c7a, backLight: 0x77899a, fin: 0x8fa5b5, gum: 0xb04a52, cheek: 0x9db1c0, glow: 0x7fe3d8 }, // 0: reef grey
-  { belly: 0xe8eef2, back: 0x46617c, backLight: 0x64809c, fin: 0x87a3bd, gum: 0xa84858, cheek: 0x8ca6bd, glow: 0x7fb0e8 }, // 1: deep blue
-  { belly: 0xeef0e4, back: 0x5e6e56, backLight: 0x7d8f72, fin: 0x9aac8e, gum: 0xb0564e, cheek: 0xa2b096, glow: 0x9fe0a8 }, // 2: green tide
-  { belly: 0xf0e8dc, back: 0x77655a, backLight: 0x96836f, fin: 0xb09e8a, gum: 0xb85a50, cheek: 0xb3a294, glow: 0xe8c98f }, // 3: sand
-  { belly: 0xe4e4ee, back: 0x5a5a72, backLight: 0x777793, fin: 0x9494ad, gum: 0xaa4e60, cheek: 0x9b9bb2, glow: 0xb0a8e8 }, // 4: dusk
-  { belly: 0xe0ecee, back: 0x4f7070, backLight: 0x6d9191, fin: 0x8aacac, gum: 0xac5058, cheek: 0x8facac, glow: 0x8fd8d0 }, // 5: lagoon
+  { belly: 0xf2f6fa, back: 0x64809c, backLight: 0x7f9cb8, fin: 0x93aebf, gum: 0xd95a63, cheek: 0xa9c3d4, glow: 0xffd54f }, // 0: reef grey
+  { belly: 0xf0f5fa, back: 0x4f719c, backLight: 0x6d8fb4, fin: 0x8baccb, gum: 0xd4525f, cheek: 0x94b6d4, glow: 0xffd54f }, // 1: deep blue
+  { belly: 0xf0f3e4, back: 0x647a5e, backLight: 0x83987a, fin: 0x9fb098, gum: 0xd65f52, cheek: 0xa8b89c, glow: 0xffd54f }, // 2: green tide
+  { belly: 0xf7efe2, back: 0x8a7566, backLight: 0xa98f76, fin: 0xc0a68c, gum: 0xe06854, cheek: 0xc0ac96, glow: 0xffd54f }, // 3: sand
+  { belly: 0xe9e9f4, back: 0x5e5e82, backLight: 0x7b7b9f, fin: 0x9a9ab8, gum: 0xc25262, cheek: 0xa1a1ba, glow: 0xffd54f }, // 4: dusk
+  { belly: 0xe4f0f2, back: 0x538080, backLight: 0x71a1a1, fin: 0x8fb5b5, gum: 0xd05560, cheek: 0x96bcb8, glow: 0xffd54f }, // 5: lagoon
 ]
 
 /**
@@ -655,73 +655,78 @@ export function drawSharkBall(
   cx += jx
   cy += jy
 
-  // ---- THE GLOW — reward-tier AURA: 14 puffs of luminous gas (the
-  // palette's `glow` colour) drifting off the shark. Each pulses on its
-  // own phase, the ring drifts ~12°/s — a shimmering aura, not a static
-  // halo. Drawn FIRST so everything sits on top.
-  const puffCount = 14
-  for (let i = 0; i < puffCount; i++) {
-    const phase = ((i * 29) % 17) / 17
-    const a = (i / puffCount) * Math.PI * 2
-    const dist = r * (1.18 + ((i * 37) % 11) / 11 * 0.34)
-    const size = r * (0.3 + ((i * 53) % 13) / 13 * 0.22)
-    const pulse = 0.55 + 0.45 * Math.sin(now * 2.1 + phase * Math.PI * 2)
-    const drift = now * 0.21
-    const px = cx + Math.cos(a + drift) * dist
-    const py = cy + Math.sin(a + drift) * dist
-    g.fillStyle(pal.glow, 0.1 + 0.14 * pulse)
-    g.fillCircle(px, py, size * (0.8 + 0.3 * pulse))
+  // ---- THE GLOW — a soft radial stack behind the whole shark: 4
+  // concentric discs of the palette's warm-gold `glow`, widest first,
+  // each smaller AND brighter — a cheap radial gradient with the
+  // brightness peaking at the body. A gentle ~9s breath scales the
+  // stack (±3%) and sways the inner alpha (±0.02), so the aura is
+  // alive, not a static decal. Drawn FIRST so everything sits on top.
+  const glowWobble = Math.sin(now * 0.7)
+  const glowR = 1.72 + glowWobble * 0.03
+  const glowLayers: ReadonlyArray<{ rr: number; alpha: number }> = [
+    { rr: glowR, alpha: 0.1 }, // outermost fade
+    { rr: 1.5, alpha: 0.16 },
+    { rr: 1.3, alpha: 0.24 },
+    { rr: 1.12, alpha: 0.3 }, // brightest: hugs the body
+  ]
+  for (const layer of glowLayers) {
+    g.fillStyle(pal.glow, layer.alpha + glowWobble * 0.02)
+    g.fillCircle(cx, cy, r * layer.rr)
   }
-  // A core haze against the body — binds the puffs to the shark.
-  g.fillStyle(pal.glow, 0.1)
-  g.fillCircle(cx, cy, r * 1.12)
 
-  // ---- DORSAL FIN — BIG, behind the body, sweeping above the contour
-  // top (the shark's signature silhouette). Flattens with fear. ----
-  const finH = r * (0.95 - 0.3 * panic)
+  // ---- DORSAL FIN — the shark's signature silhouette: one clean
+  // back-swept sweep rising to ~0.9r above the contour top, tucked
+  // behind the body. Flattens with fear. ----
+  const finH = r * (0.9 - 0.3 * panic)
   const topY = cy - r * 0.92
   g.fillStyle(pal.back, 1)
   g.beginPath()
-  g.moveTo(cx - r * 0.3, topY + r * 0.2)
-  quadFrom(g, cx - r * 0.3, topY + r * 0.2, cx - r * 0.08, topY - finH * 0.5, cx + r * 0.52, topY - finH)
-  quadFrom(g, cx + r * 0.52, topY - finH, cx + r * 0.34, topY - finH * 0.18, cx + r * 0.6, topY + r * 0.2)
+  // Leading edge: a long taut ramp up to the tip (swept back like a
+  // real dorsal).
+  g.moveTo(cx - r * 0.32, topY + r * 0.22)
+  quadFrom(g, cx - r * 0.32, topY + r * 0.22, cx - r * 0.1, topY - finH * 0.6, cx + r * 0.5, topY - finH)
+  // Trailing edge: a steep, slightly concave drop to the base.
+  quadFrom(g, cx + r * 0.5, topY - finH, cx + r * 0.38, topY - finH * 0.3, cx + r * 0.58, topY + r * 0.22)
   g.closePath()
   g.fillPath()
   g.lineStyle(ink * 0.8, INK, 1)
   g.strokePath()
-  // Fin inner tint: a lighter sweep inside the fin's base (depth).
+  // Fin inner tint: a lighter sweep low inside the fin (depth).
   g.fillStyle(pal.fin, 0.7)
   g.beginPath()
-  g.moveTo(cx - r * 0.14, topY + r * 0.14)
-  quadFrom(g, cx - r * 0.14, topY + r * 0.14, cx - r * 0.02, topY - finH * 0.32, cx + r * 0.3, topY - finH * 0.62)
-  g.lineTo(cx + r * 0.3, topY + r * 0.14)
+  g.moveTo(cx - r * 0.16, topY + r * 0.14)
+  quadFrom(g, cx - r * 0.16, topY + r * 0.14, cx - r * 0.04, topY - finH * 0.34, cx + r * 0.28, topY - finH * 0.62)
+  g.lineTo(cx + r * 0.32, topY + r * 0.14)
   g.closePath()
   g.fillPath()
 
-  // ---- TAIL FIN — a small two-lobe tail on the ball's LEFT side (the
-  // shark's rear, away from the face). The tip reaches ~0.87r from the
-  // centre — about 0.13r past the body edge: a proportionate fin, not a
-  // second ball. Flattens with fear (tailS shrinks toward 0). ----
-  const tailX = cx - r * 0.6
-  const tailY = cy - r * 0.02
-  // tailS is a UNITLESS 0..1 scale (not a pixel length — multiplying it
-  // by r again is what blew the tail up 2.7× before).
-  const tailS = 1.0 - 0.3 * panic
+  // ---- TAIL FIN — a swept-back two-lobe tail (heterocercal, like the
+  // real thing): the upper lobe sweeps up-left to a point ~0.4r past
+  // the body edge, the lower lobe is shorter. Anchored at the LEFT of
+  // the ball (the shark's rear, away from the face); its root tucks
+  // under the body fill. Flattens with fear (tailS shrinks toward 0). --
+  const tailX = cx - r * 0.66
+  const tailY = cy - r * 0.01
+  // tailS is a UNITLESS 0..1 scale on the outer points (not pixels).
+  const tailS = 1.0 - 0.35 * panic
   g.fillStyle(pal.back, 1)
   g.beginPath()
-  g.moveTo(tailX + r * 0.08, tailY - r * 0.07)
-  // Upper lobe: a short sweep up-left to a point, then notching back in.
-  quadFrom(g, tailX + r * 0.08, tailY - r * 0.07, tailX - r * 0.32 * tailS, tailY - r * 0.28 * tailS, tailX - r * 0.53 * tailS, tailY - r * 0.3 * tailS)
-  quadFrom(g, tailX - r * 0.53 * tailS, tailY - r * 0.3 * tailS, tailX - r * 0.24 * tailS, tailY - r * 0.06, tailX - r * 0.16 * tailS, tailY + r * 0.01)
+  g.moveTo(tailX, tailY - r * 0.18)
+  // Upper lobe: leading edge sweeps out to the tail tip...
+  quadFrom(g, tailX, tailY - r * 0.18, tailX - r * 0.36 * tailS, tailY - r * 0.36 * tailS, tailX - r * 0.72 * tailS, tailY - r * 0.33 * tailS)
+  // ...then the trailing edge notches back in (the fork).
+  quadFrom(g, tailX - r * 0.72 * tailS, tailY - r * 0.33 * tailS, tailX - r * 0.4 * tailS, tailY - r * 0.16 * tailS, tailX - r * 0.36 * tailS, tailY - r * 0.02)
   // Lower lobe: shorter, angled down-left.
-  quadFrom(g, tailX - r * 0.16 * tailS, tailY + r * 0.01, tailX - r * 0.26 * tailS, tailY + r * 0.06 * tailS, tailX - r * 0.4 * tailS, tailY + r * 0.16 * tailS)
-  quadFrom(g, tailX - r * 0.4 * tailS, tailY + r * 0.16 * tailS, tailX - r * 0.12 * tailS, tailY + r * 0.1, tailX + r * 0.08, tailY + r * 0.03)
+  quadFrom(g, tailX - r * 0.36 * tailS, tailY - r * 0.02, tailX - r * 0.48 * tailS, tailY + r * 0.12 * tailS, tailX - r * 0.44 * tailS, tailY + r * 0.3 * tailS)
+  // And home along the underside of the root.
+  quadFrom(g, tailX - r * 0.44 * tailS, tailY + r * 0.3 * tailS, tailX - r * 0.18 * tailS, tailY + r * 0.18, tailX, tailY + r * 0.16)
   g.closePath()
   g.fillPath()
   g.lineStyle(ink * 0.8, INK, 1)
   g.strokePath()
 
-  // ---- THE BODY — the contour, countershaded: grey back, light belly. --
+  // ---- THE BODY — the contour, countershaded: grey back, light belly
+  // split by a clean WAVY boundary (the classic shark line). ----
   if (poly && poly.length >= 3) {
     g.fillStyle(pal.back, 1)
     g.fillPoints(poly as unknown as Phaser.Math.Vector2[], true)
@@ -729,72 +734,135 @@ export function drawSharkBall(
     g.fillStyle(pal.back, 1)
     g.fillCircle(cx, cy, r)
   }
-  // Belly: the light underside — an ellipse low in the body; the ink
-  // frame covers any spill at the rim. (fillEllipse takes WIDTH/HEIGHT:
-  // these are rx/ry × 2 = w/h, sized to cover only the lower third.)
+  // The belly: the classic shark countershading line — a gentle WAVY
+  // boundary across the body, everything below it light. The belly
+  // path is left rim → 4 quadratic wave humps to the right rim →
+  // around the bottom rim back to the left rim. Geometrically exact to
+  // the circle fallback; under the wobbled contour the ink outline
+  // (drawn last over everything) covers the ≤1.5px wobble overhang.
+  const bellyY = cy + r * 0.28
+  const waveSegs = 4
+  const waveAmp = r * 0.05
   g.fillStyle(pal.belly, 1)
   g.beginPath()
-  g.fillEllipse(cx, cy + r * 0.42, r * 0.86, r * 0.6)
+  g.moveTo(cx - r, bellyY)
+  for (let i = 0; i < waveSegs; i++) {
+    const x0 = cx - r + (i / waveSegs) * 2 * r
+    const x1 = cx - r + ((i + 1) / waveSegs) * 2 * r
+    const dir = i % 2 === 0 ? -1 : 1
+    quadFrom(g, x0, bellyY, (x0 + x1) / 2, bellyY + waveAmp * dir, x1, bellyY)
+  }
+  g.arc(cx, cy, r, 0, Math.PI, false)
+  g.closePath()
   g.fillPath()
-  // Back highlight: a lighter grey sweep along the top of the back.
+  // Back highlight: a subtle lighter-grey sheen across the upper back,
+  // drawn as a wide shallow arc BAND bounded below by the wave line —
+  // built as its own path (outer sweep + inner sweep) so it can never
+  // bleed across the countershading boundary.
   g.fillStyle(pal.backLight, 0.85)
   g.beginPath()
-  g.fillEllipse(cx - r * 0.05, cy - r * 0.5, r * 0.7, r * 0.36)
+  // Outer sweep: along the top rim from left to right.
+  g.arc(cx, cy, r * 0.86, Math.PI * 1.12, Math.PI * 1.88, false)
+  // Inner sweep: back along a shallower arc above the wave line.
+  for (let s = 8; s >= 0; s--) {
+    const t = s / 8
+    const th = Math.PI * (1.12 + (1.88 - 1.12) * t)
+    const hx = cx + Math.cos(th) * r * 0.62
+    const hy = cy + Math.sin(th) * r * 0.62
+    const boundY = Math.max(bellyY - waveAmp, hy)
+    g.lineTo(hx, boundY)
+  }
+  g.closePath()
   g.fillPath()
 
-  // ---- GILL SLITS — three short ink arcs on the shark's cheek. ----
+  // ---- GILL SLITS — three short ink arcs on the cheek, slightly
+  // arced with the body. ----
   g.lineStyle(ink * 0.65, INK, 0.85)
   for (let i = 0; i < 3; i++) {
     const gx = cx - r * 0.52 + i * r * 0.13
+    const gy = cy + r * 0.05
     g.beginPath()
-    g.arc(gx, cy + r * 0.05, r * 0.16, -Math.PI * 0.32, Math.PI * 0.18, false)
+    g.arc(gx, gy - r * 0.14, r * 0.18, Math.PI * 0.28, Math.PI * 0.72, false)
     g.strokePath()
   }
 
-  // ---- THE MOUTH — a wide shark grin: a clean curved band with a row
-  // of triangle teeth ALONG the curve (each tooth hangs from its exact
-  // point on the arc, so nothing pokes out of the mouth). Clamps tighter
-  // and trembles with fear.
-  const mouthW = r * (0.66 + 0.06 * open)
+  // ---- THE MOUTH — a confident OPEN grin: a curved wedge of gum
+  // interior bounded by a smiling top edge and a deeper smiling bottom
+  // edge, with rows of white triangle teeth hanging from the top edge
+  // and rising from the bottom edge. The wedge narrows to points at
+  // both corners (a real mouth, not a floating band). Clamps shut and
+  // trembles with fear. ----
+  const mouthW = r * 0.72
   const mouthY = cy + r * 0.36
-  const curve = r * 0.16 * open
-  // The arc: a quadratic from the left end to the right end with the
-  // control below the centre — the same curve quadFrom strokes.
-  const arcLeft = mouthY - curve * 0.35
-  const arcCtrl = mouthY + curve
-  // y on the arc at param t (0 = left end, 1 = right end).
-  const arcY = (t: number): number => {
-    const mt = 1 - t
-    return mt * mt * arcLeft + 2 * mt * t * arcCtrl + t * t * arcLeft
+  // Both edges are quadratic arcs sharing the param helper: top edge
+  // curves gently down (a smile), bottom edge hangs deeper as the jaw
+  // opens (openness 1 → 0 with panic).
+  const topDip = r * 0.1
+  const jawDrop = r * 0.34 * open
+  // y on the mouth arcs at param t. A quadratic whose control point
+  // sits `dip` below the chord's centre collapses to the closed form
+  // below — the identity lets every consumer (wedge outline, both
+  // tooth rows) sample the SAME curve without re-deriving the Bézier.
+  const arcY = (t: number, dy0: number, dip: number): number => {
+    return mouthY + dy0 + dip * (1 - (2 * t - 1) * (2 * t - 1))
   }
-  // The mouth line: a shallow downward arc (a grin), stroked thick.
-  g.lineStyle(ink * 1.1, INK, 1)
-  g.beginPath()
-  g.moveTo(cx - mouthW / 2, arcY(0))
-  quadFrom(g, cx - mouthW / 2, arcY(0), cx, arcCtrl, cx + mouthW / 2, arcY(1))
-  g.strokePath()
-  // Teeth: white triangles hanging from the grin line, alternating
-  // heights — visible but tidy. Anchored on the arc, hanging DOWNWARD
-  // (into the jaw), never above the line.
-  if (open > 0.06) {
+  if (open > 0.05) {
+    // The wedge: top arc left → right, then bottom arc right → left
+    // (both sampled as quadratics with a raised control point).
+    g.beginPath()
+    const wEnds = mouthW / 2
+    g.moveTo(cx - wEnds, arcY(0, -topDip * 0.3, topDip))
+    for (let s = 1; s <= 8; s++) {
+      const t = s / 8
+      const ty = arcY(t, -topDip * 0.3, topDip)
+      g.lineTo(cx - wEnds + mouthW * t, ty)
+    }
+    for (let s = 8; s >= 0; s--) {
+      const t = s / 8
+      const by = arcY(t, topDip * 0.4, jawDrop)
+      g.lineTo(cx - wEnds + mouthW * t, by)
+    }
+    g.closePath()
+    g.fillStyle(pal.gum, 1)
+    g.fillPath()
+    g.lineStyle(ink * 1.0, INK, 1)
+    g.strokePath()
+    // Upper teeth: 4 white triangles hanging from the top arc.
     g.fillStyle(0xffffff, 1)
-    const teeth = 5
-    // Keep the end teeth clear of the arc's tips (they'd clip the ink).
-    for (let i = 0; i < teeth; i++) {
-      const t = 0.14 + (i / (teeth - 1)) * 0.72
-      const tx = cx - mouthW / 2 + mouthW * t
-      const ty = arcY(t)
-      const th = r * (0.11 + (i % 2) * 0.05) * open
-      const tw = (mouthW / teeth) * 0.4
+    for (let i = 0; i < 4; i++) {
+      const t = 0.16 + (i / 3) * 0.68
+      const tx = cx - wEnds + mouthW * t
+      const ty = arcY(t, -topDip * 0.3, topDip) + ink * 0.3
+      const th = r * (0.13 - Math.abs(t - 0.5) * 0.06) * open
+      const tw = (mouthW / 4) * 0.36
       g.beginPath()
       g.moveTo(tx - tw, ty)
       g.lineTo(tx + tw, ty)
       g.lineTo(tx, ty + th)
       g.closePath()
       g.fillPath()
-      g.lineStyle(ink * 0.35, INK, 0.85)
-      g.strokePath()
     }
+    // Lower teeth: 4 smaller triangles rising from the bottom arc.
+    for (let i = 0; i < 4; i++) {
+      const t = 0.22 + (i / 3) * 0.56
+      const tx = cx - wEnds + mouthW * t
+      const ty = arcY(t, topDip * 0.4, jawDrop) - ink * 0.3
+      const th = r * (0.09 - Math.abs(t - 0.5) * 0.04) * open
+      const tw = (mouthW / 4) * 0.3
+      g.beginPath()
+      g.moveTo(tx - tw, ty)
+      g.lineTo(tx + tw, ty)
+      g.lineTo(tx, ty - th)
+      g.closePath()
+      g.fillPath()
+    }
+  } else {
+    // Mouth clamped (fear): a tense short line, still a grin shape.
+    g.lineStyle(ink * 1.0, INK, 1)
+    g.beginPath()
+    g.moveTo(cx - mouthW * 0.3, mouthY)
+    quadFrom(g, cx - mouthW * 0.3, mouthY, cx, mouthY + r * 0.05, cx + mouthW * 0.3, mouthY)
+    g.strokePath()
   }
 
   // ---- THE EYES — the game's standard eye pair (white sclera, chunky

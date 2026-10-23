@@ -37,11 +37,10 @@ export interface BakeGeometry {
  *            1.4r covers both sides.
  */
 export function specialBakeExtent(tier: number, radius: number): number {
-  // Tier 9's dorsal fin peaks at ~1.87r, and the gas aura's outermost
-  // puff reaches ~2.09r (orbit 1.52r + radius 0.52r × the 1.1 pulse
-  // peak) — 2.2r covers both with real margin (2.1r left <1px of AA
-  // room on the outermost puff).
-  if (tier === 9) return radius * 2.2
+  // Tier 9: the dorsal fin peaks at ~1.82r above centre and the soft
+  // aura stack reaches ~1.75r (1.72r × the 1.03 breath peak) — 1.9r
+  // covers both with real margin.
+  if (tier === 9) return radius * 1.9
   return radius
 }
 
