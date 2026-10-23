@@ -49,6 +49,26 @@ export function variantIdFor(tier: number): number {
   return hash(runSeed, tier) % VARIANT_COUNT
 }
 
+// ---------------------------------------------------------------------------
+// Tier-9 THEME roll — the run picks ONE collectible family: SHARK or PIG.
+// Every tier-9 ball in a run is that animal (the variant id then picks the
+// palette WITHIN the family), so players collect sharks some runs and pigs
+// the next.
+// ---------------------------------------------------------------------------
+
+export type Tier9Theme = 'shark' | 'pig'
+
+/** The tier-9 animal theme this run rolled — hash of the run seed, ~50/50.
+ *  QA: `?theme=pig` / `?theme=shark` force the roll (both themes are
+ *  otherwise seed-random and hard to test back-to-back). */
+export function tier9Theme(): Tier9Theme {
+  if (typeof window !== 'undefined') {
+    const p = new URLSearchParams(window.location.search).get('theme')
+    if (p === 'pig' || p === 'shark') return p
+  }
+  return hash(runSeed, 0x71e9) % 2 === 0 ? 'shark' : 'pig'
+}
+
 /** Variants only exist for the randomized high tiers.
  *  TIER 8 IS NOT ONE: it is the cycling RGB ball, whose look is a
  *  continuous colour cycle, not a per-run variant. */
@@ -70,5 +90,6 @@ export function runVariantFor(tier: number): number | null {
 // renderer uses.
 // ---------------------------------------------------------------------------
 
-// Fantasy (T9) variant palettes live WITH the draw code
-// (BallAppearance.drawSharkBall) — one source of truth for the visuals.
+// Tier-9 (T9) variant palettes live WITH the draw code
+// (BallAppearance.drawSharkBall / drawPigBall — the per-run tier9Theme()
+// roll picks the family) — one source of truth for the visuals.

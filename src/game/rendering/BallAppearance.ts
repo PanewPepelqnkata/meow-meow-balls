@@ -1,5 +1,6 @@
 import type Phaser from 'phaser'
 import { BALL_EMOTION } from '../../config/ballEmotion'
+import { tier9Theme } from '../state/runVariant'
 
 /**
  * Phaser's Graphics typings demand Vector2[] but the renderer only reads
@@ -606,6 +607,10 @@ export const SHARK_PALETTES: readonly SharkPalette[] = [
  *
  * The FACE is part of the design here — callers must NOT draw the
  * standard face on top.
+ *
+ * This is ONE of the two tier-9 themes (the run rolls shark | pig via
+ * tier9Theme()); consumers call drawTier9Ball, which routes here or to
+ * drawPigBall.
  */
 
 /**
@@ -911,6 +916,303 @@ export function drawSharkBall(
     g.strokePoints(poly as unknown as Phaser.Math.Vector2[], true, true)
   } else {
     g.strokeCircle(cx, cy, r)
+  }
+}
+
+export interface PigPalette {
+  /** Back / body (the deeper pink). */
+  back: number
+  /** Belly (the light pink underside). */
+  belly: number
+  /** Snout disc (a deeper rosy pink than the body). */
+  snout: number
+  /** Inner-ear tint. */
+  ear: number
+  /** Cheek blush. */
+  cheek: number
+  /** The reward halo's colour (behind the whole ball). */
+  glow: number
+}
+
+/**
+ * The pig palettes, exported alongside SHARK_PALETTES (journal/QA parity).
+ * Variant picks one; the per-run THEME roll picks shark vs pig first.
+ */
+export const PIG_PALETTES: readonly PigPalette[] = [
+  { back: 0xf2a2b0, belly: 0xfde3e8, snout: 0xe88ca0, ear: 0xf7bfc9, cheek: 0xef8fa2, glow: 0xffc9d6 }, // 0: barnyard pink
+  { back: 0xf6c6a5, belly: 0xfdeedd, snout: 0xeaa98c, ear: 0xfbd7bd, cheek: 0xf0a084, glow: 0xffdcc3 }, // 1: cream
+  { back: 0xe98aa6, belly: 0xfbd8e2, snout: 0xd7718f, ear: 0xf2adc0, cheek: 0xe2799a, glow: 0xffc2d1 }, // 2: rose
+  { back: 0xf7b1a0, belly: 0xfde6dc, snout: 0xeb9483, ear: 0xfcccbf, cheek: 0xf19383, glow: 0xffd3c4 }, // 3: peach
+  { back: 0xd9a3c9, belly: 0xf4dff0, snout: 0xc788b6, ear: 0xe9bede, cheek: 0xd192bd, glow: 0xf2c8e8 }, // 4: lilac
+  { back: 0xf2c14e, belly: 0xfbecc2, snout: 0xe0a83c, ear: 0xf8d77e, cheek: 0xeda93f, glow: 0xffe6a1 }, // 5: golden
+]
+
+/**
+ * Draw the Tier 9 PIG ball — the second tier-9 theme: a round pink
+ * pig-slime with countershading (deeper pink back, light belly), two
+ * folded ears, a curly spiral tail sweeping off the LEFT side (~0.37r
+ * past the body edge), a snout with nostrils, rosy cheeks and a soft
+ * warm-pink glow.
+ *
+ * SAME CONTRACT as drawSharkBall: the body is the ball's CONTOUR (pass
+ * `poly`; without it a circle of radius r at (cx, cy)); the FACE is part
+ * of the design (callers must NOT draw the standard face on top).
+ *
+ * FEAR: `panic` widens the eyes, twitches the snout (a small independent
+ * jitter against the face), droops the ears and tail, and adds a sweat
+ * drop. The eyes are the STANDARD pair (panic morph + wink easter egg)
+ * — no nictitating membranes; the pig twist is a natural closed-lid
+ * BLINK: quick lid arcs on both eyes every few seconds.
+ */
+export function drawPigBall(
+  g: Phaser.GameObjects.Graphics,
+  cx: number,
+  cy: number,
+  r: number,
+  variant = 0,
+  poly?: Array<{ x: number; y: number }>,
+  panic = 0,
+  gaze?: { x: number; y: number },
+  seed = 9,
+): void {
+  const pal = PIG_PALETTES[variant % PIG_PALETTES.length]!
+  const look = ballLookFor(9, seed)
+  const ink = Math.max(2, r * 0.05)
+  const now = Date.now() / 1000
+  // The easter-egg expression (wink) rides the same timeline as the
+  // other balls — suppressed while panicking (fear wins).
+  const exprPig = panic > 0.45 ? 'normal' : expressionAt(seed, now * 1000)
+  const jx = Math.sin(now * 43) * r * 0.02 * panic * panic
+  const jy = Math.cos(now * 37) * r * 0.015 * panic * panic
+  cx += jx
+  cy += jy
+
+  // ---- THE GLOW — the same soft radial stack as the shark, tinted to
+  // the palette's warm pink: 4 concentric discs, widest first, each
+  // smaller AND brighter, with a gentle ~9s breath. Drawn FIRST. ----
+  const glowWobble = Math.sin(now * 0.7)
+  const glowLayers: ReadonlyArray<{ rr: number; alpha: number }> = [
+    { rr: 1.72 + glowWobble * 0.03, alpha: 0.1 },
+    { rr: 1.5, alpha: 0.16 },
+    { rr: 1.3, alpha: 0.24 },
+    { rr: 1.12, alpha: 0.3 },
+  ]
+  for (const layer of glowLayers) {
+    g.fillStyle(pal.glow, layer.alpha + glowWobble * 0.02)
+    g.fillCircle(cx, cy, r * layer.rr)
+  }
+
+  // ---- EARS — two folded triangles on top, tucked behind the body.
+  // The tips lean outward; the whole ear flops down with fear. ----
+  const earS = 1 - 0.45 * panic
+  for (const s of [-1, 1]) {
+    const ecx = cx + s * r * 0.42
+    const ecy = cy - r * 0.7
+    const tipX = ecx + s * r * 0.2
+    const tipY = ecy - r * 0.6 * earS
+    g.fillStyle(pal.back, 1)
+    g.beginPath()
+    // Outer edge: a clean ramp up to the folded tip...
+    g.moveTo(ecx - r * 0.26, ecy + r * 0.2)
+    quadFrom(g, ecx - r * 0.26, ecy + r * 0.2, ecx - r * 0.3, tipY + r * 0.12, tipX, tipY)
+    // ...inner edge back down to the base (hidden under the body fill).
+    quadFrom(g, tipX, tipY, tipX + s * r * 0.16, tipY + r * 0.16, ecx + r * 0.3, ecy + r * 0.14)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(ink * 0.8, INK, 1)
+    g.strokePath()
+    // Inner-ear tint: a smaller fold inside the outer shape.
+    const iTipX = ecx + (tipX - ecx) * 0.5
+    const iTipY = ecy + (tipY - ecy) * 0.55
+    g.fillStyle(pal.ear, 0.9)
+    g.beginPath()
+    g.moveTo(ecx - r * 0.13, ecy + r * 0.05)
+    quadFrom(g, ecx - r * 0.13, ecy + r * 0.05, ecx - r * 0.14, iTipY + r * 0.06, iTipX, iTipY)
+    quadFrom(g, iTipX, iTipY, iTipX + s * r * 0.1, iTipY + r * 0.1, ecx + r * 0.16, ecy + r * 0.02)
+    g.closePath()
+    g.fillPath()
+  }
+
+  // ---- CURLY TAIL — the pig's signature: one continuous spiral off the
+  // LEFT side, sweeping up-and-over into ~1.4 turns that tighten to a
+  // tip ~0.37r past the body edge. A sampled spiral polyline (smooth at
+  // ball sizes, same rationale as quadFrom's 8-segment approximation),
+  // drawn as an ink stroke with a body-pink stroke over it so the tail
+  // reads outlined. Droops and tightens with fear. ----
+  const curlX = cx - r * 1.06
+  const curlY = cy + r * 0.06 + r * 0.14 * panic
+  const tailS = 1 - 0.4 * panic
+  const tailPts: Array<{ x: number; y: number }> = []
+  const tailN = 26
+  for (let i = 0; i <= tailN; i++) {
+    const t = i / tailN
+    const a = -t * Math.PI * 2.8
+    const grow = Math.min(1, t / 0.3)
+    const shrink = Math.max(0, (t - 0.42) / 0.58)
+    const rad = r * (0.07 + 0.26 * grow - 0.25 * shrink) * tailS
+    tailPts.push({ x: curlX + Math.cos(a) * rad, y: curlY + Math.sin(a) * rad })
+  }
+  g.lineStyle(ink * 1.0, INK, 1)
+  g.strokePoints(tailPts as unknown as Phaser.Math.Vector2[], false, false)
+  g.lineStyle(ink * 0.55, pal.back, 1)
+  g.strokePoints(tailPts as unknown as Phaser.Math.Vector2[], false, false)
+
+  // ---- THE BODY — the contour, countershaded: deeper pink back, light
+  // belly split by a gentle WAVY boundary (the shark's proven belly
+  // geometry, recoloured). ----
+  if (poly && poly.length >= 3) {
+    g.fillStyle(pal.back, 1)
+    g.fillPoints(poly as unknown as Phaser.Math.Vector2[], true)
+  } else {
+    g.fillStyle(pal.back, 1)
+    g.fillCircle(cx, cy, r)
+  }
+  const bellyY = cy + r * 0.26
+  const waveSegs = 4
+  const waveAmp = r * 0.04
+  g.fillStyle(pal.belly, 1)
+  g.beginPath()
+  g.moveTo(cx - r, bellyY)
+  for (let i = 0; i < waveSegs; i++) {
+    const x0 = cx - r + (i / waveSegs) * 2 * r
+    const x1 = cx - r + ((i + 1) / waveSegs) * 2 * r
+    const dir = i % 2 === 0 ? -1 : 1
+    quadFrom(g, x0, bellyY, (x0 + x1) / 2, bellyY + waveAmp * dir, x1, bellyY)
+  }
+  g.arc(cx, cy, r, 0, Math.PI, false)
+  g.closePath()
+  g.fillPath()
+  // Back sheen: a subtle lighter band across the upper back (the pig's
+  // counterpart of the shark's backLight sweep), bounded below by the
+  // wave line so it can never bleed across the countershading.
+  g.fillStyle(pal.belly, 0.45)
+  g.beginPath()
+  g.arc(cx, cy, r * 0.86, Math.PI * 1.12, Math.PI * 1.88, false)
+  for (let s = 8; s >= 0; s--) {
+    const t = s / 8
+    const th = Math.PI * (1.12 + (1.88 - 1.12) * t)
+    const hx = cx + Math.cos(th) * r * 0.62
+    const hy = cy + Math.sin(th) * r * 0.62
+    g.lineTo(hx, Math.max(bellyY - waveAmp, hy))
+  }
+  g.closePath()
+  g.fillPath()
+
+  // ---- ROSY CHEEKS — the pig's blush, tucked under the eyes INSIDE the
+  // contour; fades a little as fear drains the colour. ----
+  const eyeDx = r * 0.35
+  const eyeY = cy - r * 0.22
+  g.fillStyle(pal.cheek, 0.55 * (1 - 0.4 * panic))
+  g.fillEllipse(cx - eyeDx - r * 0.22, eyeY + r * 0.36, r * 0.4, r * 0.22)
+  g.fillEllipse(cx + eyeDx + r * 0.22, eyeY + r * 0.36, r * 0.4, r * 0.22)
+
+  // ---- THE MOUTH — a small smile peeking out below the snout. It
+  // flattens toward a tense line as panic climbs. ----
+  const mTop = cy + r * 0.47
+  const dip = r * (0.12 - 0.08 * panic)
+  g.lineStyle(ink * 1.0, INK, 1)
+  g.beginPath()
+  g.moveTo(cx - r * 0.28, mTop)
+  quadFrom(g, cx - r * 0.28, mTop, cx, mTop + dip, cx + r * 0.28, mTop)
+  g.strokePath()
+
+  // ---- THE SNOUT — the pig's centrepiece: a wide ellipse centred low
+  // on the face with two ink nostrils and a soft highlight. Under panic
+  // it TWITCHES — a small jitter of its own against the (already
+  // trembling) face, the snout wiggling independently. ----
+  const snoutX = cx + Math.sin(now * 53) * r * 0.022 * panic * panic
+  const snoutY = cy + r * 0.18 + Math.cos(now * 47) * r * 0.012 * panic * panic
+  g.fillStyle(pal.snout, 1)
+  g.fillEllipse(snoutX, snoutY, r * 0.58, r * 0.42)
+  g.lineStyle(ink * 0.9, INK, 1)
+  g.strokeEllipse(snoutX, snoutY, r * 0.58, r * 0.42)
+  g.fillStyle(0xffffff, 0.16)
+  g.fillEllipse(snoutX - r * 0.08, snoutY - r * 0.08, r * 0.3, r * 0.18)
+  g.fillStyle(INK, 0.85)
+  g.fillEllipse(snoutX - r * 0.11, snoutY, r * 0.075, r * 0.13)
+  g.fillEllipse(snoutX + r * 0.11, snoutY, r * 0.075, r * 0.13)
+
+  // ---- THE EYES — the game's standard eye pair (white sclera, chunky
+  // ink rim, one dark oval pupil, main + secondary glints, wink easter
+  // egg) with the PIG TWIST: no nictitating membrane — pigs blink.
+  // Every few seconds both eyes close for ~130 ms as simple closed-lid
+  // arcs. With panic the eyes WIDEN (sclera grows) while the standard
+  // panic morph (pupils pinned up, shrinking) plays underneath. ----
+  const L = faceLayoutFor(look, r, 1, gaze)
+  const em = Math.min(1, panic)
+  const up = 0.45 * em
+  const blinkMs = (now * 1000 + seed * 1013) % 4700
+  const blinking = panic <= 0.45 && blinkMs < 130
+  for (const [i, e] of L.eyes.entries()) {
+    const ex = cx + e.x * 1.0
+    const ey = eyeY + e.y
+    const closed = blinking || (exprPig === 'wink' && i === 1)
+    if (closed) {
+      // The closed lid: one downward ink arc across the eye.
+      g.lineStyle(e.rim * 0.95, INK, 1)
+      const lid: Array<{ x: number; y: number }> = []
+      for (let s = 0; s <= 12; s++) {
+        const u = -1 + (2 * s) / 12
+        lid.push({ x: ex + u * e.a * 0.85, y: ey - e.b * 0.05 + (1 - u * u) * e.b * 0.4 })
+      }
+      g.strokePoints(lid as unknown as Phaser.Math.Vector2[], false, false)
+      continue
+    }
+    // The standard eye, verbatim proportions from faceLayoutFor —
+    // widened with panic (the pig's fear tell).
+    const wa = e.a * (1 + 0.12 * em)
+    const wb = e.b * (1 + 0.2 * em)
+    g.fillStyle(0xffffff, 1)
+    g.fillEllipse(ex, ey, wa * 2, wb * 2)
+    g.lineStyle(e.rim, INK, 1)
+    g.strokeEllipse(ex, ey, wa * 2, wb * 2)
+    // Pupil: pinned up + shrunk with panic (the standard morph).
+    const pb = e.pb * (1 - 0.35 * em)
+    const py = e.py * (1 - em) - up * (e.b - pb - e.rim * 0.5) * em
+    g.fillStyle(INK, 1)
+    g.fillEllipse(ex + e.px, ey + py, e.pa * 2, pb * 2)
+    // Main highlight + tiny secondary dot (the standard pair).
+    g.fillStyle(0xffffff, 1)
+    g.fillEllipse(ex + e.px - e.pa * 0.32, ey + py - pb * 0.34, e.pa * 0.6, e.pa * 0.6, 24)
+    g.fillEllipse(ex + e.px - e.pa * 0.1, ey + py - pb * 0.38, e.pa * 0.24, e.pa * 0.24, 16)
+  }
+  // Fear sweat: one drop at the temple as panic climbs.
+  if (panic > 0.45) {
+    const sweat = Math.min(1, (panic - 0.45) / 0.55)
+    g.fillStyle(0x9fdcff, 0.95 * sweat)
+    g.fillCircle(cx + r * 0.56, eyeY - r * 0.3, r * 0.055 * (0.7 + 0.3 * sweat))
+  }
+
+  // ---- THE INK OUTLINE — the contour itself, over everything. ----
+  g.lineStyle(ballOutlineWidth(r), INK, 1)
+  if (poly && poly.length >= 3) {
+    g.strokePoints(poly as unknown as Phaser.Math.Vector2[], true, true)
+  } else {
+    g.strokeCircle(cx, cy, r)
+  }
+}
+
+/**
+ * The ONE tier-9 entry point for every consumer (renderer, previews,
+ * banner, overlay, claw, progression, baker): routes to the theme the
+ * run rolled — `tier9Theme()` (shark or pig, seed-derived, URL-overridable)
+ * — and lets `variant` pick the palette WITHIN that theme.
+ */
+export function drawTier9Ball(
+  g: Phaser.GameObjects.Graphics,
+  cx: number,
+  cy: number,
+  r: number,
+  variant = 0,
+  poly?: Array<{ x: number; y: number }>,
+  panic = 0,
+  gaze?: { x: number; y: number },
+  seed = 9,
+): void {
+  if (tier9Theme() === 'pig') {
+    drawPigBall(g, cx, cy, r, variant, poly, panic, gaze, seed)
+  } else {
+    drawSharkBall(g, cx, cy, r, variant, poly, panic, gaze, seed)
   }
 }
 

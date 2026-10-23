@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { INK, ballOutlineWidth, wobbleContour, ballLookFor, drawSharkBall } from './BallAppearance'
+import { INK, ballOutlineWidth, wobbleContour, ballLookFor, drawTier9Ball } from './BallAppearance'
 import { isSpecialBakeTier, specialBakeExtent, specialBakeGeometry } from './bakeGeometry'
 
 /**
@@ -34,8 +34,9 @@ import { isSpecialBakeTier, specialBakeExtent, specialBakeGeometry } from './bak
  * lazily at first use, kept for the scene's lifetime.
  *
  * TIERS 8/9 keep their live path (rainbow shimmers with Date.now(); the
- * shark ball.s dorsal fin and tail extend beyond the contour). Their steady-
- * state cost is accepted: they are rare end-chain balls.
+ * tier-9 theme ball — shark or pig, rolled per run — has dorsal fin/ears
+ * + tail extending beyond the contour). Their steady-state cost is
+ * accepted: they are rare end-chain balls.
  */
 
 /** Radius (stage px) at which tier textures are rasterized. */
@@ -284,15 +285,17 @@ export class TierBaker {
 
 // ---------------------------------------------------------------------------
 // Tier-9 procedural fill, re-rasterizable into the offline Graphics.
-// DELEGATES to BallAppearance.drawSharkBall (circle fallback — a sleeping
-// shark), so the frozen bake uses the exact same drawing code as the live
-// ball and can never drift out of sync.
+// DELEGATES to BallAppearance.drawTier9Ball (circle fallback — a sleeping
+// ball), so the frozen bake uses the exact same drawing code as the live
+// ball (shark OR pig — whatever the run rolled) and can never drift out
+// of sync.
 // ---------------------------------------------------------------------------
 
 function drawFantasyInto(g: Phaser.GameObjects.Graphics, cx: number, cy: number, r: number, variant: number): void {
   // DELEGATES to the live renderer: the bake is a sleeping ball, and a
   // sleeping ball draws as the plain circle fallback (no contour) — the
-  // exact same code path as the live shark ball with poly omitted, so
-  // the bake and the live ball can never diverge again.
-  drawSharkBall(g, cx, cy, r, variant)
+  // exact same code path as the live theme ball with poly omitted, so
+  // the bake and the live ball can never diverge again. The theme roll
+  // (shark/pig) routes inside; the variant picks the palette within.
+  drawTier9Ball(g, cx, cy, r, variant)
 }

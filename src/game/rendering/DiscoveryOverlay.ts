@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK, drawSharkBall } from './BallAppearance'
+import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK, drawTier9Ball } from './BallAppearance'
 import { cycleColor } from './rgbCycle'
 import { variantIdFor } from '../state/runVariant'
 import { getTier } from '../../config/ballTiers'
@@ -2088,8 +2088,10 @@ export class DiscoveryOverlay {
     const poly = restContour(look, radius, x, y, 48)
 
     if (tier === 9) {
-      // The shark paints its own face — part of the design.
-      drawSharkBall(g, x, y, radius, variantIdFor(9), poly, 0, undefined, this.activeSeed)
+      // The theme ball paints its own face — part of the design. The
+      // run's theme roll (shark/pig) picks the renderer; the variant
+      // picks the palette within the theme.
+      drawTier9Ball(g, x, y, radius, variantIdFor(9), poly, 0, undefined, this.activeSeed)
       return
     } else {
       // Tier 8 is a plain ball whose colour cycles; the body fills the

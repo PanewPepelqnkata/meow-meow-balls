@@ -12,7 +12,7 @@ import {
   expressionAt,
   gazeAt,
   wobbleContour,
-  drawSharkBall,
+  drawTier9Ball,
 } from './BallAppearance'
 import type { BallLook } from './BallAppearance'
 import {
@@ -561,11 +561,13 @@ export class SoftBallRenderer {
   ): void {
     const built = poly ? { poly, cx: cx!, cy: cy! } : this.liveContour(r, look, drawR)
     if (r.tier === 9) {
-      // The shark draws INTO the live contour (body fill, fins, mouth
-      // all track the wobble) and paints its OWN face — no separate ink
-      // pass, no standard face on top. Fear (panic) and the gaze
-      // easter egg pass straight through.
-      drawSharkBall(g, built.cx, built.cy, r.soft.radius, variantIdFor(9), built.poly, this.emotion.panicOf(r.id), gazeAt(r.seed, Date.now()), r.seed)
+      // The theme ball draws INTO the live contour (body fill, ears/tail
+      // or fin, mouth all track the wobble) and paints its OWN face — no
+      // separate ink pass, no standard face on top. The run's theme roll
+      // (shark/pig) picks the renderer; the variant picks the palette
+      // within the theme. Fear (panic) and the gaze easter egg pass
+      // straight through.
+      drawTier9Ball(g, built.cx, built.cy, r.soft.radius, variantIdFor(9), built.poly, this.emotion.panicOf(r.id), gazeAt(r.seed, Date.now()), r.seed)
       return
     }
     // Every other tier (including the tier 8 cycling RGB ball) is a

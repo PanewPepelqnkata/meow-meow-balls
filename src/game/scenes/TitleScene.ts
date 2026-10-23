@@ -7,7 +7,7 @@ import {
   ballLookFor,
   ballOutlineWidth,
   drawBallFace,
-  drawSharkBall,
+  drawTier9Ball,
   restContour,
 } from '../rendering/BallAppearance'
 import { BALL_TIERS, getTier } from '../../config/ballTiers'
@@ -1701,8 +1701,10 @@ function drawBallIcon(
     g.fillStyle(0x23242e, 1)
     g.fillPoints(pts, true)
   } else if (tier === 9) {
-    // The shark paints its own face — part of the design.
-    drawSharkBall(g, cx, cy, r, variant ?? variantIdFor(9), poly, 0, undefined, 9)
+    // The theme ball paints its own face — part of the design. The run's
+    // theme roll (shark/pig) picks the renderer; the variant picks the
+    // palette within the theme.
+    drawTier9Ball(g, cx, cy, r, variant ?? variantIdFor(9), poly, 0, undefined, 9)
     return
   } else {
     // Tier 8 is a plain ball whose colour cycles; the body fills the

@@ -2,7 +2,7 @@ import Phaser from 'phaser'
 import type { UiLayout } from './ResponsiveLayout'
 import { BALL_TIERS } from '../config/ballTiers'
 import { hudText, WHITE } from './Typography'
-import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK, drawSharkBall } from '../game/rendering/BallAppearance'
+import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK, drawTier9Ball } from '../game/rendering/BallAppearance'
 import { cycleColor } from '../game/rendering/rgbCycle'
 import { variantIdFor } from '../game/state/runVariant'
 
@@ -228,9 +228,10 @@ export class TierProgression {
     const pts = poly.map((p) => new Phaser.Math.Vector2(p.x, p.y))
 
     if (tier === 9) {
-      // The shark paints the whole node (body, fins, mouth, face) —
-      // the same renderer as the game ball, so the strip matches.
-      drawSharkBall(g, 0, 0, rr, variantIdFor(9), poly, 0, undefined, 9)
+      // The theme ball paints the whole node (body, ears/tail or fin,
+      // face) — the same renderer as the game ball, so the strip matches
+      // the run's rolled theme (shark/pig).
+      drawTier9Ball(g, 0, 0, rr, variantIdFor(9), poly, 0, undefined, 9)
       return
     }
 

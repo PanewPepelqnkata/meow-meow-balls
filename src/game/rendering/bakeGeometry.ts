@@ -61,7 +61,11 @@ export function specialBakeGeometry(tier: number, radius: number): BakeGeometry 
  *  flags oscillating around Matter's threshold, plus sprite-vs-graphics
  *  depth ordering) read as disappearing, glitching sharks. Tier 9 is
  *  rare — it always draws through the live Graphics path, exactly like
- *  every other tier. Tier 8 was already never baked (animated colour). */
+ *  every other tier. Tier 8 was already never baked (animated colour).
+ *  This covers BOTH tier-9 themes: the PIG (the second per-run theme,
+ *  runVariant.tier9Theme()) shares the same live-path rule — it never
+ *  bakes either; TierBaker's drawFantasyInto routes by theme but is
+ *  unreachable through this gate. */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function isSpecialBakeTier(_tier: number): boolean {
   return false
