@@ -33,12 +33,13 @@ import { ballOutlineWidth } from './BallAppearance'
  * The geometry is a pure function, so it is directly testable here.
  */
 describe('tier 8/9 bake geometry', () => {
-  it('only tier 9 uses the procedural local-space bake', () => {
-    // TIER 8 IS NOT BAKED: it is the cycling RGB ball, a plain ball whose
-    // colour animates — a baked texture would freeze one colour. It draws
-    // through the live Graphics path like every other tier.
-    expect(isSpecialBakeTier(9)).toBe(true)
-    for (const t of [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12]) {
+  it('NO tier is baked — every ball draws through the live Graphics path', () => {
+    // The tier 9 shark bake is RETIRED: with several sharks on screen the
+    // baked-sprite ↔ live-Graphics alternation (Matter sleep flags
+    // oscillating around the threshold + sprite-vs-graphics depth
+    // ordering) read as disappearing, glitching sharks. Tier 9 now draws
+    // live like every other tier.
+    for (const t of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) {
       expect(isSpecialBakeTier(t)).toBe(false)
     }
   })

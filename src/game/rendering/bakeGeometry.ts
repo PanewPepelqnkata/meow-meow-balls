@@ -56,9 +56,13 @@ export function specialBakeGeometry(tier: number, radius: number): BakeGeometry 
 }
 
 /** True for the tiers that use the procedural local-space bake.
- *  ONLY tier 9: the tier 8 cycling RGB ball is a plain ball whose colour
- *  animates, so it is never baked (a baked texture would freeze one
- *  colour) — it draws through the live Graphics path. */
-export function isSpecialBakeTier(tier: number): boolean {
-  return tier === 9
+ *  NOW NONE: the tier 9 shark was baked when asleep, but with several
+ *  sharks on screen the baked-sprite ↔ live-Graphics alternation (sleep
+ *  flags oscillating around Matter's threshold, plus sprite-vs-graphics
+ *  depth ordering) read as disappearing, glitching sharks. Tier 9 is
+ *  rare — it always draws through the live Graphics path, exactly like
+ *  every other tier. Tier 8 was already never baked (animated colour). */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function isSpecialBakeTier(_tier: number): boolean {
+  return false
 }

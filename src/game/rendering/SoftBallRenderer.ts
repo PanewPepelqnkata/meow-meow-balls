@@ -384,36 +384,33 @@ export class SoftBallRenderer {
         }
       }
 
-      // ---- TIERS 8/9 + fallback: live contour path, with a per-ball
-      // texture bake once a ball has been CONTINUOUSLY asleep for a
-      // debounce window. Matter's per-body sleep flags oscillate around
-      // the threshold in a settled pile; switching render paths (baked
-      // sprite ↔ live Graphics) on every one of those flips is what made
-      // the tier 9 ball flicker. The bake only happens after the ball has
-      // held a full sleep for the window; a single wake frame drops it
-      // instantly (onBallWake → dropBake), so waking is still immediate.
+      // ---- SLEEP BAKE (plain tiers 1–7 only): a ball that has been
+      // CONTINUOUSLY asleep for the debounce window switches to its baked
+      // contour texture. Tiers 8/9 NEVER bake: tier 8's colour animates,
+      // and the tier 9 shark's procedural body (fins, aura, mouth, face)
+      // cannot survive a plain-contour bake — plus with several sharks on
+      // screen the baked-sprite ↔ live-Graphics alternation (Matter sleep
+      // flags oscillating around the threshold + sprite-vs-graphics depth
+      // ordering) read as disappearing, glitching sharks. They always
+      // draw through the live Graphics path below.
       const sleeping = softBallSleeping(r.soft)
       const sleepKey = r.id
       const held = (this.sleepHold.get(sleepKey) ?? 0) + 1
       if (sleeping) this.sleepHold.set(sleepKey, held)
       else this.sleepHold.delete(sleepKey)
       const sleepStable = sleeping && held >= SLEEP_DEBOUNCE_FRAMES
-      const special = sleepStable && !this.bakingSuspended ? this.specialTextures.get(r.id) : undefined
+      const bakeable = r.tier <= 7
+      const special = bakeable && sleepStable && !this.bakingSuspended ? this.specialTextures.get(r.id) : undefined
       if (special) {
         const s = drawR / special.textureRadius
         this.drawSpecialQuads(r.id, special, c.x, c.y, s)
         this.bakeSweep.add(r.id)
-        // TIER 9: the baked body ALREADY contains the shark's own face
-        // (eyes, mouth, teeth — all part of drawSharkBall). Drawing the
-        // standard sprite face on top put a stray floating eye next to
-        // the ball. Tier 8 still takes the sprite face (its body is a
-        // plain ball with no face of its own).
-        if (r.tier !== 9) this.drawSpriteFace(this.spriteViews.get(r.id)!, r, drawR, aspect, now)
+        this.drawSpriteFace(this.spriteViews.get(r.id)!, r, drawR, aspect, now)
         continue
       }
 
       const { poly, cx, cy } = this.liveContour(r, look, drawR)
-      if (sleepStable && !this.bakingSuspended && !this.specialTextures.has(r.id)) {
+      if (bakeable && sleepStable && !this.bakingSuspended && !this.specialTextures.has(r.id)) {
         // Bake ONCE per ball, after the debounce. Re-baking every sleeping
         // frame removed the ball's live texture out from under its own
         // body quad, which nulled the texture source and threw during the
