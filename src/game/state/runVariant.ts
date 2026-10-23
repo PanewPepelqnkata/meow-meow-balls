@@ -12,6 +12,8 @@
  * (world renderer, discovery overlay, crane, next-ball preview, menu).
  */
 
+import { rollCollectibleTheme } from '../../config/collectibleThemes'
+
 /** Distinct collectible variants per randomized tier. */
 export const VARIANT_COUNT = 8
 
@@ -58,7 +60,10 @@ export function variantIdFor(tier: number): number {
 
 export type Tier9Theme = 'shark' | 'pig'
 
-/** The tier-9 animal theme this run rolled — hash of the run seed, ~50/50.
+/** The tier-9 animal theme this run rolled — a weighted roll from
+ *  `COLLECTIBLE_THEMES[9]` in config/collectibleThemes.ts (equal weights
+ *  = 50/50 shark/pig). Adding a theme to the config automatically
+ *  includes it in the roll.
  *  QA: `?theme=pig` / `?theme=shark` force the roll (both themes are
  *  otherwise seed-random and hard to test back-to-back). */
 export function tier9Theme(): Tier9Theme {
@@ -66,7 +71,7 @@ export function tier9Theme(): Tier9Theme {
     const p = new URLSearchParams(window.location.search).get('theme')
     if (p === 'pig' || p === 'shark') return p
   }
-  return hash(runSeed, 0x71e9) % 2 === 0 ? 'shark' : 'pig'
+  return rollCollectibleTheme(9, runSeed, hash) as Tier9Theme
 }
 
 /** Variants only exist for the randomized high tiers.
