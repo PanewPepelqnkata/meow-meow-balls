@@ -144,11 +144,11 @@ export class FacePool {
         // Graphics layer and never needs these quads at all.
         fill: this.scene.add.image(0, 0, '__DEFAULT').setDepth(SPRITE_FILL_DEPTH).setVisible(false),
         outline: this.scene.add.image(0, 0, '__DEFAULT').setDepth(SPRITE_OUTLINE_DEPTH).setVisible(false),
-        scleraL: this.scene.add.image(0, 0, scleraKey).setDepth(FACE_DEPTH),
-        scleraR: this.scene.add.image(0, 0, scleraKey).setDepth(FACE_DEPTH),
-        pupilL: this.scene.add.image(0, 0, pupilKey).setDepth(FACE_DEPTH),
-        pupilR: this.scene.add.image(0, 0, pupilKey).setDepth(FACE_DEPTH),
-        mouth: this.scene.add.image(0, 0, mouthKey).setDepth(FACE_DEPTH),
+        scleraL: this.scene.add.image(0, 0, scleraKey).setDepth(FACE_DEPTH).setVisible(false),
+        scleraR: this.scene.add.image(0, 0, scleraKey).setDepth(FACE_DEPTH).setVisible(false),
+        pupilL: this.scene.add.image(0, 0, pupilKey).setDepth(FACE_DEPTH).setVisible(false),
+        pupilR: this.scene.add.image(0, 0, pupilKey).setDepth(FACE_DEPTH).setVisible(false),
+        mouth: this.scene.add.image(0, 0, mouthKey).setDepth(FACE_DEPTH).setVisible(false),
       }
       this.views.set(ballId, view)
       return view
@@ -219,11 +219,11 @@ export class FacePool {
       // Hidden at creation — see the note in ensure()'s fast path above.
       fill: this.scene.add.image(0, 0, '__DEFAULT').setDepth(SPRITE_FILL_DEPTH).setVisible(false),
       outline: this.scene.add.image(0, 0, '__DEFAULT').setDepth(SPRITE_OUTLINE_DEPTH).setVisible(false),
-      scleraL: this.scene.add.image(0, 0, scleraKey).setDepth(FACE_DEPTH),
-      scleraR: this.scene.add.image(0, 0, scleraKey).setDepth(FACE_DEPTH),
-      pupilL: this.scene.add.image(0, 0, pupilKey).setDepth(FACE_DEPTH),
-      pupilR: this.scene.add.image(0, 0, pupilKey).setDepth(FACE_DEPTH),
-      mouth: this.scene.add.image(0, 0, mouthKey).setDepth(FACE_DEPTH),
+      scleraL: this.scene.add.image(0, 0, scleraKey).setDepth(FACE_DEPTH).setVisible(false),
+      scleraR: this.scene.add.image(0, 0, scleraKey).setDepth(FACE_DEPTH).setVisible(false),
+      pupilL: this.scene.add.image(0, 0, pupilKey).setDepth(FACE_DEPTH).setVisible(false),
+      pupilR: this.scene.add.image(0, 0, pupilKey).setDepth(FACE_DEPTH).setVisible(false),
+      mouth: this.scene.add.image(0, 0, mouthKey).setDepth(FACE_DEPTH).setVisible(false),
     }
     this.views.set(ballId, view)
     return view

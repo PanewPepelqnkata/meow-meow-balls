@@ -706,22 +706,21 @@ export function drawSharkBall(
   g.closePath()
   g.fillPath()
 
-  // ---- TAIL FIN — BIG, sweeping out of the ball's LEFT side (the
-  // shark's rear, away from the face). A classic two-lobe tail: the
-  // upper lobe sweeps up, the lower lobe angles back. Flattens with
-  // fear. ----
-  const tailX = cx - r * 0.78
-  const tailY = cy - r * 0.05
-  const tailS = r * (1.0 - 0.3 * panic)
+  // ---- TAIL FIN — a compact two-lobe tail on the ball's LEFT side
+  // (the shark's rear, away from the face). Reaches ~0.35r past the
+  // body. Flattens with fear. ----
+  const tailX = cx - r * 0.72
+  const tailY = cy - r * 0.02
+  const tailS = r * (0.36 - 0.1 * panic)
   g.fillStyle(pal.back, 1)
   g.beginPath()
-  g.moveTo(tailX + r * 0.18, tailY - r * 0.16)
-  // Upper lobe: sweeping up-left to a point, then notching back in.
-  quadFrom(g, tailX + r * 0.18, tailY - r * 0.16, tailX - r * 0.34 * tailS, tailY - r * 0.52 * tailS, tailX - r * 0.72 * tailS, tailY - r * 0.66 * tailS)
-  quadFrom(g, tailX - r * 0.72 * tailS, tailY - r * 0.66 * tailS, tailX - r * 0.3 * tailS, tailY - r * 0.12, tailX - r * 0.22 * tailS, tailY + r * 0.02)
+  g.moveTo(tailX + r * 0.12, tailY - r * 0.1)
+  // Upper lobe: a short sweep up-left to a point, then notching back in.
+  quadFrom(g, tailX + r * 0.12, tailY - r * 0.1, tailX - r * 0.16 * tailS, tailY - r * 0.26 * tailS, tailX - r * 0.34 * tailS, tailY - r * 0.3 * tailS)
+  quadFrom(g, tailX - r * 0.34 * tailS, tailY - r * 0.3 * tailS, tailX - r * 0.14 * tailS, tailY - r * 0.06, tailX - r * 0.1 * tailS, tailY + r * 0.02)
   // Lower lobe: shorter, angled down-left.
-  quadFrom(g, tailX - r * 0.22 * tailS, tailY + r * 0.02, tailX - r * 0.4 * tailS, tailY + r * 0.18 * tailS, tailX - r * 0.6 * tailS, tailY + r * 0.4 * tailS)
-  quadFrom(g, tailX - r * 0.6 * tailS, tailY + r * 0.4 * tailS, tailX - r * 0.18 * tailS, tailY + r * 0.26, tailX + r * 0.18, tailY + r * 0.1)
+  quadFrom(g, tailX - r * 0.1 * tailS, tailY + r * 0.02, tailX - r * 0.18 * tailS, tailY + r * 0.08 * tailS, tailX - r * 0.28 * tailS, tailY + r * 0.18 * tailS)
+  quadFrom(g, tailX - r * 0.28 * tailS, tailY + r * 0.18 * tailS, tailX - r * 0.08 * tailS, tailY + r * 0.12, tailX + r * 0.12, tailY + r * 0.06)
   g.closePath()
   g.fillPath()
   g.lineStyle(ink * 0.8, INK, 1)
@@ -736,15 +735,16 @@ export function drawSharkBall(
     g.fillCircle(cx, cy, r)
   }
   // Belly: the light underside — an ellipse low in the body; the ink
-  // frame covers any spill at the rim.
+  // frame covers any spill at the rim. (fillEllipse takes WIDTH/HEIGHT:
+  // these are rx/ry × 2 = w/h, sized to cover only the lower third.)
   g.fillStyle(pal.belly, 1)
   g.beginPath()
-  g.fillEllipse(cx, cy + r * 0.42, (r * 0.86) * 2, (r * 0.6) * 2)
+  g.fillEllipse(cx, cy + r * 0.42, r * 0.86, r * 0.6)
   g.fillPath()
   // Back highlight: a lighter grey sweep along the top of the back.
   g.fillStyle(pal.backLight, 0.85)
   g.beginPath()
-  g.fillEllipse(cx - r * 0.05, cy - r * 0.5, (r * 0.7) * 2, (r * 0.36) * 2)
+  g.fillEllipse(cx - r * 0.05, cy - r * 0.5, r * 0.7, r * 0.36)
   g.fillPath()
 
   // ---- GILL SLITS — three short ink arcs on the shark's cheek. ----
