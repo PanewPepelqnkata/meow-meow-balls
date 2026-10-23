@@ -10,15 +10,31 @@ export const DISCOVERY = {
    * silently — 4 is discovered by default). */
   minTier: 5,
   /** Total presentation time before the fade-out begins (spec: 1.4–2.0s).
-   * The collectible card is LONGER: its reveal has a beat before the
-   * card arrives (the "?" holds for ~1s), then the card is on screen for
-   * the player to read it. */
+   *  The collectible card is LONGER: its reveal has a beat before the
+   *  card arrives (the "?" holds on the black stage), then the card is
+   *  on screen for the player to read it. */
   showMs: 1800,
-  /** How long the mystery reveal runs before the card arrives (ms) —
-   * the "?" holds on the black stage, then the card pops over it. */
-  cardRevealMs: 980,
+  /** The moment the card has LANDED, measured from the start of the
+   *  presentation (ms). Everything in the card's choreography is timed
+   *  backwards FROM this number, so the animation and the dismiss timer
+   *  (cardRevealMs + cardShowMs) can never drift apart.
+   *
+   *  The reveal is: black stage → the "?" pops in and holds → the "?"
+   *  dissolves as the card opens out of it → the card thunks down. */
+  cardRevealMs: 1400,
+  /** How long the card's ARRIVAL takes (ms) — the flip, the landing
+   *  punch and the character's pop. It is contained INSIDE cardRevealMs
+   *  (the arrival starts at cardRevealMs - cardArriveMs), so the card is
+   *  on screen for the FULL cardShowMs once it has landed. */
+  cardArriveMs: 480,
+  /** The card's FLIP (ms) — the edge-on swing that opens the card out of
+   *  the "?". The card lands when the flip ends. */
+  cardFlipMs: 240,
+  /** The "?"'s DISSOLVE (ms) — it is sucked up into the light as the card
+   *  opens, so the two read as one continuous moment. */
+  cardCollapseMs: 200,
   /** How long the card itself stays on screen after it arrives (ms) —
-   * long enough to read the name, the stats and the flavour. */
+   *  long enough to read the name, the stats and the flavour. */
   cardShowMs: 3600,
   /** Fade-out duration. */
   fadeMs: 300,

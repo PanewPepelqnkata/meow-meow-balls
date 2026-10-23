@@ -11,6 +11,15 @@ import {
   type DiscoveryStyle,
 } from './discoveryStyles'
 import { buildBallCard } from './ballCard'
+import {
+  buildCardGloss,
+  buildCardSheen,
+  buildRarityEdge,
+  buildRarityGlint,
+  type CardRect,
+  type FinishSlice,
+  type FinishSparkle,
+} from './cardFinish'
 
 /**
  * Phase 2.13.4 (spec §2) — SUBTLE BUT DRAMATIC discovery presentation.
@@ -64,10 +73,33 @@ const COMIC_INK = 0x101014
 const DISC_COLOR = 0xfff6e0
 /** The collectible card's paper stock — a warm cream, like the disc. */
 const CARD_PAPER = 0xfff3d6
+/**
+ * The card's maximum width for a viewport height — 340px on a phone, and
+ * it grows with the viewport so the card also reads on a desktop-sized
+ * window (a hard phone cap leaves a playing-card-sized stamp in the
+ * middle of a 1080p screen). Height-driven, so the card's height cap
+ * (`1.32 · w ≤ 0.72 · vh`) always keeps it on screen.
+ */
+function cardMaxWidth(vh: number): number {
+  return Math.max(340, Math.min(vh * 0.52, 560))
+}
+
 /** The card's portrait-window backdrop — a soft warm sky wash. */
 const CARD_SKY = 0xffeec2
 /** Sparkle/highlight flash color. */
 const FLASH_YELLOW = 0xffeb3b
+
+/**
+ * The name of the card's FINISH layer inside the panel. The finish sits
+ * between the card and the character, so anything that has to find the
+ * character layer in the panel must skip this one.
+ */
+export const CARD_SHINE_LAYER = 'card-shine'
+/** The name of the card's ADDITIVE glint layer (the specular streak on
+ * the rainbow band's leading edge). */
+export const CARD_GLINT_LAYER = 'card-glint'
+/** How long the holographic sheen takes to sweep across the card once. */
+const SHINE_SWEEP_MS = 2600
 
 /**
  * The character's presentation size, in viewport px.
@@ -128,6 +160,31 @@ export class DiscoveryOverlay {
   /** The "?"'s pulse tween — stopped when the card lands (it repeats
    * forever, so it would keep the "?" alive after the wipe). */
   private mysteryPulse: Phaser.Tweens.Tween | null = null
+  /** The card's FINISH — the holographic sheen, the paper gloss and the
+   * rarity flourish. It is a layer INSIDE the panel, drawn BETWEEN the
+   * card and the character, so the foil washes the card but never the
+   * character standing on it. */
+  private shineG: Phaser.GameObjects.Graphics | null = null
+  /** The ADDITIVE glint layer — the hot specular streak that rides on
+   * the rainbow band's leading edge. */
+  private glintG: Phaser.GameObjects.Graphics | null = null
+  /** The sweeping sheen's clock — a number tween that runs 0..1 forever
+   * while the card is up. It is stopped with the presentation. */
+  private shineTween: Phaser.Tweens.Tween | null = null
+  /** The card's outline in panel-relative coordinates — what the finish
+   * is drawn against (and clipped to). */
+  private finishRect: CardRect | null = null
+  /** The card's rarity rung (0 COMMON .. 4 LEGENDARY) — the finish reads
+   * it, so a rarer card gets stronger foil. */
+  private finishRarity = 0
+  /** The card's tier colour — the finish is tinted with it, so each
+   * card's foil matches its ball. */
+  private finishColor = 0xffffff
+  /** The static parts of the finish: the paper gloss and the rarity edge
+   * ribbon. They do not move, so they are drawn ONCE. */
+  private finishStatic: FinishSlice[] = []
+  /** The rarity glint — the twinkling sparkles. */
+  private finishGlints: FinishSparkle[] = []
   private content: Phaser.GameObjects.Container | null = null
   private active = false
   private activeTier: number | null = null
@@ -193,7 +250,7 @@ export class DiscoveryOverlay {
     this.activeSeed = seed
 
     // The card owns the screen: hide the HUD for its duration.
-    if (this.style === 'card') this.setHudVisible?.(false)
+    if (this.style === 'card' || this.style === 'gib') this.setHudVisible?.(false)
 
     this.build()
     this.playEntrance()
@@ -211,7 +268,7 @@ export class DiscoveryOverlay {
     // simple styles, but for the card it must start when the CARD
     // ARRIVES — the reveal eats the first second, and the card was
     // therefore on screen for less than a second (unreadable).
-    if (this.style === 'card') {
+    if (this.style === 'card' || this.style === 'gib') {
       this.dismissTimer = this.scene.time.delayedCall(
         DISCOVERY.cardRevealMs + DISCOVERY.cardShowMs,
         () => this.hide(),
@@ -239,12 +296,58 @@ export class DiscoveryOverlay {
     this.dimRect = null
     this.panel = null
     this.flashG = null
+
+    // THE CARD/GIB OUTRO — the card sinks back into its own glow: panel,
+    // text and glow scale and fade AS ONE GROUP (the glow blooms up a
+    // touch as the card shrinks into it), then the shared fade clears
+    // whatever is left. Nothing peels away separately.
+    if (this.style === 'card' || this.style === 'gib') {
+      const OUTRO_MS = 340
+      this.scene.tweens.add({
+        targets: [panel, content],
+        scale: 0.72,
+        alpha: 0,
+        duration: OUTRO_MS,
+        ease: 'Quad.easeIn',
+      })
+      if (this.glowG) {
+        this.scene.tweens.add({
+          targets: this.glowG,
+          scale: 1.18,
+          alpha: 0,
+          duration: OUTRO_MS + 60,
+          ease: 'Quad.easeOut',
+        })
+      }
+      this.scene.tweens.add({
+        targets: [dim, flash].filter(Boolean),
+        alpha: 0,
+        duration: OUTRO_MS,
+        delay: 80,
+        ease: 'Sine.easeIn',
+        onComplete: () => {
+          this.stopShineSweep()
+          for (const o of this.objs) o.destroy()
+          this.objs = []
+          if (this.active) {
+            this.active = false
+            this.activeTier = null
+          }
+        },
+      })
+      return
+    }
+
     this.scene.tweens.add({
       targets: [content, dim, panel, flash].filter(Boolean),
       alpha: 0,
       duration: DISCOVERY.fadeMs,
       ease: 'Sine.easeOut',
       onComplete: () => {
+        // The sheen's sweep must stop BEFORE the panel (and the finish
+        // layer inside it) is destroyed — a counter tween is not covered
+        // by killTweensOf, so it would keep drawing into a dead Graphics.
+        this.stopShineSweep()
         for (const o of this.objs) o.destroy()
         this.objs = []
         if (this.active) {
@@ -267,6 +370,10 @@ export class DiscoveryOverlay {
     this.dismissTimer = null
     this.mysteryPulse?.stop()
     this.mysteryPulse = null
+    // The sheen's sweep must stop too — it is a counter tween, so it is
+    // not covered by killTweensOf(this.objs), and it would keep redrawing
+    // a destroyed Graphics.
+    this.stopShineSweep()
     this.scene.tweens.killTweensOf(this.objs)
     for (const o of this.objs) o.destroy()
     this.objs = []
@@ -285,6 +392,7 @@ export class DiscoveryOverlay {
     if (this.activeTier == null) return
     this.mysteryPulse?.stop()
     this.mysteryPulse = null
+    this.stopShineSweep()
     this.scene.tweens.killTweensOf(this.objs)
     for (const o of this.objs) o.destroy()
     this.objs = []
@@ -346,7 +454,7 @@ export class DiscoveryOverlay {
     // The COLLECTIBLE CARD owns the screen: it is centred on the VIEWPORT
     // (not the gameplay slot — that put it low, below the middle, with
     // the HUD crowding it) and the HUD is hidden while it is up.
-    if ((style as DiscoveryStyle) === 'card') {
+    if ((style as DiscoveryStyle) === 'card' || (style as DiscoveryStyle) === 'gib') {
       return this.cardLayout(vw, vh)
     }
     // Only the 'band' style HAS a band. The others (spot / stamp / reveal /
@@ -396,7 +504,7 @@ export class DiscoveryOverlay {
     // style), and the label sits under the character.
     const bandBottom = ballY + bandH / 2
     // The character's visual extent (the disc/medallion around it).
-    const artR = displayRadius * (style === 'stamp' ? 1.55 : style === 'reveal' ? 1.5 : style === 'card' ? 1.6 : discScale)
+    const artR = displayRadius * (style === 'stamp' ? 1.55 : style === 'reveal' ? 1.5 : style === 'card' || style === 'gib' ? 1.6 : discScale)
     const charTop = ballY - artR
     const charBottom = ballY + artR
     // The title's own half-height, so it can be placed to CLEAR the art.
@@ -455,8 +563,10 @@ export class DiscoveryOverlay {
   } {
     const cx = vw / 2
     // The card's size: it fills most of the width on a phone, and is
-    // height-capped so it never runs off the screen.
-    const w = Math.min(vw * 0.82, 340)
+    // height-capped so it never runs off the screen. On a desktop
+    // viewport (wide, short) the width fraction alone would make a
+    // comically wide card, so the cap scales up with the viewport.
+    const w = Math.min(vw * 0.82, cardMaxWidth(vh))
     const h = Math.min(w * 1.32, vh * 0.72)
     // The card's CENTRE: the viewport's centre, nudged up a little so the
     // title has room and the card does not sit on the home indicator.
@@ -470,10 +580,11 @@ export class DiscoveryOverlay {
     // The character's radius is derived from the PORTRAIT WINDOW, so the
     // window always frames it (the ball used to overflow the window) —
     // AND bounded by the width limit, so the character never takes more
-    // than its share of the screen.
+    // than its share of the screen. The 72px cap is the phone-sized
+    // ceiling; on a desktop-sized card it grows with the card.
     const byWindow = (winH * 0.4) / 1.16
     const byWidth = (w * MAX_DISC_WIDTH_FRACTION) / (2 * DISC_SCALE)
-    const rBall = Math.max(26, Math.min(72, byWindow, byWidth))
+    const rBall = Math.max(26, Math.min(Math.max(72, w * 0.26), byWindow, byWidth))
     return {
       vw,
       vh,
@@ -519,7 +630,7 @@ export class DiscoveryOverlay {
     vh: number
   } {
     const L = this.layout()
-    const w = Math.min(L.vw * 0.82, 340)
+    const w = Math.min(L.vw * 0.82, cardMaxWidth(L.vh))
     const h = Math.min(w * 1.38, L.vh * 0.76)
     const x = cx - w / 2
     // The card's top-left, in PANEL-RELATIVE coordinates: the panel sits at
@@ -571,7 +682,7 @@ export class DiscoveryOverlay {
     // darkened background) so the cream card pops like a collectible in a
     // display case. The other styles keep the gentle dim, with the game
     // still readable behind.
-    const dimAlpha = style === 'card' ? 0.82 : DIM_ALPHA
+    const dimAlpha = style === 'card' || style === 'gib' ? 0.82 : DIM_ALPHA
     // The dim must cover the WHOLE camera, in the camera's WORLD units —
     // the UIScene's camera is zoomed (the buffer is at dpr), so a
     // CSS-px-sized rectangle only covers a quarter of the screen.
@@ -619,7 +730,7 @@ export class DiscoveryOverlay {
 
     // 3) The MYSTERY layer (the card style only) — the huge "?" that is
     //    revealed first, before the card pops in over it.
-    if (style === 'card') {
+    if (style === 'card' || style === 'gib') {
       this.mysteryG = this.scene.add.graphics().setDepth(MYSTERY_DEPTH).setPosition(0, 0)
       this.objs.push(this.mysteryG)
       this.mysteryText = this.scene.add
@@ -710,11 +821,18 @@ export class DiscoveryOverlay {
       this.drawDiscoveryBall(ballG, 0, G.ballY, displayRadius, tier, this.activeSeed)
       this.panel.add(ballG)
     } else {
-      // 'card' — a COLLECTIBLE CARD: a Pokédex-style entry with a name
-      // plate, a sun-glow portrait window, a stat block and a flavour line.
+      // 'card' / 'gib' — a COLLECTIBLE CARD: a Pokédex-style entry with a
+      // name plate, a sun-glow portrait window, a stat block and a flavour
+      // line. ('gib' swaps the text for doodle scribbles afterwards.)
       const cardG = this.scene.add.graphics()
-      this.drawCard(cardG, displayRadius, color, cx, vh)
+      this.drawCard(cardG, color, cx, vh)
       this.panel.add(cardG)
+
+      // The card's FINISH — the holographic sheen, the paper gloss and
+      // the rarity flourish. It goes BETWEEN the card and the character,
+      // so the foil washes the card's own surface but NEVER the
+      // character standing on it.
+      this.buildCardFinish(color)
 
       const ballG = this.scene.add.graphics()
       // The character sits in the PORTRAIT WINDOW's middle (the shared
@@ -747,8 +865,8 @@ export class DiscoveryOverlay {
     this.content = this.scene.add.container(0, 0).setDepth(CONTENT_DEPTH)
     this.objs.push(this.content)
 
-    if (style === 'card') {
-      this.buildCardText(cx)
+    if (style === 'card' || style === 'gib') {
+      this.buildCardText(cx, style === 'gib')
       return
     }
 
@@ -872,8 +990,13 @@ export class DiscoveryOverlay {
    *
    * The card's geometry mirrors drawCard()'s, so the text lands exactly
    * on the bars and the plate.
+   *
+   * With `gibberish` (the ?discovery=gib QA style) no words are drawn at
+   * all: every text slot gets a hand-doodled scribble line instead, so
+   * the card's layout, rhythm and overflow behaviour can be judged
+   * without reading anything. The scribbles are deterministic per seed.
    */
-  private buildCardText(cx: number): void {
+  private buildCardText(cx: number, gibberish = false): void {
     const content = this.content
     if (!content) return
     const tier = this.activeTier ?? 1
@@ -893,30 +1016,35 @@ export class DiscoveryOverlay {
 
     // The NAME plate: the species name, big, in the game's font, in white
     // over the tier-coloured plate.
-    const nameText = this.scene.add
-      .text(cx, y + pad * 0.5 + plateH * 0.42, card.name.toUpperCase(), {
-        fontFamily: FONT_FAMILY,
-        fontSize: `${Math.round(Math.min(34, Math.max(16, w * 0.115)))}px`,
-        color: '#ffffff',
-        stroke: '#111111',
-        strokeThickness: 7,
-        resolution: Math.min(window.devicePixelRatio || 1, 2),
-      })
-      .setOrigin(0.5, 0.5)
-      .setShadow(0, 3, '#00000055', 0, false, true)
-    if (nameText.width > winW) nameText.setScale(winW / nameText.width)
-    content.add(nameText)
+    if (gibberish) {
+      this.buildGibText(content, cx, y + pad * 0.5 + plateH * 0.42, winW * 0.72, Math.min(34, Math.max(16, w * 0.115)), '#ffffff')
+      this.buildGibText(content, cx, y + pad * 0.5 + plateH * 0.86, winW * 0.4, Math.min(20, Math.max(11, w * 0.062)), '#111111')
+    } else {
+      const nameText = this.scene.add
+        .text(cx, y + pad * 0.5 + plateH * 0.42, card.name.toUpperCase(), {
+          fontFamily: FONT_FAMILY,
+          fontSize: `${Math.round(Math.min(34, Math.max(16, w * 0.115)))}px`,
+          color: '#ffffff',
+          stroke: '#111111',
+          strokeThickness: 7,
+          resolution: Math.min(window.devicePixelRatio || 1, 2),
+        })
+        .setOrigin(0.5, 0.5)
+        .setShadow(0, 3, '#00000055', 0, false, true)
+      if (nameText.width > winW) nameText.setScale(winW / nameText.width)
+      content.add(nameText)
 
-    // The TYPE line, small, just under the name.
-    const kindText = this.scene.add
-      .text(cx, y + pad * 0.5 + plateH * 0.86, card.kind, {
-        fontFamily: FONT_FAMILY,
-        fontSize: `${Math.round(Math.min(20, Math.max(11, w * 0.062)))}px`,
-        color: '#111111',
-        resolution: Math.min(window.devicePixelRatio || 1, 2),
-      })
-      .setOrigin(0.5, 0.5)
-    content.add(kindText)
+      // The TYPE line, small, just under the name.
+      const kindText = this.scene.add
+        .text(cx, y + pad * 0.5 + plateH * 0.86, card.kind, {
+          fontFamily: FONT_FAMILY,
+          fontSize: `${Math.round(Math.min(20, Math.max(11, w * 0.062)))}px`,
+          color: '#111111',
+          resolution: Math.min(window.devicePixelRatio || 1, 2),
+        })
+        .setOrigin(0.5, 0.5)
+      content.add(kindText)
+    }
 
     // The STAT BLOCK: the label on the row, the value at its end, and
     // the thin bar UNDER the row.
@@ -925,6 +1053,13 @@ export class DiscoveryOverlay {
       const s = stats[i]
       if (!s) continue
       const by = statTop + i * gap + gap * 0.3
+      if (gibberish) {
+        // A label doodle (left-anchored) and a shorter value doodle at
+        // the row's end — the same slots the real text would occupy.
+        this.buildGibText(content, winX + statW * 0.28, by, statW * 0.55, Math.min(14, Math.max(9, w * 0.046)), '#111111')
+        this.buildGibText(content, winX + statW - (statW * 0.14) / 2, by, statW * 0.14, Math.min(15, Math.max(10, w * 0.05)), '#111111')
+        continue
+      }
       const label = this.scene.add
         .text(winX, by, s.label, {
           fontFamily: FONT_FAMILY,
@@ -947,6 +1082,12 @@ export class DiscoveryOverlay {
 
     // The FLAVOUR line, under the stat block.
     const footY = statTop + statH + pad * 0.55
+    if (gibberish) {
+      // Two short centred scribbles, like a wrapped two-line flavour text.
+      this.buildGibText(content, cx, footY + w * 0.03, winW * 0.62, Math.min(14, Math.max(9, w * 0.046)), '#3a3020')
+      this.buildGibText(content, cx, footY + w * 0.09, winW * 0.44, Math.min(14, Math.max(9, w * 0.046)), '#3a3020')
+      return
+    }
     const flavour = this.scene.add
       .text(cx, footY, card.flavour, {
         fontFamily: FONT_FAMILY,
@@ -963,6 +1104,51 @@ export class DiscoveryOverlay {
   }
 
   /**
+   * One DOODLE "word" — a wavy hand-drawn scribble standing in for a run
+   * of text (the ?discovery=gib QA style). Deterministic per seed, so the
+   * same card always doodles the same way.
+   *
+   * The scribble is drawn INSIDE a box of the given max width and height
+   * (centred horizontally on `cx`, vertically on `cy`), so it can never
+   * overflow the slot the real text was measured into.
+   */
+  private buildGibText(
+    content: Phaser.GameObjects.Container,
+    cx: number,
+    cy: number,
+    maxW: number,
+    size: number,
+    color: string,
+  ): void {
+    const g = this.scene.add.graphics()
+    const ink = Phaser.Display.Color.HexStringToColor(color).color
+    const h = size * 0.52 // the scribble's x-height — a lowercase "word"
+    const wobble = h * 0.38
+    const segments = 14
+    // A seeded RNG (mulberry32) so the doodles are stable per card.
+    let a = (this.activeSeed * 0x9e3779b9 + Math.round(cx * 7 + cy * 13)) >>> 0
+    const rnd = () => {
+      a |= 0
+      a = (a + 0x6d2b79f5) | 0
+      let t = Math.imul(a ^ (a >>> 15), 1 | a)
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+    }
+    const width = maxW * (0.55 + rnd() * 0.45)
+    const x0 = cx - width / 2
+    g.lineStyle(Math.max(1.5, size * 0.09), ink, 0.92)
+    g.beginPath()
+    g.moveTo(x0, cy + (rnd() - 0.5) * wobble)
+    for (let i = 1; i <= segments; i++) {
+      const px = x0 + (width * i) / segments
+      const py = cy + Math.sin(i * (0.9 + rnd() * 0.9)) * wobble
+      g.lineTo(px, py)
+    }
+    g.strokePath()
+    content.add(g)
+  }
+
+  /**
    * THE COLLECTIBLE CARD — a Pokédex-style entry, drawn in the game's own
    * hand-drawn style.
    *
@@ -976,7 +1162,6 @@ export class DiscoveryOverlay {
    */
   private drawCard(
     g: Phaser.GameObjects.Graphics,
-    rBall: number,
     color: number,
     cx: number,
     vh: number,
@@ -1016,16 +1201,18 @@ export class DiscoveryOverlay {
     const winR = w * 0.05
 
     // THE SUN GLOW — this is the "you found a collectible" moment: the
-    // light comes from BEHIND the character and floods out past the card's
-    // edges. It lives on its own layer UNDER the card, so it reads as a
-    // light source BEHIND the card, not a picture inside it.
+    // light comes from BEHIND the card and floods out past its edges. It
+    // lives on its own layer UNDER the card, so it reads as a light
+    // source BEHIND the card, not a picture inside it.
     if (this.glowG) {
       this.glowG.clear()
-      // The character's WORLD position. The glow is a scene object (not in
-      // the panel), so it lives in the camera's world space, where the
-      // character's absolute viewport position is (cx, ballY + vh/2) —
-      // the panel's own offset converts back.
-      this.drawSunGlow(this.glowG, cx, vh / 2 + G.ballY, rBall, color)
+      // Anchored at the CARD's centre (the card is centred on the
+      // viewport) — not the character's window, which sits in the card's
+      // upper half. The light must read as coming from under the WHOLE
+      // card, and it is sized from the card's half-diagonal so the halo
+      // always clears the card's corners, however large the card is.
+      const cardHalfDiag = Math.hypot(w, h) / 2
+      this.drawSunGlow(this.glowG, cx, vh / 2, cardHalfDiag, color)
     }
 
     // The window's backdrop: a warm sky wash.
@@ -1093,6 +1280,158 @@ export class DiscoveryOverlay {
   }
 
   /**
+   * THE CARD'S FINISH — the holographic sheen, the paper gloss and the
+   * rarity flourish.
+   *
+   * The finish is its OWN layers inside the panel, added BETWEEN the
+   * card and the character: the foil washes the card's own surface, and
+   * the character standing on it is never washed out.
+   *
+   * TWO layers, because the blend decides whether the foil is visible at
+   * all:
+   *
+   * - The FOIL layer (normal blend) carries the paper gloss, the rarity
+   *   edge ribbon, the twinkling glints and the RAINBOW band. The card's
+   *   paper is a warm cream — nearly white — and ADDING a colour to
+   *   near-white clips straight back to white, so an additive rainbow
+   *   would be invisible. A tinted band over cream is what actually
+   *   reads as a rainbow.
+   * - The GLINT layer (ADDITIVE) carries only the hot specular streak on
+   *   the band's leading edge. Adding white to a saturated band blows it
+   *   out to a glint, which is exactly how a foil catches the light.
+   *
+   * The static parts (the gloss and the rarity edge ribbon) are drawn
+   * ONCE; only the sweeping band is redrawn each frame, and only while
+   * the card is up.
+   */
+  private buildCardFinish(color: number): void {
+    const panel = this.panel
+    if (!panel) return
+    const card = buildBallCard(this.activeTier ?? 1, this.activeSeed)
+    const L = this.layout()
+    // The card's outline, in PANEL-RELATIVE coordinates — the same
+    // geometry the card itself is drawn with, so the finish can never
+    // drift off the card.
+    const G = this.cardGeometry(0, L.cardCentreY)
+    const rect: CardRect = { x: G.x, y: G.y, w: G.w, h: G.h, r: G.r }
+    this.finishRect = rect
+    this.finishColor = color
+    this.finishRarity = card.rarityIndex
+
+    // The static parts: the paper gloss and the rarity edge ribbon.
+    this.finishStatic = [...buildCardGloss(rect, color), ...buildRarityEdge(rect, color, card.rarityIndex)]
+    this.finishGlints = buildRarityGlint(rect, color, card.rarityIndex)
+
+    // The FOIL layer — the rainbow band, the gloss and the flourish.
+    const foilG = this.scene.add.graphics()
+    foilG.setName(CARD_SHINE_LAYER)
+    this.shineG = foilG
+    panel.add(foilG)
+
+    // The GLINT layer — the additive specular streak on the band.
+    const glintG = this.scene.add.graphics()
+    glintG.setName(CARD_GLINT_LAYER)
+    glintG.setBlendMode(Phaser.BlendModes.ADD)
+    this.glintG = glintG
+    panel.add(glintG)
+
+    this.drawCardFinish(0)
+    this.startShineSweep()
+  }
+
+  /**
+   * The finish's contents for the current phase: the static gloss and
+   * rarity edge, the moving rainbow band, the twinkling glints, and the
+   * band's hot specular streak.
+   */
+  private drawCardFinish(phase: number): void {
+    const foil = this.shineG
+    const glint = this.glintG
+    const rect = this.finishRect
+    if (!foil || !glint || !rect) return
+    foil.clear()
+    glint.clear()
+    const { band, specular } = buildCardSheen(rect, phase, this.finishColor, this.finishRarity)
+    this.fillFinishSlices(foil, this.finishStatic)
+    this.fillFinishSlices(foil, band)
+    this.fillFinishGlints(foil, phase)
+    this.fillFinishSlices(glint, specular)
+  }
+
+  /** Draw a set of the finish's flat colour slices. */
+  private fillFinishSlices(g: Phaser.GameObjects.Graphics, slices: FinishSlice[]): void {
+    for (const slice of slices) {
+      g.fillStyle(slice.color, slice.alpha)
+      g.beginPath()
+      g.moveTo(slice.points[0]!.x, slice.points[0]!.y)
+      for (let i = 1; i < slice.points.length; i++) {
+        g.lineTo(slice.points[i]!.x, slice.points[i]!.y)
+      }
+      g.closePath()
+      g.fillPath()
+    }
+  }
+
+  /**
+   * The rarity glint — the twinkling sparkles. Each one pulses on its
+   * own phase, so they sparkle in and out of step with each other.
+   */
+  private fillFinishGlints(g: Phaser.GameObjects.Graphics, phase: number): void {
+    for (const glint of this.finishGlints) {
+      // The twinkle: a sharp pulse that fades out and back in.
+      const t = (phase + glint.twinkle) % 1
+      const pulse = Math.max(0, Math.sin(t * Math.PI * 2)) ** 3
+      const alpha = glint.alpha * (0.25 + 0.75 * pulse)
+      if (alpha <= 0.01) continue
+      g.fillStyle(glint.color, alpha)
+      g.beginPath()
+      g.moveTo(glint.points[0]!.x, glint.points[0]!.y)
+      for (let i = 1; i < glint.points.length; i++) {
+        g.lineTo(glint.points[i]!.x, glint.points[i]!.y)
+      }
+      g.closePath()
+      g.fillPath()
+      g.fillStyle(0xffffff, alpha * 0.9)
+      g.fillCircle(glint.cx, glint.cy, glint.coreR * (0.6 + 0.4 * pulse))
+    }
+  }
+
+  /**
+   * THE SWEEP — the sheen's clock.
+   *
+   * A number tween runs 0..1 forever while the card is up, and each
+   * update redraws the band at the new phase. The tween is stopped
+   * with the presentation, so the card cannot keep animating after it
+   * is gone.
+   */
+  private startShineSweep(): void {
+    this.shineTween?.stop()
+    this.shineTween = this.scene.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: SHINE_SWEEP_MS,
+      repeat: -1,
+      ease: 'Linear',
+      onUpdate: (tween) => {
+        const value = tween.getValue()
+        if (value == null) return
+        this.drawCardFinish(value)
+      },
+    })
+  }
+
+  /** Stop the sweep and drop the finish — the card is leaving. */
+  private stopShineSweep(): void {
+    this.shineTween?.stop()
+    this.shineTween = null
+    this.shineG = null
+    this.glintG = null
+    this.finishRect = null
+    this.finishStatic = []
+    this.finishGlints = []
+  }
+
+  /**
    * THE GLOW BEHIND THE CARD.
    *
    * This is the "you found a collectible in a game" light: a warm halo
@@ -1100,18 +1439,21 @@ export class DiscoveryOverlay {
    * looks like it is being held up in a beam of light.
    *
    * It is drawn on the overlay's own GLOW layer (under the card), not
-   * inside the card's portrait window.
+   * inside the card's portrait window, and it is sized from the CARD's
+   * half-diagonal, centred on the card's centre.
    */
   private drawSunGlow(
     g: Phaser.GameObjects.Graphics,
     cx: number,
     cy: number,
-    rBall: number,
+    rCard: number,
     color: number,
   ): void {
-    const R = rBall * 4.2
-    // Four soft halos, brightest at the centre — the light spills well
-    // past the card's edges, so the card reads as HELD UP in a beam.
+    // `rCard` is the CARD's half-diagonal: the halo stack clears the
+    // card's corners and floods out well past its edges, so the card
+    // reads as held up in a beam of light.
+    const R = rCard * 1.28
+    // Four soft halos, brightest at the centre.
     g.fillStyle(tintColor(FLASH_YELLOW, 0.3), 0.2)
     g.fillCircle(cx, cy, R)
     g.fillStyle(tintColor(FLASH_YELLOW, 0.5), 0.24)
@@ -1417,7 +1759,7 @@ export class DiscoveryOverlay {
       return
     }
 
-    if (style === 'card') {
+    if (style === 'card' || style === 'gib') {
       // THE REVEAL: the screen goes black with a huge "?" and a mystery
       // seal; the mark pulses; then the CARD POPS in over it, the "?"
       // is wiped away, and the sun glow blooms.

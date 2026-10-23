@@ -28,17 +28,21 @@ import { FONT_FAMILY } from '../../ui/Typography'
  * - 'card'   — a small rounded card in the centre with the character
  *              inside it, the title on the card, and the whole card
  *              springing in. The most restrained option.
+ * - 'gib'    — the collectible card, but every piece of text is replaced
+ *              by a doodle scribble (a wavy line), so the card's LAYOUT
+ *              can be judged without reading anything. (?discovery=gib)
  */
-export type DiscoveryStyle = 'band' | 'spot' | 'stamp' | 'reveal' | 'card'
+export type DiscoveryStyle = 'band' | 'spot' | 'stamp' | 'reveal' | 'card' | 'gib'
 
-export const DISCOVERY_STYLES: readonly DiscoveryStyle[] = ['band', 'spot', 'stamp', 'reveal', 'card']
+export const DISCOVERY_STYLES: readonly DiscoveryStyle[] = ['band', 'spot', 'stamp', 'reveal', 'card', 'gib']
 
 /** The style in use. Read from the URL (?discovery=spot) so a style can be
- * tried on the device without a rebuild; the default is the shipped one. */
+ * tried on the device without a rebuild; the default is the shipped
+ * collectible card (the gib QA style is the card with doodle text). */
 export function selectedDiscoveryStyle(): DiscoveryStyle {
-  if (typeof window === 'undefined') return 'band'
+  if (typeof window === 'undefined') return 'card'
   const p = new URLSearchParams(window.location.search).get('discovery')
-  return (DISCOVERY_STYLES as readonly string[]).includes(p ?? '') ? (p as DiscoveryStyle) : 'band'
+  return (DISCOVERY_STYLES as readonly string[]).includes(p ?? '') ? (p as DiscoveryStyle) : 'card'
 }
 
 /** Darken a color by a factor. */
