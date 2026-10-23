@@ -1056,22 +1056,29 @@ export function drawPigBall(
   // ---- CURLY TAIL — the pig's signature: ONE clean swirly line off the
   // LEFT side — a smooth spiral stroke (ink, round-capped) curling ~1.3
   // turns, reaching ~0.3r past the body edge. Single stroke, no
-  // over-stroke, no fill: a doodle tail that reads at ball size.
-  // Droops and tightens with fear. ----
-  const curlX = cx - r * 0.96
-  const curlY = cy + r * 0.04 + r * 0.1 * panic
-  const tailS = 1 - 0.4 * panic
+  // ---- CURLY TAIL — the pig's signature from the kid's movies: a
+  // corkscrew spiral LINE, not a flat coil. The tail exits the body at
+  // the LEFT, kinks UP, then spirals outward-downward in a big lazy
+  // loop with a little flick at the end — drawn as ONE smooth ink line
+  // (a parametric curve with growing radius, 36 points). Droops and
+  // loosens with fear. ----
+  const tailBaseX = cx - r * 0.98
+  const tailBaseY = cy - r * 0.1
+  const tailS = 1 - 0.35 * panic
+  const tailN = 40
   const tailPts: Array<{ x: number; y: number }> = []
-  const tailN = 30
   for (let i = 0; i <= tailN; i++) {
     const t = i / tailN
-    const a = -t * Math.PI * 2.6
-    const grow = Math.min(1, t / 0.25)
-    const shrink = Math.max(0, (t - 0.45) / 0.55)
-    const rad = r * (0.05 + 0.2 * grow - 0.16 * shrink) * tailS
-    tailPts.push({ x: curlX + Math.cos(a) * rad, y: curlY + Math.sin(a) * rad })
+    // Phase: a fast initial kink up, then a relaxed outward spiral.
+    const a = -0.6 + t * Math.PI * 2.2
+    // Radius grows from 0 to ~0.34r — the spiral opens outward.
+    const rad = r * 0.34 * Math.pow(t, 0.8) * tailS
+    // The whole spiral drifts down-left as it opens (gravity droop).
+    const px = tailBaseX - t * r * 0.3 * tailS + Math.cos(a) * rad
+    const py = tailBaseY + t * t * r * 0.22 * tailS + Math.sin(a) * rad
+    tailPts.push({ x: px, y: py })
   }
-  g.lineStyle(Math.max(2.5, r * 0.075), INK, 1)
+  g.lineStyle(Math.max(2.5, r * 0.08), INK, 1)
   g.strokePoints(tailPts as unknown as Phaser.Math.Vector2[], false, false)
 
   // ---- THE BODY — the contour, countershaded: deeper pink back, light
@@ -1115,39 +1122,40 @@ export function drawPigBall(
   g.closePath()
   g.fillPath()
 
-  // ---- ROSY CHEEKS — the pig's blush, tucked under the eyes INSIDE the
-  // contour; fades a little as fear drains the colour. ----
-  const eyeDx = r * 0.35
-  const eyeY = cy - r * 0.22
-  g.fillStyle(pal.cheek, 0.55 * (1 - 0.4 * panic))
-  g.fillEllipse(cx - eyeDx - r * 0.22, eyeY + r * 0.36, r * 0.4, r * 0.22)
-  g.fillEllipse(cx + eyeDx + r * 0.22, eyeY + r * 0.36, r * 0.4, r * 0.22)
+  // ---- ROSY CHEEKS REMOVED (user: cheek circles don't look good). ----
 
-  // ---- THE MOUTH — a small smile peeking out below the snout. It
-  // flattens toward a tense line as panic climbs. ----
-  const mTop = cy + r * 0.47
-  const dip = r * (0.12 - 0.08 * panic)
+  // ---- THE FACE — one integrated piece: the snout is the centrepiece,
+  // and the eyes + smile wrap AROUND it (the classic pig face: eyes high
+  // and wide, big oval snout between/below them, smile peeking from
+  // under the snout). ----
+  const eyeY = cy - r * 0.28
+
+  // THE SNOUT — the centrepiece: a big rounded-rect-ish oval, low and
+  // wide, with two ink nostrils and a soft top highlight.
+  const snoutX = cx + Math.sin(now * 53) * r * 0.022 * panic * panic
+  const snoutY = cy + r * 0.14 + Math.cos(now * 47) * r * 0.012 * panic * panic
+  const snoutW = r * 0.62
+  const snoutH = r * 0.46
+  g.fillStyle(pal.snout, 1)
+  g.fillEllipse(snoutX, snoutY, snoutW, snoutH)
+  g.lineStyle(ink * 0.95, INK, 1)
+  g.strokeEllipse(snoutX, snoutY, snoutW, snoutH)
+  // Nostrils: two vertical ink ovals, placed wider apart on the snout.
+  g.fillStyle(INK, 0.9)
+  g.fillEllipse(snoutX - snoutW * 0.16, snoutY + snoutH * 0.02, r * 0.08, r * 0.15)
+  g.fillEllipse(snoutX + snoutW * 0.16, snoutY + snoutH * 0.02, r * 0.08, r * 0.15)
+  // Snout highlight.
+  g.fillStyle(0xffffff, 0.2)
+  g.fillEllipse(snoutX - snoutW * 0.14, snoutY - snoutH * 0.2, snoutW * 0.5, snoutH * 0.36)
+
+  // ---- THE MOUTH — a small open smile peeking from under the snout. ----
+  const mTop = cy + r * 0.5
+  const dip = r * (0.11 - 0.07 * panic)
   g.lineStyle(ink * 1.0, INK, 1)
   g.beginPath()
-  g.moveTo(cx - r * 0.28, mTop)
-  quadFrom(g, cx - r * 0.28, mTop, cx, mTop + dip, cx + r * 0.28, mTop)
+  g.moveTo(cx - r * 0.24, mTop)
+  quadFrom(g, cx - r * 0.24, mTop, cx, mTop + dip, cx + r * 0.24, mTop)
   g.strokePath()
-
-  // ---- THE SNOUT — the pig's centrepiece: a wide ellipse centred low
-  // on the face with two ink nostrils and a soft highlight. Under panic
-  // it TWITCHES — a small jitter of its own against the (already
-  // trembling) face, the snout wiggling independently. ----
-  const snoutX = cx + Math.sin(now * 53) * r * 0.022 * panic * panic
-  const snoutY = cy + r * 0.18 + Math.cos(now * 47) * r * 0.012 * panic * panic
-  g.fillStyle(pal.snout, 1)
-  g.fillEllipse(snoutX, snoutY, r * 0.58, r * 0.42)
-  g.lineStyle(ink * 0.9, INK, 1)
-  g.strokeEllipse(snoutX, snoutY, r * 0.58, r * 0.42)
-  g.fillStyle(0xffffff, 0.16)
-  g.fillEllipse(snoutX - r * 0.08, snoutY - r * 0.08, r * 0.3, r * 0.18)
-  g.fillStyle(INK, 0.85)
-  g.fillEllipse(snoutX - r * 0.11, snoutY, r * 0.075, r * 0.13)
-  g.fillEllipse(snoutX + r * 0.11, snoutY, r * 0.075, r * 0.13)
 
   // ---- THE EYES — the game's standard eye pair (white sclera, chunky
   // ink rim, one dark oval pupil, main + secondary glints, wink easter
@@ -1161,7 +1169,7 @@ export function drawPigBall(
   const blinkMs = (now * 1000 + seed * 1013) % 4700
   const blinking = panic <= 0.45 && blinkMs < 130
   for (const [i, e] of L.eyes.entries()) {
-    const ex = cx + e.x * 1.0
+    const ex = cx + e.x * 1.14 // eyes spread a touch wider around the snout
     const ey = eyeY + e.y
     const closed = blinking || (exprPig === 'wink' && i === 1)
     if (closed) {
@@ -1197,7 +1205,7 @@ export function drawPigBall(
   if (panic > 0.45) {
     const sweat = Math.min(1, (panic - 0.45) / 0.55)
     g.fillStyle(0x9fdcff, 0.95 * sweat)
-    g.fillCircle(cx + r * 0.56, eyeY - r * 0.3, r * 0.055 * (0.7 + 0.3 * sweat))
+    g.fillCircle(cx + r * 0.6, eyeY - r * 0.32, r * 0.055 * (0.7 + 0.3 * sweat))
   }
 
   // ---- THE INK OUTLINE — the contour itself, over everything. ----
