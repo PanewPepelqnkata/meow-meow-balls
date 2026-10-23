@@ -67,7 +67,13 @@ export class DebugOverlay {
       this.stepsWindowMs = 0
     }
 
-    if (!this.visible) return
+    if (!this.visible) {
+      // Keep the layer CLEAN while hidden: a stale container polygon or
+      // body circles from a previous visible frame must never linger on
+      // screen (they read as 'glitchy lines and random circles').
+      this.graphics.clear()
+      return
+    }
 
     this.graphics.clear()
     this.redrawContainerBounds()

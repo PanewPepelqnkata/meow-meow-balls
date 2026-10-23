@@ -655,32 +655,24 @@ export function drawSharkBall(
   cx += jx
   cy += jy
 
-  // ---- THE GLOW — reward-tier AURA: puffs of luminous gas drifting off
-  // the shark (it glows from within). A ring of soft gas clouds orbits
-  // the body; each cloud pulses on its own phase, so the aura shimmers
-  // instead of sitting still. Drawn FIRST so everything sits on top.
-  const gasPuffs: Array<{ a: number; dist: number; size: number; phase: number }> = []
+  // ---- THE GLOW — reward-tier AURA: 14 puffs of luminous gas (the
+  // palette's `glow` colour) drifting off the shark. Each pulses on its
+  // own phase, the ring drifts ~12°/s — a shimmering aura, not a static
+  // halo. Drawn FIRST so everything sits on top.
   const puffCount = 14
   for (let i = 0; i < puffCount; i++) {
-    const t = i / puffCount
-    gasPuffs.push({
-      a: t * Math.PI * 2,
-      dist: r * (1.18 + ((i * 37) % 11) / 11 * 0.34),
-      size: r * (0.3 + ((i * 53) % 13) / 13 * 0.22),
-      phase: ((i * 29) % 17) / 17,
-    })
-  }
-  for (const p of gasPuffs) {
-    // Each cloud breathes: radius and alpha swell on an offset sine.
-    const pulse = 0.55 + 0.45 * Math.sin(now * 2.1 + p.phase * Math.PI * 2)
-    // Slow orbital drift: the whole aura turns ~12°/s.
+    const phase = ((i * 29) % 17) / 17
+    const a = (i / puffCount) * Math.PI * 2
+    const dist = r * (1.18 + ((i * 37) % 11) / 11 * 0.34)
+    const size = r * (0.3 + ((i * 53) % 13) / 13 * 0.22)
+    const pulse = 0.55 + 0.45 * Math.sin(now * 2.1 + phase * Math.PI * 2)
     const drift = now * 0.21
-    const px = cx + Math.cos(p.a + drift) * p.dist
-    const py = cy + Math.sin(p.a + drift) * p.dist
+    const px = cx + Math.cos(a + drift) * dist
+    const py = cy + Math.sin(a + drift) * dist
     g.fillStyle(pal.glow, 0.1 + 0.14 * pulse)
-    g.fillCircle(px, py, p.size * (0.8 + 0.3 * pulse))
+    g.fillCircle(px, py, size * (0.8 + 0.3 * pulse))
   }
-  // A core haze right against the body — binds the puffs to the shark.
+  // A core haze against the body — binds the puffs to the shark.
   g.fillStyle(pal.glow, 0.1)
   g.fillCircle(cx, cy, r * 1.12)
 
@@ -852,8 +844,10 @@ export function drawSharkBall(
     // with panic it sweeps to ~60% coverage (fear blink).
     const sweep = 0.22 + 0.5 * em
     g.fillStyle(0x9db8c9, 0.4 + 0.25 * em)
-    g.beginPath()
-    g.fillEllipse(ex - e.a * (1 - sweep * 0.5), ey, e.a * sweep * 2, e.b * sweep * 2)
+    // Centred so the membrane's outer edge lands exactly ON the sclera's
+    // leading edge (the audit fix — the old offset spilled a·s/2 past the
+    // eye, reading as a random circle beside it).
+    g.fillEllipse(ex - e.a * (1 - sweep), ey, e.a * sweep * 2, e.b * sweep * 2)
   }
   // Fear sweat: one drop at the temple as panic climbs.
   if (panic > 0.45) {
@@ -861,10 +855,11 @@ export function drawSharkBall(
     g.fillStyle(0x9fdcff, 0.95 * sweat)
     g.fillCircle(cx + r * 0.56, eyeY - r * 0.3, r * 0.055 * (0.7 + 0.3 * sweat))
   }
-  // Cheek patches: subtle grey-blue, under the eyes (fade with panic).
+  // Cheek patches: subtle grey-blue, tucked under the eyes INSIDE the
+  // contour (they used to poke past the rim — 'random circles').
   g.fillStyle(pal.cheek, 0.5 * (1 - panic))
-  g.fillEllipse(cx - eyeDx - r * 0.36, eyeY + r * 0.36, (r * 0.3) * 2, (r * 0.16) * 2)
-  g.fillEllipse(cx + eyeDx + r * 0.36, eyeY + r * 0.36, (r * 0.3) * 2, (r * 0.16) * 2)
+  g.fillEllipse(cx - eyeDx - r * 0.22, eyeY + r * 0.34, r * 0.44, r * 0.24)
+  g.fillEllipse(cx + eyeDx + r * 0.22, eyeY + r * 0.34, r * 0.44, r * 0.24)
 
   // ---- THE INK OUTLINE — the contour itself, over everything. ----
   g.lineStyle(ballOutlineWidth(r), INK, 1)
