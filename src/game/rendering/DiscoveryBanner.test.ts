@@ -20,7 +20,7 @@ describe('the discovery banner geometry', () => {
     expect(right.x).toBeGreaterThan(left.x)
   })
 
-  it('keeps the left end near the middle of the top edge', () => {
+  it('keeps the left end near the middle of the top edge on a phone', () => {
     const r = bannerRect(390, 844)
     const left = bandPoint2(r, 1)
     expect(left.x).toBeGreaterThan(390 * 0.38)
@@ -28,6 +28,17 @@ describe('the discovery banner geometry', () => {
     // LOW on screen: the left end sits ~13% of the viewport down.
     expect(left.y).toBeGreaterThan(844 * 0.1)
     expect(left.y).toBeLessThan(844 * 0.16)
+  })
+
+  it('is a SHORT box on a wide desktop viewport', () => {
+    const r = bannerRect(1280, 800)
+    // The left end is pushed right (vw - 0.62·vh): the ribbon is a
+    // compact stamp near the corner, not a full-width bar.
+    const left = bandPoint2(r, 1)
+    const right = bandPoint2(r, 0)
+    const span = right.x - left.x
+    expect(span).toBeLessThan(800 * 0.9)
+    expect(left.x).toBeGreaterThan(1280 * 0.55)
   })
 
   it('stays a sane thickness on tiny and huge viewports', () => {

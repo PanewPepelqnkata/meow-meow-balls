@@ -96,9 +96,12 @@ export function bannerRect(vw: number, vh: number): BannerRect {
   // presence on a big screen — its floor is ~46px on a phone and up to
   // ~76px on a 1080p+ window.
   const halfThick = Math.max(23, Math.min(vh * 0.085, 76) / 2)
-  // LEFT end: past the middle of the top edge, LOW on screen (~13% down)
-  // — the whole ribbon rides the lower third of the upper half.
-  const innerX = vw * 0.5
+  // LEFT end: starts past the middle of the top edge, LOW on screen
+  // (~13% down). On a wide viewport the left end is pushed RIGHT so the
+  // ribbon stays a SHORT box — on a phone it fills the half-width, on a
+  // desktop it's a compact stamp near the corner, never a full-width bar.
+  const leftX = Math.max(vw * 0.5, vw - vh * 0.62)
+  const innerX = leftX
   const innerY = vh * 0.13
   // RIGHT end: lower than the left — it exits past the top-right corner
   // noticeably BELOW where the left end sits.
