@@ -20,16 +20,16 @@ export const CYCLE_BLEND_MS = 330
 export const CYCLE_STEP_MS = CYCLE_HOLD_MS + CYCLE_BLEND_MS
 
 /**
- * The FIVE colours of the cycle, in order: red → blue → cyan → green →
- * white → red. Fresh hexes — none of these appear anywhere else in the
+ * The FIVE colours of the cycle, in order: green → blue → cyan → red →
+ * white → green. Fresh hexes — none of these appear anywhere else in the
  * game (tier colours, combo grades, effect colours are all different), so
  * the cycling ball is instantly recognisable as THE colour-shifting one.
  */
 export const CYCLE_COLORS = [
-  0xe94040, // red — a warm signal red (distinct from tier 4's 0xf44336)
+  0x69e04b, // green — a bright leaf green (distinct from tier 2's 0x5fd437)
   0x3d5afe, // blue — a deep indigo-leaning blue (distinct from tier 1's cyan-blue)
   0x00e5c7, // cyan — a turquoise-leaning cyan
-  0x69e04b, // green — a bright leaf green (distinct from tier 2's 0x5fd437)
+  0xe94040, // red — a warm signal red (distinct from tier 4's 0xf44336)
   0xf4f6ff, // white — a cool near-white
 ] as const
 

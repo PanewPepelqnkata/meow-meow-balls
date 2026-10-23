@@ -46,13 +46,17 @@ describe('rgbCycle: the tier 8 colour cycle', () => {
     expect(cycleColor(CYCLE_STEP_MS)).toBe(CYCLE_COLORS[1])
   })
 
-  it('cycles through EXACTLY five colours: red, blue, cyan, green, white', () => {
+  it('cycles through EXACTLY five colours: green, blue, cyan, red, white', () => {
     expect(CYCLE_COLORS).toHaveLength(5)
     const seen: number[] = []
     for (let i = 0; i < CYCLE_COLORS.length; i++) {
       seen.push(cycleColor(i * CYCLE_STEP_MS + 10))
     }
     expect(seen).toEqual([...CYCLE_COLORS])
+    // The swapped order holds: green leads, red sits between cyan and
+    // white.
+    expect(seen[0]).toBe(0x69e04b)
+    expect(seen[3]).toBe(0xe94040)
   })
 
   it('repeats after five steps (a full cycle)', () => {
