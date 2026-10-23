@@ -1003,24 +1003,33 @@ export function drawPigBall(
   }
 
   // ---- EARS — two folded triangles on top, tucked behind the body.
-  // The tips lean outward; the whole ear flops down with fear. ----
+  // The bases anchor to the CONTOUR's top region so they track the
+  // wobble (fixed-position ears glitched as the body wobbled over them),
+  // and they use the SAME ink width as the ball's outline. ----
   const earS = 1 - 0.45 * panic
+  // The contour's top vertex — the anchor both ears hang from.
+  let earBaseY = cy - r
+  if (poly && poly.length >= 8) {
+    let top = poly[0]!
+    for (const p of poly) if (p.y < top.y) top = p
+    earBaseY = top.y
+  }
+  const earOut = ballOutlineWidth(r)
   for (const s of [-1, 1]) {
     const ecx = cx + s * r * 0.42
-    const ecy = cy - r * 0.7
-    const tipX = ecx + s * r * 0.2
-    const tipY = ecy - r * 0.6 * earS
+    const ecy = earBaseY + r * 0.3
+    const tipX = ecx + s * r * 0.22
+    const tipY = ecy - r * 0.58 * earS
     g.fillStyle(pal.back, 1)
     g.beginPath()
     // Outer edge: a clean ramp up to the folded tip...
     g.moveTo(ecx - r * 0.26, ecy + r * 0.2)
     quadFrom(g, ecx - r * 0.26, ecy + r * 0.2, ecx - r * 0.3, tipY + r * 0.12, tipX, tipY)
-    // ...inner edge back down to the base (hidden under the body fill).
-    quadFrom(g, tipX, tipY, tipX + s * r * 0.16, tipY + r * 0.16, ecx + r * 0.3, ecy + r * 0.14)
+    // ...inner edge back down to the base (the base sits deep inside the
+    // body, so the body fill hides the seam, never the outline).
+    quadFrom(g, tipX, tipY, tipX + s * r * 0.16, tipY + r * 0.16, ecx + r * 0.3, ecy + r * 0.2)
     g.closePath()
     g.fillPath()
-    g.lineStyle(ink * 0.8, INK, 1)
-    g.strokePath()
     // Inner-ear tint: a smaller fold inside the outer shape.
     const iTipX = ecx + (tipX - ecx) * 0.5
     const iTipY = ecy + (tipY - ecy) * 0.55
@@ -1031,30 +1040,38 @@ export function drawPigBall(
     quadFrom(g, iTipX, iTipY, iTipX + s * r * 0.1, iTipY + r * 0.1, ecx + r * 0.16, ecy + r * 0.02)
     g.closePath()
     g.fillPath()
+    // The ear's ink outline — SAME width as the ball's, drawn AFTER the
+    // fills so the stroke sits on top of the ear's own colour (the old
+    // version stroked between fill and body fill, and the body fill
+    // chopped the stroke into glitchy fragments).
+    g.lineStyle(earOut, INK, 1)
+    g.beginPath()
+    g.moveTo(ecx - r * 0.26, ecy + r * 0.2)
+    quadFrom(g, ecx - r * 0.26, ecy + r * 0.2, ecx - r * 0.3, tipY + r * 0.12, tipX, tipY)
+    quadFrom(g, tipX, tipY, tipX + s * r * 0.16, tipY + r * 0.16, ecx + r * 0.3, ecy + r * 0.2)
+    g.closePath()
+    g.strokePath()
   }
 
-  // ---- CURLY TAIL — the pig's signature: one continuous spiral off the
-  // LEFT side, sweeping up-and-over into ~1.4 turns that tighten to a
-  // tip ~0.37r past the body edge. A sampled spiral polyline (smooth at
-  // ball sizes, same rationale as quadFrom's 8-segment approximation),
-  // drawn as an ink stroke with a body-pink stroke over it so the tail
-  // reads outlined. Droops and tightens with fear. ----
-  const curlX = cx - r * 1.06
-  const curlY = cy + r * 0.06 + r * 0.14 * panic
+  // ---- CURLY TAIL — the pig's signature: ONE clean swirly line off the
+  // LEFT side — a smooth spiral stroke (ink, round-capped) curling ~1.3
+  // turns, reaching ~0.3r past the body edge. Single stroke, no
+  // over-stroke, no fill: a doodle tail that reads at ball size.
+  // Droops and tightens with fear. ----
+  const curlX = cx - r * 0.96
+  const curlY = cy + r * 0.04 + r * 0.1 * panic
   const tailS = 1 - 0.4 * panic
   const tailPts: Array<{ x: number; y: number }> = []
-  const tailN = 26
+  const tailN = 30
   for (let i = 0; i <= tailN; i++) {
     const t = i / tailN
-    const a = -t * Math.PI * 2.8
-    const grow = Math.min(1, t / 0.3)
-    const shrink = Math.max(0, (t - 0.42) / 0.58)
-    const rad = r * (0.07 + 0.26 * grow - 0.25 * shrink) * tailS
+    const a = -t * Math.PI * 2.6
+    const grow = Math.min(1, t / 0.25)
+    const shrink = Math.max(0, (t - 0.45) / 0.55)
+    const rad = r * (0.05 + 0.2 * grow - 0.16 * shrink) * tailS
     tailPts.push({ x: curlX + Math.cos(a) * rad, y: curlY + Math.sin(a) * rad })
   }
-  g.lineStyle(ink * 1.0, INK, 1)
-  g.strokePoints(tailPts as unknown as Phaser.Math.Vector2[], false, false)
-  g.lineStyle(ink * 0.55, pal.back, 1)
+  g.lineStyle(Math.max(2.5, r * 0.075), INK, 1)
   g.strokePoints(tailPts as unknown as Phaser.Math.Vector2[], false, false)
 
   // ---- THE BODY — the contour, countershaded: deeper pink back, light
