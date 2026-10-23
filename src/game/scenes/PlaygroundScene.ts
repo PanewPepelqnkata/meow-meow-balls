@@ -38,6 +38,7 @@ import {
 import { resolveLayout, readSafeArea } from '../../ui/ResponsiveLayout'
 import type { UiLayout } from '../../ui/ResponsiveLayout'
 import { randomSeed } from '../rendering/BallAppearance'
+import { cycleColor } from '../rendering/rgbCycle'
 import { DropClaw } from '../../ui/DropClaw'
 import type { UIScene } from './UIScene'
 
@@ -436,6 +437,7 @@ export class PlaygroundScene extends Phaser.Scene {
         interiorCorners,
         gameBus,
         Matter,
+        cycleColor,
       }
       ;(window as unknown as Record<string, unknown>).__brScene = {
         dropAt: (x: number) => this.dropBall(x),

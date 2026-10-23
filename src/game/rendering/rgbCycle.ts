@@ -11,10 +11,10 @@
  */
 
 /** How long each colour holds at its full intensity, in milliseconds. */
-export const CYCLE_HOLD_MS = 900
+export const CYCLE_HOLD_MS = 420
 
 /** How long the gradient from one colour to the next takes, in ms. */
-export const CYCLE_BLEND_MS = 700
+export const CYCLE_BLEND_MS = 330
 
 /** The total period of one colour slot (hold + blend into the next). */
 export const CYCLE_STEP_MS = CYCLE_HOLD_MS + CYCLE_BLEND_MS
