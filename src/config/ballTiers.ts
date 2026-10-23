@@ -77,7 +77,7 @@ export const BALL_TIERS: readonly BallTier[] = [
   // Tiers 10–12: RESERVED placeholders (the user's spec: 12 tiers total;
   // designs beyond tier 9 are not yet made). They never spawn and never
   // merge INTO — the merge chain ends at tier 9 until they are specified.
-  { tier: 10, radius: 62, color: 0x212121, shade: 0x000000, score: 1024, face: 'calm', playable: false },
+  { tier: 10, radius: 62, color: 0xe8604c, shade: 0xc24a38, score: 1024, face: 'calm', playable: true },
   { tier: 11, radius: 62, color: 0x212121, shade: 0x000000, score: 2048, face: 'calm', playable: false },
   { tier: 12, radius: 62, color: 0x212121, shade: 0x000000, score: 4096, face: 'calm', playable: false },
 ]

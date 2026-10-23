@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK, drawTier9Ball } from './BallAppearance'
+import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK, drawCollectibleBall } from './BallAppearance'
 import { cycleColor } from './rgbCycle'
 import { variantIdFor } from '../state/runVariant'
 import { getTier } from '../../config/ballTiers'
@@ -2087,11 +2087,12 @@ export class DiscoveryOverlay {
     const look = ballLookFor(tier, seed)
     const poly = restContour(look, radius, x, y, 48)
 
-    if (tier === 9) {
+    if (tier === 9 || tier === 10) {
       // The theme ball paints its own face — part of the design. The
-      // run's theme roll (shark/pig) picks the renderer; the variant
-      // picks the palette within the theme.
-      drawTier9Ball(g, x, y, radius, variantIdFor(9), poly, 0, undefined, this.activeSeed)
+      // run's theme roll (per tier, from collectibleThemes) picks the
+      // renderer; the variant picks the palette within the theme.
+      const t = this.activeTier ?? tier
+      drawCollectibleBall(g, x, y, radius, t, variantIdFor(t), poly, 0, undefined, this.activeSeed)
       return
     } else {
       // Tier 8 is a plain ball whose colour cycles; the body fills the

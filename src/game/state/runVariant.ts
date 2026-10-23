@@ -74,16 +74,27 @@ export function tier9Theme(): Tier9Theme {
   return rollCollectibleTheme(9, runSeed, hash) as Tier9Theme
 }
 
-/** Variants only exist for the randomized high tiers.
- *  TIER 8 IS NOT ONE: it is the cycling RGB ball, whose look is a
- *  continuous colour cycle, not a per-run variant. */
+/** Variants only exist for the randomized high tiers (9 and 10 — the
+ *  collectible tiers; each rolls its theme from the config). */
 export function isVariantTier(tier: number): boolean {
-  return tier === 9
+  return tier === 9 || tier === 10
 }
 
 /**
- * The variant a run rolled for `tier`, or null for non-randomized tiers.
- * THE single call site helper for rendering + journal recording.
+ * The collectible theme a run rolled for a tier (9/10), or null for
+ * non-collectible tiers. THE single call site helper for rendering +
+ * journal recording.
+ */
+export function themeFor(tier: number): string | null {
+  if (tier === 9) return tier9Theme()
+  if (tier === 10) return rollCollectibleTheme(10, runSeed, hash)
+  return null
+}
+
+/**
+ * The variant a run rolled for `tier` (palette WITHIN the theme), or null
+ * for non-collectible tiers. THE single call site helper for rendering +
+ * journal recording.
  */
 export function runVariantFor(tier: number): number | null {
   return isVariantTier(tier) ? variantIdFor(tier) : null

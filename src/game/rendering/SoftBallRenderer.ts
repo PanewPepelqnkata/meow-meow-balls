@@ -12,7 +12,7 @@ import {
   expressionAt,
   gazeAt,
   wobbleContour,
-  drawTier9Ball,
+  drawCollectibleBall,
 } from './BallAppearance'
 import type { BallLook } from './BallAppearance'
 import {
@@ -567,7 +567,7 @@ export class SoftBallRenderer {
       // (shark/pig) picks the renderer; the variant picks the palette
       // within the theme. Fear (panic) and the gaze easter egg pass
       // straight through.
-      drawTier9Ball(g, built.cx, built.cy, r.soft.radius, variantIdFor(9), built.poly, this.emotion.panicOf(r.id), gazeAt(r.seed, Date.now()), r.seed)
+      drawCollectibleBall(g, built.cx, built.cy, r.soft.radius, r.tier, variantIdFor(r.tier), built.poly, this.emotion.panicOf(r.id), gazeAt(r.seed, Date.now()), r.seed)
       return
     }
     // Every other tier (including the tier 8 cycling RGB ball) is a

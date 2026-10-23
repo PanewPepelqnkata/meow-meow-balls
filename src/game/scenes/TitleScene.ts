@@ -7,7 +7,7 @@ import {
   ballLookFor,
   ballOutlineWidth,
   drawBallFace,
-  drawTier9Ball,
+  drawCollectibleBall,
   restContour,
 } from '../rendering/BallAppearance'
 import { BALL_TIERS, getTier } from '../../config/ballTiers'
@@ -1704,7 +1704,7 @@ function drawBallIcon(
     // The theme ball paints its own face — part of the design. The run's
     // theme roll (shark/pig) picks the renderer; the variant picks the
     // palette within the theme.
-    drawTier9Ball(g, cx, cy, r, variant ?? variantIdFor(9), poly, 0, undefined, 9)
+    drawCollectibleBall(g, cx, cy, r, tier, variant ?? variantIdFor(tier), poly, 0, undefined, 9)
     return
   } else {
     // Tier 8 is a plain ball whose colour cycles; the body fills the

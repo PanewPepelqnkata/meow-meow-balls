@@ -1218,6 +1218,253 @@ export function drawPigBall(
   }
 }
 
+export interface CrabPalette {
+  /** Shell (the main carapace colour). */
+  shell: number
+  /** Shell highlight (lighter, top of the carapace). */
+  shellLight: number
+  /** Claws (slightly brighter than the shell). */
+  claw: number
+  /** Claw highlight. */
+  clawLight: number
+  /** Belly (light underside). */
+  belly: number
+  /** The aura colour. */
+  glow: number
+}
+
+/** The crab palettes, exported for the OFFLINE BAKER (index-aligned with
+ *  any future bake copy). */
+export const CRAB_PALETTES: readonly CrabPalette[] = [
+  { shell: 0xe8604c, shellLight: 0xf07a64, claw: 0xf2836e, clawLight: 0xf9a08c, belly: 0xf6ded2, glow: 0xffb59e }, // 0: coral red
+  { shell: 0xd97836, shellLight: 0xe88f52, claw: 0xefa066, clawLight: 0xf7b984, belly: 0xf6e8d2, glow: 0xffcf9e }, // 1: sunset orange
+  { shell: 0xc9558a, shellLight: 0xd970a0, claw: 0xe083ae, clawLight: 0xea9ec0, belly: 0xf6d8e6, glow: 0xffa8d0 }, // 2: rose crab
+  { shell: 0x5f9e6e, shellLight: 0x77b486, claw: 0x86c294, clawLight: 0x9cd2a8, belly: 0xdcecdc, glow: 0xa8e8b8 }, // 3: moss
+  { shell: 0x5a7d9e, shellLight: 0x7295b8, claw: 0x82a5c4, clawLight: 0x9abdd6, belly: 0xd8e4f0, glow: 0x9ec8ee }, // 4: tide blue
+]
+
+/**
+ * Draw the Tier 10 CRAB ball — the second collectible: a round crab-slime
+ * with two big cheilipeds (claw arms) that wave UP and DOWN, four walking
+ * legs per side, stalk eyes, gill dots, and a countershaded shell.
+ *
+ * ANIMATION: the claw arms oscillate up/down with the CLOCK (now ms) —
+ * each arm on its own phase, faster when panicking. The legs also scuttle
+ * slightly. Fear flattens the claws and speeds the scuttle.
+ *
+ * FEAR: panic (0..1) — claws drop and wave faster, eyes shrink wide,
+ * sweat drop, tremble.
+ * GAZE: easter-egg pupil movement.
+ *
+ * The FACE (stalk eyes) is part of the design — callers must NOT draw
+ * the standard face on top.
+ */
+export function drawCrabBall(
+  g: Phaser.GameObjects.Graphics,
+  cx: number,
+  cy: number,
+  r: number,
+  variant = 0,
+  poly?: Array<{ x: number; y: number }>,
+  panic = 0,
+  gaze?: { x: number; y: number },
+  seed = 10,
+): void {
+  void seed
+  const pal = CRAB_PALETTES[variant % CRAB_PALETTES.length]!
+  const ink = Math.max(2, r * 0.05)
+  const now = Date.now()
+  // Fear tremble.
+  const jx = Math.sin(now * 0.041) * r * 0.02 * panic * panic
+  const jy = Math.cos(now * 0.037) * r * 0.015 * panic * panic
+  cx += jx
+  cy += jy
+
+  // ---- THE GLOW — soft radial stack in the palette's aura colour. ----
+  const glowWobble = Math.sin(now * 0.0007)
+  const glowLayers: ReadonlyArray<{ rr: number; alpha: number }> = [
+    { rr: 1.62 + glowWobble * 0.03, alpha: 0.1 },
+    { rr: 1.42, alpha: 0.16 },
+    { rr: 1.24, alpha: 0.24 },
+    { rr: 1.08, alpha: 0.3 },
+  ]
+  for (const layer of glowLayers) {
+    g.fillStyle(pal.glow, layer.alpha + glowWobble * 0.02)
+    g.fillCircle(cx, cy, r * layer.rr)
+  }
+
+  // ---- THE WALKING LEGS — four per side, scuttling slightly (each leg
+  // a two-segment polyline; the tip bobs with the clock). Drawn BEFORE
+  // the body so they tuck behind it. ----
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 4; i++) {
+      const t = i / 3
+      const baseX = cx + side * r * (0.55 + t * 0.25)
+      const baseY = cy + r * (0.3 + t * 0.14)
+      const phase = now * 0.006 * (1 + panic) + i * 1.9 + (side > 0 ? Math.PI : 0)
+      const tipX = baseX + side * r * (0.3 - t * 0.06)
+      const tipY = baseY + r * 0.32 + Math.sin(phase) * r * 0.06 * (1 + panic)
+      g.lineStyle(Math.max(2, r * 0.055), pal.claw, 1)
+      g.beginPath()
+      g.moveTo(baseX, baseY)
+      // Knee joint: outward-up, then down to the tip.
+      g.lineTo(baseX + side * r * 0.22, baseY - r * 0.12)
+      g.lineTo(tipX, tipY)
+      g.strokePath()
+      // The leg tip: a tiny pointed foot.
+      g.fillStyle(pal.claw, 1)
+      g.fillCircle(tipX, tipY, Math.max(1.5, r * 0.035))
+    }
+  }
+
+  // ---- THE CHELIPEDS — the two BIG claw arms, waving UP and DOWN. Each
+  // arm: a shoulder joint at the body's upper sides, an arm segment
+  // sweeping outward-up, ending in an open pincer (two claws). The arms
+  // oscillate on offset phases; faster + wider with panic; droop flat
+  // when calm-low. ----
+  for (const side of [-1, 1]) {
+    const shoulderX = cx + side * r * 0.52
+    const shoulderY = cy - r * 0.18
+    // The wave: each arm swings between up and down on its own phase.
+    const phase = now * 0.0045 * (1 + panic * 1.2) + (side > 0 ? 0 : Math.PI * 0.7)
+    const swing = Math.sin(phase) // -1..1
+    const lift = swing * r * 0.38 * (0.6 + 0.4 * (1 - panic * 0.3)) // droops a little with fear
+    // Arm: shoulder → elbow (outward, lifted) → pincer base.
+    const elbowX = shoulderX + side * r * 0.34
+    const elbowY = shoulderY - r * 0.18 - lift * 0.5
+    const pincerX = elbowX + side * r * 0.4
+    const pincerY = elbowY + lift * 0.6
+    // Arm segment (thick stroke).
+    g.lineStyle(Math.max(3, r * 0.11), pal.claw, 1)
+    g.beginPath()
+    g.moveTo(shoulderX, shoulderY)
+    g.lineTo(elbowX, elbowY)
+    g.strokePath()
+    g.beginPath()
+    g.moveTo(elbowX, elbowY)
+    g.lineTo(pincerX, pincerY)
+    g.strokePath()
+    g.lineStyle(Math.max(1.5, r * 0.045), INK, 1)
+    g.beginPath()
+    g.moveTo(shoulderX, shoulderY)
+    g.lineTo(elbowX, elbowY)
+    g.strokePath()
+    g.beginPath()
+    g.moveTo(elbowX, elbowY)
+    g.lineTo(pincerX, pincerY)
+    g.strokePath()
+    // THE PINCER: an open claw — two fat crescents hinged at the pincer
+    // base, opening/closing slightly with the swing (snipping motion).
+    const openA = 0.28 + 0.22 * Math.abs(Math.sin(phase * 1.3)) // snip angle
+    const clawLen = r * 0.3
+    const clawW = r * 0.13
+    for (const half of [-1, 1]) {
+      const dir = side * half
+      const upper = half < 0
+      g.fillStyle(pal.claw, 1)
+      g.beginPath()
+      const tipX = pincerX + dir * clawLen * Math.cos(openA * half * (upper ? 1 : -1))
+      const tipY = pincerY + clawLen * Math.sin(openA * (upper ? 1 : -1)) * (upper ? 1 : 1.2)
+      // Simple fat crescent: two quadratic edges.
+      g.moveTo(pincerX, pincerY)
+      quadFrom(g, pincerX, pincerY, pincerX + dir * clawLen * 0.6, pincerY - clawW * (upper ? 1.2 : 0.4), tipX, tipY)
+      quadFrom(g, tipX, tipY, pincerX + dir * clawLen * 0.55, pincerY + clawW * 0.2 * (upper ? -1 : 1), pincerX + dir * clawW * 0.4, pincerY + (upper ? -clawW * 0.2 : clawW * 0.2))
+      g.closePath()
+      g.fillPath()
+      g.lineStyle(Math.max(1.5, r * 0.04), INK, 1)
+      g.strokePath()
+    }
+    // Pincer joint: a small circle at the hinge.
+    g.fillStyle(pal.clawLight, 1)
+    g.fillCircle(pincerX, pincerY, Math.max(2, r * 0.06))
+    g.lineStyle(Math.max(1.2, r * 0.035), INK, 1)
+    g.strokeCircle(pincerX, pincerY, Math.max(2, r * 0.06))
+  }
+
+  // ---- THE BODY — the shell: the contour, countershaded. ----
+  if (poly && poly.length >= 3) {
+    g.fillStyle(pal.shell, 1)
+    g.fillPoints(poly as unknown as Phaser.Math.Vector2[], true)
+  } else {
+    g.fillStyle(pal.shell, 1)
+    g.fillCircle(cx, cy, r)
+  }
+  // Shell light: a lighter band across the top of the carapace.
+  g.fillStyle(pal.shellLight, 0.8)
+  g.beginPath()
+  g.fillEllipse(cx - r * 0.05, cy - r * 0.5, r * 1.3, r * 0.62)
+  g.fillPath()
+  // Belly: the light underside.
+  g.fillStyle(pal.belly, 0.9)
+  g.beginPath()
+  g.fillEllipse(cx, cy + r * 0.45, r * 1.5, r * 0.66)
+  g.fillPath()
+
+  // ---- GILL DOTS — three small shell-light dots per side on the
+  // carapace (crab gills read as dots at this scale). ----
+  g.fillStyle(pal.belly, 0.55)
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 3; i++) {
+      const gx = cx + side * r * (0.42 + i * 0.14)
+      const gy = cy + r * 0.02 + i * r * 0.03
+      g.fillCircle(gx, gy, Math.max(1.5, r * 0.035))
+    }
+  }
+
+  // ---- THE STALK EYES — two eyes on short stalks rising from the
+  // shell's top (the crab signature). The eyeball sits on a short thick
+  // stalk; the pupil moves with the gaze; fear shrinks them wide. ----
+  for (const side of [-1, 1]) {
+    const stalkX = cx + side * r * 0.24
+    const stalkBaseY = cy - r * 0.82
+    const stalkLen = r * 0.22
+    const stalkTopY = stalkBaseY - stalkLen
+    // Stalk.
+    g.lineStyle(Math.max(2.5, r * 0.07), pal.shell, 1)
+    g.beginPath()
+    g.moveTo(stalkX, stalkBaseY)
+    g.lineTo(stalkX, stalkTopY)
+    g.strokePath()
+    g.lineStyle(Math.max(1.2, r * 0.035), INK, 1)
+    g.strokePath()
+    // Eyeball.
+    const eyeR = r * (0.15 + 0.03 * panic)
+    g.fillStyle(0xffffff, 1)
+    g.fillCircle(stalkX, stalkTopY, eyeR)
+    g.fillStyle(INK, 1)
+    const gx = (gaze?.x ?? 0) * eyeR * 0.3
+    const gy = (gaze?.y ?? 0) * eyeR * 0.3
+    g.fillCircle(stalkX + gx, stalkTopY + gy, eyeR * 0.5)
+    g.fillStyle(0xffffff, 0.9)
+    g.fillCircle(stalkX - eyeR * 0.3, stalkTopY - eyeR * 0.3, eyeR * 0.2)
+    // Ink rim.
+    g.lineStyle(Math.max(1.2, r * 0.035), INK, 1)
+    g.strokeCircle(stalkX, stalkTopY, eyeR)
+  }
+
+  // ---- THE MOUTH — a small wavy line under the eyes (crab mouthparts).
+  g.lineStyle(ink * 0.9, INK, 0.9)
+  g.beginPath()
+  g.moveTo(cx - r * 0.14, cy + r * 0.28)
+  g.lineTo(cx + r * 0.14, cy + r * 0.28)
+  g.strokePath()
+
+  // Fear sweat: one drop at the side of the shell.
+  if (panic > 0.45) {
+    const sweat = Math.min(1, (panic - 0.45) / 0.55)
+    g.fillStyle(0x9fdcff, 0.95 * sweat)
+    g.fillCircle(cx - r * 0.6, cy - r * 0.5, r * 0.055 * (0.7 + 0.3 * sweat))
+  }
+
+  // ---- THE INK OUTLINE — the contour itself, over everything. ----
+  g.lineStyle(ballOutlineWidth(r), INK, 1)
+  if (poly && poly.length >= 3) {
+    g.strokePoints(poly as unknown as Phaser.Math.Vector2[], true, true)
+  } else {
+    g.strokeCircle(cx, cy, r)
+  }
+}
+
 /**
  * The ONE tier-9 entry point for every consumer (renderer, previews,
  * banner, overlay, claw, progression, baker): routes to the theme the
@@ -1240,5 +1487,30 @@ export function drawTier9Ball(
   } else {
     drawSharkBall(g, cx, cy, r, variant, poly, panic, gaze, seed)
   }
+}
+
+/**
+ * The ONE collectible entry point for every consumer: routes by TIER
+ * (9 → shark/pig by the run theme, 10 → crab) and lets `variant` pick
+ * the palette WITHIN the theme. Call this — never the theme functions
+ * directly.
+ */
+export function drawCollectibleBall(
+  g: Phaser.GameObjects.Graphics,
+  cx: number,
+  cy: number,
+  r: number,
+  tier: number,
+  variant = 0,
+  poly?: Array<{ x: number; y: number }>,
+  panic = 0,
+  gaze?: { x: number; y: number },
+  seed = 9,
+): void {
+  if (tier === 10) {
+    drawCrabBall(g, cx, cy, r, variant, poly, panic, gaze, seed)
+    return
+  }
+  drawTier9Ball(g, cx, cy, r, variant, poly, panic, gaze, seed)
 }
 

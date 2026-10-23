@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { INK, ballOutlineWidth, wobbleContour, ballLookFor, drawTier9Ball } from './BallAppearance'
+import { INK, ballOutlineWidth, wobbleContour, ballLookFor, drawCollectibleBall } from './BallAppearance'
 import { isSpecialBakeTier, specialBakeExtent, specialBakeGeometry } from './bakeGeometry'
 
 /**
@@ -285,7 +285,7 @@ export class TierBaker {
 
 // ---------------------------------------------------------------------------
 // Tier-9 procedural fill, re-rasterizable into the offline Graphics.
-// DELEGATES to BallAppearance.drawTier9Ball (circle fallback — a sleeping
+// DELEGATES to BallAppearance.drawCollectibleBall (circle fallback — a sleeping
 // ball), so the frozen bake uses the exact same drawing code as the live
 // ball (shark OR pig — whatever the run rolled) and can never drift out
 // of sync.
@@ -297,5 +297,5 @@ function drawFantasyInto(g: Phaser.GameObjects.Graphics, cx: number, cy: number,
   // exact same code path as the live theme ball with poly omitted, so
   // the bake and the live ball can never diverge again. The theme roll
   // (shark/pig) routes inside; the variant picks the palette within.
-  drawTier9Ball(g, cx, cy, r, variant)
+  drawCollectibleBall(g, cx, cy, r, variant)
 }
