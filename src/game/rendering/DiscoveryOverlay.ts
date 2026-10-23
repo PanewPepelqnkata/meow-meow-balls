@@ -185,6 +185,9 @@ export class DiscoveryOverlay {
   private finishStatic: FinishSlice[] = []
   /** The rarity glint — the twinkling sparkles. */
   private finishGlints: FinishSparkle[] = []
+  /** The card's CHARACTER layer (card/gib styles). Kept so a tier-8 ball
+   * can be redrawn every frame while its colour cycles. */
+  private cardBallG: Phaser.GameObjects.Graphics | null = null
   private content: Phaser.GameObjects.Container | null = null
   private active = false
   private activeTier: number | null = null
@@ -835,6 +838,7 @@ export class DiscoveryOverlay {
       this.buildCardFinish(color)
 
       const ballG = this.scene.add.graphics()
+      this.cardBallG = ballG
       // The character sits in the PORTRAIT WINDOW's middle (the shared
       // geometry), so the window frames it. The panel is at (cx, vh/2),
       // so the window's absolute Y is converted to the panel's relative Y.
@@ -1356,6 +1360,21 @@ export class DiscoveryOverlay {
     this.fillFinishSlices(foil, band)
     this.fillFinishGlints(foil, phase)
     this.fillFinishSlices(glint, specular)
+    // A tier-8 character on the card cycles its colour with the clock —
+    // the sweep's per-frame update redraws the ball layer so the gradient
+    // plays on the card exactly as it does in play.
+    if (this.activeTier === 8) this.redrawCardBall()
+  }
+
+  /** Redraw just the card's character layer (tier 8's colour cycle). */
+  private redrawCardBall(): void {
+    const g = this.cardBallG
+    if (!g || this.activeTier == null) return
+    const L = this.layout()
+    const G = this.cardGeometry(0, L.cardCentreY)
+    const displayRadius = L.displayRadius
+    g.clear()
+    this.drawDiscoveryBall(g, 0, G.ballY, displayRadius, this.activeTier, this.activeSeed)
   }
 
   /** Draw a set of the finish's flat colour slices. */
@@ -1429,6 +1448,7 @@ export class DiscoveryOverlay {
     this.finishRect = null
     this.finishStatic = []
     this.finishGlints = []
+    this.cardBallG = null
   }
 
   /**
