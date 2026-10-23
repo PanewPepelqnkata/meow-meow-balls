@@ -706,21 +706,24 @@ export function drawSharkBall(
   g.closePath()
   g.fillPath()
 
-  // ---- TAIL FIN — a compact two-lobe tail on the ball's LEFT side
-  // (the shark's rear, away from the face). Reaches ~0.35r past the
-  // body. Flattens with fear. ----
-  const tailX = cx - r * 0.72
+  // ---- TAIL FIN — a small two-lobe tail on the ball's LEFT side (the
+  // shark's rear, away from the face). The tip reaches ~0.87r from the
+  // centre — about 0.13r past the body edge: a proportionate fin, not a
+  // second ball. Flattens with fear (tailS shrinks toward 0). ----
+  const tailX = cx - r * 0.6
   const tailY = cy - r * 0.02
-  const tailS = r * (0.36 - 0.1 * panic)
+  // tailS is a UNITLESS 0..1 scale (not a pixel length — multiplying it
+  // by r again is what blew the tail up 2.7× before).
+  const tailS = 1.0 - 0.3 * panic
   g.fillStyle(pal.back, 1)
   g.beginPath()
-  g.moveTo(tailX + r * 0.12, tailY - r * 0.1)
+  g.moveTo(tailX + r * 0.08, tailY - r * 0.07)
   // Upper lobe: a short sweep up-left to a point, then notching back in.
-  quadFrom(g, tailX + r * 0.12, tailY - r * 0.1, tailX - r * 0.16 * tailS, tailY - r * 0.26 * tailS, tailX - r * 0.34 * tailS, tailY - r * 0.3 * tailS)
-  quadFrom(g, tailX - r * 0.34 * tailS, tailY - r * 0.3 * tailS, tailX - r * 0.14 * tailS, tailY - r * 0.06, tailX - r * 0.1 * tailS, tailY + r * 0.02)
+  quadFrom(g, tailX + r * 0.08, tailY - r * 0.07, tailX - r * 0.32 * tailS, tailY - r * 0.28 * tailS, tailX - r * 0.53 * tailS, tailY - r * 0.3 * tailS)
+  quadFrom(g, tailX - r * 0.53 * tailS, tailY - r * 0.3 * tailS, tailX - r * 0.24 * tailS, tailY - r * 0.06, tailX - r * 0.16 * tailS, tailY + r * 0.01)
   // Lower lobe: shorter, angled down-left.
-  quadFrom(g, tailX - r * 0.1 * tailS, tailY + r * 0.02, tailX - r * 0.18 * tailS, tailY + r * 0.08 * tailS, tailX - r * 0.28 * tailS, tailY + r * 0.18 * tailS)
-  quadFrom(g, tailX - r * 0.28 * tailS, tailY + r * 0.18 * tailS, tailX - r * 0.08 * tailS, tailY + r * 0.12, tailX + r * 0.12, tailY + r * 0.06)
+  quadFrom(g, tailX - r * 0.16 * tailS, tailY + r * 0.01, tailX - r * 0.26 * tailS, tailY + r * 0.06 * tailS, tailX - r * 0.4 * tailS, tailY + r * 0.16 * tailS)
+  quadFrom(g, tailX - r * 0.4 * tailS, tailY + r * 0.16 * tailS, tailX - r * 0.12 * tailS, tailY + r * 0.1, tailX + r * 0.08, tailY + r * 0.03)
   g.closePath()
   g.fillPath()
   g.lineStyle(ink * 0.8, INK, 1)
