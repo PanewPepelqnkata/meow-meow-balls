@@ -684,14 +684,44 @@ export function drawSharkBall(
   g.fillStyle(pal.glow, 0.1)
   g.fillCircle(cx, cy, r * 1.12)
 
-  // ---- DORSAL FIN — behind the body, poking above the contour top. ----
-  const finH = r * (0.52 - 0.18 * panic) // fins flatten in fear
+  // ---- DORSAL FIN — BIG, behind the body, sweeping above the contour
+  // top (the shark's signature silhouette). Flattens with fear. ----
+  const finH = r * (0.95 - 0.3 * panic)
   const topY = cy - r * 0.92
   g.fillStyle(pal.back, 1)
   g.beginPath()
-  g.moveTo(cx - r * 0.18, topY + r * 0.16)
-  quadFrom(g, cx - r * 0.18, topY + r * 0.16, cx - r * 0.05, topY - finH * 0.55, cx + r * 0.34, topY - finH)
-  quadFrom(g, cx + r * 0.34, topY - finH, cx + r * 0.28, topY - finH * 0.2, cx + r * 0.42, topY + r * 0.16)
+  g.moveTo(cx - r * 0.3, topY + r * 0.2)
+  quadFrom(g, cx - r * 0.3, topY + r * 0.2, cx - r * 0.08, topY - finH * 0.5, cx + r * 0.52, topY - finH)
+  quadFrom(g, cx + r * 0.52, topY - finH, cx + r * 0.34, topY - finH * 0.18, cx + r * 0.6, topY + r * 0.2)
+  g.closePath()
+  g.fillPath()
+  g.lineStyle(ink * 0.8, INK, 1)
+  g.strokePath()
+  // Fin inner tint: a lighter sweep inside the fin's base (depth).
+  g.fillStyle(pal.fin, 0.7)
+  g.beginPath()
+  g.moveTo(cx - r * 0.14, topY + r * 0.14)
+  quadFrom(g, cx - r * 0.14, topY + r * 0.14, cx - r * 0.02, topY - finH * 0.32, cx + r * 0.3, topY - finH * 0.62)
+  g.lineTo(cx + r * 0.3, topY + r * 0.14)
+  g.closePath()
+  g.fillPath()
+
+  // ---- TAIL FIN — BIG, sweeping out of the ball's LEFT side (the
+  // shark's rear, away from the face). A classic two-lobe tail: the
+  // upper lobe sweeps up, the lower lobe angles back. Flattens with
+  // fear. ----
+  const tailX = cx - r * 0.78
+  const tailY = cy - r * 0.05
+  const tailS = r * (1.0 - 0.3 * panic)
+  g.fillStyle(pal.back, 1)
+  g.beginPath()
+  g.moveTo(tailX + r * 0.18, tailY - r * 0.16)
+  // Upper lobe: sweeping up-left to a point, then notching back in.
+  quadFrom(g, tailX + r * 0.18, tailY - r * 0.16, tailX - r * 0.34 * tailS, tailY - r * 0.52 * tailS, tailX - r * 0.72 * tailS, tailY - r * 0.66 * tailS)
+  quadFrom(g, tailX - r * 0.72 * tailS, tailY - r * 0.66 * tailS, tailX - r * 0.3 * tailS, tailY - r * 0.12, tailX - r * 0.22 * tailS, tailY + r * 0.02)
+  // Lower lobe: shorter, angled down-left.
+  quadFrom(g, tailX - r * 0.22 * tailS, tailY + r * 0.02, tailX - r * 0.4 * tailS, tailY + r * 0.18 * tailS, tailX - r * 0.6 * tailS, tailY + r * 0.4 * tailS)
+  quadFrom(g, tailX - r * 0.6 * tailS, tailY + r * 0.4 * tailS, tailX - r * 0.18 * tailS, tailY + r * 0.26, tailX + r * 0.18, tailY + r * 0.1)
   g.closePath()
   g.fillPath()
   g.lineStyle(ink * 0.8, INK, 1)

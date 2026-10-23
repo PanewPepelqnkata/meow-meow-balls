@@ -403,7 +403,12 @@ export class SoftBallRenderer {
         const s = drawR / special.textureRadius
         this.drawSpecialQuads(r.id, special, c.x, c.y, s)
         this.bakeSweep.add(r.id)
-        this.drawSpriteFace(this.spriteViews.get(r.id)!, r, drawR, aspect, now)
+        // TIER 9: the baked body ALREADY contains the shark's own face
+        // (eyes, mouth, teeth — all part of drawSharkBall). Drawing the
+        // standard sprite face on top put a stray floating eye next to
+        // the ball. Tier 8 still takes the sprite face (its body is a
+        // plain ball with no face of its own).
+        if (r.tier !== 9) this.drawSpriteFace(this.spriteViews.get(r.id)!, r, drawR, aspect, now)
         continue
       }
 
