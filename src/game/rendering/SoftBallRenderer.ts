@@ -12,7 +12,7 @@ import {
   expressionAt,
   gazeAt,
   wobbleContour,
-  drawFantasyBall,
+  drawSharkBall,
 } from './BallAppearance'
 import type { BallLook } from './BallAppearance'
 import {
@@ -417,7 +417,7 @@ export class SoftBallRenderer {
       }
       this.drawLiveBody(g, r, look, drawR, color, poly, cx, cy)
       if (r.tier !== 9) {
-        // The tier 9 fantasy ball paints its own face (part of the design);
+        // The tier 9 shark paints its own face (part of the design);
         // every other tier gets the standard face on top.
         this.drawLiveFace(g, r, look, drawR, aspect, now, cx, cy)
       }
@@ -562,7 +562,7 @@ export class SoftBallRenderer {
       // The fantasy body draws INTO the live contour (body fill, mane,
       // horn all track the wobble) and paints its OWN face — no separate
       // ink pass, no standard face on top.
-      drawFantasyBall(g, built.cx, built.cy, r.soft.radius, variantIdFor(9), built.poly)
+      drawSharkBall(g, built.cx, built.cy, r.soft.radius, variantIdFor(9), built.poly)
       return
     }
     // Every other tier (including the tier 8 cycling RGB ball) is a

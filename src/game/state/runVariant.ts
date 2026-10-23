@@ -71,4 +71,4 @@ export function runVariantFor(tier: number): number | null {
 // ---------------------------------------------------------------------------
 
 // Fantasy (T9) variant palettes live WITH the draw code
-// (BallAppearance.drawFantasyBall) — one source of truth for the visuals.
+// (BallAppearance.drawSharkBall) — one source of truth for the visuals.

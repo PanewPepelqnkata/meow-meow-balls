@@ -29,28 +29,7 @@ function asPoints(pts: Array<{ x: number; y: number }>): Phaser.Math.Vector2[] {
 
 export const INK = 0x1a1a1a
 
-/**
- * Phase 2.14.0: fantasy (T9) per-run variant palettes — mirrors
- * runVariant.fantasyVariant (kept here so the draw stays dependency-free;
- * the two arrays MUST stay index-aligned).
- */
-const FANTASY_VARIANTS: Array<{ body: number; bodyShade: number; horn: number; hornShade: number; star: number; mane: number; maneDeep: number; cheek: number }> = [
-  { body: 0xffc0e0, bodyShade: 0xf295c2, horn: 0xffd54f, hornShade: 0xe0a800, star: 0xffffff, mane: 0xff6b9d, maneDeep: 0xd94f7e, cheek: 0xff9ebc }, // 0: classic pink
-  { body: 0xc0e8ff, bodyShade: 0x92c4e8, horn: 0xffd54f, hornShade: 0xe0a800, star: 0xffffff, mane: 0x81d4fa, maneDeep: 0x5aabdb, cheek: 0x9ecdf0 }, // 1: sky blue
-  { body: 0xd0ffc8, bodyShade: 0xa3d99a, horn: 0xffb300, hornShade: 0xd18f00, star: 0xffffff, mane: 0xa5d6a7, maneDeep: 0x7cb87c, cheek: 0xb2e6ab }, // 2: mint
-  { body: 0xe8d0ff, bodyShade: 0xc2a3e0, horn: 0xffca28, hornShade: 0xd8a400, star: 0xffffff, mane: 0xb39ddb, maneDeep: 0x8d7bc0, cheek: 0xd0b2ef }, // 3: lilac
-  { body: 0xfff0c0, bodyShade: 0xe8cf92, horn: 0xff7043, hornShade: 0xd85a30, star: 0xffffff, mane: 0xffd54f, maneDeep: 0xdbb13c, cheek: 0xf5dd9a }, // 4: butter
-  { body: 0xffd8c0, bodyShade: 0xe8b294, horn: 0x8d6e63, hornShade: 0x6f544b, star: 0xffffff, mane: 0xffab91, maneDeep: 0xdb8a70, cheek: 0xf2c0a8 }, // 5: peach
-  { body: 0xc0f0ff, bodyShade: 0x93c8da, horn: 0x26c6da, hornShade: 0x1ea2b3, star: 0xffffff, mane: 0x80deea, maneDeep: 0x5fb8c8, cheek: 0xa0dcef }, // 6: glacier
-  { body: 0xffc0c8, bodyShade: 0xe0959f, horn: 0xec407a, hornShade: 0xc53366, star: 0xffffff, mane: 0xf06292, maneDeep: 0xcc4d77, cheek: 0xf29aae }, // 7: candy
-]
 
-/**
- * The fantasy palettes, exported for the OFFLINE BAKER (TierBaker) — the
- * baker's copy MUST stay index-aligned with this array (its own copy is
- * validated against this one by a test).
- */
-export const FANTASY_PALETTES = FANTASY_VARIANTS
 
 /**
  * Normalized face layout — the ONE place facial proportions are defined.
@@ -258,11 +237,6 @@ export function wobbleContour(
   })
 }
 
-/**
- * The at-rest contour used by NextBall and DropClaw: a circle displaced by
- * the same wobble pipeline the gameplay renderer applies to its live
- * contour — same character silhouette at rest.
- */
 export function restContour(
   look: BallLook,
   radius: number,
@@ -584,204 +558,235 @@ export function drawBallFace(
 // Phase 2.12.0 — Special tier appearances (Tier 8 rainbow, Tier 9 fantasy)
 // ---------------------------------------------------------------------------
 
+export interface SharkPalette {
+  /** Belly (light underside). */
+  belly: number
+  /** Back (the classic shark grey — two tones for the countershading). */
+  back: number
+  /** Back highlight (a lighter grey along the top). */
+  backLight: number
+  /** Fin inner (the gill/fin membrane tint). */
+  fin: number
+  /** Gum/gill red for the mouth interior. */
+  gum: number
+  /** Cheek grey (slightly blue-grey, for the cheek patches). */
+  cheek: number
+}
+
 /**
- * Draw the Tier 9 fantasy ball — the reward tier, drawn to COLLECT: a
- * pastel unicorn-slime with a spiral striped horn, a flowing two-tone
- * mane, a tiny ear, star freckles, a belly light and its own face.
+ * The shark palettes, exported for the OFFLINE BAKER (TierBaker) — the
+ * baker's copy MUST stay index-aligned with this array.
+ */
+export const SHARK_PALETTES: readonly SharkPalette[] = [
+  { belly: 0xdfe8ee, back: 0x5b6c7a, backLight: 0x77899a, fin: 0x8fa5b5, gum: 0xb04a52, cheek: 0x9db1c0 }, // 0: reef grey
+  { belly: 0xe8eef2, back: 0x46617c, backLight: 0x64809c, fin: 0x87a3bd, gum: 0xa84858, cheek: 0x8ca6bd }, // 1: deep blue
+  { belly: 0xeef0e4, back: 0x5e6e56, backLight: 0x7d8f72, fin: 0x9aac8e, gum: 0xb0564e, cheek: 0xa2b096 }, // 2: green tide
+  { belly: 0xf0e8dc, back: 0x77655a, backLight: 0x96836f, fin: 0xb09e8a, gum: 0xb85a50, cheek: 0xb3a294 }, // 3: sand
+  { belly: 0xe4e4ee, back: 0x5a5a72, backLight: 0x777793, fin: 0x9494ad, gum: 0xaa4e60, cheek: 0x9b9bb2 }, // 4: dusk
+  { belly: 0xe0ecee, back: 0x4f7070, backLight: 0x6d9191, fin: 0x8aacac, gum: 0xac5058, cheek: 0x8facac }, // 5: lagoon
+]
+
+/**
+ * Draw the Tier 9 SHARK ball — the reward tier, drawn to COLLECT: a
+ * round-body shark-slime with a big open mouth (triangle teeth top and
+ * bottom), a shark eye, a dorsal fin, side + tail fins, gill slits and a
+ * countershaded belly.
  *
- * DRAWING SURFACE: every part is placed relative to the ball's CONTOUR
- * (the wobbled silhouette), not a perfect circle — pass `poly` (the live
- * contour, world space) plus its centroid and the body follows the
- * wobble exactly like every other tier. Without `poly` (static previews:
- * next-ball, claw, title, discovery statics) it falls back to a circle
+ * DRAWING SURFACE: the body is the ball's CONTOUR (the wobbled
+ * silhouette) — pass `poly` (live contour, world space) plus its
+ * centroid; without `poly` (static previews) it falls back to a circle
  * of radius r at (cx, cy).
  *
- * The FACE is part of the design here (a fantasy slime has its own
- * softer look), drawn by this function — callers must NOT draw the
- * standard face on top.
+ * FEAR: pass `panic` (0..1, from BallEmotionSystem) and `gaze` — the
+ * shark shows its OWN fear ladder: the mouth clamps shut and trembles,
+ * the eye shrinks wide-open with a sweat drop, the fins flatten. The
+ * easter-egg gaze keeps working through `gaze`.
  *
- * Phase 2.14.0: `variant` (0..7, rolled per RUN via runVariant) selects
- * the body/horn/mane palette — variant 0 is the classic pink.
+ * The FACE is part of the design here — callers must NOT draw the
+ * standard face on top.
  */
-export function drawFantasyBall(
+
+/**
+ * Stroke/fill-agnostic quadratic bezier for Phaser Graphics: Graphics has
+ * no native quadratic curve, so the curve is approximated with an
+ * 8-segment polyline (visually smooth at ball sizes).
+ */
+/**
+ * Quadratic bezier from (x0,y0) with control (cpx,cpy) to (x,y), appended
+ * to the current path as a polyline. Call after g.moveTo / a previous
+ * segment.
+ */
+function quadFrom(g: Phaser.GameObjects.Graphics, x0: number, y0: number, cpx: number, cpy: number, x: number, y: number): void {
+  const segs = 8
+  for (let i = 1; i <= segs; i++) {
+    const t = i / segs
+    const mt = 1 - t
+    const px = mt * mt * x0 + 2 * mt * t * cpx + t * t * x
+    const py = mt * mt * y0 + 2 * mt * t * cpy + t * t * y
+    g.lineTo(px, py)
+  }
+}
+
+
+export function drawSharkBall(
   g: Phaser.GameObjects.Graphics,
   cx: number,
   cy: number,
   r: number,
   variant = 0,
   poly?: Array<{ x: number; y: number }>,
+  panic = 0,
+  gaze?: { x: number; y: number },
 ): void {
-  const pal = FANTASY_VARIANTS[variant % FANTASY_VARIANTS.length]!
-
-  // ---- Geometry from the contour ---------------------------------------
-  // The contour's top point anchors the horn+ear; the mane rides the two
-  // upper sides. With no poly (circle fallback) these are the plain
-  // circle anchors.
-  let topX = cx
-  let topY = cy - r
-  if (poly && poly.length >= 8) {
-    let top = poly[0]!
-    for (const p of poly) if (p.y < top.y) top = p
-    topX = top.x
-    topY = top.y
-  }
+  const pal = SHARK_PALETTES[variant % SHARK_PALETTES.length]!
   const ink = Math.max(2, r * 0.05)
+  // The mouth clamps shut as panic rises: openness 1 → 0.
+  const open = 1 - Math.max(0, Math.min(1, panic * 1.15))
+  // Fear tremble: a small high-frequency jitter, growing with panic.
+  const now = Date.now() / 1000
+  const jx = Math.sin(now * 43) * r * 0.02 * panic * panic
+  const jy = Math.cos(now * 37) * r * 0.015 * panic * panic
+  cx += jx
+  cy += jy
 
-  // ---- THE HORN — a spiral cone with stripe bands -----------------------
-  // Two curved sides from a broad base at the head's top to a rounded
-  // tip, with darker stripe bands across it and a warm tip glow. The
-  // horn leans back slightly (unicorn posture) and is drawn FIRST so the
-  // mane overlaps its base.
-  const hornLean = r * 0.1
-  const hornH = r * 0.62
-  const baseHalf = r * 0.2
-  const tipX = topX + hornLean
-  const tipY = topY - hornH
-  g.fillStyle(pal.horn, 1)
+  // ---- DORSAL FIN — behind the body, poking above the contour top. ----
+  const finH = r * (0.52 - 0.18 * panic) // fins flatten in fear
+  const topY = cy - r * 0.92
+  g.fillStyle(pal.back, 1)
   g.beginPath()
-  // Left edge (slightly concave — a tapered unicorn horn).
-  g.moveTo(topX - baseHalf, topY + r * 0.05)
-  g.lineTo(tipX - baseHalf * 0.28, tipY + r * 0.1)
-  // Rounded tip.
-  g.arc(tipX, tipY + r * 0.1, baseHalf * 0.28, Math.PI, 0, false)
-  // Right edge back down.
-  g.lineTo(topX + baseHalf, topY + r * 0.05)
+  g.moveTo(cx - r * 0.18, topY + r * 0.16)
+  quadFrom(g, cx - r * 0.18, topY + r * 0.16, cx - r * 0.05, topY - finH * 0.55, cx + r * 0.34, topY - finH)
+  quadFrom(g, cx + r * 0.34, topY - finH, cx + r * 0.28, topY - finH * 0.2, cx + r * 0.42, topY + r * 0.16)
   g.closePath()
   g.fillPath()
-  // Stripe bands across the horn (the spiral suggestion): three tapered
-  // wedges in the deep shade, wider at the base.
-  const stripe = r * 0.075
-  for (let i = 0; i < 3; i++) {
-    const t = 0.24 + i * 0.24 // fraction up the horn
-    const by = topY + (tipY + r * 0.1 - topY) * t
-    const halfNow = baseHalf * (1 - t * 0.72)
-    g.fillStyle(pal.hornShade, 0.9)
-    g.fillRect(topX - hornLean * t - halfNow, by - stripe / 2 - (stripe * i) / 3, halfNow * 2, stripe)
-  }
-  // The horn's ink outline.
   g.lineStyle(ink * 0.8, INK, 1)
+  g.strokePath()
+
+  // ---- TAIL FIN — peeking out at the right side. ----
+  const tailX = cx + r * 0.86
+  const tailY = cy + r * 0.1
+  g.fillStyle(pal.back, 1)
   g.beginPath()
-  g.moveTo(topX - baseHalf, topY + r * 0.05)
-  g.lineTo(tipX - baseHalf * 0.28, tipY + r * 0.1)
-  g.arc(tipX, tipY + r * 0.1, baseHalf * 0.28, Math.PI, 0, false)
-  g.lineTo(topX + baseHalf, topY + r * 0.05)
+  g.moveTo(tailX - r * 0.16, tailY)
+  quadFrom(g, tailX - r * 0.16, tailY, tailX + r * 0.18, tailY - r * 0.3, tailX + r * 0.42, tailY - r * 0.42)
+  quadFrom(g, tailX + r * 0.42, tailY - r * 0.42, tailX + r * 0.24, tailY - r * 0.05, tailX + r * 0.4, tailY + r * 0.34)
+  quadFrom(g, tailX + r * 0.4, tailY + r * 0.34, tailX + r * 0.14, tailY + r * 0.18, tailX - r * 0.16, tailY)
+  g.closePath()
+  g.fillPath()
+  g.lineStyle(ink * 0.8, INK, 1)
+  g.strokePath()
+
+  // ---- THE BODY — the contour, countershaded: grey back, light belly. --
+  if (poly && poly.length >= 3) {
+    g.fillStyle(pal.back, 1)
+    g.fillPoints(poly as unknown as Phaser.Math.Vector2[], true)
+  } else {
+    g.fillStyle(pal.back, 1)
+    g.fillCircle(cx, cy, r)
+  }
+  // Belly: the light underside — an ellipse low in the body; the ink
+  // frame covers any spill at the rim.
+  g.fillStyle(pal.belly, 1)
+  g.beginPath()
+  g.fillEllipse(cx, cy + r * 0.42, (r * 0.86) * 2, (r * 0.6) * 2)
+  g.fillPath()
+  // Back highlight: a lighter grey sweep along the top of the back.
+  g.fillStyle(pal.backLight, 0.85)
+  g.beginPath()
+  g.fillEllipse(cx - r * 0.05, cy - r * 0.5, (r * 0.7) * 2, (r * 0.36) * 2)
+  g.fillPath()
+
+  // ---- GILL SLITS — three short ink arcs on the shark's cheek. ----
+  g.lineStyle(ink * 0.65, INK, 0.85)
+  for (let i = 0; i < 3; i++) {
+    const gx = cx - r * 0.52 + i * r * 0.13
+    g.beginPath()
+    g.arc(gx, cy + r * 0.05, r * 0.16, -Math.PI * 0.32, Math.PI * 0.18, false)
+    g.strokePath()
+  }
+
+  // ---- SIDE FIN — one small pectoral fin over the belly. ----
+  g.fillStyle(pal.fin, 1)
+  g.beginPath()
+  g.moveTo(cx + r * 0.12, cy + r * 0.34)
+  quadFrom(g, cx + r * 0.12, cy + r * 0.34, cx + r * 0.4, cy + r * 0.52, cx + r * 0.52, cy + r * 0.72)
+  quadFrom(g, cx + r * 0.52, cy + r * 0.72, cx + r * 0.22, cy + r * 0.6, cx + r * 0.05, cy + r * 0.44)
+  g.closePath()
+  g.fillPath()
+  g.lineStyle(ink * 0.6, INK, 1)
+  g.strokePath()
+
+  // ---- THE MOUTH — the big shark mouth: a wide open wedge with triangle
+  // teeth top and bottom. Clamps shut and trembles with fear.
+  const mouthW = r * (0.62 + 0.1 * open)
+  const mouthOpen = r * 0.34 * open
+  const mouthY = cy + r * 0.34
+  g.fillStyle(pal.gum, 1)
+  g.beginPath()
+  g.moveTo(cx - mouthW / 2, mouthY - r * 0.08 * open)
+  quadFrom(g, cx - mouthW / 2, mouthY - r * 0.08 * open, cx, mouthY + mouthOpen * 0.9, cx + mouthW / 2, mouthY - r * 0.08 * open)
+  quadFrom(g, cx + mouthW / 2, mouthY - r * 0.08 * open, cx, mouthY - r * 0.16 * open, cx - mouthW / 2, mouthY - r * 0.08 * open)
+  g.closePath()
+  g.fillPath()
+  // Teeth: triangles from the upper lip down and the lower lip up.
+  if (open > 0.06) {
+    g.fillStyle(0xffffff, 1)
+    const teeth = 6
+    for (let i = 0; i < teeth; i++) {
+      const t = (i + 0.5) / teeth
+      const tx = cx - mouthW / 2 + mouthW * t
+      const th = r * (0.1 + (i % 2) * 0.045) * open
+      g.beginPath()
+      g.moveTo(tx - (mouthW / teeth) * 0.32, mouthY - r * 0.09 * open + r * 0.02)
+      g.lineTo(tx + (mouthW / teeth) * 0.32, mouthY - r * 0.09 * open + r * 0.02)
+      g.lineTo(tx, mouthY - r * 0.09 * open + th)
+      g.closePath()
+      g.fillPath()
+      const by = mouthY + mouthOpen * 0.62
+      g.beginPath()
+      g.moveTo(tx - (mouthW / teeth) * 0.3, by)
+      g.lineTo(tx + (mouthW / teeth) * 0.3, by)
+      g.lineTo(tx, by - th * 0.8)
+      g.closePath()
+      g.fillPath()
+    }
+  }
+  g.lineStyle(ink * 0.85, INK, 1)
+  g.beginPath()
+  g.moveTo(cx - mouthW / 2, mouthY - r * 0.08 * open)
+  quadFrom(g, cx - mouthW / 2, mouthY - r * 0.08 * open, cx, mouthY + mouthOpen * 0.9, cx + mouthW / 2, mouthY - r * 0.08 * open)
+  quadFrom(g, cx + mouthW / 2, mouthY - r * 0.08 * open, cx, mouthY - r * 0.16 * open, cx - mouthW / 2, mouthY - r * 0.08 * open)
   g.closePath()
   g.strokePath()
 
-  // ---- THE EAR — a small leaf behind the horn's base (the far side). ----
-  g.fillStyle(pal.bodyShade, 1)
-  g.beginPath()
-  g.fillEllipse(topX - baseHalf * 1.7, topY + r * 0.08, r * 0.22, r * 0.38)
-  g.lineStyle(ink * 0.6, INK, 1)
-  g.strokeEllipse(topX - baseHalf * 1.7, topY + r * 0.08, r * 0.22, r * 0.38)
-
-  // ---- THE BODY — pastel fill clipped to the contour, with shading. ----
-  g.fillStyle(pal.body, 1)
-  if (poly && poly.length >= 3) {
-    g.fillPoints(poly as unknown as Phaser.Math.Vector2[], true)
-  } else {
-    g.fillCircle(cx, cy, r)
-  }
-  // Lower-body shade: a darker crescent hugging the bottom of the
-  // contour (volume — the old flat pastel read paper-thin).
-  g.fillStyle(pal.bodyShade, 0.55)
-  g.beginPath()
-  g.fillEllipse(cx, cy + r * 0.52, r * 1.56, r * 0.84)
-  // (The crescent may spill past the contour without clipping — the ink
-  // outline covers the rim below.)
-  // Belly light: a warm white core low-centre (the glow of a reward).
-  g.fillStyle(0xfff8f0, 0.5)
-  g.fillEllipse(cx, cy + r * 0.28, r * 0.7, r * 0.4)
-
-  // ---- THE MANE — two flowing combs: a back layer in the deep mane
-  // shade and a front layer in the main mane colour, made of overlapping
-  // rounded locks that follow the head's sides down past the midline.
-  const locks: Array<{ x: number; y: number; w: number; h: number; rot: number }> = []
-  for (let i = 0; i < 3; i++) {
-    const t = i / 2 // 0 at the top … 1 lower down the side
-    const drop = r * (0.12 + t * 0.42)
-    const out = r * (0.72 - t * 0.18)
-    locks.push({ x: cx - out, y: cy - r * 0.42 + drop, w: r * 0.3, h: r * (0.4 - t * 0.08), rot: -0.35 + t * 0.2 })
-    locks.push({ x: cx + out, y: cy - r * 0.42 + drop, w: r * 0.3, h: r * (0.4 - t * 0.08), rot: 0.35 - t * 0.2 })
-  }
-  // Back layer (deep shade, slightly larger).
-  for (const l of locks) {
-    g.fillStyle(pal.maneDeep, 1)
-    g.beginPath()
-    g.fillEllipse(l.x, l.y + r * 0.03, l.w * 2.24, l.h * 2.24)
-  }
-  // Front layer (main mane colour).
-  for (const l of locks) {
-    g.fillStyle(pal.mane, 1)
-    g.beginPath()
-    g.fillEllipse(l.x, l.y, l.w * 2, l.h * 2)
-  }
-
-  // ---- Star freckles — a constellation over the cheeks and forehead. ----
-  if (r > 24) {
-    const stars: Array<[number, number, number]> = [
-      [-0.52, -0.38, 0.085],
-      [0.54, -0.3, 0.065],
-      [0.18, -0.52, 0.055],
-      [-0.2, 0.42, 0.06],
-    ]
-    for (const [sx, sy, sr] of stars) {
-      const x = cx + sx * r
-      const y = cy + sy * r
-      const s = r * sr
-      g.fillStyle(0xffd54f, 0.95)
-      g.beginPath()
-      g.moveTo(x, y - s)
-      g.lineTo(x + s * 0.32, y - s * 0.32)
-      g.lineTo(x + s, y)
-      g.lineTo(x + s * 0.32, y + s * 0.32)
-      g.lineTo(x, y + s)
-      g.lineTo(x - s * 0.32, y + s * 0.32)
-      g.lineTo(x - s, y)
-      g.lineTo(x - s * 0.32, y - s * 0.32)
-      g.closePath()
-      g.fillPath()
-      g.fillStyle(0xfff3c0, 0.9)
-      g.fillCircle(x, y - s * 0.15, s * 0.22)
-    }
-  }
-
-  // ---- THE FACE — the fantasy slime's own: big glossy eyes with star
-  // pupils, a tiny 'w' cat mouth, rosy cheeks. Softer than the standard
-  // face: this is the reward character.
-  const eyeY = cy - r * 0.12
-  const eyeDx = r * 0.34
-  const eyeR = r * 0.24
-  for (const side of [-1, 1]) {
-    const ex = cx + side * eyeDx
-    // Sclera.
-    g.fillStyle(0xffffff, 1)
-    g.fillEllipse(ex, eyeY, eyeR * 1.5, eyeR * 1.9)
-    // Iris: the mane colour — ties the face to the body.
-    g.fillStyle(pal.mane, 1)
-    g.fillCircle(ex + side * eyeR * 0.12, eyeY + eyeR * 0.08, eyeR * 0.78)
-    // Pupil.
-    g.fillStyle(INK, 1)
-    g.fillCircle(ex + side * eyeR * 0.18, eyeY + eyeR * 0.14, eyeR * 0.4)
-    // Gloss double-glint.
-    g.fillStyle(0xffffff, 0.95)
-    g.fillCircle(ex - eyeR * 0.28, eyeY - eyeR * 0.4, eyeR * 0.3)
-    g.fillStyle(0xffffff, 0.7)
-    g.fillCircle(ex + eyeR * 0.3, eyeY + eyeR * 0.34, eyeR * 0.14)
-  }
-  // The 'w' cat mouth: two small arcs side by side under the eyes.
-  const mouthY = cy + r * 0.3
-  const mouthW = r * 0.13
+  // ---- THE EYE — one shark eye, high on the head. Shrinks wide-open
+  // with fear; the gaze (easter egg) still moves the pupil.
+  const eyeX = cx + r * 0.3
+  const eyeY = cy - r * 0.32
+  const eyeR = r * (0.17 + 0.05 * panic)
+  g.fillStyle(0xffffff, 1)
+  g.fillCircle(eyeX, eyeY, eyeR)
+  g.fillStyle(INK, 1)
+  const gx = (gaze?.x ?? 0) * eyeR * 0.3
+  const gy = (gaze?.y ?? 0) * eyeR * 0.3
+  g.fillCircle(eyeX + gx, eyeY + gy, eyeR * 0.52)
+  g.fillStyle(0xffffff, 0.9)
+  g.fillCircle(eyeX - eyeR * 0.3, eyeY - eyeR * 0.34, eyeR * 0.22)
+  // Brow: a short angled ink stroke over the eye.
   g.lineStyle(ink * 0.8, INK, 1)
-  for (const side of [-1, 1]) {
-    g.beginPath()
-    g.arc(cx + side * mouthW, mouthY - mouthW * 0.35, mouthW, 0.2618, 2.8798, false)
-    g.strokePath()
+  g.beginPath()
+  g.moveTo(eyeX - eyeR * 1.1, eyeY - eyeR * (1.5 + 0.3 * panic))
+  g.lineTo(eyeX + eyeR * 0.9, eyeY - eyeR * (1.05 + 0.15 * panic))
+  g.strokePath()
+  // Fear sweat: one drop at the temple as panic climbs.
+  if (panic > 0.45) {
+    const sweat = Math.min(1, (panic - 0.45) / 0.55)
+    g.fillStyle(0x9fdcff, 0.95 * sweat)
+    g.fillCircle(eyeX + r * 0.28, eyeY - r * 0.42, r * 0.055 * (0.7 + 0.3 * sweat))
   }
-  // Rosy cheeks.
-  g.fillStyle(pal.cheek, 0.7)
-  g.fillEllipse(cx - eyeDx - r * 0.24, eyeY + eyeR * 1.15, r * 0.26, r * 0.15)
-  g.fillEllipse(cx + eyeDx + r * 0.24, eyeY + eyeR * 1.15, r * 0.26, r * 0.15)
+  // Cheek patches: subtle grey-blue, under the eye (fade with panic).
+  g.fillStyle(pal.cheek, 0.5 * (1 - panic))
+  g.fillEllipse(eyeX - r * 0.34, eyeY + eyeR * 1.3, (r * 0.3) * 2, (r * 0.16) * 2)
 
   // ---- THE INK OUTLINE — the contour itself, over everything. ----
   g.lineStyle(ballOutlineWidth(r), INK, 1)
@@ -791,3 +796,4 @@ export function drawFantasyBall(
     g.strokeCircle(cx, cy, r)
   }
 }
+

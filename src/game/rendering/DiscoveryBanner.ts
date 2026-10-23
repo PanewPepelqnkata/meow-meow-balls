@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK, drawFantasyBall } from './BallAppearance'
+import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK, drawSharkBall } from './BallAppearance'
 import { cycleColor } from './rgbCycle'
 import { variantIdFor } from '../state/runVariant'
 import { getTier } from '../../config/ballTiers'
@@ -400,8 +400,8 @@ export class DiscoveryBanner {
       const look = ballLookFor(this.tier, this.seed)
       const poly = restContour(look, pr, ball.x, ball.y + bob, 48)
       if (this.tier === 9) {
-        // The fantasy ball paints its own face — part of the design.
-        drawFantasyBall(this.ballG, ball.x, ball.y + bob, pr, variantIdFor(9))
+        // The shark paints its own face — part of the design.
+        drawSharkBall(this.ballG, ball.x, ball.y + bob, pr, variantIdFor(9))
       } else {
         this.ballG.fillStyle(this.tier === 8 ? cycleColor(Date.now()) : color, 1)
         this.ballG.fillPoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)

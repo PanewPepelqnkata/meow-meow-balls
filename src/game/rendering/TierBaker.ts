@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { INK, ballOutlineWidth, wobbleContour, ballLookFor, drawFantasyBall } from './BallAppearance'
+import { INK, ballOutlineWidth, wobbleContour, ballLookFor, drawSharkBall } from './BallAppearance'
 import { isSpecialBakeTier, specialBakeExtent, specialBakeGeometry } from './bakeGeometry'
 
 /**
@@ -34,7 +34,7 @@ import { isSpecialBakeTier, specialBakeExtent, specialBakeGeometry } from './bak
  * lazily at first use, kept for the scene's lifetime.
  *
  * TIERS 8/9 keep their live path (rainbow shimmers with Date.now(); the
- * fantasy ball's horn/mane/stars extend beyond the contour). Their steady-
+ * shark ball.s dorsal fin and tail extend beyond the contour). Their steady-
  * state cost is accepted: they are rare end-chain balls.
  */
 
@@ -284,7 +284,7 @@ export class TierBaker {
 
 // ---------------------------------------------------------------------------
 // Tier-9 procedural fill, re-rasterizable into the offline Graphics.
-// Mirrors BallAppearance.drawFantasyBall but anchored at (0,0) and
+// Mirrors BallAppearance.drawSharkBall but anchored at (0,0) and
 // parameterized so the baker can reuse it verbatim (kept in sync by test:
 // same variant math — see TierBaker placement of extras).
 // ---------------------------------------------------------------------------
@@ -292,7 +292,7 @@ export class TierBaker {
 function drawFantasyInto(g: Phaser.GameObjects.Graphics, cx: number, cy: number, r: number, variant: number): void {
   // DELEGATES to the live renderer: the bake is a sleeping ball, and a
   // sleeping ball draws as the plain circle fallback (no contour) — the
-  // exact same code path as the live fantasy ball with poly omitted, so
+  // exact same code path as the live shark ball with poly omitted, so
   // the bake and the live ball can never diverge again.
-  drawFantasyBall(g, cx, cy, r, variant)
+  drawSharkBall(g, cx, cy, r, variant)
 }
