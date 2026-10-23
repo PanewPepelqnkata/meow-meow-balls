@@ -43,12 +43,11 @@ describe('tier 8/9 bake geometry', () => {
     }
   })
 
-  it('the tier 9 extent covers the horn (-1.68r) and the mane (±0.95r)', () => {
+  it('the tier 9 extent covers the dorsal fin and the gas aura', () => {
     const R = getTier(9)!.radius
-    // 1.75r must be >= the horn reach of ~1.68r
-    expect(specialBakeExtent(9, R)).toBeGreaterThanOrEqual(R * 1.68)
-    // and >= the mane reach
-    expect(specialBakeExtent(9, R)).toBeGreaterThanOrEqual(R * 0.95)
+    // 2.1r must be >= the dorsal fin reach (~1.62r) and the gas aura
+    // (~2.04r)
+    expect(specialBakeExtent(9, R)).toBeGreaterThanOrEqual(R * 2.04)
   })
 
   it('the texture is square and the ball sits at its middle', () => {

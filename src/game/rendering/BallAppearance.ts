@@ -655,17 +655,34 @@ export function drawSharkBall(
   cx += jx
   cy += jy
 
-  // ---- THE GLOW — the reward-tier halo: three soft concentric rings
-  // centred on the body, breathing slowly with the clock. Drawn FIRST so
-  // everything (fins, body, face) sits on top of it. The halo reaches
-  // 1.55r and pulses ±6% — alive, but calm.
-  const glowR = r * (1.55 + Math.sin(now * 1.9) * 0.06)
-  g.fillStyle(pal.glow, 0.16)
-  g.fillCircle(cx, cy, glowR)
-  g.fillStyle(pal.glow, 0.12)
-  g.fillCircle(cx, cy, glowR * 0.78)
+  // ---- THE GLOW — reward-tier AURA: puffs of luminous gas drifting off
+  // the shark (it glows from within). A ring of soft gas clouds orbits
+  // the body; each cloud pulses on its own phase, so the aura shimmers
+  // instead of sitting still. Drawn FIRST so everything sits on top.
+  const gasPuffs: Array<{ a: number; dist: number; size: number; phase: number }> = []
+  const puffCount = 14
+  for (let i = 0; i < puffCount; i++) {
+    const t = i / puffCount
+    gasPuffs.push({
+      a: t * Math.PI * 2,
+      dist: r * (1.18 + ((i * 37) % 11) / 11 * 0.34),
+      size: r * (0.3 + ((i * 53) % 13) / 13 * 0.22),
+      phase: ((i * 29) % 17) / 17,
+    })
+  }
+  for (const p of gasPuffs) {
+    // Each cloud breathes: radius and alpha swell on an offset sine.
+    const pulse = 0.55 + 0.45 * Math.sin(now * 2.1 + p.phase * Math.PI * 2)
+    // Slow orbital drift: the whole aura turns ~12°/s.
+    const drift = now * 0.21
+    const px = cx + Math.cos(p.a + drift) * p.dist
+    const py = cy + Math.sin(p.a + drift) * p.dist
+    g.fillStyle(pal.glow, 0.1 + 0.14 * pulse)
+    g.fillCircle(px, py, p.size * (0.8 + 0.3 * pulse))
+  }
+  // A core haze right against the body — binds the puffs to the shark.
   g.fillStyle(pal.glow, 0.1)
-  g.fillCircle(cx, cy, glowR * 0.56)
+  g.fillCircle(cx, cy, r * 1.12)
 
   // ---- DORSAL FIN — behind the body, poking above the contour top. ----
   const finH = r * (0.52 - 0.18 * panic) // fins flatten in fear
@@ -734,48 +751,40 @@ export function drawSharkBall(
   g.lineStyle(ink * 0.6, INK, 1)
   g.strokePath()
 
-  // ---- THE MOUTH — the big shark mouth: a wide open wedge with triangle
-  // teeth top and bottom. Clamps shut and trembles with fear.
-  const mouthW = r * (0.62 + 0.1 * open)
-  const mouthOpen = r * 0.34 * open
-  const mouthY = cy + r * 0.34
-  g.fillStyle(pal.gum, 1)
+  // ---- THE MOUTH — a wide shark grin: a clean curved band with a row
+  // of triangle teeth along it (no giant open wedge — the classic
+  // cartoon-shark read). Clamps tighter and trembles with fear.
+  const mouthW = r * (0.66 + 0.06 * open)
+  const mouthY = cy + r * 0.36
+  const curve = r * 0.16 * open
+  // The mouth line: a shallow downward arc (a grin), stroked thick.
+  g.lineStyle(ink * 1.1, INK, 1)
   g.beginPath()
-  g.moveTo(cx - mouthW / 2, mouthY - r * 0.08 * open)
-  quadFrom(g, cx - mouthW / 2, mouthY - r * 0.08 * open, cx, mouthY + mouthOpen * 0.9, cx + mouthW / 2, mouthY - r * 0.08 * open)
-  quadFrom(g, cx + mouthW / 2, mouthY - r * 0.08 * open, cx, mouthY - r * 0.16 * open, cx - mouthW / 2, mouthY - r * 0.08 * open)
-  g.closePath()
-  g.fillPath()
-  // Teeth: triangles from the upper lip down and the lower lip up.
+  g.moveTo(cx - mouthW / 2, mouthY - curve * 0.35)
+  quadFrom(g, cx - mouthW / 2, mouthY - curve * 0.35, cx, mouthY + curve, cx + mouthW / 2, mouthY - curve * 0.35)
+  g.strokePath()
+  // Teeth: white triangles hanging from the grin line, alternating
+  // heights — visible but tidy.
   if (open > 0.06) {
     g.fillStyle(0xffffff, 1)
-    const teeth = 6
+    const teeth = 5
     for (let i = 0; i < teeth; i++) {
       const t = (i + 0.5) / teeth
+      // Position along the arc: x linear, y follows the same parabola.
       const tx = cx - mouthW / 2 + mouthW * t
-      const th = r * (0.1 + (i % 2) * 0.045) * open
+      const ty = mouthY - curve * 0.35 + (1 - (t - 0.5) * (t - 0.5) * 4) * curve * 0.55
+      const th = r * (0.11 + (i % 2) * 0.05) * open
+      const tw = (mouthW / teeth) * 0.42
       g.beginPath()
-      g.moveTo(tx - (mouthW / teeth) * 0.32, mouthY - r * 0.09 * open + r * 0.02)
-      g.lineTo(tx + (mouthW / teeth) * 0.32, mouthY - r * 0.09 * open + r * 0.02)
-      g.lineTo(tx, mouthY - r * 0.09 * open + th)
+      g.moveTo(tx - tw, ty)
+      g.lineTo(tx + tw, ty)
+      g.lineTo(tx, ty + th)
       g.closePath()
       g.fillPath()
-      const by = mouthY + mouthOpen * 0.62
-      g.beginPath()
-      g.moveTo(tx - (mouthW / teeth) * 0.3, by)
-      g.lineTo(tx + (mouthW / teeth) * 0.3, by)
-      g.lineTo(tx, by - th * 0.8)
-      g.closePath()
-      g.fillPath()
+      g.lineStyle(ink * 0.35, INK, 0.85)
+      g.strokePath()
     }
   }
-  g.lineStyle(ink * 0.85, INK, 1)
-  g.beginPath()
-  g.moveTo(cx - mouthW / 2, mouthY - r * 0.08 * open)
-  quadFrom(g, cx - mouthW / 2, mouthY - r * 0.08 * open, cx, mouthY + mouthOpen * 0.9, cx + mouthW / 2, mouthY - r * 0.08 * open)
-  quadFrom(g, cx + mouthW / 2, mouthY - r * 0.08 * open, cx, mouthY - r * 0.16 * open, cx - mouthW / 2, mouthY - r * 0.08 * open)
-  g.closePath()
-  g.strokePath()
 
   // ---- THE EYES — the game's standard eye pair (white sclera, chunky
   // ink rim, one dark oval pupil, main + secondary glints, wink easter

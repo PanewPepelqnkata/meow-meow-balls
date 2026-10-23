@@ -37,9 +37,10 @@ export interface BakeGeometry {
  *            1.4r covers both sides.
  */
 export function specialBakeExtent(tier: number, radius: number): number {
-  // Tier 9's horn is a 0.62r cone on top of the body (rounded tip adds a
-  // hair more): 1 + 0.62 + 0.06 ≈ 1.68r — 1.75r covers it with margin.
-  if (tier === 9) return radius * 1.75
+  // Tier 9's dorsal fin tops the body by ~0.62r, and the gas aura's
+  // outermost puffs reach ~2.04r (orbit 1.52r + puff radius 0.52r) —
+  // 2.1r covers both with margin.
+  if (tier === 9) return radius * 2.1
   return radius
 }
 
