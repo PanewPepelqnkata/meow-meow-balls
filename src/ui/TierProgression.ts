@@ -4,7 +4,6 @@ import { BALL_TIERS } from '../config/ballTiers'
 import { hudText, WHITE } from './Typography'
 import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK } from '../game/rendering/BallAppearance'
 import { cycleColor } from '../game/rendering/rgbCycle'
-import { hasDiscoveredTier } from '../game/state/save'
 
 /**
  * Phase 2.13.2 (spec §4) — polished tier progression path.
@@ -27,14 +26,12 @@ export class TierProgression {
   private objs: Array<Phaser.GameObjects.GameObject> = []
   private nodeObjs: Array<Phaser.GameObjects.Container | null> = []
   private readonly scene: Phaser.Scene
-  /** Phase 2.13.1 (spec §4): tiers 1–3 are known from the very first
-   * session — unlocked and colored from the first layout, no discovery
-   * animation for them. Every other tier unlocks via `state:discovered`
-   * (forwarded by UIScene → UiRoot.unlockTier), and the set is SEEDED
-   * from the lifetime save so a tier already discovered in an earlier
-   * run (tier 4 included) shows unlocked from the first layout — never a
-   * stale "?" on a ball the player owns. */
-  private discovered = new Set<number>([1, 2, 3, ...BALL_TIERS.filter((t) => hasDiscoveredTier(t.tier)).map((t) => t.tier)])
+  /** Phase 2.13.1 (spec §4, rev. progressive unlock): tiers 1–3 are
+   * known from the very first session — unlocked and colored from the
+   * first layout. Tier 4+ START LOCKED and unlock PROGRESSIVELY via
+   * `state:discovered` (forwarded by UIScene → UiRoot.unlockTier) as the
+   * player merges into them, run after run. */
+  private discovered = new Set<number>([1, 2, 3])
   private lastLayout: UiLayout | null = null
 
   constructor(scene: Phaser.Scene) {
@@ -56,10 +53,10 @@ export class TierProgression {
     return [...this.discovered].sort((a, b) => a - b)
   }
 
-  /** Reset on restart: tiers known from the lifetime save stay unlocked
-   * (same seed as construction) — a "?" never returns for an owned ball. */
+  /** Reset on restart (a new run): back to tiers 1–3 — the line locks up
+   * again and unlocks progressively as the run merges into 4, 5, … */
   reset(): void {
-    this.discovered = new Set<number>([1, 2, 3, ...BALL_TIERS.filter((t) => hasDiscoveredTier(t.tier)).map((t) => t.tier)])
+    this.discovered = new Set<number>([1, 2, 3])
     if (this.lastLayout) this.layout(this.lastLayout)
   }
 

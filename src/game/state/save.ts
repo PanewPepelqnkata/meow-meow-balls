@@ -50,10 +50,10 @@ function freshSave(): SaveDataV1 {
     version: 1,
     best: 0,
     leaderboard: [],
-    // Tiers 1–4 are playable/known from the first run — pre-seeded as
-    // discovered (tier 4 no longer gets a discovery presentation; the
-    // modal starts at tier 5).
-    discovered: { 1: Date.now(), 2: Date.now(), 3: Date.now(), 4: Date.now() },
+    // Tiers 1–3 are known from the first run — pre-seeded as discovered.
+    // Tier 4+ unlock PROGRESSIVELY (each fires its discovery: the card
+    // the first time, the wind banner afterwards).
+    discovered: { 1: Date.now(), 2: Date.now(), 3: Date.now() },
     variants: {},
     settings: { theme: 'auto' },
     stats: { runs: 0, merges: 0, bestTier: 0 },
@@ -146,10 +146,6 @@ export function loadSave(): SaveDataV1 {
         if (parsed && parsed.version === 1) {
           cache = { ...freshSave(), ...parsed } as SaveDataV1
           cache.settings = { theme: 'auto', ...parsed.settings }
-          // Migration: tier 4 is now discovered by default (the discovery
-          // presentation starts at tier 5). Backfill pre-existing saves so
-          // the JOURNAL/COLLECTION and the progression UI agree.
-          if (cache.discovered['4'] == null) cache.discovered['4'] = Date.now()
           return cache
         }
       }

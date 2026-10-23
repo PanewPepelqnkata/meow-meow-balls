@@ -6,8 +6,10 @@
 
 /** Full-screen anime discovery presentation (first-time tiers only). */
 export const DISCOVERY = {
-  /** First tier that earns the discovery presentation (tiers 1–4 merge
-   * silently — 4 is discovered by default). */
+  /** First tier that earns the CARD discovery presentation (the first
+   * merge into 5 presents the collectible card; a first merge into 4
+   * presents it too — see the discovery routing in PlaygroundScene).
+   * Tiers 1–3 merge silently. */
   minTier: 5,
   /** Total presentation time before the fade-out begins (spec: 1.4–2.0s).
    *  The collectible card is LONGER: its reveal has a beat before the

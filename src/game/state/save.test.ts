@@ -32,15 +32,17 @@ describe('hasDiscoveredTier (the repeat-discovery gate)', () => {
     delete (globalThis as { localStorage?: unknown }).localStorage
   })
 
-  it('reports pre-seeded tiers 1-4 as discovered', () => {
+  it('reports pre-seeded tiers 1-3 as discovered', () => {
     expect(hasDiscoveredTier(1)).toBe(true)
-    expect(hasDiscoveredTier(4)).toBe(true)
+    expect(hasDiscoveredTier(2)).toBe(true)
+    expect(hasDiscoveredTier(3)).toBe(true)
   })
 
-  it('reports tier 5+ as NOT discovered until recorded', () => {
+  it('reports tier 4+ as NOT discovered until recorded', () => {
+    expect(hasDiscoveredTier(4)).toBe(false)
     expect(hasDiscoveredTier(5)).toBe(false)
-    recordDiscovery(5, null)
-    expect(hasDiscoveredTier(5)).toBe(true)
+    recordDiscovery(4, null)
+    expect(hasDiscoveredTier(4)).toBe(true)
   })
 
   it('keeps reporting true after the discovery (lifetime, not per-run)', () => {

@@ -3,7 +3,7 @@ import Matter from 'matter-js'
 import { STAGE } from '../../config/stage'
 import { containerBounds, wallCollidersAt, tipCollidersAt, interiorCorners } from '../../config/container'
 import { SPAWN, spawnY, clampSpawnX } from '../../config/spawn'
-import { DISCOVERY, THEME_PROGRESS } from '../../config/presentation'
+import { THEME_PROGRESS } from '../../config/presentation'
 import { SPAWNABLE_TIERS, getTier, randomSpawnTier } from '../../config/ballTiers'
 import { SOFT } from '../systems/SoftBall'
 import { PhysicsWorld } from '../systems/PhysicsWorld'
@@ -67,14 +67,16 @@ export class PlaygroundScene extends Phaser.Scene {
   private containerView!: ContainerView
   private claw!: DropClaw
   private debug: DebugOverlay | null = null
-  // Phase 2.13.1 (spec §4, rev. tier-4 default): tiers 1–4 are known per
-  // run — merging into 2–4 never fires a discovery of its own; the
-  // PROGRESSION track seeds its unlocked set from the lifetime save, and
-  // the modal starts at tier 5.
+  // Tiers 1–3 are known from every run's start; tier 4+ unlock
+  // PROGRESSIVELY — merging into 4 fires its discovery (card first run,
+  // wind card afterwards), and the progression line locks/unlocks with it.
   /** The lowest tier the wind banner presents — tier 4 repeats included
-   * (tier 4's own first discovery stays quiet, as before). */
+   * (tier 4's own first discovery shows the card, like 5+). */
   private static readonly WIND_BANNER_MIN_TIER = 4
-  private discoveredTiers = new Set<number>([1, 2, 3, 4])
+  /** First-time-this-run tiers. Tiers 1–3 are known from every run's
+   * start; tier 4+ unlock progressively during the run (4's discovery
+   * fires like any other tier's). */
+  private discoveredTiers = new Set<number>([1, 2, 3])
   /** Tiers discovered in THIS run — a repeat discovery (a tier already in
    * the lifetime save) still gets the NON-BLOCKING banner animation once
    * per run, but never twice for the same tier in the same run. */
@@ -245,16 +247,16 @@ export class PlaygroundScene extends Phaser.Scene {
             this.runDiscoveredTiers.add(tier)
             gameBus.emit('discovery:banner', { tier, seed })
           }
-          // Tier 5+, first time EVER → the card modal. Tier 4 has no modal
-          // (its discovery is quiet), but a tier-4 REPEAT still gets the
-          // little wind card — it's an earned ball, the player should see
-          // it once per run. Tier 5+ repeats get the banner too. Once per
-          // tier per run either way, so chains can't spam it.
-          else if (hasDiscoveredTier(tier) && !this.runDiscoveredTiers.has(tier) && tier >= PlaygroundScene.WIND_BANNER_MIN_TIER) {
+          // First time EVER (lifetime save has no record) → the CARD MODAL,
+          // tier 4 and up: every earned ball gets its collectible moment.
+          else if (!hasDiscoveredTier(tier) && tier >= PlaygroundScene.WIND_BANNER_MIN_TIER) {
+            gameBus.emit('discovery:show', { tier, seed })
+          }
+          // REPEAT (seen in an earlier run) → the wind card, once per tier
+          // per run so chains can't spam it. The game never pauses.
+          else if (!this.runDiscoveredTiers.has(tier)) {
             this.runDiscoveredTiers.add(tier)
             gameBus.emit('discovery:banner', { tier, seed })
-          } else if (tier >= DISCOVERY.minTier) {
-            gameBus.emit('discovery:show', { tier, seed })
           }
         }
 
@@ -1070,7 +1072,9 @@ export class PlaygroundScene extends Phaser.Scene {
     this.discoveredTiers.add(1)
     this.discoveredTiers.add(2)
     this.discoveredTiers.add(3)
-    this.discoveredTiers.add(4) // tiers 1–4 known from every run's start
+    // Tier 4 is NOT pre-seeded: the progression line must start locked at
+    // 4 and unlock PROGRESSIVELY — merging into 4 fires its discovery
+    // (card on the first run, wind card afterwards) like every other tier.
     // A new run may show the repeat-discovery banner once per tier again.
     this.runDiscoveredTiers.clear()
     // Phase 2.14.0: a new run is a NEW variant roll for tiers 8–9, and the
