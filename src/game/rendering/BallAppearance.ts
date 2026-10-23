@@ -580,12 +580,12 @@ export interface SharkPalette {
  * baker's copy MUST stay index-aligned with this array.
  */
 export const SHARK_PALETTES: readonly SharkPalette[] = [
-  { belly: 0xf2f6fa, back: 0x64809c, backLight: 0x7f9cb8, fin: 0x93aebf, gum: 0xd95a63, cheek: 0xa9c3d4, glow: 0xffd54f }, // 0: reef grey
-  { belly: 0xf0f5fa, back: 0x4f719c, backLight: 0x6d8fb4, fin: 0x8baccb, gum: 0xd4525f, cheek: 0x94b6d4, glow: 0xffd54f }, // 1: deep blue
-  { belly: 0xf0f3e4, back: 0x647a5e, backLight: 0x83987a, fin: 0x9fb098, gum: 0xd65f52, cheek: 0xa8b89c, glow: 0xffd54f }, // 2: green tide
-  { belly: 0xf7efe2, back: 0x8a7566, backLight: 0xa98f76, fin: 0xc0a68c, gum: 0xe06854, cheek: 0xc0ac96, glow: 0xffd54f }, // 3: sand
-  { belly: 0xe9e9f4, back: 0x5e5e82, backLight: 0x7b7b9f, fin: 0x9a9ab8, gum: 0xc25262, cheek: 0xa1a1ba, glow: 0xffd54f }, // 4: dusk
-  { belly: 0xe4f0f2, back: 0x538080, backLight: 0x71a1a1, fin: 0x8fb5b5, gum: 0xd05560, cheek: 0x96bcb8, glow: 0xffd54f }, // 5: lagoon
+  { belly: 0xf2f6fa, back: 0x64809c, backLight: 0x7f9cb8, fin: 0x93aebf, gum: 0xd95a63, cheek: 0xa9c3d4, glow: 0xa9c3d4 }, // 0: reef grey
+  { belly: 0xf0f5fa, back: 0x4f719c, backLight: 0x6d8fb4, fin: 0x8baccb, gum: 0xd4525f, cheek: 0x94b6d4, glow: 0x94b6d4 }, // 1: deep blue
+  { belly: 0xf0f3e4, back: 0x647a5e, backLight: 0x83987a, fin: 0x9fb098, gum: 0xd65f52, cheek: 0xa8b89c, glow: 0xa8b89c }, // 2: green tide
+  { belly: 0xf7efe2, back: 0x8a7566, backLight: 0xa98f76, fin: 0xc0a68c, gum: 0xe06854, cheek: 0xc0ac96, glow: 0xc0ac96 }, // 3: sand
+  { belly: 0xe9e9f4, back: 0x5e5e82, backLight: 0x7b7b9f, fin: 0x9a9ab8, gum: 0xc25262, cheek: 0xa1a1ba, glow: 0xa1a1ba }, // 4: dusk
+  { belly: 0xe4f0f2, back: 0x538080, backLight: 0x71a1a1, fin: 0x8fb5b5, gum: 0xd05560, cheek: 0x96bcb8, glow: 0x96bcb8 }, // 5: lagoon
 ]
 
 /**
@@ -786,73 +786,49 @@ export function drawSharkBall(
     g.strokePath()
   }
 
-  // ---- THE MOUTH — a confident OPEN grin: a curved wedge of gum
-  // interior bounded by a smiling top edge and a deeper smiling bottom
-  // edge, with rows of white triangle teeth hanging from the top edge
-  // and rising from the bottom edge. The wedge narrows to points at
-  // both corners (a real mouth, not a floating band). Clamps shut and
-  // trembles with fear. ----
+  // ---- THE MOUTH — a clean open smile: one smooth gum wedge (top arc
+  // smiles down into the jaw arc, both tapering to points at the
+  // corners) with four white teeth hanging from the top curve. Clamps
+  // shut with fear. ----
   const mouthW = r * 0.72
-  const mouthY = cy + r * 0.36
-  // Both edges are quadratic arcs sharing the param helper: top edge
-  // curves gently down (a smile), bottom edge hangs deeper as the jaw
-  // opens (openness 1 → 0 with panic).
-  const topDip = r * 0.1
-  const jawDrop = r * 0.34 * open
-  // y on the mouth arcs at param t. A quadratic whose control point
-  // sits `dip` below the chord's centre collapses to the closed form
-  // below — the identity lets every consumer (wedge outline, both
-  // tooth rows) sample the SAME curve without re-deriving the Bézier.
+  const mouthY = cy + r * 0.34
+  const topDip = r * 0.08
+  const jawDrop = r * 0.3 * open
+  // y on the mouth arcs at param t (0..1 across the mouth).
   const arcY = (t: number, dy0: number, dip: number): number => {
     return mouthY + dy0 + dip * (1 - (2 * t - 1) * (2 * t - 1))
   }
   if (open > 0.05) {
-    // The wedge: top arc left → right, then bottom arc right → left
-    // (both sampled as quadratics with a raised control point).
+    // The wedge: top arc left→right, jaw arc right→left.
     g.beginPath()
-    const wEnds = mouthW / 2
-    g.moveTo(cx - wEnds, arcY(0, -topDip * 0.3, topDip))
+    const halfW = mouthW / 2
+    g.moveTo(cx - halfW, arcY(0, -topDip * 0.3, topDip))
     for (let s = 1; s <= 8; s++) {
       const t = s / 8
-      const ty = arcY(t, -topDip * 0.3, topDip)
-      g.lineTo(cx - wEnds + mouthW * t, ty)
+      g.lineTo(cx - halfW + mouthW * t, arcY(t, -topDip * 0.3, topDip))
     }
     for (let s = 8; s >= 0; s--) {
       const t = s / 8
-      const by = arcY(t, topDip * 0.4, jawDrop)
-      g.lineTo(cx - wEnds + mouthW * t, by)
+      g.lineTo(cx - halfW + mouthW * t, arcY(t, topDip * 0.4, jawDrop))
     }
     g.closePath()
     g.fillStyle(pal.gum, 1)
     g.fillPath()
     g.lineStyle(ink * 1.0, INK, 1)
     g.strokePath()
-    // Upper teeth: 4 white triangles hanging from the top arc.
+    // Four white teeth hanging from the top curve — even sizes, evenly
+    // spaced, tucked just under the lip.
     g.fillStyle(0xffffff, 1)
     for (let i = 0; i < 4; i++) {
-      const t = 0.16 + (i / 3) * 0.68
-      const tx = cx - wEnds + mouthW * t
-      const ty = arcY(t, -topDip * 0.3, topDip) + ink * 0.3
-      const th = r * (0.13 - Math.abs(t - 0.5) * 0.06) * open
-      const tw = (mouthW / 4) * 0.36
+      const t = 0.18 + (i / 3) * 0.64
+      const tx = cx - halfW + mouthW * t
+      const ty = arcY(t, -topDip * 0.3, topDip) + ink * 0.25
+      const th = r * 0.12 * open
+      const tw = (mouthW / 4) * 0.32
       g.beginPath()
       g.moveTo(tx - tw, ty)
       g.lineTo(tx + tw, ty)
       g.lineTo(tx, ty + th)
-      g.closePath()
-      g.fillPath()
-    }
-    // Lower teeth: 4 smaller triangles rising from the bottom arc.
-    for (let i = 0; i < 4; i++) {
-      const t = 0.22 + (i / 3) * 0.56
-      const tx = cx - wEnds + mouthW * t
-      const ty = arcY(t, topDip * 0.4, jawDrop) - ink * 0.3
-      const th = r * (0.09 - Math.abs(t - 0.5) * 0.04) * open
-      const tw = (mouthW / 4) * 0.3
-      g.beginPath()
-      g.moveTo(tx - tw, ty)
-      g.lineTo(tx + tw, ty)
-      g.lineTo(tx, ty - th)
       g.closePath()
       g.fillPath()
     }
