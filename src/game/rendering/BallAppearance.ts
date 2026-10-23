@@ -1095,44 +1095,30 @@ export function drawPigBall(
   g.closePath()
   g.fillPath()
 
-  // ---- CURLY TAIL — the pig's signature from the kid's movies: a true
-  // CORKSCREW. The tail exits the body at the LEFT and coils INWARD —
-  // 2.5 clean loops around a curl centre that sits OUTSIDE the body
-  // (cx - 1.25r), so the whole corkscrew is visible against the
-  // background: the coil spans ~0.55r wide, hanging off the silhouette.
-  // ONE smooth ink line (48 points), slightly flattened vertically — a
-  // coil seen from the side. Loosens with fear. ----
-  const curlX = cx - r * 1.42
-  const curlY = cy - r * 0.1
+  // ---- CURLY TAIL — the pig's signature from the kid's movies: a
+  // side-view HELIX. The tail exits the body at the LEFT and extends
+  // leftward while oscillating up/down — 2.5 clean loops of a sine
+  // wave, each loop clearly separated (a corkscrew seen exactly from
+  // the side). ONE smooth ink line, 48 points, thin. Loosens with
+  // fear (loops open and droop). ----
+  const tailY0 = cy - r * 0.08
   const tailS = 1 - 0.35 * panic
-  const tailN = 48
-  const turns = 2.0
+  const tailN = 44
+  const turns = 1.5
+  // Total leftward extent: ~0.55r past the body edge.
+  const extent = r * 0.6 * tailS
+  // Loop amplitude: the half-height of the corkscrew's loops.
+  const amp = r * 0.3 * tailS
   const tailPts: Array<{ x: number; y: number }> = []
   for (let i = 0; i <= tailN; i++) {
     const t = i / tailN
-    // Entry ramp: the line leaves the body and travels to the curl's
-    // outer edge (t 0..0.12), then coils inward for the rest.
-    const entryT = 0.12
-    if (t < entryT) {
-      // Straight-ish ramp from the body edge to the coil's outer rim.
-      const k = t / entryT
-      tailPts.push({
-        x: cx - r + (curlX + r * 0.32 - (cx - r)) * k,
-        y: cy - r * 0.12 + (curlY - (cy - r * 0.12)) * k,
-      })
-      continue
-    }
-    const ct = (t - entryT) / (1 - entryT) // 0..1 within the coil
-    // Coil: full circle per turn, radius TIGHTENING to ~45% as it wraps.
-    const a = ct * turns * Math.PI * 2
-    const rad = r * 0.3 * tailS * (1 - 0.55 * ct)
-    // Slightly flattened vertically — a coil seen from the side.
-    tailPts.push({
-      x: curlX + r * 0.32 + Math.cos(a) * rad,
-      y: curlY + Math.sin(a) * rad * 0.8,
-    })
+    // The phase advances 2.5 full turns across the extent; a phase
+    // offset of π/2 starts the tail curling UP (the pig-tail read).
+    const px = cx - r - extent * t
+    const py = tailY0 + Math.sin(t * turns * Math.PI * 2 + Math.PI / 2) * amp
+    tailPts.push({ x: px, y: py })
   }
-  g.lineStyle(Math.max(2.5, r * 0.08), INK, 1)
+  g.lineStyle(Math.max(2.5, r * 0.07), INK, 1)
   g.strokePoints(tailPts as unknown as Phaser.Math.Vector2[], false, false)
 
   // ---- ROSY CHEEKS REMOVED (user: cheek circles don't look good). ----
