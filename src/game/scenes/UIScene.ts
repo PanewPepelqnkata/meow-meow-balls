@@ -2,6 +2,7 @@ import Phaser from 'phaser'
 import { UiRoot } from '../../ui/UiRoot'
 import { GameOverView } from '../rendering/GameOverView'
 import { DiscoveryOverlay } from '../rendering/DiscoveryOverlay'
+import { DiscoveryBanner } from '../rendering/DiscoveryBanner'
 import { gameBus } from '../events/gameBus'
 import { session } from '../state/session'
 
@@ -22,6 +23,8 @@ export class UIScene extends Phaser.Scene {
   private uiRoot!: UiRoot
   private readonly gameOverlay: GameOverView
   private discoveryOverlay!: DiscoveryOverlay
+  /** The NON-BLOCKING repeat-discovery banner (already-seen tiers). */
+  private discoveryBanner!: DiscoveryBanner
   private lastBest = 0
   private lastScore = 0
   private offs: Array<() => void> = []
@@ -89,6 +92,8 @@ export class UIScene extends Phaser.Scene {
     this.discoveryOverlay.onHudVisibility((visible) => {
       this.uiRoot.setHudVisible(visible)
     })
+    // The repeat-discovery banner: non-blocking, owns its own lifecycle.
+    this.discoveryBanner = new DiscoveryBanner(this)
 
     // Boot-time sync (PlaygroundScene.create ran first and populated these).
     this.lastBest = Number(this.registry.get('best') ?? 0)
@@ -120,6 +125,7 @@ export class UIScene extends Phaser.Scene {
       gameBus.on('run:started', () => {
         this.gameOverlay.hide()
         this.discoveryOverlay.reset()
+        this.discoveryBanner.destroy()
         this.uiRoot.resetForNewRun()
         this.lastScore = 0
         this.uiRoot.setScore(0, this.lastBest)
@@ -127,11 +133,15 @@ export class UIScene extends Phaser.Scene {
       // Phase 2.12.2: first-time tier → full-viewport discovery modal
       // (presented here in screen space; state owned by the world scene).
       gameBus.on('discovery:show', ({ tier, seed }) => this.discoveryOverlay.show(tier, seed)),
+      // Repeat discovery (seen in an earlier run): the small non-blocking
+      // banner — gameplay never pauses for it.
+      gameBus.on('discovery:banner', ({ tier, seed }) => this.discoveryBanner.show(tier, seed)),
     )
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       for (const off of this.offs) off()
       this.offs = []
       this.discoveryOverlay.reset()
+      this.discoveryBanner.destroy()
     })
   }
 

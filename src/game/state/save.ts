@@ -191,6 +191,13 @@ export function recordDiscovery(tier: number, variantId: number | null): void {
   writeSoon()
 }
 
+/** Has this tier EVER been discovered in any run (lifetime record)? The
+ * repeat-discovery banner keys off this: a tier seen before gets the
+ * non-blocking corner animation instead of the screen-stealing modal. */
+export function hasDiscoveredTier(tier: number): boolean {
+  return loadSave().discovered[String(tier)] != null
+}
+
 /** One merge happened (lifetime stat). */
 export function recordMerge(tier: number): void {
   const save = loadSave()

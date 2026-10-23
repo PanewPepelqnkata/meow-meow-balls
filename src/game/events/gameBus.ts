@@ -40,6 +40,10 @@ export interface GameEventMap {
   /** Phase 2.12.2: world → UI. A genuinely first-time tier was created; the
    * UIScene presents the full-viewport discovery modal (screen-space scene). */
   'discovery:show': { tier: number; seed: number }
+  /** Repeat discovery — the tier was already discovered in an EARLIER run
+   * (lifetime save). The UIScene shows the small NON-BLOCKING banner;
+   * gameplay never pauses for it. */
+  'discovery:banner': { tier: number; seed: number }
   /** Phase 2.13.0: world → UI. A tier was discovered for the first time this
    * run (any tier ≥ 2) — the progression path unlocks its node. */
   'state:discovered': { tier: number }

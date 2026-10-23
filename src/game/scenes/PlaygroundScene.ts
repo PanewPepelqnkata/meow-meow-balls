@@ -23,7 +23,8 @@ import { gameBus } from '../events/gameBus'
 import { DebugOverlay } from '../debug/DebugOverlay'
 import { PerfOverlay } from '../debug/PerfOverlay'
 import { session, fastbootRequested } from '../state/session'
-import { recordDiscovery, recordMerge, recordRunEnd, savedBest, themeSetting } from '../state/save'
+import { bannerForcedByVariant } from '../rendering/DiscoveryBanner'
+import { hasDiscoveredTier, recordDiscovery, recordMerge, recordRunEnd, savedBest, themeSetting } from '../state/save'
 import { rollNewRunSeed, runVariantFor } from '../state/runVariant'
 import {
   ballLookFor,
@@ -72,6 +73,10 @@ export class PlaygroundScene extends Phaser.Scene {
   // first-time tier 5+ discoveries (and their `state:discovered` events)
   // animate progression nodes; the modal starts at tier 5.
   private discoveredTiers = new Set<number>([1, 2, 3, 4])
+  /** Tiers discovered in THIS run — a repeat discovery (a tier already in
+   * the lifetime save) still gets the NON-BLOCKING banner animation once
+   * per run, but never twice for the same tier in the same run. */
+  private runDiscoveredTiers = new Set<number>()
 
   private registeredIds = new Set<number>()
   /**
@@ -233,7 +238,23 @@ export class PlaygroundScene extends Phaser.Scene {
           this.discoveredTiers.add(tier)
           gameBus.emit('state:discovered', { tier })
           if (tier >= DISCOVERY.minTier) {
-            gameBus.emit('discovery:show', { tier, seed })
+            // QA wind mode (?discovery=wind): the banner IS the
+            // discovery presentation — every tier, first-time or not.
+            if (bannerForcedByVariant()) {
+              this.runDiscoveredTiers.add(tier)
+              gameBus.emit('discovery:banner', { tier, seed })
+            }
+            // Seen before in ANY run (lifetime save) → the small
+            // non-blocking banner instead of the screen-stealing modal.
+            // The gameplay NEVER pauses for a repeat discovery. Once per
+            // tier per run, so a deep chain of already-known tiers cannot
+            // spam the banner.
+            else if (hasDiscoveredTier(tier) && !this.runDiscoveredTiers.has(tier)) {
+              this.runDiscoveredTiers.add(tier)
+              gameBus.emit('discovery:banner', { tier, seed })
+            } else {
+              gameBus.emit('discovery:show', { tier, seed })
+            }
           }
         }
 
@@ -1050,6 +1071,8 @@ export class PlaygroundScene extends Phaser.Scene {
     this.discoveredTiers.add(2)
     this.discoveredTiers.add(3)
     this.discoveredTiers.add(4) // tiers 1–4 known from every run's start
+    // A new run may show the repeat-discovery banner once per tier again.
+    this.runDiscoveredTiers.clear()
     // Phase 2.14.0: a new run is a NEW variant roll for tiers 8–9, and the
     // leaderboard's best-tier tracker restarts from the spawnable base.
     rollNewRunSeed()
