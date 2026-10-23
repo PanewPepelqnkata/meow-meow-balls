@@ -4,6 +4,7 @@ import { BALL_TIERS } from '../config/ballTiers'
 import { hudText, WHITE } from './Typography'
 import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK } from '../game/rendering/BallAppearance'
 import { cycleColor } from '../game/rendering/rgbCycle'
+import { hasDiscoveredTier } from '../game/state/save'
 
 /**
  * Phase 2.13.2 (spec §4) — polished tier progression path.
@@ -28,8 +29,12 @@ export class TierProgression {
   private readonly scene: Phaser.Scene
   /** Phase 2.13.1 (spec §4): tiers 1–3 are known from the very first
    * session — unlocked and colored from the first layout, no discovery
-   * animation for them. Tiers 4–10 stay locked until genuinely discovered. */
-  private discovered = new Set<number>([1, 2, 3])
+   * animation for them. Every other tier unlocks via `state:discovered`
+   * (forwarded by UIScene → UiRoot.unlockTier), and the set is SEEDED
+   * from the lifetime save so a tier already discovered in an earlier
+   * run (tier 4 included) shows unlocked from the first layout — never a
+   * stale "?" on a ball the player owns. */
+  private discovered = new Set<number>([1, 2, 3, ...BALL_TIERS.filter((t) => hasDiscoveredTier(t.tier)).map((t) => t.tier)])
   private lastLayout: UiLayout | null = null
 
   constructor(scene: Phaser.Scene) {
@@ -51,9 +56,10 @@ export class TierProgression {
     return [...this.discovered].sort((a, b) => a - b)
   }
 
-  /** Reset to the opening state (restart): tiers 1–3 known (Phase 2.13.1). */
+  /** Reset on restart: tiers known from the lifetime save stay unlocked
+   * (same seed as construction) — a "?" never returns for an owned ball. */
   reset(): void {
-    this.discovered = new Set<number>([1, 2, 3])
+    this.discovered = new Set<number>([1, 2, 3, ...BALL_TIERS.filter((t) => hasDiscoveredTier(t.tier)).map((t) => t.tier)])
     if (this.lastLayout) this.layout(this.lastLayout)
   }
 

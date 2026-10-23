@@ -67,11 +67,13 @@ export class PlaygroundScene extends Phaser.Scene {
   private containerView!: ContainerView
   private claw!: DropClaw
   private debug: DebugOverlay | null = null
-  // Phase 2.13.1 (spec §4, rev. tier-4 default): tiers 1–4 are known from
-  // the very first session — the progression path starts with them
-  // unlocked/colored, and merging into 2–4 never fires a discovery. Only
-  // first-time tier 5+ discoveries (and their `state:discovered` events)
-  // animate progression nodes; the modal starts at tier 5.
+  // Phase 2.13.1 (spec §4, rev. tier-4 default): tiers 1–4 are known per
+  // run — merging into 2–4 never fires a discovery of its own; the
+  // PROGRESSION track seeds its unlocked set from the lifetime save, and
+  // the modal starts at tier 5.
+  /** The lowest tier the wind banner presents — tier 4 repeats included
+   * (tier 4's own first discovery stays quiet, as before). */
+  private static readonly WIND_BANNER_MIN_TIER = 4
   private discoveredTiers = new Set<number>([1, 2, 3, 4])
   /** Tiers discovered in THIS run — a repeat discovery (a tier already in
    * the lifetime save) still gets the NON-BLOCKING banner animation once
@@ -230,31 +232,29 @@ export class PlaygroundScene extends Phaser.Scene {
         // Deep chains get a camera shake — camera-only, zero physics contact.
         if (chainDepth >= 3) this.cameras.main.shake(120, 0.004)
 
-        // Phase 2.13.0 (spec §1/§7): discovery presentation fires ONLY for
-        // first-time tiers 4+ — tiers 1–3 merge silently. The seed is the
-        // ACTUAL replacement ball's appearance seed.
+        // Phase 2.13.0 (spec §1/§7): the discovery presentation fires ONLY
+        // for first-time-this-run tiers 4+ — tiers 1–3 merge silently. The
+        // seed is the ACTUAL replacement ball's appearance seed.
         const firstTime = !this.discoveredTiers.has(tier)
         if (firstTime) {
           this.discoveredTiers.add(tier)
           gameBus.emit('state:discovered', { tier })
-          if (tier >= DISCOVERY.minTier) {
-            // QA wind mode (?discovery=wind): the banner IS the
-            // discovery presentation — every tier, first-time or not.
-            if (bannerForcedByVariant()) {
-              this.runDiscoveredTiers.add(tier)
-              gameBus.emit('discovery:banner', { tier, seed })
-            }
-            // Seen before in ANY run (lifetime save) → the small
-            // non-blocking banner instead of the screen-stealing modal.
-            // The gameplay NEVER pauses for a repeat discovery. Once per
-            // tier per run, so a deep chain of already-known tiers cannot
-            // spam the banner.
-            else if (hasDiscoveredTier(tier) && !this.runDiscoveredTiers.has(tier)) {
-              this.runDiscoveredTiers.add(tier)
-              gameBus.emit('discovery:banner', { tier, seed })
-            } else {
-              gameBus.emit('discovery:show', { tier, seed })
-            }
+          // QA wind mode (?discovery=wind): the banner IS the discovery
+          // presentation for every discovered tier (4+), first-time or not.
+          if (bannerForcedByVariant() && tier >= PlaygroundScene.WIND_BANNER_MIN_TIER) {
+            this.runDiscoveredTiers.add(tier)
+            gameBus.emit('discovery:banner', { tier, seed })
+          }
+          // Tier 5+, first time EVER → the card modal. Tier 4 has no modal
+          // (its discovery is quiet), but a tier-4 REPEAT still gets the
+          // little wind card — it's an earned ball, the player should see
+          // it once per run. Tier 5+ repeats get the banner too. Once per
+          // tier per run either way, so chains can't spam it.
+          else if (hasDiscoveredTier(tier) && !this.runDiscoveredTiers.has(tier) && tier >= PlaygroundScene.WIND_BANNER_MIN_TIER) {
+            this.runDiscoveredTiers.add(tier)
+            gameBus.emit('discovery:banner', { tier, seed })
+          } else if (tier >= DISCOVERY.minTier) {
+            gameBus.emit('discovery:show', { tier, seed })
           }
         }
 
