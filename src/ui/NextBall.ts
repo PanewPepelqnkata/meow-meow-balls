@@ -83,7 +83,7 @@ export class NextBall {
       drawBallFace(g, look, { x: this.pos.x, y: this.pos.y }, r, 1)
     } else if (this.tier === 9) {
       // The shark paints its own face — part of the design.
-      drawSharkBall(g, this.pos.x, this.pos.y, r, variantIdFor(9), poly)
+      drawSharkBall(g, this.pos.x, this.pos.y, r, variantIdFor(9), poly, 0, undefined, this.seed)
     } else {
       g.fillStyle(tier.color, 1)
       g.fillPoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)

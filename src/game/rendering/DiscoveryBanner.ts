@@ -401,7 +401,7 @@ export class DiscoveryBanner {
       const poly = restContour(look, pr, ball.x, ball.y + bob, 48)
       if (this.tier === 9) {
         // The shark paints its own face — part of the design.
-        drawSharkBall(this.ballG, ball.x, ball.y + bob, pr, variantIdFor(9))
+        drawSharkBall(this.ballG, ball.x, ball.y + bob, pr, variantIdFor(9), undefined, 0, undefined, this.seed)
       } else {
         this.ballG.fillStyle(this.tier === 8 ? cycleColor(Date.now()) : color, 1)
         this.ballG.fillPoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)

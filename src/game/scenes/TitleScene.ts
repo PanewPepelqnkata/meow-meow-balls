@@ -1702,7 +1702,7 @@ function drawBallIcon(
     g.fillPoints(pts, true)
   } else if (tier === 9) {
     // The shark paints its own face — part of the design.
-    drawSharkBall(g, cx, cy, r, variant ?? variantIdFor(9), poly)
+    drawSharkBall(g, cx, cy, r, variant ?? variantIdFor(9), poly, 0, undefined, 9)
     return
   } else {
     // Tier 8 is a plain ball whose colour cycles; the body fills the

@@ -2089,7 +2089,7 @@ export class DiscoveryOverlay {
 
     if (tier === 9) {
       // The shark paints its own face — part of the design.
-      drawSharkBall(g, x, y, radius, variantIdFor(9), poly)
+      drawSharkBall(g, x, y, radius, variantIdFor(9), poly, 0, undefined, this.activeSeed)
       return
     } else {
       // Tier 8 is a plain ball whose colour cycles; the body fills the

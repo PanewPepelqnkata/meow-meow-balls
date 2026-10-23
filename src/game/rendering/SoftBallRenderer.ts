@@ -559,10 +559,11 @@ export class SoftBallRenderer {
   ): void {
     const built = poly ? { poly, cx: cx!, cy: cy! } : this.liveContour(r, look, drawR)
     if (r.tier === 9) {
-      // The fantasy body draws INTO the live contour (body fill, mane,
-      // horn all track the wobble) and paints its OWN face — no separate
-      // ink pass, no standard face on top.
-      drawSharkBall(g, built.cx, built.cy, r.soft.radius, variantIdFor(9), built.poly)
+      // The shark draws INTO the live contour (body fill, fins, mouth
+      // all track the wobble) and paints its OWN face — no separate ink
+      // pass, no standard face on top. Fear (panic) and the gaze
+      // easter egg pass straight through.
+      drawSharkBall(g, built.cx, built.cy, r.soft.radius, variantIdFor(9), built.poly, this.emotion.panicOf(r.id), gazeAt(r.seed, Date.now()), r.seed)
       return
     }
     // Every other tier (including the tier 8 cycling RGB ball) is a

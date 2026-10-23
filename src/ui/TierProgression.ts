@@ -230,7 +230,7 @@ export class TierProgression {
     if (tier === 9) {
       // The shark paints the whole node (body, fins, mouth, face) —
       // the same renderer as the game ball, so the strip matches.
-      drawSharkBall(g, 0, 0, rr, variantIdFor(9), poly)
+      drawSharkBall(g, 0, 0, rr, variantIdFor(9), poly, 0, undefined, 9)
       return
     }
 

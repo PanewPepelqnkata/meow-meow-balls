@@ -102,7 +102,7 @@ export class DropClaw {
       drawBallFace(g, look, { x, y: by }, r, 1)
     } else if (this.tier === 9) {
       // The shark paints its own face — part of the design.
-      drawSharkBall(g, x, by, r, variantIdFor(9), poly)
+      drawSharkBall(g, x, by, r, variantIdFor(9), poly, 0, undefined, this.seed)
     } else {
       g.fillStyle(tier.color, 1)
       g.fillPoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)

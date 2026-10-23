@@ -571,6 +571,8 @@ export interface SharkPalette {
   gum: number
   /** Cheek grey (slightly blue-grey, for the cheek patches). */
   cheek: number
+  /** The reward halo's colour (behind the whole ball). */
+  glow: number
 }
 
 /**
@@ -578,12 +580,12 @@ export interface SharkPalette {
  * baker's copy MUST stay index-aligned with this array.
  */
 export const SHARK_PALETTES: readonly SharkPalette[] = [
-  { belly: 0xdfe8ee, back: 0x5b6c7a, backLight: 0x77899a, fin: 0x8fa5b5, gum: 0xb04a52, cheek: 0x9db1c0 }, // 0: reef grey
-  { belly: 0xe8eef2, back: 0x46617c, backLight: 0x64809c, fin: 0x87a3bd, gum: 0xa84858, cheek: 0x8ca6bd }, // 1: deep blue
-  { belly: 0xeef0e4, back: 0x5e6e56, backLight: 0x7d8f72, fin: 0x9aac8e, gum: 0xb0564e, cheek: 0xa2b096 }, // 2: green tide
-  { belly: 0xf0e8dc, back: 0x77655a, backLight: 0x96836f, fin: 0xb09e8a, gum: 0xb85a50, cheek: 0xb3a294 }, // 3: sand
-  { belly: 0xe4e4ee, back: 0x5a5a72, backLight: 0x777793, fin: 0x9494ad, gum: 0xaa4e60, cheek: 0x9b9bb2 }, // 4: dusk
-  { belly: 0xe0ecee, back: 0x4f7070, backLight: 0x6d9191, fin: 0x8aacac, gum: 0xac5058, cheek: 0x8facac }, // 5: lagoon
+  { belly: 0xdfe8ee, back: 0x5b6c7a, backLight: 0x77899a, fin: 0x8fa5b5, gum: 0xb04a52, cheek: 0x9db1c0, glow: 0x7fe3d8 }, // 0: reef grey
+  { belly: 0xe8eef2, back: 0x46617c, backLight: 0x64809c, fin: 0x87a3bd, gum: 0xa84858, cheek: 0x8ca6bd, glow: 0x7fb0e8 }, // 1: deep blue
+  { belly: 0xeef0e4, back: 0x5e6e56, backLight: 0x7d8f72, fin: 0x9aac8e, gum: 0xb0564e, cheek: 0xa2b096, glow: 0x9fe0a8 }, // 2: green tide
+  { belly: 0xf0e8dc, back: 0x77655a, backLight: 0x96836f, fin: 0xb09e8a, gum: 0xb85a50, cheek: 0xb3a294, glow: 0xe8c98f }, // 3: sand
+  { belly: 0xe4e4ee, back: 0x5a5a72, backLight: 0x777793, fin: 0x9494ad, gum: 0xaa4e60, cheek: 0x9b9bb2, glow: 0xb0a8e8 }, // 4: dusk
+  { belly: 0xe0ecee, back: 0x4f7070, backLight: 0x6d9191, fin: 0x8aacac, gum: 0xac5058, cheek: 0x8facac, glow: 0x8fd8d0 }, // 5: lagoon
 ]
 
 /**
@@ -637,17 +639,33 @@ export function drawSharkBall(
   poly?: Array<{ x: number; y: number }>,
   panic = 0,
   gaze?: { x: number; y: number },
+  seed = 9,
 ): void {
   const pal = SHARK_PALETTES[variant % SHARK_PALETTES.length]!
+  const look = ballLookFor(9, seed)
   const ink = Math.max(2, r * 0.05)
+  // The easter-egg expression (wink) rides the same timeline as the
+  // other balls — suppressed while panicking (fear wins).
+  const now = Date.now() / 1000
+  const exprShark = panic > 0.45 ? 'normal' : expressionAt(seed, now * 1000)
   // The mouth clamps shut as panic rises: openness 1 → 0.
   const open = 1 - Math.max(0, Math.min(1, panic * 1.15))
-  // Fear tremble: a small high-frequency jitter, growing with panic.
-  const now = Date.now() / 1000
   const jx = Math.sin(now * 43) * r * 0.02 * panic * panic
   const jy = Math.cos(now * 37) * r * 0.015 * panic * panic
   cx += jx
   cy += jy
+
+  // ---- THE GLOW — the reward-tier halo: three soft concentric rings
+  // centred on the body, breathing slowly with the clock. Drawn FIRST so
+  // everything (fins, body, face) sits on top of it. The halo reaches
+  // 1.55r and pulses ±6% — alive, but calm.
+  const glowR = r * (1.55 + Math.sin(now * 1.9) * 0.06)
+  g.fillStyle(pal.glow, 0.16)
+  g.fillCircle(cx, cy, glowR)
+  g.fillStyle(pal.glow, 0.12)
+  g.fillCircle(cx, cy, glowR * 0.78)
+  g.fillStyle(pal.glow, 0.1)
+  g.fillCircle(cx, cy, glowR * 0.56)
 
   // ---- DORSAL FIN — behind the body, poking above the contour top. ----
   const finH = r * (0.52 - 0.18 * panic) // fins flatten in fear
@@ -759,34 +777,66 @@ export function drawSharkBall(
   g.closePath()
   g.strokePath()
 
-  // ---- THE EYE — one shark eye, high on the head. Shrinks wide-open
-  // with fear; the gaze (easter egg) still moves the pupil.
-  const eyeX = cx + r * 0.3
-  const eyeY = cy - r * 0.32
-  const eyeR = r * (0.17 + 0.05 * panic)
-  g.fillStyle(0xffffff, 1)
-  g.fillCircle(eyeX, eyeY, eyeR)
-  g.fillStyle(INK, 1)
-  const gx = (gaze?.x ?? 0) * eyeR * 0.3
-  const gy = (gaze?.y ?? 0) * eyeR * 0.3
-  g.fillCircle(eyeX + gx, eyeY + gy, eyeR * 0.52)
-  g.fillStyle(0xffffff, 0.9)
-  g.fillCircle(eyeX - eyeR * 0.3, eyeY - eyeR * 0.34, eyeR * 0.22)
-  // Brow: a short angled ink stroke over the eye.
-  g.lineStyle(ink * 0.8, INK, 1)
-  g.beginPath()
-  g.moveTo(eyeX - eyeR * 1.1, eyeY - eyeR * (1.5 + 0.3 * panic))
-  g.lineTo(eyeX + eyeR * 0.9, eyeY - eyeR * (1.05 + 0.15 * panic))
-  g.strokePath()
+  // ---- THE EYES — the game's standard eye pair (white sclera, chunky
+  // ink rim, one dark oval pupil, main + secondary glints, wink easter
+  // egg) with the SHARK TWIST: a temporary clear nictitating membrane —
+  // the translucent third eyelid sharks use — slides over each eye. It
+  // is also the fear tell: as panic climbs, the membranes sweep half
+  // across the eyes (a shark about to bite), and the standard panic
+  // morph (wide eyes, pupils pinned up) plays underneath.
+  const L = faceLayoutFor(look, r, 1, gaze)
+  const eyeDx = r * 0.35
+  const eyeY = cy - r * 0.22
+  // Panic morph on the pupils (mirrors drawBallFace's): pinned upward,
+  // shrinking, as fear climbs.
+  const em = Math.min(1, panic * 1.0)
+  const up = 0.45 * em
+  for (const [i, e] of L.eyes.entries()) {
+    const ex = cx + e.x * 1.0
+    const ey = eyeY + e.y
+    // The standard eye, verbatim proportions from faceLayoutFor.
+    if (exprShark === 'wink' && i === 1) {
+      g.lineStyle(e.rim * 0.95, INK, 1)
+      const lid: Array<{ x: number; y: number }> = []
+      for (let s = 0; s <= 12; s++) {
+        const u = -1 + (2 * s) / 12
+        lid.push({ x: ex + u * e.a * 0.85, y: ey - e.b * 0.05 + (1 - u * u) * e.b * 0.4 })
+      }
+      g.strokePoints(lid as unknown as Phaser.Math.Vector2[], false, false)
+      continue
+    }
+    g.fillStyle(0xffffff, 1)
+    g.fillEllipse(ex, ey, e.a * 2, e.b * 2)
+    g.lineStyle(e.rim, INK, 1)
+    g.strokeEllipse(ex, ey, e.a * 2, e.b * 2)
+    // Pupil: pinned up + shrunk with panic (the standard morph).
+    const pb = e.pb * (1 - 0.35 * em)
+    const py = e.py * (1 - em) - up * (e.b - pb - e.rim * 0.5) * em
+    g.fillStyle(INK, 1)
+    g.fillEllipse(ex + e.px, ey + py, e.pa * 2, pb * 2)
+    // Main highlight + tiny secondary dot (the standard pair).
+    g.fillStyle(0xffffff, 1)
+    g.fillEllipse(ex + e.px - e.pa * 0.32, ey + py - pb * 0.34, e.pa * 0.6, e.pa * 0.6, 24)
+    g.fillEllipse(ex + e.px - e.pa * 0.1, ey + py - pb * 0.38, e.pa * 0.24, e.pa * 0.24, 16)
+    // THE TWIST: the nictitating membrane — a translucent grey-blue
+    // shark eyelid sliding over the eye from the front. At rest it sits
+    // as a thin crescent at the eye's leading edge (the shark read);
+    // with panic it sweeps to ~60% coverage (fear blink).
+    const sweep = 0.22 + 0.5 * em
+    g.fillStyle(0x9db8c9, 0.4 + 0.25 * em)
+    g.beginPath()
+    g.fillEllipse(ex - e.a * (1 - sweep * 0.5), ey, e.a * sweep * 2, e.b * sweep * 2)
+  }
   // Fear sweat: one drop at the temple as panic climbs.
   if (panic > 0.45) {
     const sweat = Math.min(1, (panic - 0.45) / 0.55)
     g.fillStyle(0x9fdcff, 0.95 * sweat)
-    g.fillCircle(eyeX + r * 0.28, eyeY - r * 0.42, r * 0.055 * (0.7 + 0.3 * sweat))
+    g.fillCircle(cx + r * 0.56, eyeY - r * 0.3, r * 0.055 * (0.7 + 0.3 * sweat))
   }
-  // Cheek patches: subtle grey-blue, under the eye (fade with panic).
+  // Cheek patches: subtle grey-blue, under the eyes (fade with panic).
   g.fillStyle(pal.cheek, 0.5 * (1 - panic))
-  g.fillEllipse(eyeX - r * 0.34, eyeY + eyeR * 1.3, (r * 0.3) * 2, (r * 0.16) * 2)
+  g.fillEllipse(cx - eyeDx - r * 0.36, eyeY + r * 0.36, (r * 0.3) * 2, (r * 0.16) * 2)
+  g.fillEllipse(cx + eyeDx + r * 0.36, eyeY + r * 0.36, (r * 0.3) * 2, (r * 0.16) * 2)
 
   // ---- THE INK OUTLINE — the contour itself, over everything. ----
   g.lineStyle(ballOutlineWidth(r), INK, 1)
