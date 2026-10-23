@@ -284,9 +284,9 @@ export class TierBaker {
 
 // ---------------------------------------------------------------------------
 // Tier-9 procedural fill, re-rasterizable into the offline Graphics.
-// Mirrors BallAppearance.drawSharkBall but anchored at (0,0) and
-// parameterized so the baker can reuse it verbatim (kept in sync by test:
-// same variant math — see TierBaker placement of extras).
+// DELEGATES to BallAppearance.drawSharkBall (circle fallback — a sleeping
+// shark), so the frozen bake uses the exact same drawing code as the live
+// ball and can never drift out of sync.
 // ---------------------------------------------------------------------------
 
 function drawFantasyInto(g: Phaser.GameObjects.Graphics, cx: number, cy: number, r: number, variant: number): void {

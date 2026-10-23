@@ -697,20 +697,6 @@ export function drawSharkBall(
   g.lineStyle(ink * 0.8, INK, 1)
   g.strokePath()
 
-  // ---- TAIL FIN — peeking out at the right side. ----
-  const tailX = cx + r * 0.86
-  const tailY = cy + r * 0.1
-  g.fillStyle(pal.back, 1)
-  g.beginPath()
-  g.moveTo(tailX - r * 0.16, tailY)
-  quadFrom(g, tailX - r * 0.16, tailY, tailX + r * 0.18, tailY - r * 0.3, tailX + r * 0.42, tailY - r * 0.42)
-  quadFrom(g, tailX + r * 0.42, tailY - r * 0.42, tailX + r * 0.24, tailY - r * 0.05, tailX + r * 0.4, tailY + r * 0.34)
-  quadFrom(g, tailX + r * 0.4, tailY + r * 0.34, tailX + r * 0.14, tailY + r * 0.18, tailX - r * 0.16, tailY)
-  g.closePath()
-  g.fillPath()
-  g.lineStyle(ink * 0.8, INK, 1)
-  g.strokePath()
-
   // ---- THE BODY — the contour, countershaded: grey back, light belly. --
   if (poly && poly.length >= 3) {
     g.fillStyle(pal.back, 1)
@@ -739,17 +725,6 @@ export function drawSharkBall(
     g.arc(gx, cy + r * 0.05, r * 0.16, -Math.PI * 0.32, Math.PI * 0.18, false)
     g.strokePath()
   }
-
-  // ---- SIDE FIN — one small pectoral fin over the belly. ----
-  g.fillStyle(pal.fin, 1)
-  g.beginPath()
-  g.moveTo(cx + r * 0.12, cy + r * 0.34)
-  quadFrom(g, cx + r * 0.12, cy + r * 0.34, cx + r * 0.4, cy + r * 0.52, cx + r * 0.52, cy + r * 0.72)
-  quadFrom(g, cx + r * 0.52, cy + r * 0.72, cx + r * 0.22, cy + r * 0.6, cx + r * 0.05, cy + r * 0.44)
-  g.closePath()
-  g.fillPath()
-  g.lineStyle(ink * 0.6, INK, 1)
-  g.strokePath()
 
   // ---- THE MOUTH — a wide shark grin: a clean curved band with a row
   // of triangle teeth ALONG the curve (each tooth hangs from its exact
