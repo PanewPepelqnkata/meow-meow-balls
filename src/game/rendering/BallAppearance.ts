@@ -34,16 +34,23 @@ export const INK = 0x1a1a1a
  * runVariant.fantasyVariant (kept here so the draw stays dependency-free;
  * the two arrays MUST stay index-aligned).
  */
-const FANTASY_VARIANTS: Array<{ body: number; horn: number; star: number; mane: number }> = [
-  { body: 0xffc0e0, horn: 0xffeb3b, star: 0xffffff, mane: 0xff6b9d }, // 0: classic pink (original look)
-  { body: 0xc0e8ff, horn: 0xffd54f, star: 0xffffff, mane: 0x81d4fa }, // 1: sky blue
-  { body: 0xd0ffc8, horn: 0xffb300, star: 0xffffff, mane: 0xa5d6a7 }, // 2: mint
-  { body: 0xe8d0ff, horn: 0xffca28, star: 0xffffff, mane: 0xb39ddb }, // 3: lilac
-  { body: 0xfff0c0, horn: 0xff7043, star: 0xffffff, mane: 0xffd54f }, // 4: butter
-  { body: 0xffd8c0, horn: 0x8d6e63, star: 0xffffff, mane: 0xffab91 }, // 5: peach
-  { body: 0xc0f0ff, horn: 0x26c6da, star: 0xffffff, mane: 0x80deea }, // 6: glacier
-  { body: 0xffc0c8, horn: 0xec407a, star: 0xffffff, mane: 0xf06292 }, // 7: candy
+const FANTASY_VARIANTS: Array<{ body: number; bodyShade: number; horn: number; hornShade: number; star: number; mane: number; maneDeep: number; cheek: number }> = [
+  { body: 0xffc0e0, bodyShade: 0xf295c2, horn: 0xffd54f, hornShade: 0xe0a800, star: 0xffffff, mane: 0xff6b9d, maneDeep: 0xd94f7e, cheek: 0xff9ebc }, // 0: classic pink
+  { body: 0xc0e8ff, bodyShade: 0x92c4e8, horn: 0xffd54f, hornShade: 0xe0a800, star: 0xffffff, mane: 0x81d4fa, maneDeep: 0x5aabdb, cheek: 0x9ecdf0 }, // 1: sky blue
+  { body: 0xd0ffc8, bodyShade: 0xa3d99a, horn: 0xffb300, hornShade: 0xd18f00, star: 0xffffff, mane: 0xa5d6a7, maneDeep: 0x7cb87c, cheek: 0xb2e6ab }, // 2: mint
+  { body: 0xe8d0ff, bodyShade: 0xc2a3e0, horn: 0xffca28, hornShade: 0xd8a400, star: 0xffffff, mane: 0xb39ddb, maneDeep: 0x8d7bc0, cheek: 0xd0b2ef }, // 3: lilac
+  { body: 0xfff0c0, bodyShade: 0xe8cf92, horn: 0xff7043, hornShade: 0xd85a30, star: 0xffffff, mane: 0xffd54f, maneDeep: 0xdbb13c, cheek: 0xf5dd9a }, // 4: butter
+  { body: 0xffd8c0, bodyShade: 0xe8b294, horn: 0x8d6e63, hornShade: 0x6f544b, star: 0xffffff, mane: 0xffab91, maneDeep: 0xdb8a70, cheek: 0xf2c0a8 }, // 5: peach
+  { body: 0xc0f0ff, bodyShade: 0x93c8da, horn: 0x26c6da, hornShade: 0x1ea2b3, star: 0xffffff, mane: 0x80deea, maneDeep: 0x5fb8c8, cheek: 0xa0dcef }, // 6: glacier
+  { body: 0xffc0c8, bodyShade: 0xe0959f, horn: 0xec407a, hornShade: 0xc53366, star: 0xffffff, mane: 0xf06292, maneDeep: 0xcc4d77, cheek: 0xf29aae }, // 7: candy
 ]
+
+/**
+ * The fantasy palettes, exported for the OFFLINE BAKER (TierBaker) — the
+ * baker's copy MUST stay index-aligned with this array (its own copy is
+ * validated against this one by a test).
+ */
+export const FANTASY_PALETTES = FANTASY_VARIANTS
 
 /**
  * Normalized face layout — the ONE place facial proportions are defined.
@@ -578,10 +585,23 @@ export function drawBallFace(
 // ---------------------------------------------------------------------------
 
 /**
- * Draw Tier 9 fantasy/unicorn ball with horn and colorful mane.
+ * Draw the Tier 9 fantasy ball — the reward tier, drawn to COLLECT: a
+ * pastel unicorn-slime with a spiral striped horn, a flowing two-tone
+ * mane, a tiny ear, star freckles, a belly light and its own face.
  *
- * Phase 2.14.0: `variant` (0..7, rolled per RUN via runVariant) selects the
- * body/horn/mane palette and star accents — variant 0 is the original look.
+ * DRAWING SURFACE: every part is placed relative to the ball's CONTOUR
+ * (the wobbled silhouette), not a perfect circle — pass `poly` (the live
+ * contour, world space) plus its centroid and the body follows the
+ * wobble exactly like every other tier. Without `poly` (static previews:
+ * next-ball, claw, title, discovery statics) it falls back to a circle
+ * of radius r at (cx, cy).
+ *
+ * The FACE is part of the design here (a fantasy slime has its own
+ * softer look), drawn by this function — callers must NOT draw the
+ * standard face on top.
+ *
+ * Phase 2.14.0: `variant` (0..7, rolled per RUN via runVariant) selects
+ * the body/horn/mane palette — variant 0 is the classic pink.
  */
 export function drawFantasyBall(
   g: Phaser.GameObjects.Graphics,
@@ -589,53 +609,127 @@ export function drawFantasyBall(
   cy: number,
   r: number,
   variant = 0,
+  poly?: Array<{ x: number; y: number }>,
 ): void {
-  // Per-run variant palette (runVariant.fantasyVariant).
   const pal = FANTASY_VARIANTS[variant % FANTASY_VARIANTS.length]!
 
-  // Base body (light pastel color)
-  g.fillStyle(pal.body, 1)
-  g.fillCircle(cx, cy, r)
+  // ---- Geometry from the contour ---------------------------------------
+  // The contour's top point anchors the horn+ear; the mane rides the two
+  // upper sides. With no poly (circle fallback) these are the plain
+  // circle anchors.
+  let topX = cx
+  let topY = cy - r
+  if (poly && poly.length >= 8) {
+    let top = poly[0]!
+    for (const p of poly) if (p.y < top.y) top = p
+    topX = top.x
+    topY = top.y
+  }
+  const ink = Math.max(2, r * 0.05)
 
-  // Horn (small triangle at top)
-  const hornHeight = r * 0.35
-  const hornWidth = r * 0.12
+  // ---- THE HORN — a spiral cone with stripe bands -----------------------
+  // Two curved sides from a broad base at the head's top to a rounded
+  // tip, with darker stripe bands across it and a warm tip glow. The
+  // horn leans back slightly (unicorn posture) and is drawn FIRST so the
+  // mane overlaps its base.
+  const hornLean = r * 0.1
+  const hornH = r * 0.62
+  const baseHalf = r * 0.2
+  const tipX = topX + hornLean
+  const tipY = topY - hornH
   g.fillStyle(pal.horn, 1)
   g.beginPath()
-  g.moveTo(cx, cy - r - hornHeight)
-  g.lineTo(cx - hornWidth, cy - r)
-  g.lineTo(cx + hornWidth, cy - r)
+  // Left edge (slightly concave — a tapered unicorn horn).
+  g.moveTo(topX - baseHalf, topY + r * 0.05)
+  g.lineTo(tipX - baseHalf * 0.28, tipY + r * 0.1)
+  // Rounded tip.
+  g.arc(tipX, tipY + r * 0.1, baseHalf * 0.28, Math.PI, 0, false)
+  // Right edge back down.
+  g.lineTo(topX + baseHalf, topY + r * 0.05)
   g.closePath()
   g.fillPath()
-  g.lineStyle(Math.max(2, r * 0.04), INK, 1)
+  // Stripe bands across the horn (the spiral suggestion): three tapered
+  // wedges in the deep shade, wider at the base.
+  const stripe = r * 0.075
+  for (let i = 0; i < 3; i++) {
+    const t = 0.24 + i * 0.24 // fraction up the horn
+    const by = topY + (tipY + r * 0.1 - topY) * t
+    const halfNow = baseHalf * (1 - t * 0.72)
+    g.fillStyle(pal.hornShade, 0.9)
+    g.fillRect(topX - hornLean * t - halfNow, by - stripe / 2 - (stripe * i) / 3, halfNow * 2, stripe)
+  }
+  // The horn's ink outline.
+  g.lineStyle(ink * 0.8, INK, 1)
+  g.beginPath()
+  g.moveTo(topX - baseHalf, topY + r * 0.05)
+  g.lineTo(tipX - baseHalf * 0.28, tipY + r * 0.1)
+  g.arc(tipX, tipY + r * 0.1, baseHalf * 0.28, Math.PI, 0, false)
+  g.lineTo(topX + baseHalf, topY + r * 0.05)
+  g.closePath()
   g.strokePath()
 
-  // Mane (colorful wavy strands on sides)
-  const maneColors = [pal.mane, 0x9c27b0, 0x4fc3f7]
+  // ---- THE EAR — a small leaf behind the horn's base (the far side). ----
+  g.fillStyle(pal.bodyShade, 1)
+  g.beginPath()
+  g.fillEllipse(topX - baseHalf * 1.7, topY + r * 0.08, r * 0.22, r * 0.38)
+  g.lineStyle(ink * 0.6, INK, 1)
+  g.strokeEllipse(topX - baseHalf * 1.7, topY + r * 0.08, r * 0.22, r * 0.38)
+
+  // ---- THE BODY — pastel fill clipped to the contour, with shading. ----
+  g.fillStyle(pal.body, 1)
+  if (poly && poly.length >= 3) {
+    g.fillPoints(poly as unknown as Phaser.Math.Vector2[], true)
+  } else {
+    g.fillCircle(cx, cy, r)
+  }
+  // Lower-body shade: a darker crescent hugging the bottom of the
+  // contour (volume — the old flat pastel read paper-thin).
+  g.fillStyle(pal.bodyShade, 0.55)
+  g.beginPath()
+  g.fillEllipse(cx, cy + r * 0.52, r * 1.56, r * 0.84)
+  // (The crescent may spill past the contour without clipping — the ink
+  // outline covers the rim below.)
+  // Belly light: a warm white core low-centre (the glow of a reward).
+  g.fillStyle(0xfff8f0, 0.5)
+  g.fillEllipse(cx, cy + r * 0.28, r * 0.7, r * 0.4)
+
+  // ---- THE MANE — two flowing combs: a back layer in the deep mane
+  // shade and a front layer in the main mane colour, made of overlapping
+  // rounded locks that follow the head's sides down past the midline.
+  const locks: Array<{ x: number; y: number; w: number; h: number; rot: number }> = []
   for (let i = 0; i < 3; i++) {
-    const side = i < 2 ? -1 : 1
-    const offset = (i % 2) * 0.15
-    g.fillStyle(maneColors[i]!, 1)
-    g.fillEllipse(
-      cx + side * r * 0.85,
-      cy - r * 0.3 + offset * r,
-      r * 0.2,
-      r * 0.4
-    )
+    const t = i / 2 // 0 at the top … 1 lower down the side
+    const drop = r * (0.12 + t * 0.42)
+    const out = r * (0.72 - t * 0.18)
+    locks.push({ x: cx - out, y: cy - r * 0.42 + drop, w: r * 0.3, h: r * (0.4 - t * 0.08), rot: -0.35 + t * 0.2 })
+    locks.push({ x: cx + out, y: cy - r * 0.42 + drop, w: r * 0.3, h: r * (0.4 - t * 0.08), rot: 0.35 - t * 0.2 })
+  }
+  // Back layer (deep shade, slightly larger).
+  for (const l of locks) {
+    g.fillStyle(pal.maneDeep, 1)
+    g.beginPath()
+    g.fillEllipse(l.x, l.y + r * 0.03, l.w * 2.24, l.h * 2.24)
+  }
+  // Front layer (main mane colour).
+  for (const l of locks) {
+    g.fillStyle(pal.mane, 1)
+    g.beginPath()
+    g.fillEllipse(l.x, l.y, l.w * 2, l.h * 2)
   }
 
-  // Star sparkle accents (variant personality, drawn small and subtle)
-  if (r > 26) {
+  // ---- Star freckles — a constellation over the cheeks and forehead. ----
+  if (r > 24) {
     const stars: Array<[number, number, number]> = [
-      [-0.45, -0.35, 0.09],
-      [0.5, -0.15, 0.07],
-      [0.15, 0.45, 0.06],
+      [-0.52, -0.38, 0.085],
+      [0.54, -0.3, 0.065],
+      [0.18, -0.52, 0.055],
+      [-0.2, 0.42, 0.06],
     ]
     for (const [sx, sy, sr] of stars) {
       const x = cx + sx * r
       const y = cy + sy * r
       const s = r * sr
-      g.fillStyle(pal.star, 0.95)
+      g.fillStyle(0xffd54f, 0.95)
       g.beginPath()
       g.moveTo(x, y - s)
       g.lineTo(x + s * 0.32, y - s * 0.32)
@@ -647,6 +741,53 @@ export function drawFantasyBall(
       g.lineTo(x - s * 0.32, y - s * 0.32)
       g.closePath()
       g.fillPath()
+      g.fillStyle(0xfff3c0, 0.9)
+      g.fillCircle(x, y - s * 0.15, s * 0.22)
     }
+  }
+
+  // ---- THE FACE — the fantasy slime's own: big glossy eyes with star
+  // pupils, a tiny 'w' cat mouth, rosy cheeks. Softer than the standard
+  // face: this is the reward character.
+  const eyeY = cy - r * 0.12
+  const eyeDx = r * 0.34
+  const eyeR = r * 0.24
+  for (const side of [-1, 1]) {
+    const ex = cx + side * eyeDx
+    // Sclera.
+    g.fillStyle(0xffffff, 1)
+    g.fillEllipse(ex, eyeY, eyeR * 1.5, eyeR * 1.9)
+    // Iris: the mane colour — ties the face to the body.
+    g.fillStyle(pal.mane, 1)
+    g.fillCircle(ex + side * eyeR * 0.12, eyeY + eyeR * 0.08, eyeR * 0.78)
+    // Pupil.
+    g.fillStyle(INK, 1)
+    g.fillCircle(ex + side * eyeR * 0.18, eyeY + eyeR * 0.14, eyeR * 0.4)
+    // Gloss double-glint.
+    g.fillStyle(0xffffff, 0.95)
+    g.fillCircle(ex - eyeR * 0.28, eyeY - eyeR * 0.4, eyeR * 0.3)
+    g.fillStyle(0xffffff, 0.7)
+    g.fillCircle(ex + eyeR * 0.3, eyeY + eyeR * 0.34, eyeR * 0.14)
+  }
+  // The 'w' cat mouth: two small arcs side by side under the eyes.
+  const mouthY = cy + r * 0.3
+  const mouthW = r * 0.13
+  g.lineStyle(ink * 0.8, INK, 1)
+  for (const side of [-1, 1]) {
+    g.beginPath()
+    g.arc(cx + side * mouthW, mouthY - mouthW * 0.35, mouthW, 0.2618, 2.8798, false)
+    g.strokePath()
+  }
+  // Rosy cheeks.
+  g.fillStyle(pal.cheek, 0.7)
+  g.fillEllipse(cx - eyeDx - r * 0.24, eyeY + eyeR * 1.15, r * 0.26, r * 0.15)
+  g.fillEllipse(cx + eyeDx + r * 0.24, eyeY + eyeR * 1.15, r * 0.26, r * 0.15)
+
+  // ---- THE INK OUTLINE — the contour itself, over everything. ----
+  g.lineStyle(ballOutlineWidth(r), INK, 1)
+  if (poly && poly.length >= 3) {
+    g.strokePoints(poly as unknown as Phaser.Math.Vector2[], true, true)
+  } else {
+    g.strokeCircle(cx, cy, r)
   }
 }

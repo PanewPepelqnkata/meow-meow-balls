@@ -400,14 +400,15 @@ export class DiscoveryBanner {
       const look = ballLookFor(this.tier, this.seed)
       const poly = restContour(look, pr, ball.x, ball.y + bob, 48)
       if (this.tier === 9) {
+        // The fantasy ball paints its own face — part of the design.
         drawFantasyBall(this.ballG, ball.x, ball.y + bob, pr, variantIdFor(9))
       } else {
         this.ballG.fillStyle(this.tier === 8 ? cycleColor(Date.now()) : color, 1)
         this.ballG.fillPoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)
+        this.ballG.lineStyle(ballOutlineWidth(pr), INK, 1)
+        this.ballG.strokePoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true, true)
+        drawBallFace(this.ballG, look, { x: ball.x, y: ball.y + bob }, pr, 1)
       }
-      this.ballG.lineStyle(ballOutlineWidth(pr), INK, 1)
-      this.ballG.strokePoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true, true)
-      drawBallFace(this.ballG, look, { x: ball.x, y: ball.y + bob }, pr, 1)
     }
 
     // ---- The tier label toward the band's right end (beyond the ball) —

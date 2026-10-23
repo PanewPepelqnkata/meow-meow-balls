@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { INK, ballOutlineWidth, wobbleContour, ballLookFor } from './BallAppearance'
+import { INK, ballOutlineWidth, wobbleContour, ballLookFor, drawFantasyBall } from './BallAppearance'
 import { isSpecialBakeTier, specialBakeExtent, specialBakeGeometry } from './bakeGeometry'
 
 /**
@@ -290,62 +290,9 @@ export class TierBaker {
 // ---------------------------------------------------------------------------
 
 function drawFantasyInto(g: Phaser.GameObjects.Graphics, cx: number, cy: number, r: number, variant: number): void {
-  // Local palette copy — MUST stay index-aligned with BallAppearance's
-  // FANTASY_VARIANTS (verified by FantasyPaletteSync test below).
-  const pal = FANTASY_PALETTES[variant % FANTASY_PALETTES.length]!
-  g.fillStyle(pal.body, 1)
-  g.fillCircle(cx, cy, r)
-  const hornHeight = r * 0.35
-  const hornWidth = r * 0.12
-  g.fillStyle(pal.horn, 1)
-  g.beginPath()
-  g.moveTo(cx, cy - r - hornHeight)
-  g.lineTo(cx - hornWidth, cy - r)
-  g.lineTo(cx + hornWidth, cy - r)
-  g.closePath()
-  g.fillPath()
-  g.lineStyle(Math.max(2, r * 0.04), INK, 1)
-  g.strokePath()
-  const maneColors = [pal.mane, 0x9c27b0, 0x4fc3f7]
-  for (let i = 0; i < 3; i++) {
-    const side = i < 2 ? -1 : 1
-    const offset = (i % 2) * 0.15
-    g.fillStyle(maneColors[i]!, 1)
-    g.fillEllipse(cx + side * r * 0.85, cy - r * 0.3 + offset * r, r * 0.2, r * 0.4)
-  }
-  if (r > 26) {
-    const stars: Array<[number, number, number]> = [
-      [-0.45, -0.35, 0.09],
-      [0.5, -0.15, 0.07],
-      [0.15, 0.45, 0.06],
-    ]
-    for (const [sx, sy, sr] of stars) {
-      const x = cx + sx * r
-      const y = cy + sy * r
-      const s = r * sr
-      g.fillStyle(pal.star, 0.95)
-      g.beginPath()
-      g.moveTo(x, y - s)
-      g.lineTo(x + s * 0.32, y - s * 0.32)
-      g.lineTo(x + s, y)
-      g.lineTo(x + s * 0.32, y + s * 0.32)
-      g.lineTo(x, y + s)
-      g.lineTo(x - s * 0.32, y + s * 0.32)
-      g.lineTo(x - s, y)
-      g.lineTo(x - s * 0.32, y - s * 0.32)
-      g.closePath()
-      g.fillPath()
-    }
-  }
+  // DELEGATES to the live renderer: the bake is a sleeping ball, and a
+  // sleeping ball draws as the plain circle fallback (no contour) — the
+  // exact same code path as the live fantasy ball with poly omitted, so
+  // the bake and the live ball can never diverge again.
+  drawFantasyBall(g, cx, cy, r, variant)
 }
-
-const FANTASY_PALETTES: Array<{ body: number; horn: number; star: number; mane: number }> = [
-  { body: 0xffc0e0, horn: 0xffeb3b, star: 0xffffff, mane: 0xff6b9d },
-  { body: 0xc0e8ff, horn: 0xffd54f, star: 0xffffff, mane: 0x81d4fa },
-  { body: 0xd0ffc8, horn: 0xffb300, star: 0xffffff, mane: 0xa5d6a7 },
-  { body: 0xe8d0ff, horn: 0xffca28, star: 0xffffff, mane: 0xb39ddb },
-  { body: 0xfff0c0, horn: 0xff7043, star: 0xffffff, mane: 0xffd54f },
-  { body: 0xffd8c0, horn: 0x8d6e63, star: 0xffffff, mane: 0xffab91 },
-  { body: 0xc0f0ff, horn: 0x26c6da, star: 0xffffff, mane: 0x80deea },
-  { body: 0xffc0c8, horn: 0xec407a, star: 0xffffff, mane: 0xf06292 },
-]

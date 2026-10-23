@@ -25,6 +25,16 @@ import {
 import type { DeformState } from './deform'
 import { variantIdFor } from '../state/runVariant'
 import { TierBaker } from './TierBaker'
+
+/**
+ * The tier 8/9 BAKE DEBOUNCE — a ball must be CONTINUOUSLY asleep for
+ * this many frames before its frozen texture is used. Matter's per-body
+ * sleep flags flip around the threshold in a settled pile; without the
+ * debounce the tier 9 ball alternated baked-sprite ↔ live-Graphics paths
+ * frame to frame, which read as violent flickering.
+ */
+const SLEEP_DEBOUNCE_FRAMES = 30
+
 import type { TierTextures } from './TierBaker'
 import { FacePool } from './FacePool'
 import type { SpriteBallView } from './FacePool'
@@ -104,6 +114,8 @@ export class SoftBallRenderer {
    * need no baking suspension (textures are shared and immutable), the
    * flag only pauses NEW tier-8/9 per-ball bakes. */
   private bakingSuspended = false
+  /** Consecutive sleeping frames per ball — the tier 8/9 bake debounce. */
+  private readonly sleepHold = new Map<number, number>()
   /** IDs drawn as SPRITE quads in the LAST update() — QA evidence
    * (acceptance §5: the WALL line reports sprite counts through this). */
   private readonly bakeSweep = new Set<number>()
@@ -372,11 +384,21 @@ export class SoftBallRenderer {
         }
       }
 
-      // ---- TIERS 8/9 + fallback: live contour path (as before), with a
-      // per-ball texture bake when they fall asleep (the BallBaker approach
-      // survives for exactly these two tiers).
+      // ---- TIERS 8/9 + fallback: live contour path, with a per-ball
+      // texture bake once a ball has been CONTINUOUSLY asleep for a
+      // debounce window. Matter's per-body sleep flags oscillate around
+      // the threshold in a settled pile; switching render paths (baked
+      // sprite ↔ live Graphics) on every one of those flips is what made
+      // the tier 9 ball flicker. The bake only happens after the ball has
+      // held a full sleep for the window; a single wake frame drops it
+      // instantly (onBallWake → dropBake), so waking is still immediate.
       const sleeping = softBallSleeping(r.soft)
-      const special = sleeping && !this.bakingSuspended ? this.specialTextures.get(r.id) : undefined
+      const sleepKey = r.id
+      const held = (this.sleepHold.get(sleepKey) ?? 0) + 1
+      if (sleeping) this.sleepHold.set(sleepKey, held)
+      else this.sleepHold.delete(sleepKey)
+      const sleepStable = sleeping && held >= SLEEP_DEBOUNCE_FRAMES
+      const special = sleepStable && !this.bakingSuspended ? this.specialTextures.get(r.id) : undefined
       if (special) {
         const s = drawR / special.textureRadius
         this.drawSpecialQuads(r.id, special, c.x, c.y, s)
@@ -386,15 +408,19 @@ export class SoftBallRenderer {
       }
 
       const { poly, cx, cy } = this.liveContour(r, look, drawR)
-      if (sleeping && !this.bakingSuspended && !this.specialTextures.has(r.id)) {
-        // Bake ONCE per ball. Re-baking every sleeping frame removed the
-        // ball's live texture out from under its own body quad, which
-        // nulled the texture source and threw during the next render —
-        // killing the game loop and the whole UI.
+      if (sleepStable && !this.bakingSuspended && !this.specialTextures.has(r.id)) {
+        // Bake ONCE per ball, after the debounce. Re-baking every sleeping
+        // frame removed the ball's live texture out from under its own
+        // body quad, which nulled the texture source and threw during the
+        // next render — killing the game loop and the whole UI.
         this.bakeSpecial(r, poly, color)
       }
       this.drawLiveBody(g, r, look, drawR, color, poly, cx, cy)
-      this.drawLiveFace(g, r, look, drawR, aspect, now, cx, cy)
+      if (r.tier !== 9) {
+        // The tier 9 fantasy ball paints its own face (part of the design);
+        // every other tier gets the standard face on top.
+        this.drawLiveFace(g, r, look, drawR, aspect, now, cx, cy)
+      }
     }
   }
 
@@ -533,9 +559,10 @@ export class SoftBallRenderer {
   ): void {
     const built = poly ? { poly, cx: cx!, cy: cy! } : this.liveContour(r, look, drawR)
     if (r.tier === 9) {
-      drawFantasyBall(g, built.cx, built.cy, r.soft.radius, variantIdFor(9))
-      // The fantasy body strokes its own horn and mane, so it takes no
-      // separate ink pass.
+      // The fantasy body draws INTO the live contour (body fill, mane,
+      // horn all track the wobble) and paints its OWN face — no separate
+      // ink pass, no standard face on top.
+      drawFantasyBall(g, built.cx, built.cy, r.soft.radius, variantIdFor(9), built.poly)
       return
     }
     // Every other tier (including the tier 8 cycling RGB ball) is a

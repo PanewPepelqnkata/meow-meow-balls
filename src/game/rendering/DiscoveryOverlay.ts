@@ -2088,7 +2088,9 @@ export class DiscoveryOverlay {
     const poly = restContour(look, radius, x, y, 48)
 
     if (tier === 9) {
-      drawFantasyBall(g, x, y, radius, variantIdFor(9))
+      // The fantasy ball paints its own face — part of the design.
+      drawFantasyBall(g, x, y, radius, variantIdFor(9), poly)
+      return
     } else {
       // Tier 8 is a plain ball whose colour cycles; the body fills the
       // CONTOUR (so it matches its ink outline) in the current cycle

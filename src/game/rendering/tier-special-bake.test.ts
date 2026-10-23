@@ -43,10 +43,10 @@ describe('tier 8/9 bake geometry', () => {
     }
   })
 
-  it('the tier 9 extent covers the horn (-1.35r) and the mane (±0.95r)', () => {
+  it('the tier 9 extent covers the horn (-1.68r) and the mane (±0.95r)', () => {
     const R = getTier(9)!.radius
-    // 1.4r must be >= the horn reach of 1.35r
-    expect(specialBakeExtent(9, R)).toBeGreaterThanOrEqual(R * 1.35)
+    // 1.75r must be >= the horn reach of ~1.68r
+    expect(specialBakeExtent(9, R)).toBeGreaterThanOrEqual(R * 1.68)
     // and >= the mane reach
     expect(specialBakeExtent(9, R)).toBeGreaterThanOrEqual(R * 0.95)
   })

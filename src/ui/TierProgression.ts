@@ -2,8 +2,9 @@ import Phaser from 'phaser'
 import type { UiLayout } from './ResponsiveLayout'
 import { BALL_TIERS } from '../config/ballTiers'
 import { hudText, WHITE } from './Typography'
-import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK } from '../game/rendering/BallAppearance'
+import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK, drawFantasyBall } from '../game/rendering/BallAppearance'
 import { cycleColor } from '../game/rendering/rgbCycle'
+import { variantIdFor } from '../game/state/runVariant'
 
 /**
  * Phase 2.13.2 (spec §4) — polished tier progression path.
@@ -227,32 +228,24 @@ export class TierProgression {
     const pts = poly.map((p) => new Phaser.Math.Vector2(p.x, p.y))
 
     if (tier === 9) {
-      this.drawFantasyNode(g, rr)
+      // The fantasy ball paints the whole node (body, horn, mane, face) —
+      // the same renderer as the game ball, so the strip matches.
+      drawFantasyBall(g, 0, 0, rr, variantIdFor(9), poly)
+      return
+    }
+
+    // Tier 8 is a plain ball whose colour cycles (same as the others);
+    // the tier progression strip shows its current cycle colour.
+    if (tier === 8) {
+      g.fillStyle(cycleColor(Date.now()), 1)
+      g.fillPoints(pts, true)
     } else {
-      // Tier 8 is a plain ball whose colour cycles (same as the others);
-      // the tier progression strip shows its current cycle colour.
-      g.fillStyle(tier === 8 ? cycleColor(Date.now()) : color, 1)
+      g.fillStyle(color, 1)
       g.fillPoints(pts, true)
     }
 
     g.lineStyle(Math.max(2.5, ballOutlineWidth(rr)), INK, 1)
     g.strokePoints(pts, true, true)
     drawBallFace(g, look, { x: 0, y: 0 }, rr, 1)
-  }
-
-  /** Tier 9 progression identity: pastel body with a small gold horn. */
-  private drawFantasyNode(g: Phaser.GameObjects.Graphics, rr: number): void {
-    g.fillStyle(0xf3c6e2, 1)
-    g.fillCircle(0, 0, rr)
-    // Horn pointing up.
-    g.fillStyle(0xffd54f, 1)
-    g.beginPath()
-    g.moveTo(-rr * 0.22, -rr * 0.78)
-    g.lineTo(0, -rr * 1.32)
-    g.lineTo(rr * 0.22, -rr * 0.78)
-    g.closePath()
-    g.fillPath()
-    g.lineStyle(2.5, 0x111111, 1)
-    g.strokePath()
   }
 }

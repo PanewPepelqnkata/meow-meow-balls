@@ -78,15 +78,18 @@ export class NextBall {
       const pts = poly.map(p => ({ x: p.x, y: p.y }))
       g.fillStyle(cycleColor(Date.now()), 1)
       g.fillPoints(pts.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)
+      g.lineStyle(ballOutlineWidth(r), INK, 1)
+      g.strokePoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true, true)
+      drawBallFace(g, look, { x: this.pos.x, y: this.pos.y }, r, 1)
     } else if (this.tier === 9) {
-      drawFantasyBall(g, this.pos.x, this.pos.y, r, variantIdFor(9))
+      // The fantasy ball paints its own face — part of the design.
+      drawFantasyBall(g, this.pos.x, this.pos.y, r, variantIdFor(9), poly)
     } else {
       g.fillStyle(tier.color, 1)
       g.fillPoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)
+      g.lineStyle(ballOutlineWidth(r), INK, 1)
+      g.strokePoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true, true)
+      drawBallFace(g, look, { x: this.pos.x, y: this.pos.y }, r, 1)
     }
-    
-    g.lineStyle(ballOutlineWidth(r), INK, 1)
-    g.strokePoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true, true)
-    drawBallFace(g, look, { x: this.pos.x, y: this.pos.y }, r, 1)
   }
 }
