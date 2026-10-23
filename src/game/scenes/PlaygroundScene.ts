@@ -933,6 +933,12 @@ export class PlaygroundScene extends Phaser.Scene {
     // Queue rotation: previous next becomes current; a fresh ball enters next.
     this.currentBall = { ...this.nextBallState }
     this.nextBallState = { tier: randomSpawnTier(), seed: randomSeed() }
+    // ?test=<tier>: keep dealing the test tier so the queue never runs out
+    // of it (a plain drop in test mode always yields the test ball).
+    const testTier = Number(new URLSearchParams(window.location.search).get('test') ?? '')
+    if (Number.isInteger(testTier) && testTier >= 1 && testTier <= 9) {
+      this.nextBallState = { tier: testTier, seed: randomSeed() }
+    }
     // PERF (iOS): pre-bake the new NEXT ball's face atlas NOW (idle
     // frame) — the drop frame then reuses it instead of rasterizing
     // 3×256² textures mid-event.
@@ -954,6 +960,14 @@ export class PlaygroundScene extends Phaser.Scene {
   private initQueue(): void {
     this.currentBall = { tier: randomSpawnTier(), seed: randomSeed() }
     this.nextBallState = { tier: randomSpawnTier(), seed: randomSeed() }
+    // ?test=8: the crane holds a tier-8 ball (and the queue keeps dealing
+    // tier 8s) — a quick way to eyeball the colour-cycling ball and its
+    // discovery animations without merging up to it.
+    const testTier = Number(new URLSearchParams(window.location.search).get('test') ?? '')
+    if (Number.isInteger(testTier) && testTier >= 1 && testTier <= 9) {
+      this.currentBall = { tier: testTier, seed: randomSeed() }
+      this.nextBallState = { tier: testTier, seed: randomSeed() }
+    }
     this.publishQueue()
   }
 
