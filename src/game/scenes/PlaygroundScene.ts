@@ -938,7 +938,7 @@ export class PlaygroundScene extends Phaser.Scene {
     // ?test=<tier>: keep dealing the test tier so the queue never runs out
     // of it (a plain drop in test mode always yields the test ball).
     const testTier = Number(new URLSearchParams(window.location.search).get('test') ?? '')
-    if (Number.isInteger(testTier) && testTier >= 1 && testTier <= 9) {
+    if (Number.isInteger(testTier) && testTier >= 1 && testTier <= 12) {
       this.nextBallState = { tier: testTier, seed: randomSeed() }
     }
     // PERF (iOS): pre-bake the new NEXT ball's face atlas NOW (idle
@@ -966,7 +966,7 @@ export class PlaygroundScene extends Phaser.Scene {
     // tier 8s) — a quick way to eyeball the colour-cycling ball and its
     // discovery animations without merging up to it.
     const testTier = Number(new URLSearchParams(window.location.search).get('test') ?? '')
-    if (Number.isInteger(testTier) && testTier >= 1 && testTier <= 9) {
+    if (Number.isInteger(testTier) && testTier >= 1 && testTier <= 12) {
       this.currentBall = { tier: testTier, seed: randomSeed() }
       this.nextBallState = { tier: testTier, seed: randomSeed() }
     }
