@@ -1317,68 +1317,68 @@ export function drawCrabBall(
     }
   }
 
-  // ---- THE CHELIPEDS — the two BIG claw arms, waving UP and DOWN. Each
-  // arm: a shoulder joint at the body's upper sides, an arm segment
-  // sweeping outward-up, ending in an open pincer (two claws). The arms
-  // oscillate on offset phases; faster + wider with panic; droop flat
-  // when calm-low. ----
+  // ---- THE CHELIPEDS — two BIG claws raised UP and OUTWARD (the crab
+  // identity). Each: a fat tapered arm (filled quad, not a stroke) from
+  // a shoulder inside the shell up to a fist, then TWO open pincer jaws
+  // (fat crescents with ink outlines) that snip with the clock. Wave on
+  // offset phases; drop + tremble with fear. ----
   for (const side of [-1, 1]) {
-    const shoulderX = cx + side * r * 0.52
-    const shoulderY = cy - r * 0.18
-    // The wave: each arm swings between up and down on its own phase.
-    const phase = now * 0.0045 * (1 + panic * 1.2) + (side > 0 ? 0 : Math.PI * 0.7)
+    const shoulderX = cx + side * r * 0.5
+    const shoulderY = cy - r * 0.24
+    const phase = now * 0.0045 * (1 + panic * 1.4) + (side > 0 ? 0 : Math.PI * 0.75)
     const swing = Math.sin(phase) // -1..1
-    const lift = swing * r * 0.38 * (0.6 + 0.4 * (1 - panic * 0.3)) // droops a little with fear
-    // Arm: shoulder → elbow (outward, lifted) → pincer base.
-    const elbowX = shoulderX + side * r * 0.34
-    const elbowY = shoulderY - r * 0.18 - lift * 0.5
-    const pincerX = elbowX + side * r * 0.4
-    const pincerY = elbowY + lift * 0.6
-    // Arm segment (thick stroke).
-    g.lineStyle(Math.max(3, r * 0.11), pal.claw, 1)
+    const lift = swing * r * 0.32 * (1 - 0.35 * panic)
+    const tremble = Math.sin(now * 0.09) * r * 0.02 * panic
+    // ARM — a filled tapered quad from the shoulder to the fist.
+    const fistX = shoulderX + side * r * 0.5 + tremble
+    const fistY = shoulderY - r * 0.62 - lift + tremble * 0.5
+    const armHalfBase = r * 0.075
+    const armHalfFist = r * 0.085
+    g.fillStyle(pal.claw, 1)
     g.beginPath()
-    g.moveTo(shoulderX, shoulderY)
-    g.lineTo(elbowX, elbowY)
+    g.moveTo(shoulderX - armHalfBase, shoulderY + r * 0.06)
+    g.lineTo(fistX - armHalfFist, fistY + r * 0.1)
+    g.lineTo(fistX + armHalfFist, fistY + r * 0.02)
+    g.lineTo(shoulderX + armHalfBase, shoulderY - r * 0.04)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(Math.max(1.5, r * 0.04), INK, 1)
     g.strokePath()
+    // THE FIST — a fat blob at the arm's end (the pincer's base).
+    g.fillStyle(pal.claw, 1)
+    g.fillCircle(fistX, fistY, r * 0.15)
+    g.lineStyle(Math.max(1.5, r * 0.04), INK, 1)
+    g.strokeCircle(fistX, fistY, r * 0.15)
+    // THE PINCER JAWS — two open crescents: upper jaw (slimmer, pointing
+    // up-out) and lower jaw (fatter, pointing out-down). The gap between
+    // them opens/closes (the snip).
+    const snip = 0.3 + 0.25 * Math.abs(Math.sin(phase * 1.3))
+    const jawLen = r * 0.34
+    const jawW = r * 0.11
+    // Upper jaw: from the fist, curving up-out to a tip.
+    g.fillStyle(pal.claw, 1)
     g.beginPath()
-    g.moveTo(elbowX, elbowY)
-    g.lineTo(pincerX, pincerY)
+    g.moveTo(fistX, fistY - r * 0.04)
+    quadFrom(g, fistX, fistY - r * 0.04, fistX + side * jawLen * 0.7, fistY - jawLen * 0.55 - jawW * snip, fistX + side * jawLen, fistY - jawLen * 0.62 - jawW * snip)
+    quadFrom(g, fistX + side * jawLen, fistY - jawLen * 0.62 - jawW * snip, fistX + side * jawLen * 0.62, fistY - jawLen * 0.18, fistX + r * 0.05, fistY + r * 0.03)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(Math.max(1.5, r * 0.04), INK, 1)
     g.strokePath()
-    g.lineStyle(Math.max(1.5, r * 0.045), INK, 1)
+    // Lower jaw: fatter, curving out-down from under the fist.
+    g.fillStyle(pal.claw, 1)
     g.beginPath()
-    g.moveTo(shoulderX, shoulderY)
-    g.lineTo(elbowX, elbowY)
+    g.moveTo(fistX, fistY + r * 0.05)
+    quadFrom(g, fistX, fistY + r * 0.05, fistX + side * jawLen * 0.65, fistY + jawLen * 0.28 + jawW * snip * 0.5, fistX + side * jawLen * 0.92, fistY + jawLen * 0.18)
+    quadFrom(g, fistX + side * jawLen * 0.92, fistY + jawLen * 0.18, fistX + side * jawLen * 0.5, fistY + jawLen * 0.08, fistX + r * 0.06, fistY - r * 0.01)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(Math.max(1.5, r * 0.04), INK, 1)
     g.strokePath()
-    g.beginPath()
-    g.moveTo(elbowX, elbowY)
-    g.lineTo(pincerX, pincerY)
-    g.strokePath()
-    // THE PINCER: an open claw — two fat crescents hinged at the pincer
-    // base, opening/closing slightly with the swing (snipping motion).
-    const openA = 0.28 + 0.22 * Math.abs(Math.sin(phase * 1.3)) // snip angle
-    const clawLen = r * 0.3
-    const clawW = r * 0.13
-    for (const half of [-1, 1]) {
-      const dir = side * half
-      const upper = half < 0
-      g.fillStyle(pal.claw, 1)
-      g.beginPath()
-      const tipX = pincerX + dir * clawLen * Math.cos(openA * half * (upper ? 1 : -1))
-      const tipY = pincerY + clawLen * Math.sin(openA * (upper ? 1 : -1)) * (upper ? 1 : 1.2)
-      // Simple fat crescent: two quadratic edges.
-      g.moveTo(pincerX, pincerY)
-      quadFrom(g, pincerX, pincerY, pincerX + dir * clawLen * 0.6, pincerY - clawW * (upper ? 1.2 : 0.4), tipX, tipY)
-      quadFrom(g, tipX, tipY, pincerX + dir * clawLen * 0.55, pincerY + clawW * 0.2 * (upper ? -1 : 1), pincerX + dir * clawW * 0.4, pincerY + (upper ? -clawW * 0.2 : clawW * 0.2))
-      g.closePath()
-      g.fillPath()
-      g.lineStyle(Math.max(1.5, r * 0.04), INK, 1)
-      g.strokePath()
-    }
-    // Pincer joint: a small circle at the hinge.
+    // White tip accents on both jaw tips.
     g.fillStyle(pal.clawLight, 1)
-    g.fillCircle(pincerX, pincerY, Math.max(2, r * 0.06))
-    g.lineStyle(Math.max(1.2, r * 0.035), INK, 1)
-    g.strokeCircle(pincerX, pincerY, Math.max(2, r * 0.06))
+    g.fillCircle(fistX + side * jawLen * 0.98, fistY - jawLen * 0.6 - jawW * snip, r * 0.045)
+    g.fillCircle(fistX + side * jawLen * 0.9, fistY + jawLen * 0.17, r * 0.045)
   }
 
   // ---- THE BODY — the shell: the contour, countershaded. ----
