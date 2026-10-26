@@ -50,8 +50,11 @@ function hashSeed(text: string, w: number, h: number): number {
  * strokes clean, and is fully deterministic in (seed, dims) so rebuilds
  * (press/disabled states) never redraw the wobble. Points are button-local,
  * centered on (0,0).
+ *
+ * Exported so other chunky-cartoon surfaces (the game-over card) reuse the
+ * EXACT same hand-drawn recipe instead of a divergent copy.
  */
-function doodleSilhouette(w: number, h: number, r: number, seed: number, amp: number): Array<{ x: number; y: number }> {
+export function doodleSilhouette(w: number, h: number, r: number, seed: number, amp: number): Array<{ x: number; y: number }> {
   const rr = Math.min(r, w / 2, h / 2)
   const hw = w / 2 - rr
   const hh = h / 2 - rr
@@ -97,8 +100,9 @@ function doodleSilhouette(w: number, h: number, r: number, seed: number, amp: nu
   })
 }
 
-/** Darkened copy of a 0xRRGGBB fill for the doodle extrusion slab. */
-function darkenFill(color: number, f: number): number {
+/** Darkened copy of a 0xRRGGBB fill for the doodle extrusion slab.
+ * Exported alongside doodleSilhouette for the game-over card. */
+export function darkenFill(color: number, f: number): number {
   const r = Math.round(((color >> 16) & 255) * f)
   const g = Math.round(((color >> 8) & 255) * f)
   const b = Math.round((color & 255) * f)

@@ -1,16 +1,27 @@
 import Phaser from 'phaser'
 import { drawLucide } from '../../ui/LucideIcon'
 import { FONT_FAMILY } from '../../ui/Typography'
+import { doodleSilhouette, darkenFill } from '../../ui/CartoonButton'
 import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK } from '../rendering/BallAppearance'
 import { pressFx } from '../../ui/PressFx'
 import { GAME_OVER_SEQUENCE as SEQ } from '../../config/gameOverSequence'
 
 /**
- * GAME OVER PANEL (redesigned) — a chunky cartoon card in the Ball Rush
- * visual language: rounded cream panel with thick ink outline and playful
- * shadow, a doomed-looking slime character on top, big animated score
- * count-up, NEW BEST! celebration, and two chunky buttons (GO AGAIN /
- * MAIN MENU). The gameplay stays visible behind a soft dim.
+ * GAME OVER PANEL — a chunky cartoon card in the Ball Rush visual
+ * language: a wobbly doodle silhouette panel (the same hand-drawn recipe
+ * as the menu's doodle buttons — fat ink outline, solid darker extrusion
+ * slab, top-left glint, soft drop shadow), a doomed-looking slime
+ * character on top, big animated score count-up, NEW BEST! celebration,
+ * and two equal-size doodle buttons (GO AGAIN / MAIN MENU) laid out as a
+ * symmetric side-by-side pair. The gameplay stays visible behind a soft
+ * dim.
+ *
+ * SYMMETRY CONTRACT: the panel is a container centered on the viewport
+ * centerline, and EVERY row inside it is centered as a UNIT about the
+ * panel's local x=0 — icon+text rows compute their total unit width
+ * (icon + gap + text) and position from the centre; the button pair
+ * places two equal-width buttons at ±(button + gap)/2. Nothing is
+ * anchored by fixed left offsets.
  *
  * Presentation only — all wiring (restart/menu) comes in through the
  * constructor callbacks from UIScene; timings from gameOverSequence.ts.
@@ -22,7 +33,6 @@ const PANEL_INK = 0x111111
 const TITLE_COLOR = '#f44336'
 const SCORE_COLOR = '#2d74c9'
 const NEW_BEST_COLOR = '#ffb300'
-
 
 export class GameOverView {
   private objs: Phaser.GameObjects.GameObject[] = []
@@ -78,40 +88,56 @@ export class GameOverView {
     scene.tweens.add({ targets: dim, alpha: 1, duration: 240, ease: 'Quad.easeOut' })
 
     // ---- Panel: one container so the spring entrance scales everything.
-    // Height = the stacked content (title 74 + ball 2·52+18 + score 124 +
-    // best 64 + buttons 2·58+22+34 pad ≈ 640) + top/bottom breathing room.
+    // Height = the stacked content (title 74 + ball 2·46+38 + score 112 +
+    // best 56 + buttons 58 + pad ≈ 660) + top/bottom breathing room.
     const panel = scene.add.container(cx, cy).setDepth(61)
     this.objs.push(panel)
     const pw = 470 * scale
     const ph = 660 * scale
-    const radius = 34 * scale
+    const pr = 34 * scale
 
-    // Playful drop shadow (offset ink slab behind the panel).
+    // DOODLE PLATE (menu button recipe, scaled up to a card): wobbly
+    // rounded-rect silhouette with a fat ink outline, a solid darker
+    // extrusion slab offset down, a soft drop shadow and a top-left glint.
+    // Deterministic seed so rebuilds never redraw the wobble.
+    const seed = 20260213
+    const amp = Math.min(6, Math.max(3, 40 * scale * 0.09))
+    const pts = doodleSilhouette(pw, ph, pr, seed, amp).map((p) => new Phaser.Math.Vector2(p.x, p.y))
+    const drop = Math.max(6, 12 * scale)
+    const extrude = Math.max(4, 9 * scale)
+    const inkW = Math.max(6, Math.min(10, 9 * scale))
+    const v = (dy: number): Phaser.Math.Vector2[] => pts.map((p) => new Phaser.Math.Vector2(p.x, p.y + dy))
+
     const shadowG = scene.add.graphics()
-    shadowG.fillStyle(PANEL_INK, 0.35)
-    shadowG.fillRoundedRect(-pw / 2 + 10 * scale, -ph / 2 + 16 * scale, pw, ph, radius)
+    shadowG.fillStyle(0x000000, 0.28)
+    shadowG.fillPoints(v(drop + 3), true)
     panel.add(shadowG)
-
-    // Body + outline + inner rim highlight.
+    // Extrusion slab: darker body color, offset down — the card's "side".
+    const sideG = scene.add.graphics()
+    sideG.fillStyle(darkenFill(PANEL_FILL, 0.62), 1)
+    sideG.fillPoints(v(extrude), true)
+    sideG.lineStyle(inkW, PANEL_INK, 1)
+    sideG.strokePoints(v(extrude), true, true)
+    panel.add(sideG)
     const bodyG = scene.add.graphics()
     bodyG.fillStyle(PANEL_FILL, 1)
-    bodyG.fillRoundedRect(-pw / 2, -ph / 2, pw, ph, radius)
-    bodyG.lineStyle(9 * scale, PANEL_INK, 1)
-    bodyG.strokeRoundedRect(-pw / 2, -ph / 2, pw, ph, radius)
-    // Inner top highlight (a soft white rounded band — candy sheen).
-    bodyG.fillStyle(0xffffff, 0.5)
-    bodyG.fillRoundedRect(-pw / 2 + 14 * scale, -ph / 2 + 12 * scale, pw - 28 * scale, 18 * scale, 9 * scale)
+    bodyG.fillPoints(pts, true)
+    bodyG.lineStyle(inkW, PANEL_INK, 1)
+    bodyG.strokePoints(pts, true, true)
+    // Glint: white oval on the top-left (the ball/menu-button shine).
+    bodyG.fillStyle(0xffffff, 0.3)
+    bodyG.fillEllipse(-pw * 0.26, -ph * 0.28, pw * 0.32, ph * 0.2)
     panel.add(bodyG)
 
     // ---- LAYOUT: a single top-down row stack inside the panel. Every row
-    // is placed by accumulating its height + gap, so nothing can overlap
-    // at any scale — the panel height is the SUM of the rows, not the other
-    // way around.
+    // is centered as a UNIT about the panel's local x=0 and placed by
+    // accumulating its height + gap, so nothing can overlap at any scale.
     //
     // GAME OVER (title)
     // ↓ terrified ball
-    // ↓ SCORE label / big score / BEST
-    // ↓ GO AGAIN / MAIN MENU (anchored bottom)
+    // ↓ trophy + SCORE label / big score / NEW BEST! banner
+    // ↓ medal + BEST
+    // ↓ GO AGAIN | MAIN MENU (equal-size symmetric pair)
     const titleY = -ph / 2 + 64 * scale
 
     // Title with chunky two-tone lettering.
@@ -168,11 +194,8 @@ export class GameOverView {
       }),
     )
 
-    // SCORE block: trophy icon + label, then the big counting number.
-    // The label icon+text sit as one centered unit; the bright cyan color
-    // replaces the old dark gray. Gaps are scale-relative and account for
-    // the wobble contour (which bulges past charR at its widest) plus the
-    // big score font's ascent — no ball/score collision at any scale.
+    // SCORE block: trophy icon + label as one centered unit, then the big
+    // counting number (origin 0.5 → always centered on the panel line).
     const scoreLabelY = charY + charR + 34 * scale
     const scoreLabelC = scene.add.container(0, scoreLabelY)
     panel.add(scoreLabelC)
@@ -190,8 +213,10 @@ export class GameOverView {
       .setOrigin(0, 0.5)
     scoreLabelC.add(scoreLabelT)
     // Center the icon+text unit: icon (24px) + gap (8px) + text width.
+    // drawLucide CENTRES its glyph box on (cx, cy), so the graphics sits at
+    // the icon's box centre: -unitW/2 + iconSize/2.
     const scoreUnitW = 24 * scale + 8 * scale + scoreLabelT.width
-    scoreIcon.setPosition(-scoreUnitW / 2, 0)
+    scoreIcon.setPosition(-scoreUnitW / 2 + 24 * scale / 2, 0)
     scoreLabelT.setPosition(-scoreUnitW / 2 + 24 * scale + 8 * scale, 0)
     // The number sits below its label by the label's half-height + half
     // the number's height (both scale-relative) — never a fixed offset.
@@ -238,7 +263,7 @@ export class GameOverView {
       .setOrigin(0, 0.5)
     bestRowC.add(bestText)
     const bestUnitW = 26 * scale + 8 * scale + bestText.width
-    bestIcon.setPosition(-bestUnitW / 2, 0)
+    bestIcon.setPosition(-bestUnitW / 2 + 26 * scale / 2, 0)
     bestText.setPosition(-bestUnitW / 2 + 26 * scale + 8 * scale, 0)
 
     if (isNewBest) {
@@ -288,80 +313,89 @@ export class GameOverView {
       onUpdate: () => scoreText.setText(Math.round(counter.val).toLocaleString()),
     })
 
-    // ---- Buttons: GO AGAIN + MAIN MENU — compact game-UI controls drawn
-    // in-panel (panel-local coords, small Lucide-style icon beside the
-    // label, thick ink outline, hover lift + press squash). Anchored BELOW
-    // the BEST row with a consistent gap — statistics and buttons can
-    // never collide because both stacks derive from the same rows.
+    // ---- Buttons: GO AGAIN + MAIN MENU — equal-size doodle plates drawn
+    // in-panel, laid out as a SYMMETRIC SIDE-BY-SIDE PAIR: the pair's
+    // total width is 2·bw + gap, so each button sits exactly
+    // ±(bw + gap)/2 from the panel centreline. Inside each button the
+    // icon+label unit is centered as a whole (icon + gap + text measured,
+    // then positioned from the centre) — no fixed left offsets.
     const bh = SEQ.buttons.height * scale
     const bw = SEQ.buttons.width * scale
     const btnGap = SEQ.buttons.gap * scale
-    const buttonsTop = bestY + 58 * scale
-    const buttonsY1 = buttonsTop
-    const buttonsY2 = buttonsTop + bh + btnGap
-    this.lastButtonCenter = { x: cx, y: cy + buttonsY1 }
-    const mkCompactButton = (
-      localY: number,
+    const buttonsY = bestY + 58 * scale + bh / 2
+    this.lastButtonCenter = { x: cx - (bw + btnGap) / 2, y: cy + buttonsY }
+    const mkDoodleButton = (
+      localX: number,
       fill: number,
-      fillHover: number,
       label: string,
       icon: (g: Phaser.GameObjects.Graphics, s: number) => void,
       onPress: () => void,
     ): void => {
-      const c = scene.add.container(0, localY)
+      const c = scene.add.container(localX, buttonsY)
       panel.add(c)
-      // Shadow slab (offset ink, soft).
+      // Doodle plate: wobbly silhouette + fat ink outline + darker
+      // extrusion slab + soft drop shadow + top-left glint — the exact
+      // menu-button recipe (CartoonButton doodle plate).
+      const bSeed = 7 + localX
+      const bAmp = Math.min(4.2, Math.max(2, bh * 0.055))
+      const bPts = doodleSilhouette(bw, bh, SEQ.buttons.radius * scale, bSeed, bAmp).map(
+        (p) => new Phaser.Math.Vector2(p.x, p.y),
+      )
+      const bDrop = Math.max(5, bh * 0.08)
+      const bExtrude = Math.max(3, bh * 0.05)
+      const bInk = Math.max(3.5, Math.min(7, bw * 0.05))
+      const bv = (dy: number): Phaser.Math.Vector2[] => bPts.map((p) => new Phaser.Math.Vector2(p.x, p.y + dy))
+
       const shadow = scene.add.graphics()
-      shadow.fillStyle(PANEL_INK, 0.3)
-      shadow.fillRoundedRect(-bw / 2 + 3 * scale, -bh / 2 + 5 * scale, bw, bh, SEQ.buttons.radius * scale)
+      shadow.fillStyle(0x000000, 0.28)
+      shadow.fillPoints(bv(bDrop + 3), true)
       c.add(shadow)
-      // Body + slab base (darker bottom edge — chunky but slim).
+      const side = scene.add.graphics()
+      side.fillStyle(darkenFill(fill, 0.62), 1)
+      side.fillPoints(bv(bExtrude), true)
+      side.lineStyle(bInk, PANEL_INK, 1)
+      side.strokePoints(bv(bExtrude), true, true)
+      c.add(side)
       const body = scene.add.graphics()
-      const drawBody = (f: number): void => {
-        body.clear()
-        body.fillStyle(f, 1)
-        body.fillRoundedRect(-bw / 2, -bh / 2, bw, bh, SEQ.buttons.radius * scale)
-        // Slim bottom extrusion.
-        body.fillStyle(Phaser.Display.Color.IntegerToColor(f).darken(22).color, 1)
-        body.fillRoundedRect(-bw / 2, bh / 2 - 7 * scale, bw, 7 * scale, { tl: 0, tr: 0, bl: SEQ.buttons.radius * scale, br: SEQ.buttons.radius * scale })
-        body.lineStyle(4 * scale, PANEL_INK, 1)
-        body.strokeRoundedRect(-bw / 2, -bh / 2, bw, bh, SEQ.buttons.radius * scale)
-        // Refined highlight: thin top sheen.
-        body.fillStyle(0xffffff, 0.25)
-        body.fillRoundedRect(-bw / 2 + 7 * scale, -bh / 2 + 5 * scale, bw - 14 * scale, bh * 0.26, 6 * scale)
-      }
-      drawBody(fill)
+      body.fillStyle(fill, 1)
+      body.fillPoints(bPts, true)
+      body.lineStyle(bInk, PANEL_INK, 1)
+      body.strokePoints(bPts, true, true)
+      body.fillStyle(0xffffff, 0.3)
+      body.fillEllipse(-bw * 0.26, -bh * 0.28, bw * 0.32, bh * 0.2)
       c.add(body)
-      // Small icon beside the label (Lucide-style line icon): painted at
-      // unit scale, then the whole Graphics scaled by the panel scale.
+
+      // Icon + label centered as ONE unit: total = icon + gap + text.
+      const iconS = SEQ.buttons.iconSize * scale
       const iconG = scene.add.graphics()
-      icon(iconG, SEQ.buttons.iconSize)
-      iconG.setScale(scale)
-      iconG.setPosition(-bw / 2 + 30 * scale, 0)
+      icon(iconG, iconS)
       c.add(iconG)
-      // Label centered in the remaining width (slight right shift for the
-      // icon).
-      const labelC = scene.add
-        .text(14 * scale, 0, label, {
+      const labelT = scene.add
+        .text(0, 0, label, {
           fontFamily: FONT_FAMILY,
           fontSize: `${Math.round(23 * scale)}px`,
           color: '#ffffff',
           stroke: '#111111',
           strokeThickness: Math.round(4 * scale),
         })
-        .setOrigin(0.5)
-      c.add(labelC)
+        .setOrigin(0, 0.5)
+      c.add(labelT)
+      const unitGap = 9 * scale
+      const unitW = iconS + unitGap + labelT.width
+      // drawLucide CENTRES its glyph box on the graphics position, so the
+      // box's centre goes at -unitW/2 + iconS/2 (box left = -unitW/2).
+      iconG.setPosition(-unitW / 2 + iconS / 2, 0)
+      labelT.setPosition(-unitW / 2 + iconS + unitGap, 0)
+
       // Interactive hit area + hover lift + press squash.
       const hit = scene.add
         .rectangle(0, 0, bw, bh, 0xffffff, 0.001)
         .setInteractive({ useHandCursor: true })
       c.add(hit)
       hit.on('pointerover', () => {
-        drawBody(fillHover)
         scene.tweens.add({ targets: c, scale: 1.04, duration: 110, ease: 'Quad.easeOut' })
       })
       hit.on('pointerout', () => {
-        drawBody(fill)
         scene.tweens.add({ targets: c, scale: 1, duration: 110, ease: 'Quad.easeOut' })
       })
       hit.on('pointerdown', () => {
@@ -376,24 +410,22 @@ export class GameOverView {
         scene.tweens.add({
           targets: c,
           scale: 1,
-          delay: SEQ.panelSpringMs * 0.6 + (localY === buttonsY2 ? 90 : 0),
+          delay: SEQ.panelSpringMs * 0.6 + (localX > 0 ? 90 : 0),
           duration: 320,
           ease: 'Back.easeOut',
         }),
       )
     }
-    mkCompactButton(
-      buttonsY1,
+    mkDoodleButton(
+      -(bw + btnGap) / 2,
       0x2d74c9,
-      0x3f86dd,
       'GO AGAIN',
       (g, s) => drawLucide(g, 'rotate-ccw', 0, 0, s),
       this.onRestart,
     )
-    mkCompactButton(
-      buttonsY2,
+    mkDoodleButton(
+      (bw + btnGap) / 2,
       0x43a047,
-      0x55b659,
       'MAIN MENU',
       (g, s) => drawLucide(g, 'house', 0, 0, s),
       this.onMenu,

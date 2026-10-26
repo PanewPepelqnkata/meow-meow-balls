@@ -88,12 +88,13 @@ export const GAME_OVER_SEQUENCE = {
   buttons: {
     /** Button height (panel-local px at scale 1). */
     height: 58,
-    /** Button width (panel-local px at scale 1). */
-    width: 220,
-    /** Vertical gap between the two buttons. */
-    gap: 22,
+    /** Button width (panel-local px at scale 1) — both buttons equal so
+     * they read as one symmetric pair about the panel centreline. */
+    width: 200,
+    /** Horizontal gap between the side-by-side button pair. */
+    gap: 18,
     /** Icon size (px at scale 1) — small, sits beside the label. */
-    iconSize: 30,
+    iconSize: 24,
     /** Corner radius. */
     radius: 16,
   },
