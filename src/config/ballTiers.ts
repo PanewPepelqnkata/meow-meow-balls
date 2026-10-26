@@ -59,7 +59,7 @@ export const BALL_TIERS: readonly BallTier[] = [
   { tier: 4, radius: 76, color: 0xf44336, shade: 0xc22f24, score: 16, face: 'happy', playable: true, physics: basePhysics },
   { tier: 5, radius: 90, color: 0xff9800, shade: 0xd47a00, score: 32, face: 'cheeky', playable: true, physics: basePhysics },
   { tier: 6, radius: 106, color: 0xffeb3b, shade: 0xe0c200, score: 64, face: 'calm', playable: true, physics: basePhysics },
-  { tier: 7, radius: 130, color: 0xff8c2e, shade: 0xd65f0a, score: 128, face: 'sleepy', playable: true },
+  { tier: 7, radius: 130, color: 0xffffff, shade: 0xd65f0a, score: 128, face: 'sleepy', playable: true },
   // Phase 2.13.0 (spec §10): tiers 8 and 9 are REAL merge destinations now —
   // the cycling RGB slime and the shark slime. `playable: true` lets a
   // T7 pair merge into T8 and a T8 pair into T9 (drops spawn tiers 1–4 via
