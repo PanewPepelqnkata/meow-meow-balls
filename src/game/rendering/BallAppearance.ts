@@ -1299,79 +1299,47 @@ export function drawCrabBall(
     const wave = side < 0 ? clawWave : clawWaveR
     const droop = panic * r * 0.25 // fear drops the claws
     const tremble = Math.sin(now * 0.05) * r * 0.02 * panic
-    // The arm root (behind the shell's upper side).
-    const rootX = cx + side * r * 0.62
-    const rootY = cy - r * 0.3
-    // The arm's mid joint — out and up.
-    const midX = rootX + side * r * 0.38
-    const midY = rootY - r * 0.42 - wave * r * 0.14 * (1 - panic * 0.5) - droop * 0.4 + tremble
-    // The pincer base — further out and slightly up from the mid joint.
-    const baseX = midX + side * r * 0.3
-    const baseY = midY - r * 0.08 - wave * r * 0.06 + tremble * 0.5
-
-    // ARM upper segment: fat filled quad (root → mid), rounded corners
-    // via quadFrom on the outer edge for a smooth hand-drawn feel.
-    const armW1 = r * 0.13
-    const armW2 = r * 0.1
+    // ELEMENT 1 — THE HAND (arm): ONE fat filled tapered shape from the
+    // shell's upper side out to the claw base. Ink-outlined.
+    const rootX = cx + side * r * 0.6
+    const rootY = cy - r * 0.28
+    const clawBaseX = rootX + side * r * 0.48 - wave * r * 0.06 * side
+    const clawBaseY = rootY - r * 0.35 - wave * r * 0.1 * (1 - panic * 0.5) + droop * 0.3 + tremble
+    const armBaseW = r * 0.14
+    const armClawW = r * 0.1
     g.fillStyle(pal.claw, 1)
     g.beginPath()
-    g.moveTo(rootX - side * armW1 * 0.45, rootY - armW1)
-    quadFrom(g, rootX - side * armW1 * 0.45, rootY - armW1, midX - side * armW2 * 0.7, midY - armW2 * 1.4, midX - side * armW2 * 0.6, midY - armW2)
-    g.lineTo(midX + side * armW2 * 0.6, midY + armW2)
-    g.lineTo(rootX + side * armW1 * 0.6, rootY + armW1 * 0.6)
+    g.moveTo(rootX - side * armBaseW * 0.5, rootY - armBaseW)
+    quadFrom(g, rootX - side * armBaseW * 0.5, rootY - armBaseW, rootX + side * r * 0.08, rootY - r * 0.52, clawBaseX - side * armClawW * 0.5, clawBaseY - armClawW)
+    g.lineTo(clawBaseX + side * armClawW * 0.5, clawBaseY + armClawW)
+    g.lineTo(rootX + side * armBaseW * 0.7, rootY + armBaseW * 0.5)
     g.closePath()
     g.fillPath()
-    g.lineStyle(ink * 0.75, INK, 1)
-    g.strokePath()
-    // ARM lower segment (mid → pincer base).
-    g.fillStyle(pal.claw, 1)
-    g.beginPath()
-    g.moveTo(midX - side * armW2 * 0.5, midY - armW2)
-    g.lineTo(baseX - side * r * 0.06, baseY - r * 0.07)
-    g.lineTo(baseX + side * r * 0.06, baseY + r * 0.07)
-    g.lineTo(midX + side * armW2 * 0.5, midY + armW2)
-    g.closePath()
-    g.fillPath()
-    g.lineStyle(ink * 0.75, INK, 1)
+    g.lineStyle(ink * 0.85, INK, 1)
     g.strokePath()
 
-    // THE PINCER — the big claw: a fat rounded palm + two open jaws.
-    const palmR = r * 0.22
-    g.fillStyle(pal.claw, 1)
-    g.fillCircle(baseX, baseY, palmR)
-    g.lineStyle(ink * 0.9, INK, 1)
-    g.strokeCircle(baseX, baseY, palmR)
-    // UPPER jaw: a fat crescent curving up-and-inward toward the face,
-    // with a white tip accent.
-    const jawL = r * 0.36
-    const snip = 0.25 + 0.2 * Math.abs(Math.sin(now * 0.005 + side))
-    const uTipX = baseX + side * jawL * 0.55
-    const uTipY = baseY - jawL * 0.8 - snip * r * 0.06
+    // ELEMENT 2 — THE CLAW: ONE fat crescent shape (the pincer), drawn as
+    // a single closed path — the outer edge curves from the claw base
+    // out to the tip, and the inner edge curves back with a notch (the
+    // pincer opening). Ink-outlined, with a white tip accent.
+    const clawLen = r * 0.42
+    const clawW = r * 0.14
+    const tipX = clawBaseX + side * clawLen * 0.72
+    const tipY = clawBaseY - clawLen * 0.52 - wave * r * 0.04
     g.fillStyle(pal.claw, 1)
     g.beginPath()
-    g.moveTo(baseX - side * palmR * 0.3, baseY - palmR * 0.5)
-    quadFrom(g, baseX - side * palmR * 0.3, baseY - palmR * 0.5, baseX + side * jawL * 0.5, baseY - jawL * 0.85, uTipX, uTipY)
-    quadFrom(g, uTipX, uTipY, baseX + side * jawL * 0.62, baseY - jawL * 0.42, baseX + side * palmR * 0.4, baseY - palmR * 0.1)
+    // Outer edge: from the claw base's bottom, curving out to the tip.
+    g.moveTo(clawBaseX - side * clawW * 0.5, clawBaseY + clawW * 0.4)
+    quadFrom(g, clawBaseX - side * clawW * 0.5, clawBaseY + clawW * 0.4, clawBaseX + side * clawLen * 0.4, clawBaseY + clawLen * 0.18, tipX, tipY)
+    // Inner edge: back from the tip with a notch (the pincer opening).
+    quadFrom(g, tipX, tipY, clawBaseX + side * clawLen * 0.28, clawBaseY - clawLen * 0.12, clawBaseX + side * clawW * 0.3, clawBaseY - clawW * 0.3)
     g.closePath()
     g.fillPath()
-    g.lineStyle(ink * 0.8, INK, 1)
+    g.lineStyle(ink * 0.85, INK, 1)
     g.strokePath()
-    // LOWER jaw: a fatter crescent curving out-and-down.
-    const lTipX = baseX + side * jawL * 0.72
-    const lTipY = baseY - jawL * 0.18 + snip * r * 0.04
-    g.fillStyle(pal.claw, 1)
-    g.beginPath()
-    g.moveTo(baseX - side * palmR * 0.2, baseY + palmR * 0.5)
-    quadFrom(g, baseX - side * palmR * 0.2, baseY + palmR * 0.5, baseX + side * jawL * 0.55, baseY + jawL * 0.28, lTipX, lTipY)
-    quadFrom(g, lTipX, lTipY, baseX + side * jawL * 0.68, baseY - jawL * 0.05, baseX + side * palmR * 0.45, baseY + palmR * 0.1)
-    g.closePath()
-    g.fillPath()
-    g.lineStyle(ink * 0.8, INK, 1)
-    g.strokePath()
-    // White tip accents on both jaws.
+    // White tip accent.
     g.fillStyle(pal.belly, 0.95)
-    g.fillCircle(uTipX, uTipY, r * 0.05)
-    g.fillCircle(lTipX, lTipY, r * 0.05)
+    g.fillCircle(tipX - side * r * 0.02, tipY - r * 0.01, r * 0.05)
   }
 
   // ---- THE WALKING LEGS — three thin pointed legs per side, angled
