@@ -1,5 +1,13 @@
 import Phaser from 'phaser'
 import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK } from '../rendering/BallAppearance'
+import {
+  MACHINE_DRAW_ORDER,
+  MACHINE_UNIT_PATHS,
+  drawMachineFills,
+  pathLength,
+  strokeProgressive,
+  totalDrawLength,
+} from '../rendering/MachineArt'
 import { getTier } from '../../config/ballTiers'
 
 /**
@@ -151,11 +159,11 @@ export class StartIntroScene extends Phaser.Scene {
       ;(window as unknown as { __brIntroPhase?: string }).__brIntroPhase = p
     }
 
-    /** Ball phase + outro. Runs from sweep-in completion OR directly on a
+    /** Machine phase + outro. Runs from sweep-in completion OR directly on a
      * startClosed boot (sweep already played in TitleScene). */
     const runBallPhase = (): void => {
       // ---- the cover is now FULLY CLOSED --------------------------------
-      setPhase('ball')
+      setPhase('machine')
       // ---- gameplay boots UNDER the closed ring (heavy frame hidden) --
       this.startGameplay()
       // Stop the menu AFTER the gameplay scenes are revealed: both render
@@ -163,44 +171,207 @@ export class StartIntroScene extends Phaser.Scene {
       // (TitleScene normally already stopped itself post-handoff; this
       // guard covers the legacy open-launch path.)
       if (this.scene.isActive('TitleScene')) this.scene.stop('TitleScene')
-      // ---- scared ball pops in the middle ------------------------------
-      const tier1 = getTier(1)
-      const ballR = Math.max(innerR * 0.55, (tier1?.radius ?? 44) * 0.62)
-      const ball = this.add.graphics().setDepth(2)
-      // The AUTHENTIC max-scared slime: shared look pipeline (ballLookFor)
-      // + restContour silhouette + drawBallFace at panic 1 (critical:
-      // eyes x1.62, dilated-shrunk pupils, trembling jitter boosted
-      // criticalShakeBoost). Deterministic seed — same character every
-      // intro.
-      const look = ballLookFor(1, 20260222)
-      const contour = restContour(look, ballR, cx, cy, 40)
-      const face = (): void => {
-        ball.clear()
-        ball.fillStyle(tier1?.color ?? 0x4fc3f7, 1)
-        ball.fillPoints(contour.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)
-        ball.lineStyle(ballOutlineWidth(ballR), INK, 1)
-        ball.strokePoints(contour.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true, true)
-        drawBallFace(ball, look, { x: cx, y: cy }, ballR, 1, {
-          gaze: { x: 0, y: -1 },
-          panic: 1, // MAX scared — the whole point of this ball
-        })
-        // sweat drops (two, alternating alpha) — drawn by the intro, the
-        // in-game face system doesn't have them.
-        const sweatA = 0.55 + Math.sin(this.time.now * 0.014) * 0.35
-        ball.fillStyle(0x9edbff, sweatA)
-        ball.fillCircle(cx - ballR * 0.98, cy - ballR * 0.5, ballR * 0.13)
-        ball.fillCircle(cx + ballR * 1.02, cy - ballR * 0.28, ballR * 0.11)
-      }
-      face()
 
-      // pop-in: scale from 0 with a back ease
-      ball.setScale(0)
+      // ---- the gumball machine draws itself -----------------------------
+      // The menu machine's unit-space outlines redraw progressively
+      // (uiverse giant-bird-69 read: lines sweep on, then color pops).
+      // ONE Graphics layer for the progressive strokes + ONE for fills;
+      // both redraw only from tweens/timers (the iOS per-frame-viewport-
+      // redraw class stays out; the whole art is a ~300px element).
+      const h = Math.min(vh * 0.62, vw * 0.8) // machine display height
+      const mw = h / 1.3 // machine display width (design box 100 × 130)
+      const u = mw / 100 // unit scale
+      const mx = cx - mw / 2 // machine box top-left
+      const my = cy - vh * 0.02 - h / 2
+      const machineC = this.add.container(mx, my).setDepth(2)
+
+      const fillG = this.add.graphics() // fills + bulbs (color layer)
+      const lineG = this.add.graphics() // the progressive ink strokes
+      machineC.add(fillG)
+      machineC.add(lineG)
+      lineG.setScale(u) // strokes drawn in UNIT space, scaled by u
+
+      // Fills fade in per group ~200ms after that group's outline lands.
+      const alphaMap: Record<string, number> = {}
+      const drawFills = (): void => {
+        fillG.clear()
+        drawMachineFills(fillG, u, alphaMap)
+      }
+      // Outline groups → fill-layer group keys (band/pinstripe/flap handle
+      // are strokes only; they inherit their part's fill).
+      const fillGroupOf: Record<string, string> = {
+        shadow: 'shadow',
+        base: 'base',
+        band: 'base',
+        collar: 'collar',
+        glass: 'glass',
+        chute: 'chute',
+        flap: 'chute',
+        flapHandle: 'chute',
+        coinSlot: 'coinSlot',
+        knob: 'knob',
+        knobInner: 'knob',
+        footL: 'feet',
+        footR: 'feet',
+        pinstripe: '',
+        sheen1: '',
+        sheen2: '',
+        sheen3: '',
+        sticker: 'sticker',
+        sparkle1: 'sparkle',
+        sparkle2: 'sparkle',
+      }
+      // When `key`'s outline segment completes, tween its fill group in.
+      const scheduleFill = (key: string): void => {
+        const grp = fillGroupOf[key]
+        if (!grp || alphaMap[grp] !== undefined) return
+        alphaMap[grp] = 0
+        const target: Record<string, number> = {}
+        target[grp] = 1
+        this.tweens.add({
+          targets: alphaMap,
+          props: target,
+          duration: 200,
+          ease: 'Quad.easeOut',
+          onUpdate: drawFills,
+        })
+      }
+
+      // The draw-on tween: t 0→1 over the whole outline length.
+      const totalLen = totalDrawLength(MACHINE_DRAW_ORDER, MACHINE_UNIT_PATHS)
+      // Fire each group's fill-in the first time the draw passes it.
+      const fillPassed = (t: number): void => {
+        let acc = 0
+        for (const k of MACHINE_DRAW_ORDER) {
+          const len = pathLength(MACHINE_UNIT_PATHS[k] ?? { pts: [], closed: false })
+          if (acc + len >= t * totalLen) return
+          acc += len
+          scheduleFill(k)
+        }
+      }
+      const drawState = { t: 0 }
+      const drawLines = (): void => {
+        lineG.clear()
+        strokeProgressive(
+          lineG,
+          MACHINE_UNIT_PATHS,
+          MACHINE_DRAW_ORDER,
+          drawState.t * totalLen,
+          INK,
+          Math.max(2.2, u * 0.55) / u, // width in unit space (Graphics is u-scaled)
+        )
+      }
+      drawLines()
       this.tweens.add({
-        targets: ball,
-        scale: 1,
-        duration: 380,
-        ease: 'Back.easeOut',
+        targets: drawState,
+        t: 1,
+        duration: 3200,
+        ease: 'Cubic.easeInOut',
+        onUpdate: () => {
+          drawLines()
+          fillPassed(drawState.t)
+        },
+        onComplete: () => {
+          drawLines()
+          MACHINE_DRAW_ORDER.forEach(scheduleFill)
+          // The marquee bulbs flash in LAST, with their candy colors.
+          alphaMap.bulbs = 0
+          this.tweens.add({
+            targets: alphaMap,
+            bulbs: 1,
+            duration: 220,
+            ease: 'Quad.easeOut',
+            onUpdate: drawFills,
+          })
+          setPhase('balls') // the draw-on is done; the cast pops next
+        },
       })
+
+      // ---- the gumball cast pops in after the draw-on -------------------
+      // Shared appearance pipeline — the SAME characters as the menu pile
+      // (menu seeds: 4242 + tier·7), same unit coords, drawn at rest with
+      // a mild panic wobble (they've been shaken around in there).
+      const castG = this.add.graphics()
+      machineC.add(castG)
+      const pile: Array<{ tier: number; ux: number; uy: number; ur: number; blink?: boolean }> = [
+        { tier: 4, ux: 40, uy: 50, ur: 8.5 },
+        { tier: 5, ux: 60, uy: 50, ur: 8 },
+        { tier: 2, ux: 41, uy: 43, ur: 7.5 },
+        { tier: 3, ux: 55, uy: 43, ur: 8.5 },
+        { tier: 1, ux: 34, uy: 33, ur: 6.5 },
+        { tier: 6, ux: 50, uy: 33, ur: 9.5, blink: true },
+        { tier: 2, ux: 65, uy: 34, ur: 7 },
+        { tier: 3, ux: 44, uy: 21, ur: 6.5 },
+        { tier: 4, ux: 57, uy: 22, ur: 6.5 },
+        { tier: 7, ux: 51, uy: 13, ur: 5.5 },
+      ]
+      const cast = pile.map((p) => {
+        const r = p.ur * u
+        return {
+          tier: p.tier,
+          cx: p.ux * u,
+          cy: p.uy * u,
+          r,
+          blink: p.blink === true,
+          look: ballLookFor(p.tier, 4242 + p.tier * 7),
+          contour: restContour(ballLookFor(p.tier, 4242 + p.tier * 7), r, p.ux * u, p.uy * u, 40),
+          scale: 0,
+        }
+      })
+      // Ball painter: tier fill + rest contour + ink outline + face. All
+      // balls share ONE Graphics (redrawn only from the pop tweens and the
+      // 33ms timer while the machine is on screen). The tier-6 star's
+      // `blink` closes its eyes every ~2.4s for 140ms (menu cast behavior).
+      // NOTE: `drawCast` is a function declaration — hoisted so the pop
+      // tweens below can reference it before its lexical position.
+      let starClosed = false
+      function drawCast(): void {
+        castG.clear()
+        for (const b of cast) {
+          if (b.scale <= 0) continue
+          const t = getTier(b.tier)
+          if (!t) continue
+          const s = b.scale
+          const pts = b.contour.map((p) => new Phaser.Math.Vector2(
+            b.cx + (p.x - b.cx) * s,
+            b.cy + (p.y - b.cy) * s,
+          ))
+          castG.fillStyle(t.color, 1)
+          castG.fillPoints(pts, true)
+          castG.lineStyle(ballOutlineWidth(b.r) * s, INK, 1)
+          castG.strokePoints(pts, true, true)
+          // The star's blink: closed eyes via a squashed look (the menu's
+          // drawBallIcon trick), slight panic for the just-shaken look.
+          const faceLook = b.blink && starClosed
+            ? { ...b.look, eyeH: b.look.eyeH * 0.12 }
+            : b.look
+          drawBallFace(castG, faceLook, { x: b.cx, y: b.cy }, b.r * s, s, {
+            panic: 0.25,
+          })
+        }
+      }
+      cast.forEach((b, i) => {
+        this.tweens.add({
+          targets: b,
+          scale: 1,
+          delay: 3350 + i * 80,
+          duration: 320,
+          ease: 'Back.easeOut',
+          onUpdate: () => drawCast(),
+          onComplete: () => drawCast(),
+        })
+      })
+      const blinkTimer = this.time.addEvent({
+        delay: 33,
+        loop: true,
+        callback: () => {
+          const cycle = this.time.now % 2400
+          const closed = cycle < 140
+          if (closed !== starClosed || drawState.t < 1) drawCast()
+          starClosed = closed
+        },
+      })
+
       // Legacy open path: seal in the remaining hole so the closed beat
       // ends on solid ink (startClosed boots with the seal already on).
       this.tweens.add({
@@ -210,30 +381,22 @@ export class StartIntroScene extends Phaser.Scene {
         ease: 'Quad.easeIn',
       })
 
-      // idle wobble redraw while the scared ball is on screen
-      const wobbleTimer = this.time.addEvent({
-        delay: 33,
-        loop: true,
-        callback: face,
-      })
-
-      // ---- hold, then the OUTRO: ball drops under the screen, ring
-      // reopens outward to reveal the running game -----------------------
-      this.time.delayedCall(900, () => {
-        wobbleTimer.remove()
+      // ---- hold, then the OUTRO: the machine shrinks into its chute and
+      // fades; the ring reopens outward to reveal the running game -------
+      this.time.delayedCall(3200 + cast.length * 80 + 320 + 700, () => {
+        blinkTimer.remove()
         setPhase('outro')
-        // 1. The scared ball falls out of the ring (gravity-ish accelerate
-        //    downward, slightly squashed — panic drop) and fully leaves
-        //    the screen BEFORE the ring opens.
+        // 1. The machine drops: shrink into the chute area + fall + fade —
+        //    the whole vending machine dispenses itself away.
         this.tweens.add({
-          targets: ball,
-          y: vh + ballR * 1.4,
-          scaleY: 1.12,
-          scaleX: 0.9,
-          duration: 520,
+          targets: machineC,
+          y: my + h * 0.32,
+          scale: 0.85,
+          alpha: 0,
+          duration: 300,
           ease: 'Quad.easeIn',
           onComplete: () => {
-            ball.destroy()
+            machineC.destroy()
             // 2. ONLY THEN the cover + ring edge RE-OPEN outward (reverse
             //    of the intro sweep) — the game is revealed through the
             //    growing hole.
