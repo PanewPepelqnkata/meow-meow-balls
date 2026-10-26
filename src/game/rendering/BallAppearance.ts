@@ -917,6 +917,9 @@ export function drawSharkBall(
   } else {
     g.strokeCircle(cx, cy, r)
   }
+
+
+
 }
 
 export interface PigPalette {
@@ -1310,8 +1313,8 @@ export function drawCrabBall(
     const baseY = midY - r * 0.08 - wave * r * 0.06 + tremble * 0.5
 
     // ARM upper segment: fat filled quad (root → mid).
-    const armW1 = r * 0.11
-    const armW2 = r * 0.085
+    const armW1 = r * 0.095
+    const armW2 = r * 0.075
     g.fillStyle(pal.claw, 1)
     g.beginPath()
     g.moveTo(rootX - side * armW1 * 0.4, rootY - armW1)
@@ -1335,13 +1338,13 @@ export function drawCrabBall(
     g.strokePath()
 
     // THE PINCER — the big claw: a fat rounded palm + two open jaws.
-    const palmR = r * 0.19
+    const palmR = r * 0.24
     g.fillStyle(pal.claw, 1)
     g.fillCircle(baseX, baseY, palmR)
     g.lineStyle(ink * 0.75, INK, 1)
     g.strokeCircle(baseX, baseY, palmR)
     // UPPER jaw: a fat crescent curving up-and-inward toward the face.
-    const jawL = r * 0.34
+    const jawL = r * 0.44
     const snip = 0.25 + 0.2 * Math.abs(Math.sin(now * 0.005 + side))
     const uTipX = baseX + side * jawL * 0.55
     const uTipY = baseY - jawL * 0.8 - snip * r * 0.06
@@ -1368,8 +1371,8 @@ export function drawCrabBall(
     g.strokePath()
     // White tip accents on both jaws.
     g.fillStyle(pal.belly, 0.95)
-    g.fillCircle(uTipX, uTipY, r * 0.045)
-    g.fillCircle(lTipX, lTipY, r * 0.045)
+    g.fillCircle(uTipX, uTipY, r * 0.055)
+    g.fillCircle(lTipX, lTipY, r * 0.055)
   }
 
   // ---- THE WALKING LEGS — three thin pointed legs per side, angled
@@ -1418,35 +1421,6 @@ export function drawCrabBall(
     g.fillCircle(cx + sx * r, cy + sy * r, Math.max(2, r * 0.05))
   }
 
-  // ---- THE STALK EYES — two eyes on stalks rising from the shell top,
-  // between the claws. Big white eyeballs with ink rims and gaze pupils.
-  // Fear widens them. ----
-  for (const side of [-1, 1]) {
-    const stalkX = cx + side * r * 0.22
-    const stalkBaseY = cy - r * 0.78
-    const stalkTopY = stalkBaseY - r * 0.26
-    // Stalk: thick, tapering.
-    g.lineStyle(Math.max(3, r * 0.085), pal.shell, 1)
-    g.beginPath()
-    g.moveTo(stalkX, stalkBaseY)
-    g.lineTo(stalkX, stalkTopY)
-    g.strokePath()
-    g.lineStyle(Math.max(1.5, r * 0.04), INK, 1)
-    g.strokePath()
-    // Eyeball: white + ink rim, pupil with gaze, highlight.
-    const eyeR = r * (0.16 - 0.02 * panic)
-    g.fillStyle(0xffffff, 1)
-    g.fillCircle(stalkX, stalkTopY, eyeR)
-    g.fillStyle(INK, 1)
-    const gx = (gaze?.x ?? 0) * eyeR * 0.3
-    const gy = (gaze?.y ?? 0) * eyeR * 0.3
-    g.fillCircle(stalkX + gx, stalkTopY + gy, eyeR * 0.5)
-    g.fillStyle(0xffffff, 0.9)
-    g.fillCircle(stalkX - eyeR * 0.28, stalkTopY - eyeR * 0.3, eyeR * 0.2)
-    g.lineStyle(Math.max(1.2, r * 0.035), INK, 1)
-    g.strokeCircle(stalkX, stalkTopY, eyeR)
-  }
-
   // ---- THE MOUTH — a small wavy line under the eyes. ----
   g.lineStyle(ink * 0.9, INK, 0.9)
   g.beginPath()
@@ -1471,8 +1445,43 @@ export function drawCrabBall(
   } else {
     g.strokeCircle(cx, cy, r)
   }
+
+  // ---- THE STALK EYES — drawn LAST so they sit ON TOP of the ink
+  // outline (the outline used to cover the stalks). Bigger eyeballs.
+  for (const side of [-1, 1]) {
+    const stalkX = cx + side * r * 0.22
+    const stalkBaseY = cy - r * 0.78
+    const stalkTopY = stalkBaseY - r * 0.26
+    // Stalk: thick, tapering.
+    g.lineStyle(Math.max(3, r * 0.085), pal.shell, 1)
+    g.beginPath()
+    g.moveTo(stalkX, stalkBaseY)
+    g.lineTo(stalkX, stalkTopY)
+    g.strokePath()
+    g.lineStyle(Math.max(1.5, r * 0.04), INK, 1)
+    g.strokePath()
+    // Eyeball: white + ink rim, pupil with gaze, highlight.
+    const eyeR = r * (0.19 - 0.02 * panic)
+    g.fillStyle(0xffffff, 1)
+    g.fillCircle(stalkX, stalkTopY, eyeR)
+    g.fillStyle(INK, 1)
+    const gx = (gaze?.x ?? 0) * eyeR * 0.3
+    const gy = (gaze?.y ?? 0) * eyeR * 0.3
+    g.fillCircle(stalkX + gx, stalkTopY + gy, eyeR * 0.5)
+    g.fillStyle(0xffffff, 0.9)
+    g.fillCircle(stalkX - eyeR * 0.28, stalkTopY - eyeR * 0.3, eyeR * 0.2)
+    g.lineStyle(Math.max(1.2, r * 0.035), INK, 1)
+    g.strokeCircle(stalkX, stalkTopY, eyeR)
+  }
 }
 
+
+/**
+ * The ONE tier-9 entry point for every consumer (renderer, previews,
+ * banner, overlay, claw, progression, baker): routes to the theme the
+ * run rolled — `tier9Theme()` (shark or pig, seed-derived, URL-overridable)
+ * — and lets `variant` pick the palette WITHIN that theme.
+}
 
 /**
  * The ONE tier-9 entry point for every consumer (renderer, previews,
