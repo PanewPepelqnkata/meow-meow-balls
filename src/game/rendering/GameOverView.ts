@@ -1,4 +1,5 @@
 import Phaser from 'phaser'
+import { drawLucide } from '../../ui/LucideIcon'
 import { FONT_FAMILY } from '../../ui/Typography'
 import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK } from '../rendering/BallAppearance'
 import { pressFx } from '../../ui/PressFx'
@@ -22,117 +23,6 @@ const TITLE_COLOR = '#f44336'
 const SCORE_COLOR = '#2d74c9'
 const NEW_BEST_COLOR = '#ffb300'
 
-/**
- * Lucide `RotateCcw` (GO AGAIN) — a 24-unit line icon, stroke-drawn at the
- * given size and centered on the graphics origin. White strokes with round
- * caps match Lucide's 2px/24 look.
- */
-function lucideRotateCcw(g: Phaser.GameObjects.Graphics, size: number): void {
-  const u = size / 24
-  g.lineStyle(2.4 * u, 0xffffff, 1)
-  // Arc: the circular arrow body (open at the top-right).
-  g.beginPath()
-  g.arc(0, 0.8 * u, 9.5 * u, Phaser.Math.DegToRad(-318), Phaser.Math.DegToRad(30), false)
-  g.strokePath()
-  // Arrow head at the arc's start (upper right, pointing to the gap).
-  g.fillStyle(0xffffff, 1)
-  g.fillPoints(
-    [
-      new Phaser.Math.Vector2(9.6 * u, -7.2 * u),
-      new Phaser.Math.Vector2(1.6 * u, -6.0 * u),
-      new Phaser.Math.Vector2(8.2 * u, 0.4 * u),
-    ],
-    true,
-  )
-}
-
-/**
- * Lucide `House` (MAIN MENU) — roof + body + door, line-drawn at size.
- */
-function lucideHouse(g: Phaser.GameObjects.Graphics, size: number): void {
-  const u = size / 24
-  g.lineStyle(2.4 * u, 0xffffff, 1)
-  // Roof: two diagonal strokes meeting at the apex.
-  g.beginPath()
-  g.moveTo(-10.5 * u, -1 * u)
-  g.lineTo(0, -10 * u)
-  g.lineTo(10.5 * u, -1 * u)
-  g.strokePath()
-  // Body: two side walls + floor.
-  g.beginPath()
-  g.moveTo(-8.5 * u, 0)
-  g.lineTo(-8.5 * u, 9.5 * u)
-  g.lineTo(8.5 * u, 9.5 * u)
-  g.lineTo(8.5 * u, 0)
-  g.strokePath()
-  // Door.
-  g.beginPath()
-  g.moveTo(-2.6 * u, 9.5 * u)
-  g.lineTo(-2.6 * u, 2.8 * u)
-  g.lineTo(2.6 * u, 2.8 * u)
-  g.lineTo(2.6 * u, 9.5 * u)
-  g.strokePath()
-}
-
-/**
- * Lucide `Trophy` (SCORE) — cup with handles, stem and base, line-drawn
- * at size.
- */
-function lucideTrophy(g: Phaser.GameObjects.Graphics, size: number): void {
-  const u = size / 24
-  g.lineStyle(2.4 * u, 0xffffff, 1)
-  // Cup: rounded bowl.
-  g.beginPath()
-  g.moveTo(-7 * u, -10 * u)
-  g.lineTo(7 * u, -10 * u)
-  g.lineTo(7 * u, -4 * u)
-  g.arc(0, -4 * u, 7 * u, 0, Math.PI, false)
-  g.strokePath()
-  // Handles: small arcs on both sides.
-  g.beginPath()
-  g.moveTo(-7 * u, -8 * u)
-  g.arc(-9.5 * u, -7 * u, 3.2 * u, Math.PI * 0.62, Math.PI * 1.38, false)
-  g.strokePath()
-  g.beginPath()
-  g.moveTo(7 * u, -8 * u)
-  g.arc(9.5 * u, -7 * u, 3.2 * u, Math.PI * 1.62, Math.PI * 0.38, false)
-  g.strokePath()
-  // Stem + base.
-  g.lineBetween(0, 3 * u, 0, 7.5 * u)
-  g.lineBetween(-5 * u, 9.5 * u, 5 * u, 9.5 * u)
-}
-
-/**
- * Lucide `Medal` (BEST) — a star-crowned medal on a ribbon, line-drawn
- * at size.
- */
-function lucideMedal(g: Phaser.GameObjects.Graphics, size: number): void {
-  const u = size / 24
-  g.lineStyle(2.4 * u, 0xffffff, 1)
-  // Ribbon: two legs from the top down to the medal.
-  g.beginPath()
-  g.moveTo(-7.5 * u, -11 * u)
-  g.lineTo(-4.5 * u, -3.5 * u)
-  g.strokePath()
-  g.beginPath()
-  g.moveTo(7.5 * u, -11 * u)
-  g.lineTo(4.5 * u, -3.5 * u)
-  g.strokePath()
-  // Medal disc.
-  g.strokeCircle(0, 3 * u, 7 * u)
-  // Star inside: a 5-point polyline.
-  const pts: Phaser.Math.Vector2[] = []
-  for (let i = 0; i < 10; i++) {
-    const a = Phaser.Math.DegToRad(-90 + i * 36)
-    const rr = (i % 2 === 0 ? 4.4 : 1.9) * u
-    pts.push(new Phaser.Math.Vector2(Math.cos(a) * rr, 3 * u + Math.sin(a) * rr))
-  }
-  g.beginPath()
-  g.moveTo(pts[0]!.x, pts[0]!.y)
-  for (let i = 1; i < pts.length; i++) g.lineTo(pts[i]!.x, pts[i]!.y)
-  g.closePath()
-  g.strokePath()
-}
 
 export class GameOverView {
   private objs: Phaser.GameObjects.GameObject[] = []
@@ -287,7 +177,7 @@ export class GameOverView {
     const scoreLabelC = scene.add.container(0, scoreLabelY)
     panel.add(scoreLabelC)
     const scoreIcon = scene.add.graphics()
-    lucideTrophy(scoreIcon, 24 * scale)
+    drawLucide(scoreIcon, 'trophy', 0, 0, 24 * scale, 0x4fc3f7)
     scoreLabelC.add(scoreIcon)
     const scoreLabelT = scene.add
       .text(0, 0, 'SCORE', {
@@ -335,7 +225,7 @@ export class GameOverView {
     const bestRowC = scene.add.container(0, bestY)
     panel.add(bestRowC)
     const bestIcon = scene.add.graphics()
-    lucideMedal(bestIcon, 26 * scale)
+    drawLucide(bestIcon, 'medal', 0, 0, 26 * scale, 0xffb300)
     bestRowC.add(bestIcon)
     const bestText = scene.add
       .text(0, 0, `BEST  ${best.toLocaleString()}`, {
@@ -497,7 +387,7 @@ export class GameOverView {
       0x2d74c9,
       0x3f86dd,
       'GO AGAIN',
-      lucideRotateCcw,
+      (g, s) => drawLucide(g, 'rotate-ccw', 0, 0, s),
       this.onRestart,
     )
     mkCompactButton(
@@ -505,7 +395,7 @@ export class GameOverView {
       0x43a047,
       0x55b659,
       'MAIN MENU',
-      lucideHouse,
+      (g, s) => drawLucide(g, 'house', 0, 0, s),
       this.onMenu,
     )
 

@@ -1,4 +1,5 @@
 import Phaser from 'phaser'
+import { drawLucide } from '../../ui/LucideIcon'
 import { gameBus } from '../events/gameBus'
 import { CartoonButton } from '../../ui/CartoonButton'
 import { hudText } from '../../ui/Typography'
@@ -1738,36 +1739,16 @@ function drawBallIcon(
 /** Menu icon painters (white, same style language as the HUD Icons) — only
  * the flat panel buttons still use icons. */
 const Icons = {
+  /** BACK (Lucide `arrow-left`). */
   back(g: Phaser.GameObjects.Graphics, cx: number, cy: number, s: number): void {
-    const u = s / 100
-    g.lineStyle(6 * u, 0xffffff, 1)
-    g.beginPath()
-    g.moveTo(8 * u + cx, -14 * u + cy)
-    g.lineTo(-8 * u + cx, cy)
-    g.lineTo(8 * u + cx, 14 * u + cy)
-    g.strokePath()
+    drawLucide(g, 'arrow-left', cx, cy, s * 0.92)
   },
+  /** Theme picker (Lucide `paintbrush`). */
   palette(g: Phaser.GameObjects.Graphics, cx: number, cy: number, s: number): void {
-    const u = s / 100
-    g.fillStyle(0xffffff, 1)
-    g.fillCircle(cx, cy, 12 * u)
-    const holes: Array<[number, number, number]> = [
-      [-5, -5, 3],
-      [5, -3, 3],
-      [0, 4, 3],
-    ]
-    for (const [ox, oy, r] of holes) {
-      g.fillStyle(0x51566b, 1)
-      g.fillCircle(ox * u + cx, oy * u + cy, r * u)
-    }
+    drawLucide(g, 'paintbrush', cx, cy, s * 0.92)
   },
+  /** Reset progress (Lucide `trash`). */
   trash(g: Phaser.GameObjects.Graphics, cx: number, cy: number, s: number): void {
-    const u = s / 100
-    g.lineStyle(5 * u, 0xffffff, 1)
-    g.strokeRect(-12 * u + cx, -8 * u + cy, 24 * u, 24 * u)
-    g.lineBetween(-16 * u + cx, -14 * u + cy, 16 * u + cx, -14 * u + cy)
-    g.lineBetween(-6 * u + cx, -20 * u + cy, 6 * u + cx, -20 * u + cy)
-    g.lineBetween(-6 * u + cx, -20 * u + cy, -6 * u + cx, -14 * u + cy)
-    g.lineBetween(6 * u + cx, -20 * u + cy, 6 * u + cx, -14 * u + cy)
+    drawLucide(g, 'trash', cx, cy, s * 0.92)
   },
 }

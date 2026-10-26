@@ -1,4 +1,5 @@
 import Phaser from 'phaser'
+import { drawLucide } from './LucideIcon'
 import { hudText } from './Typography'
 import { pressFx } from './PressFx'
 
@@ -287,101 +288,40 @@ export class CartoonButton {
 
 /** White outlined icon painters shared by ability buttons. */
 export const Icons = {
-  /** Raise Walls: two wall slabs + upward arrows. */
+  /** Raise Walls (Lucide `brick-wall`): the wall the ability builds. */
   raise(g: Phaser.GameObjects.Graphics, cx: number, cy: number, s: number): void {
-    void cx
-    void cy
-    const u = s / 100
-    g.lineStyle(6 * u, 0xffffff, 1)
-    g.lineBetween(-16 * u, -18 * u, -16 * u, 18 * u)
-    g.lineBetween(16 * u, -18 * u, 16 * u, 18 * u)
-    g.beginPath()
-    g.moveTo(0, -26 * u)
-    g.lineTo(-10 * u, -12 * u)
-    g.lineTo(10 * u, -12 * u)
-    g.closePath()
-    g.fillStyle(0xffffff, 1)
-    g.fillPoints(
-      [new Phaser.Math.Vector2(0, -26 * u), new Phaser.Math.Vector2(-10 * u, -12 * u), new Phaser.Math.Vector2(10 * u, -12 * u)],
-      true,
-    )
-    g.lineStyle(4 * u, 0xffffff, 1)
-    g.lineBetween(0, -12 * u, 0, 6 * u)
+    drawLucide(g, 'brick-wall', cx, cy, s * 0.92)
   },
-  /** Swap: two curved arrows. */
+  /** Swap (Lucide `arrow-right-left`): two balls trading places. */
   swap(g: Phaser.GameObjects.Graphics, cx: number, cy: number, s: number): void {
-    void cx
-    void cy
-    const u = s / 100
-    g.lineStyle(6 * u, 0xffffff, 1)
-    g.beginPath()
-    g.arc(-8 * u, -8 * u, 16 * u, Phaser.Math.DegToRad(-40), Phaser.Math.DegToRad(150))
-    g.strokePath()
-    g.beginPath()
-    g.arc(8 * u, 8 * u, 16 * u, Phaser.Math.DegToRad(140), Phaser.Math.DegToRad(330))
-    g.strokePath()
+    drawLucide(g, 'arrow-right-left', cx, cy, s * 0.92)
   },
-  /** Shake: circle with motion strokes. */
+  /** Shake (Lucide `vibrate`): the phone-shake motion. */
   shake(g: Phaser.GameObjects.Graphics, cx: number, cy: number, s: number): void {
-    void cx
-    void cy
-    const u = s / 100
-    g.lineStyle(6 * u, 0xffffff, 1)
-    g.strokeCircle(0, 0, 16 * u)
-    for (const [dx, dy] of [[-24, -9], [24, 11], [-13, 22]] as const) {
-      g.lineBetween(dx * u, dy * u, dx * 0.55 * u, dy * 0.55 * u)
-    }
+    drawLucide(g, 'vibrate', cx, cy, s * 0.92)
   },
-  /** "?" for locked ability slots. */
-  soon(g: Phaser.GameObjects.Graphics, cx: number, _cy: number, s: number): void {
-    void cx
-    const u = s / 100
-    g.lineStyle(6 * u, 0xffffff, 1)
-    g.beginPath()
-    g.arc(0, -6 * u, 10 * u, Phaser.Math.DegToRad(190), Phaser.Math.DegToRad(40))
-    g.strokePath()
-    g.lineBetween(4 * u, 2 * u, 4 * u, 8 * u)
-    g.fillStyle(0xffffff, 1)
-    g.fillCircle(4 * u, 16 * u, 2.6 * u)
+  /** Locked slot (Lucide `circle-question-mark`). */
+  soon(g: Phaser.GameObjects.Graphics, cx: number, cy: number, s: number): void {
+    drawLucide(g, 'circle-question-mark', cx, cy, s * 0.92)
   },
-  /** Replay: circular arrow (PLAY AGAIN). */
+  /** Replay (Lucide `rotate-ccw`): PLAY AGAIN. */
   replay(g: Phaser.GameObjects.Graphics, cx: number, cy: number, s: number): void {
-    void cx
-    void cy
-    const u = s / 100
-    g.lineStyle(7 * u, 0xffffff, 1)
-    g.beginPath()
-    g.arc(0, 0, 18 * u, Phaser.Math.DegToRad(-60), Phaser.Math.DegToRad(230))
-    g.strokePath()
-    g.fillStyle(0xffffff, 1)
-    g.fillPoints(
-      [
-        new Phaser.Math.Vector2(24 * u, -18 * u),
-        new Phaser.Math.Vector2(2 * u, -22 * u),
-        new Phaser.Math.Vector2(16 * u, -4 * u),
-      ],
-      true,
-    )
+    drawLucide(g, 'rotate-ccw', cx, cy, s * 0.92)
   },
-  /** Home: little house (MAIN MENU). */
+  /** Home (Lucide `house`): MAIN MENU. */
   home(g: Phaser.GameObjects.Graphics, cx: number, cy: number, s: number): void {
-    void cx
-    void cy
-    const u = s / 100
-    g.fillStyle(0xffffff, 1)
-    // Roof.
-    g.fillPoints(
-      [
-        new Phaser.Math.Vector2(0, -20 * u),
-        new Phaser.Math.Vector2(-20 * u, 0),
-        new Phaser.Math.Vector2(20 * u, 0),
-      ],
-      true,
-    )
-    // Body.
-    g.fillRect(-13 * u, 0, 26 * u, 18 * u)
-    // Door.
-    g.fillStyle(0x2d5016, 1)
-    g.fillRect(-5 * u, 6 * u, 10 * u, 12 * u)
+    drawLucide(g, 'house', cx, cy, s * 0.92)
+  },
+  /** BACK (Lucide `arrow-left`). */
+  back(g: Phaser.GameObjects.Graphics, cx: number, cy: number, s: number): void {
+    drawLucide(g, 'arrow-left', cx, cy, s * 0.92)
+  },
+  /** Theme picker (Lucide `paintbrush`). */
+  palette(g: Phaser.GameObjects.Graphics, cx: number, cy: number, s: number): void {
+    drawLucide(g, 'paintbrush', cx, cy, s * 0.92)
+  },
+  /** Reset progress (Lucide `trash`). */
+  trash(g: Phaser.GameObjects.Graphics, cx: number, cy: number, s: number): void {
+    drawLucide(g, 'trash', cx, cy, s * 0.92)
   },
 }
