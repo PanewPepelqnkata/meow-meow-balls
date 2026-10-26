@@ -1047,17 +1047,7 @@ export class BackgroundTheme {
     scene.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this)
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       scene.scale.off(Phaser.Scale.Events.RESIZE, this.handleResize, this)
-      this.destroyMorphLayer()
     })
-  }
-
-  /** Tear down the polymorph RT + blob Graphics (resize/shutdown). */
-  private destroyMorphLayer(): void {
-    this.morphRT?.destroy()
-    this.morphRT = null
-    this.morphG?.destroy()
-    this.morphG = null
-    this.morphBlobs = []
   }
 
   /**
@@ -1157,9 +1147,6 @@ export class BackgroundTheme {
     this.lastResizeW = cssW
     this.lastResizeH = cssH
     this.lastResizeDpr = dpr
-    // A resize invalidates the morph RT's viewport-sized snapshot; tear
-    // it down (the crossfade's alpha path still completes cleanly).
-    if (this.morphRT) this.destroyMorphLayer()
     // PERF: the timer no longer bakes. Previously BOTH this debounced
     // callback AND update()'s pending-net ran the full rebuild — the boot
     // sequence baked every full-screen texture TWICE (double the GPU
@@ -1284,72 +1271,14 @@ export class BackgroundTheme {
 
     this.transitionTween?.stop()
     this.gradImage?.setVisible(false)
-    // ---- POLYMORPH: snapshot the outgoing art into an RT and erase it
-    // with growing organic blobs over the whole transition. The incoming
-    // art (baked above) shows through the holes — the scenery dissolves
-    // like a liquid rather than fading linearly.
-    this.destroyMorphLayer()
-    const fromImg = this.artImages[this.fromTheme]
-    // Erase tick: progressive blob holes in the outgoing-art snapshot.
-    // A no-op unless the morph layer exists (no baked from-art).
-    const eraseTick = (): void => {
-      if (!this.morphRT || !this.morphG) return
-      const t = this.transitionProgress
-      const vw = this.morphRT.width
-      const vh = this.morphRT.height
-      this.morphG.clear()
-      for (const b of this.morphBlobs) {
-        const local = Math.min(1, Math.max(0, (t - b.delay) / (1 - b.delay)))
-        const grow = 1 - Math.pow(1 - local, 3) // Cubic.easeOut
-        const rad = b.r * Math.max(vw, vh) * grow
-        if (rad <= 0) continue
-        this.morphG.fillStyle(0xffffff, 1)
-        this.morphG.fillCircle(b.x * vw, b.y * vh, rad)
-        this.morphG.fillCircle(b.x * vw + rad * 0.45, b.y * vh - rad * 0.32, rad * 0.72)
-        this.morphG.fillCircle(b.x * vw - rad * 0.38, b.y * vh + rad * 0.36, rad * 0.66)
-      }
-      this.morphRT.erase(this.morphG)
-    }
-    if (fromImg && fromImg.visible) {
-      const z = this.scene.game.scale.displayScale.x || 1
-      const vw = this.scene.scale.width / z
-      const vh = this.scene.scale.height / z
-      this.morphRT = this.scene.add.renderTexture(0, 0, Math.ceil(vw), Math.ceil(vh)).setOrigin(0, 0).setDepth(-96)
-      this.morphRT.draw(fromImg, 0, 0)
-      // Blob layout (unit viewport space): 16 seeded centers — the union
-      // of their grown radii covers the screen at t=1 (radii chosen so
-      // each center's reach spans ≥ its Voronoi-ish cell diagonal).
-      const rng = seeded(20260299)
-      const blobs: Array<{ x: number; y: number; r: number; delay: number }> = []
-      const cols = 4
-      const rows = 4
-      for (let gy = 0; gy < rows; gy++) {
-        for (let gx = 0; gx < cols; gx++) {
-          const cx = (gx + 0.5) / cols + (rng() - 0.5) * 0.16
-          const cy = (gy + 0.5) / rows + (rng() - 0.5) * 0.16
-          // Cell diagonal in viewport units (blob reach must span it).
-          const cellDiag = Math.hypot(1 / cols, 1 / rows)
-          blobs.push({
-            x: cx,
-            y: cy,
-            r: cellDiag * (0.85 + rng() * 0.45),
-            delay: rng() * 0.35,
-          })
-        }
-      }
-      this.morphBlobs = blobs
-      this.morphG = this.scene.add.graphics().setVisible(false)
-      eraseTick()
-    }
+    // Simple crossfade: both partner arts are baked (above); the tween
+    // only blends their alphas via applyCloudAlphas on each tick.
     this.transitionTween = this.scene.tweens.add({
       targets: this,
       transitionProgress: 1,
       duration,
       ease: 'Sine.easeInOut',
       onUpdate: () => {
-        // The polymorph erase (a no-op when the outgoing art had no
-        // baked Image — the alpha crossfade still completes).
-        eraseTick()
         this.applyCloudAlphas()
         // PERF: no drawGrid() per tick. The grid bake depends only on
         // viewport dims + spaceActive — both constant during a crossfade —
@@ -1370,7 +1299,6 @@ export class BackgroundTheme {
         this.toTheme = null
         this.transitionProgress = 0
         this.transitionTween = undefined
-        this.destroyMorphLayer()
         this.drawBackground()
         this.drawGrid()
         this.pruneArtTextures()
@@ -1662,16 +1590,6 @@ export class BackgroundTheme {
 
   /** Baked static art per theme (depth -99, screen-space). */
   private artImages: Partial<Record<ThemeName, Phaser.GameObjects.Image>> = {}
-
-  /** POLYMORPH transition layer: a RenderTexture snapshot of the OUTGOING
-   * theme's art (depth -96: above the from-art -99, below the clouds -95).
-   * During a theme change the blob animator erases growing organic holes
-   * through it, so the incoming art is revealed through a liquid metaball
-   * dissolve — not a flat alpha curtain. */
-  private morphRT: Phaser.GameObjects.RenderTexture | null = null
-  private morphG: Phaser.GameObjects.Graphics | null = null
-  /** Blob centers/radii for the active morph (unit viewport space). */
-  private morphBlobs: Array<{ x: number; y: number; r: number; delay: number }> = []
 
   private drawBackground(): void {
     // Bake every theme the current state shows, then drive visibility
