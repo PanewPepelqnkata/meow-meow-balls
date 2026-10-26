@@ -149,6 +149,7 @@ export class GameOverView {
         color: TITLE_COLOR,
         stroke: '#111111',
         strokeThickness: Math.round(9 * scale),
+      resolution: Math.min(window.devicePixelRatio || 1, 2),
       })
       .setOrigin(0.5)
     title.setShadow(0, 6 * scale, 'rgba(0,0,0,0.35)', 2, true, true)
@@ -210,6 +211,7 @@ export class GameOverView {
         color: '#4fc3f7',
         stroke: '#111111',
         strokeThickness: Math.round(4 * scale),
+      resolution: Math.min(window.devicePixelRatio || 1, 2),
       })
       .setOrigin(0, 0.5)
     scoreLabelC.add(scoreLabelT)
@@ -229,6 +231,7 @@ export class GameOverView {
         color: SCORE_COLOR,
         stroke: '#111111',
         strokeThickness: Math.round(7 * scale),
+      resolution: Math.min(window.devicePixelRatio || 1, 2),
       })
       .setOrigin(0.5)
     panel.add(scoreText)
@@ -260,6 +263,7 @@ export class GameOverView {
         color: NEW_BEST_COLOR,
         stroke: '#111111',
         strokeThickness: Math.round(4 * scale),
+      resolution: Math.min(window.devicePixelRatio || 1, 2),
       })
       .setOrigin(0, 0.5)
     bestRowC.add(bestText)
@@ -275,6 +279,7 @@ export class GameOverView {
           color: NEW_BEST_COLOR,
           stroke: '#111111',
           strokeThickness: Math.round(6 * scale),
+          resolution: Math.min(window.devicePixelRatio || 1, 2),
         })
         .setOrigin(0.5)
       banner.setShadow(0, 0, NEW_BEST_COLOR, 12 * scale, true, true)
