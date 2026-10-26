@@ -1551,6 +1551,8 @@ export class TitleScene extends Phaser.Scene {
       .image(cx, cy, IRIS_COVER_KEY)
       .setOrigin(0.5, 0.5)
       .setDepth(5000)
+      // The bake is dpr× for crispness; display at LOGICAL 2·outerR.
+      .setDisplaySize(outerR * 2, outerR * 2)
       .setScale(outerR / innerR)
     // SEAL: a full-screen ink quad UNDER the iris that fades in during
     // the final third of the sweep, filling the 55px hole. The ring

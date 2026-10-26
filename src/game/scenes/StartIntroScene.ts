@@ -65,15 +65,16 @@ export function bakeIrisCover(
   // render of that Image would throw inside the render pass, which kills
   // the Phaser game loop and the whole canvas UI with it.
   if (scene.textures.exists(key)) scene.textures.removeKey(key)
-  // dpr 1: the texture is 2·outerR square; at dpr 2+ it would exceed
-  // the iOS canvas pool for negligible sharpness gain on a moving
-  // ring. NO cream ring stroke — the user wants a plain solid cover
-  // sweeping in, no white circle (user feedback: 'remove the white
-  // circle in the animation').
+  // Baked at min(dpr, 2)× so the annulus is crisp on Retina (a dpr-1 bake
+  // magnified by the camera zoom reads pixelated on the closed sweep).
+  // Capped at 2 — same tradeoff as the render buffer: beyond that the
+  // 2·outerR square would stress the iOS canvas pool for no visible gain.
+  const dpr = Math.min(window.devicePixelRatio || 1, 2)
   const canvas = document.createElement('canvas')
-  canvas.width = size
-  canvas.height = size
+  canvas.width = size * dpr
+  canvas.height = size * dpr
   const ctx = canvas.getContext('2d')!
+  ctx.scale(dpr, dpr)
   const c = size / 2
   ctx.fillStyle = '#0e0f1c'
   ctx.beginPath()
@@ -133,6 +134,8 @@ export class StartIntroScene extends Phaser.Scene {
       .image(cx, cy, IRIS_COVER_KEY)
       .setOrigin(0.5, 0.5)
       .setDepth(-1)
+    // The bake is dpr× for crispness; display at LOGICAL 2·outerR.
+    cover.setDisplaySize(outerR * 2, outerR * 2)
     const drawCover = (holeR: number): void => {
       cover.setScale(Math.max(1e-4, holeR / innerR))
     }
@@ -316,6 +319,12 @@ export class StartIntroScene extends Phaser.Scene {
           look: ballLookFor(p.tier, 4242 + p.tier * 7),
           contour: restContour(ballLookFor(p.tier, 4242 + p.tier * 7), r, p.ux * u, p.uy * u, 40),
           scale: 0,
+          // Menu-pile bob params (assigned right after this map).
+          phase: 0,
+          speed: 0.8,
+          amp: 0,
+          drawX: undefined as number | undefined,
+          drawY: undefined as number | undefined,
         }
       })
       // Ball painter: tier fill + rest contour + ink outline + face. All
@@ -332,9 +341,14 @@ export class StartIntroScene extends Phaser.Scene {
           const t = getTier(b.tier)
           if (!t) continue
           const s = b.scale
+          // Bob offset (drawX/drawY set by the 33ms timer once popped).
+          const dx = (b.drawX ?? b.cx) - b.cx
+          const dy = (b.drawY ?? b.cy) - b.cy
+          const ccx = b.cx + dx
+          const ccy = b.cy + dy
           const pts = b.contour.map((p) => new Phaser.Math.Vector2(
-            b.cx + (p.x - b.cx) * s,
-            b.cy + (p.y - b.cy) * s,
+            ccx + (p.x - b.cx) * s,
+            ccy + (p.y - b.cy) * s,
           ))
           castG.fillStyle(t.color, 1)
           castG.fillPoints(pts, true)
@@ -345,7 +359,7 @@ export class StartIntroScene extends Phaser.Scene {
           const faceLook = b.blink && starClosed
             ? { ...b.look, eyeH: b.look.eyeH * 0.12 }
             : b.look
-          drawBallFace(castG, faceLook, { x: b.cx, y: b.cy }, b.r * s, s, {
+          drawBallFace(castG, faceLook, { x: ccx, y: ccy }, b.r * s, s, {
             panic: 0.25,
           })
         }
@@ -361,13 +375,37 @@ export class StartIntroScene extends Phaser.Scene {
           onComplete: () => drawCast(),
         })
       })
+      // Idle animation: the cast bobs exactly like the menu pile (per-ball
+      // phase/speed/amp from the same recipe), redrawn on the shared 33ms
+      // timer. drawX/drawY hold the bobbed position; pop scale respected.
+      cast.forEach((b, i) => {
+        b.phase = i * 1.7
+        b.speed = 0.8 + (i % 3) * 0.25
+        b.amp = Math.max(1.2, b.r * 0.055)
+      })
       const blinkTimer = this.time.addEvent({
         delay: 33,
         loop: true,
         callback: () => {
           const cycle = this.time.now % 2400
           const closed = cycle < 140
-          if (closed !== starClosed || drawState.t < 1) drawCast()
+          const t = this.time.now / 1000
+          let moved = false
+          for (const b of cast) {
+            if (b.scale <= 0) continue
+            const bx = b.cx + Math.sin(t * b.speed * 0.7 + b.phase * 1.7) * b.amp * 0.4
+            const by = b.cy + Math.sin(t * b.speed + b.phase) * b.amp
+            if (Math.abs(bx - b.cx) > 0.01 || Math.abs(by - b.cy) > 0.01) {
+              b.drawX = bx
+              b.drawY = by
+              moved = true
+            } else if (b.drawX !== undefined) {
+              b.drawX = bx
+              b.drawY = by
+              moved = true
+            }
+          }
+          if (moved || closed !== starClosed) drawCast()
           starClosed = closed
         },
       })
@@ -381,49 +419,46 @@ export class StartIntroScene extends Phaser.Scene {
         ease: 'Quad.easeIn',
       })
 
-      // ---- hold, then the OUTRO: the machine shrinks into its chute and
-      // fades; the ring reopens outward to reveal the running game -------
+      // ---- hold, then the OUTRO: the machine scales down into the void
+      // WHILE the ring reopens — the shrinking machine sinks into the
+      // growing hole and the game is revealed around it ---------------
       this.time.delayedCall(3200 + cast.length * 80 + 320 + 700, () => {
         blinkTimer.remove()
         setPhase('outro')
-        // 1. The machine drops: shrink into the chute area + fall + fade —
-        //    the whole vending machine dispenses itself away.
+        // The seal dissolves in overlap so the hole that reappears as the
+        // ring pulls back is pre-filled with ink — no sudden hole pop.
+        this.tweens.add({
+          targets: seal,
+          alpha: 0,
+          duration: 220,
+          delay: 260,
+          ease: 'Quad.easeOut',
+        })
+        // The machine sinks into the void: shrink toward the hole (screen
+        // centre) with a slight ease-in pull, gone by mid-open.
         this.tweens.add({
           targets: machineC,
-          y: my + h * 0.32,
-          scale: 0.85,
-          alpha: 0,
-          duration: 300,
-          ease: 'Quad.easeIn',
+          scale: 0,
+          y: my + h * 0.18,
+          alpha: { from: 1, to: 0 },
+          duration: 480,
+          ease: 'Cubic.easeIn',
+          onComplete: () => machineC.destroy(),
+        })
+        // ...while the cover reopens outward (reverse of the intro sweep)
+        // — the two animations play TOGETHER.
+        this.tweens.add({
+          targets: sweepState,
+          r: outerR,
+          duration: 560,
+          ease: 'Cubic.easeIn',
+          onUpdate: () => {
+            drawCover(sweepState.r)
+          },
           onComplete: () => {
-            machineC.destroy()
-            // 2. ONLY THEN the cover + ring edge RE-OPEN outward (reverse
-            //    of the intro sweep) — the game is revealed through the
-            //    growing hole.
-            // The seal dissolves in overlap so the hole that reappears
-            // as the ring pulls back is pre-filled with ink — no sudden
-            // hole pop, no second arc crossing the frame.
-            this.tweens.add({
-              targets: seal,
-              alpha: 0,
-              duration: 220,
-              delay: 260,
-              ease: 'Quad.easeOut',
-            })
-            this.tweens.add({
-              targets: sweepState,
-              r: outerR,
-              duration: 560,
-              ease: 'Cubic.easeIn',
-              onUpdate: () => {
-                drawCover(sweepState.r)
-              },
-              onComplete: () => {
-                cover.destroy()
-                seal.destroy()
-                this.scene.stop()
-              },
-            })
+            cover.destroy()
+            seal.destroy()
+            this.scene.stop()
           },
         })
       })
