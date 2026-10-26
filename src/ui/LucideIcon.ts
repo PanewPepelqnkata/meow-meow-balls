@@ -259,16 +259,20 @@ function plansFor(name: string): Plan[] {
 /**
  * Draw a Lucide icon onto a Phaser Graphics object.
  *
- * @param g      target graphics (stroked in `color`, white by default)
- * @param name   lucide-static icon key (e.g. 'arrow-right-left')
- * @param cx cy  centre in world space
- * @param size   rendered edge length in px (the icon fits a size×size box)
+ * @param g           target graphics (stroked in `color`, white by default)
+ * @param name        lucide-static icon key (e.g. 'arrow-right-left')
+ * @param cx cy       centre in world space
+ * @param size        rendered edge length in px (the icon fits a size×size box)
+ * @param color       stroke colour (default white)
+ * @param strokeWidth stroke width in Lucide's 24-unit space (default 2 —
+ *                    Lucide's canonical weight; 2.6+ reads chunkier at
+ *                    small HUD sizes)
  */
-export function drawLucide(g: Phaser.GameObjects.Graphics, name: string, cx: number, cy: number, size: number, color = 0xffffff): void {
+export function drawLucide(g: Phaser.GameObjects.Graphics, name: string, cx: number, cy: number, size: number, color = 0xffffff, strokeWidth = STROKE): void {
   const u = size / VIEW
   g.save()
   g.translateCanvas(cx - (VIEW / 2) * u, cy - (VIEW / 2) * u)
-  g.lineStyle(STROKE * u, color, 1)
+  g.lineStyle(strokeWidth * u, color, 1)
   for (const plan of plansFor(name)) {
     g.beginPath()
     let pen = { x: 0, y: 0 }

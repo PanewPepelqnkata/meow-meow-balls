@@ -372,6 +372,8 @@ export class GameOverView {
       c.add(body)
 
       // Icon + label centered as ONE unit: total = icon + gap + text.
+      // The icon strokes at 2.6 (Lucide's 2 is too thin next to the fat
+      // ink outline and the label's 4px stroke).
       const iconS = SEQ.buttons.iconSize * scale
       const iconG = scene.add.graphics()
       icon(iconG, iconS)
@@ -383,6 +385,7 @@ export class GameOverView {
           color: '#ffffff',
           stroke: '#111111',
           strokeThickness: Math.round(4 * scale),
+          resolution: Math.min(window.devicePixelRatio || 1, 2),
         })
         .setOrigin(0, 0.5)
       c.add(labelT)
@@ -426,14 +429,14 @@ export class GameOverView {
       -(bw + btnGap) / 2,
       0x2d74c9,
       'GO AGAIN',
-      (g, s) => drawLucide(g, 'rotate-ccw', 0, 0, s),
+      (g, s) => drawLucide(g, 'rotate-ccw', 0, 0, s, 0xffffff, 2.6),
       this.onRestart,
     )
     mkDoodleButton(
       (bw + btnGap) / 2,
       0x43a047,
       'MAIN MENU',
-      (g, s) => drawLucide(g, 'house', 0, 0, s),
+      (g, s) => drawLucide(g, 'house', 0, 0, s, 0xffffff, 2.6),
       this.onMenu,
     )
 
