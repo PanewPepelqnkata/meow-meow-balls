@@ -78,8 +78,11 @@ export class GameOverView {
     const cy = vh / 2
     // Responsive scale: the panel must fit BOTH axes with margin — on short
     // viewports (mobile landscape / squat windows) the scale shrinks so the
-    // stacked layout never clips or overlaps.
-    const scale = Math.max(0.5, Math.min(1.2, Math.min(vw / 760, (vh - 60) / 900)))
+    // stacked layout never clips or overlaps. The panel is the whole point
+    // of this screen: size it generously (the content stack is ~450 units
+    // tall inside a 520-tall card, so this still fits anything that passes
+    // the fit check below).
+    const scale = Math.max(0.5, Math.min(1.6, Math.min(vw / 620, (vh - 90) / 620)))
 
     // Soft dim — gameplay stays visible behind it.
     const dim = scene.add.rectangle(cx, vh / 2, vw, vh, 0x1a1a2e, 0.55).setDepth(60)
