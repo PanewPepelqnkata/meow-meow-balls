@@ -1299,49 +1299,77 @@ export function drawCrabBall(
     const wave = side < 0 ? clawWave : clawWaveR
     const droop = panic * r * 0.25 // fear drops the claws
     const tremble = Math.sin(now * 0.05) * r * 0.02 * panic
-    // ELEMENT 1 — THE HAND (arm): ONE fat filled tapered shape from the
-    // shell's upper side out to the claw base. The arm gets WIDER toward
-    // the claw (crab arms bulge at the claw end). Ink-outlined.
-    const rootX = cx + side * r * 0.55
+    // The arm root (behind the shell's upper side).
+    const rootX = cx + side * r * 0.62
     const rootY = cy - r * 0.3
-    const clawBaseX = rootX + side * r * 0.55 - wave * r * 0.04 * side
-    const clawBaseY = rootY - r * 0.3 - wave * r * 0.08 * (1 - panic * 0.5) + droop * 0.3 + tremble
-    const armBaseW = r * 0.09
-    const armClawW = r * 0.13
+    // The arm's mid joint — out and up.
+    const midX = rootX + side * r * 0.38
+    const midY = rootY - r * 0.42 - wave * r * 0.14 * (1 - panic * 0.5) - droop * 0.4 + tremble
+    // The pincer base — further out and slightly up from the mid joint.
+    const baseX = midX + side * r * 0.3
+    const baseY = midY - r * 0.08 - wave * r * 0.06 + tremble * 0.5
+
+    // ARM upper segment: fat filled quad (root → mid).
+    const armW1 = r * 0.11
+    const armW2 = r * 0.085
     g.fillStyle(pal.claw, 1)
     g.beginPath()
-    g.moveTo(rootX - side * armBaseW * 0.5, rootY - armBaseW)
-    quadFrom(g, rootX - side * armBaseW * 0.5, rootY - armBaseW, rootX + side * r * 0.15, rootY - r * 0.55, clawBaseX - side * armClawW * 0.5, clawBaseY - armClawW)
-    g.lineTo(clawBaseX + side * armClawW * 0.5, clawBaseY + armClawW)
-    g.lineTo(rootX + side * armBaseW * 0.7, rootY + armBaseW * 0.5)
+    g.moveTo(rootX - side * armW1 * 0.4, rootY - armW1)
+    g.lineTo(midX - side * armW2 * 0.5, midY - armW2)
+    g.lineTo(midX + side * armW2 * 0.5, midY + armW2)
+    g.lineTo(rootX + side * armW1 * 0.6, rootY + armW1 * 0.6)
     g.closePath()
     g.fillPath()
-    g.lineStyle(ink * 0.85, INK, 1)
+    g.lineStyle(ink * 0.75, INK, 1)
+    g.strokePath()
+    // ARM lower segment (mid → pincer base).
+    g.fillStyle(pal.claw, 1)
+    g.beginPath()
+    g.moveTo(midX - side * armW2 * 0.5, midY - armW2)
+    g.lineTo(baseX - side * r * 0.06, baseY - r * 0.07)
+    g.lineTo(baseX + side * r * 0.06, baseY + r * 0.07)
+    g.lineTo(midX + side * armW2 * 0.5, midY + armW2)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(ink * 0.75, INK, 1)
     g.strokePath()
 
-    // ELEMENT 2 — THE CLAW: ONE fat crescent shape (the pincer), drawn as
-    // a single closed path — the outer edge curves from the claw base
-    // out to the tip, and the inner edge curves back with a notch (the
-    // pincer opening). Ink-outlined, with a white tip accent.
-    // The claw is BIG: ~0.8r long, ~0.3r wide at the base.
-    const clawLen = r * 0.8
-    const clawW = r * 0.15
-    const tipX = clawBaseX + side * clawLen * 0.68
-    const tipY = clawBaseY - clawLen * 0.42 - wave * r * 0.03
+    // THE PINCER — the big claw: a fat rounded palm + two open jaws.
+    const palmR = r * 0.19
+    g.fillStyle(pal.claw, 1)
+    g.fillCircle(baseX, baseY, palmR)
+    g.lineStyle(ink * 0.75, INK, 1)
+    g.strokeCircle(baseX, baseY, palmR)
+    // UPPER jaw: a fat crescent curving up-and-inward toward the face.
+    const jawL = r * 0.34
+    const snip = 0.25 + 0.2 * Math.abs(Math.sin(now * 0.005 + side))
+    const uTipX = baseX + side * jawL * 0.55
+    const uTipY = baseY - jawL * 0.8 - snip * r * 0.06
     g.fillStyle(pal.claw, 1)
     g.beginPath()
-    // Outer edge: from the claw base's bottom, curving out to the tip.
-    g.moveTo(clawBaseX - side * clawW * 0.5, clawBaseY + clawW * 0.4)
-    quadFrom(g, clawBaseX - side * clawW * 0.5, clawBaseY + clawW * 0.4, clawBaseX + side * clawLen * 0.45, clawBaseY + clawLen * 0.15, tipX, tipY)
-    // Inner edge: back from the tip with a notch (the pincer opening).
-    quadFrom(g, tipX, tipY, clawBaseX + side * clawLen * 0.3, clawBaseY - clawLen * 0.08, clawBaseX + side * clawW * 0.3, clawBaseY - clawW * 0.3)
+    g.moveTo(baseX - side * palmR * 0.3, baseY - palmR * 0.5)
+    quadFrom(g, baseX - side * palmR * 0.3, baseY - palmR * 0.5, baseX + side * jawL * 0.5, baseY - jawL * 0.85, uTipX, uTipY)
+    quadFrom(g, uTipX, uTipY, baseX + side * jawL * 0.62, baseY - jawL * 0.42, baseX + side * palmR * 0.4, baseY - palmR * 0.1)
     g.closePath()
     g.fillPath()
-    g.lineStyle(ink * 0.85, INK, 1)
+    g.lineStyle(ink * 0.7, INK, 1)
     g.strokePath()
-    // White tip accent.
+    // LOWER jaw: a fatter crescent curving out-and-down.
+    const lTipX = baseX + side * jawL * 0.72
+    const lTipY = baseY - jawL * 0.18 + snip * r * 0.04
+    g.fillStyle(pal.claw, 1)
+    g.beginPath()
+    g.moveTo(baseX - side * palmR * 0.2, baseY + palmR * 0.5)
+    quadFrom(g, baseX - side * palmR * 0.2, baseY + palmR * 0.5, baseX + side * jawL * 0.55, baseY + jawL * 0.28, lTipX, lTipY)
+    quadFrom(g, lTipX, lTipY, baseX + side * jawL * 0.68, baseY - jawL * 0.05, baseX + side * palmR * 0.45, baseY + palmR * 0.1)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(ink * 0.7, INK, 1)
+    g.strokePath()
+    // White tip accents on both jaws.
     g.fillStyle(pal.belly, 0.95)
-    g.fillCircle(tipX - side * r * 0.02, tipY - r * 0.01, r * 0.05)
+    g.fillCircle(uTipX, uTipY, r * 0.045)
+    g.fillCircle(lTipX, lTipY, r * 0.045)
   }
 
   // ---- THE WALKING LEGS — three thin pointed legs per side, angled
@@ -1390,32 +1418,9 @@ export function drawCrabBall(
     g.fillCircle(cx + sx * r, cy + sy * r, Math.max(2, r * 0.05))
   }
 
-  // ---- THE MOUTH — a small frown (the crab's permanently grumpy
-  // mouthparts), centred under the eyes. ----
-  const mwY = cy + r * 0.24
-  g.lineStyle(ink * 0.9, INK, 0.9)
-  g.beginPath()
-  g.moveTo(cx - r * 0.14, mwY + r * 0.03)
-  quadFrom(g, cx - r * 0.14, mwY + r * 0.03, cx, mwY - r * 0.04, cx + r * 0.14, mwY + r * 0.03)
-  g.strokePath()
-
-  // Fear sweat: one drop at the side of the shell.
-  if (panic > 0.45) {
-    const sweat = Math.min(1, (panic - 0.45) / 0.55)
-    g.fillStyle(0x9fdcff, 0.95 * sweat)
-    g.fillCircle(cx - r * 0.6, cy - r * 0.5, r * 0.055 * (0.7 + 0.3 * sweat))
-  }
-
-  // ---- THE INK OUTLINE — the contour itself, over everything. ----
-  g.lineStyle(ballOutlineWidth(r), INK, 1)
-  if (poly && poly.length >= 3) {
-    g.strokePoints(poly as unknown as Phaser.Math.Vector2[], true, true)
-  } else {
-    g.strokeCircle(cx, cy, r)
-  }
   // ---- THE STALK EYES — two eyes on stalks rising from the shell top,
-  // between the claws. Drawn AFTER the ink outline so they sit ON TOP of
-  // it. Big white eyeballs with ink rims and gaze pupils. Fear widens.
+  // between the claws. Big white eyeballs with ink rims and gaze pupils.
+  // Fear widens them. ----
   for (const side of [-1, 1]) {
     const stalkX = cx + side * r * 0.22
     const stalkBaseY = cy - r * 0.78
@@ -1442,14 +1447,40 @@ export function drawCrabBall(
     g.strokeCircle(stalkX, stalkTopY, eyeR)
   }
 
+  // ---- THE MOUTH — a small wavy line under the eyes. ----
+  g.lineStyle(ink * 0.9, INK, 0.9)
+  g.beginPath()
+  const mwY = cy + r * 0.24
+  g.moveTo(cx - r * 0.16, mwY)
+  g.lineTo(cx - r * 0.05, mwY + r * 0.035)
+  g.lineTo(cx + r * 0.06, mwY - r * 0.02)
+  g.lineTo(cx + r * 0.16, mwY + r * 0.02)
+  g.strokePath()
 
+  // Fear sweat: one drop at the side of the shell.
+  if (panic > 0.45) {
+    const sweat = Math.min(1, (panic - 0.45) / 0.55)
+    g.fillStyle(0x9fdcff, 0.95 * sweat)
+    g.fillCircle(cx - r * 0.6, cy - r * 0.5, r * 0.055 * (0.7 + 0.3 * sweat))
+  }
+
+  // ---- THE INK OUTLINE — the contour itself, over everything. ----
+  g.lineStyle(ballOutlineWidth(r), INK, 1)
+  if (poly && poly.length >= 3) {
+    g.strokePoints(poly as unknown as Phaser.Math.Vector2[], true, true)
+  } else {
+    g.strokeCircle(cx, cy, r)
+  }
 }
+
+
 /**
  * The ONE tier-9 entry point for every consumer (renderer, previews,
  * banner, overlay, claw, progression, baker): routes to the theme the
  * run rolled — `tier9Theme()` (shark or pig, seed-derived, URL-overridable)
  * — and lets `variant` pick the palette WITHIN that theme.
  */
+
 export function drawTier9Ball(
   g: Phaser.GameObjects.Graphics,
   cx: number,
