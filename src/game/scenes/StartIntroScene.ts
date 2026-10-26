@@ -420,8 +420,9 @@ export class StartIntroScene extends Phaser.Scene {
       })
 
       // ---- hold, then the OUTRO: the machine scales down into the void
-      // WHILE the ring reopens — the shrinking machine sinks into the
-      // growing hole and the game is revealed around it ---------------
+      // WHILE the ring reopens — the machine un-draws itself (bottom-up:
+      // shadow/base first, last-drawn details last) and the balls pop out
+      // top-first, all while the hole grows --------------------------
       this.time.delayedCall(3200 + cast.length * 80 + 320 + 700, () => {
         blinkTimer.remove()
         setPhase('outro')
@@ -430,28 +431,82 @@ export class StartIntroScene extends Phaser.Scene {
         this.tweens.add({
           targets: seal,
           alpha: 0,
-          duration: 220,
-          delay: 260,
+          duration: 300,
+          delay: 200,
           ease: 'Quad.easeOut',
         })
-        // The machine sinks into the void: shrink toward the hole (screen
-        // centre) with a slight ease-in pull, gone by mid-open.
+        // UN-DRAW: the erase stroke walks the same bottom-up order as the
+        // draw-on — shadow/base/band vanish first, glass/chute next, the
+        // top details (sheens/sparkles) last. 1.4s, started with the iris.
+        const undrawState = { t: 0 }
+        const eraseLines = (): void => {
+          lineG.clear()
+          strokeProgressive(
+            lineG,
+            MACHINE_UNIT_PATHS,
+            MACHINE_DRAW_ORDER,
+            undrawState.t * totalLen,
+            INK,
+            Math.max(2.2, u * 0.55) / u,
+            1,
+            true, // erase mode
+          )
+        }
         this.tweens.add({
-          targets: machineC,
-          scale: 0,
-          y: my + h * 0.18,
-          alpha: { from: 1, to: 0 },
-          duration: 480,
-          ease: 'Cubic.easeIn',
-          onComplete: () => machineC.destroy(),
+          targets: undrawState,
+          t: 1,
+          duration: 1300,
+          ease: 'Cubic.easeInOut',
+          onUpdate: () => {
+            eraseLines()
+            // Fills fade in the SAME bottom-up order as the line erase:
+            // each group's alpha is 1 until the erase front reaches it,
+            // then ramps down across its own length.
+            const front = undrawState.t * totalLen
+            let acc = 0
+            for (const k of MACHINE_DRAW_ORDER) {
+              const grp = fillGroupOf[k]
+              if (!grp || !grp.length) {
+                acc += pathLength(MACHINE_UNIT_PATHS[k] ?? { pts: [], closed: false })
+                continue
+              }
+              const len = Math.max(1, pathLength(MACHINE_UNIT_PATHS[k] ?? { pts: [], closed: false }))
+              const vis = Math.max(0, Math.min(1, 1 - (front - acc) / len))
+              const targetA = Math.ceil(vis * 8) / 8
+              if (alphaMap[grp] !== undefined && alphaMap[grp] > targetA) {
+                alphaMap[grp] = targetA
+              }
+              acc += len
+            }
+            drawFills()
+          },
+          onComplete: () => {
+            lineG.clear()
+            fillG.clear()
+            machineC.destroy()
+          },
         })
-        // ...while the cover reopens outward (reverse of the intro sweep)
-        // — the two animations play TOGETHER.
+        // The balls pop OUT top-first (reverse pop order), starting after
+        // the erase has cleared the base — "lastly the balls".
+        ;[...cast].reverse().forEach((b, i) => {
+          this.tweens.add({
+            targets: b,
+            scale: 0,
+            delay: 500 + i * 60,
+            duration: 200,
+            ease: 'Quad.easeIn',
+            onUpdate: () => drawCast(),
+            onComplete: () => drawCast(),
+          })
+        })
+        // ...while the cover reopens outward SLOWER than the undraw — the
+        // machine vanishes inside the growing hole (the iris outlives the
+        // undraw, or the scene stop would cut the erase short).
         this.tweens.add({
           targets: sweepState,
           r: outerR,
-          duration: 560,
-          ease: 'Cubic.easeIn',
+          duration: 1500,
+          ease: 'Cubic.easeInOut',
           onUpdate: () => {
             drawCover(sweepState.r)
           },

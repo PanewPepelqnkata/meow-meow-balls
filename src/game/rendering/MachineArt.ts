@@ -307,6 +307,11 @@ export function totalDrawLength(keys: readonly string[], paths: Record<string, U
  * The canvas stroke is drawn in UNIT space and the caller scales the
  * Graphics by `u` (one `setScale(u)`), so line widths are specified in
  * unit space too (`width` in units) — the scale applies to stroke width.
+ *
+ * `erase: true` inverts the budget walk: `drawnLen` lengths are SKIPPED
+ * from the front of the key order and the remainder is stroked — the
+ * same motion reads as the machine un-drawing itself (the shadow/base
+ * vanish first, the last-drawn paths vanish last).
  */
 export function strokeProgressive(
   g: ProgressiveStroker,
@@ -316,6 +321,7 @@ export function strokeProgressive(
   color: number,
   width: number,
   alpha = 1,
+  erase = false,
 ): void {
   let budget = drawnLen
   for (const k of keys) {
@@ -323,27 +329,45 @@ export function strokeProgressive(
     if (!p) continue
     const total = pathLength(p)
     const w = (p.weight ?? 1) * width
-    if (budget <= 0) break
-    const shown = Math.min(total, budget)
-    budget -= shown
-    // Walk segments accumulating length; stroke the reached prefix.
-    const pts: Array<{ x: number; y: number }> = [p.pts[0]!]
+    // `from`/`to`: the visible length window inside this path.
+    let from = 0
+    let to = total
+    if (erase) {
+      // Erase walks the same front-to-back order: the erased prefix
+      // [0, budget) vanishes, [budget, total] stays visible.
+      if (budget >= total) {
+        budget -= total
+        continue
+      }
+      from = Math.max(0, budget)
+      budget = 0
+    } else {
+      if (budget <= 0) break
+      to = Math.min(total, budget)
+      budget -= to
+    }
+    // Walk segments accumulating length; stroke the visible window.
+    const pts: Array<{ x: number; y: number }> = []
     let acc = 0
     for (let i = 1; i < p.pts.length; i++) {
-      acc += Math.hypot(p.pts[i]!.x - p.pts[i - 1]!.x, p.pts[i]!.y - p.pts[i - 1]!.y) * (p.weight ?? 1)
-      if (acc >= shown) {
-        // Lerp the final point to land exactly on `shown`.
-        const over = acc - shown
-        const seg = Math.hypot(p.pts[i]!.x - p.pts[i - 1]!.x, p.pts[i]!.y - p.pts[i - 1]!.y)
-        const f = seg > 0 ? Math.max(0, 1 - over / (seg * (p.weight ?? 1))) : 1
-        pts.push({
-          x: p.pts[i - 1]!.x + (p.pts[i]!.x - p.pts[i - 1]!.x) * f,
-          y: p.pts[i - 1]!.y + (p.pts[i]!.y - p.pts[i - 1]!.y) * f,
-        })
-        break
-      }
-      pts.push(p.pts[i]!)
+      const segLen = Math.hypot(p.pts[i]!.x - p.pts[i - 1]!.x, p.pts[i]!.y - p.pts[i - 1]!.y) * (p.weight ?? 1)
+      const segStart = acc
+      const segEnd = acc + segLen
+      acc = segEnd
+      if (segEnd <= from) continue
+      if (segStart >= to) break
+      // Clip this segment to [from, to] with a lerp on both ends.
+      const f0 = segLen > 0 ? Math.max(0, (from - segStart) / segLen) : 0
+      const f1 = segLen > 0 ? Math.min(1, (to - segStart) / segLen) : 1
+      const x0 = p.pts[i - 1]!.x + (p.pts[i]!.x - p.pts[i - 1]!.x) * f0
+      const y0 = p.pts[i - 1]!.y + (p.pts[i]!.y - p.pts[i - 1]!.y) * f0
+      const x1 = p.pts[i - 1]!.x + (p.pts[i]!.x - p.pts[i - 1]!.x) * f1
+      const y1 = p.pts[i - 1]!.y + (p.pts[i]!.y - p.pts[i - 1]!.y) * f1
+      if (pts.length === 0) pts.push({ x: x0, y: y0 })
+      else if (pts[pts.length - 1]!.x !== x0 || pts[pts.length - 1]!.y !== y0) pts.push({ x: x0, y: y0 })
+      pts.push({ x: x1, y: y1 })
     }
+    if (pts.length < 2) continue
     g.lineStyle(w, color, alpha)
     g.strokePoints(pts, false, false)
   }
