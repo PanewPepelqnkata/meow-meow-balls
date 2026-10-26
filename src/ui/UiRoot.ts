@@ -104,6 +104,11 @@ export class UiRoot {
     this.nextBall.setNext(tier, seed)
   }
 
+  /** Drop-cooldown state: while false the Next Ball preview hides. */
+  setNextHolding(holding: boolean): void {
+    this.nextBall.setHolding(holding)
+  }
+
   markSwapUsed(): void {
     this.abilities.markSwapUsed()
   }

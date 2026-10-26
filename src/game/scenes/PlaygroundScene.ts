@@ -93,6 +93,8 @@ export class PlaygroundScene extends Phaser.Scene {
    */
   private currentBall = { tier: 1, seed: 0 }
   private nextBallState = { tier: 1, seed: 0 }
+  /** Last emitted drop-cooldown gate state (flip-only bus emission). */
+  private lastDropHolding = true
   private devScorePre: HTMLPreElement | null = null
   /** Phase 2.20 dev-only perf overlay (?perf=1) + its rolling samples. */
   private perf: PerfOverlay | null = null
@@ -762,6 +764,13 @@ export class PlaygroundScene extends Phaser.Scene {
       this.checkGameOver(delta)
       this.walls.update(this.time.now)
       this.updateClaw()
+      // Drop-cooldown gate → claw/preview visibility. Emitted on FLIP only
+      // (mirrors the walls:countdown discipline — no per-frame bus spam).
+      const holding = this.inputController.cooldownRemainingMs(this.time.now) <= 0
+      if (holding !== this.lastDropHolding) {
+        this.lastDropHolding = holding
+        gameBus.emit('state:dropHolding', { holding })
+      }
     }
     // Countdown only on change — while no Raise Walls countdown runs the
     // value is constant, and re-emitting it every frame just wakes the HUD.
@@ -932,6 +941,10 @@ export class PlaygroundScene extends Phaser.Scene {
     const ball = this.balls.spawnBall(clampedX, y, this.currentBall.tier, false, this.currentBall.seed)
     this.ballRenderer.register(ball)
     this.registeredIds.add(ball.id)
+    // The cooldown starts NOW: claw + preview drop their balls the same
+    // frame (the update-loop flip would otherwise lag one frame).
+    this.lastDropHolding = false
+    gameBus.emit('state:dropHolding', { holding: false })
     // Queue rotation: previous next becomes current; a fresh ball enters next.
     this.currentBall = { ...this.nextBallState }
     this.nextBallState = { tier: randomSpawnTier(), seed: randomSeed() }
@@ -1004,6 +1017,8 @@ export class PlaygroundScene extends Phaser.Scene {
     this.claw.setMobile(this.layoutCache?.composition === 'portrait')
     this.claw.setAim(this.inputController.aimX)
     this.claw.setBall(this.currentBall.tier, this.currentBall.seed)
+    // Empty claw during the drop cooldown — the ball reappears with it.
+    this.claw.setHolding(this.lastDropHolding)
   }
 
   /**

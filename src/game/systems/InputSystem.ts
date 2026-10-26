@@ -75,6 +75,12 @@ export class InputController {
     return target
   }
 
+  /** Milliseconds left in the drop cooldown (0 = ready), from `nowMs`. */
+  cooldownRemainingMs(nowMs: number): number {
+    const left = this.opts.cooldownMs - (nowMs - this.lastDropAtMs)
+    return Math.max(0, left)
+  }
+
   setEnabled(enabled: boolean): void {
     this.enabled = enabled
   }

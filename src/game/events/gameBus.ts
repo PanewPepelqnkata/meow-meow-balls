@@ -47,6 +47,9 @@ export interface GameEventMap {
   /** Phase 2.13.0: world → UI. A tier was discovered for the first time this
    * run (any tier ≥ 2) — the progression path unlocks its node. */
   'state:discovered': { tier: number }
+  /** World → UI. The drop-cooldown gate flipped. `holding` is false during
+   * the post-drop cooldown (claw + preview show no ball), true when ready. */
+  'state:dropHolding': { holding: boolean }
 }
 
 type Handler<K extends keyof GameEventMap> = (payload: GameEventMap[K]) => void

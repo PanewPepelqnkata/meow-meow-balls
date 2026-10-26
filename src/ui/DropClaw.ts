@@ -24,6 +24,8 @@ export class DropClaw {
   private tier = 1
   private seed = 1
   private visible = true
+  /** false during the drop cooldown — the claw shows no ball. */
+  private holding = true
   /** Mobile composition: the hook/rope assembly is hidden — the current
    * ball simply floats at the drop position. Desktop keeps the claw. */
   private mobile = false
@@ -68,6 +70,17 @@ export class DropClaw {
     }
   }
 
+  /** Cooldown state: when `holding` is false the claw draws EMPTY — the
+   * ball is invisible until the drop cooldown expires. Desktop keeps the
+   * cable/head/arms so the claw reads as an empty gripper; mobile has no
+   * hardware, so nothing shows at the drop position. */
+  setHolding(holding: boolean): void {
+    if (this.holding !== holding) {
+      this.holding = holding
+      this.redraw()
+    }
+  }
+
   private redraw(): void {
     if (!this.holder) {
       this.holder = this.scene.add.container(0, 0)
@@ -87,30 +100,35 @@ export class DropClaw {
     const x = 0 // local coords inside the aim container
 
     // --- ball (same appearance source as gameplay renderer) ---
-    const look = ballLookFor(this.tier, this.seed)
-    const poly = restContour(look, r, x, by, 48)
-    
-    // Phase 2.12.1: Special rendering for Tier 8/9 in claw.
-    // Phase 2.14.0: per-run variant (tiers 8-9 randomize each run).
-    if (this.tier === 8) {
-      // The cycling RGB ball: one solid colour, stepping every 0.25s.
-      const pts = poly.map(p => ({ x: p.x, y: p.y }))
-      g.fillStyle(cycleColor(Date.now()), 1)
-      g.fillPoints(pts.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)
-      g.lineStyle(ballOutlineWidth(r), INK, 1)
-      g.strokePoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true, true)
-      drawBallFace(g, look, { x, y: by }, r, 1)
-    } else if (this.tier === 9 || this.tier === 10) {
-      // The theme ball paints its own face — part of the design. The
-      // run's theme roll (shark/pig) picks the renderer; the variant
-      // picks the palette within the theme.
-      drawCollectibleBall(g, x, by, r, this.tier, variantIdFor(this.tier), poly, 0, undefined, this.seed)
-    } else {
-      g.fillStyle(tier.color, 1)
-      g.fillPoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)
-      g.lineStyle(ballOutlineWidth(r), INK, 1)
-      g.strokePoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true, true)
-      drawBallFace(g, look, { x, y: by }, r, 1)
+    // During the drop cooldown the claw hangs EMPTY — no ball. Desktop
+    // still draws the cable/head/arms below (an empty gripper); mobile
+    // has no hardware, so nothing shows at the drop position at all.
+    if (this.holding) {
+      const look = ballLookFor(this.tier, this.seed)
+      const poly = restContour(look, r, x, by, 48)
+
+      // Phase 2.12.1: Special rendering for Tier 8/9 in claw.
+      // Phase 2.14.0: per-run variant (tiers 8-9 randomize each run).
+      if (this.tier === 8) {
+        // The cycling RGB ball: one solid colour, stepping every 0.25s.
+        const pts = poly.map(p => ({ x: p.x, y: p.y }))
+        g.fillStyle(cycleColor(Date.now()), 1)
+        g.fillPoints(pts.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)
+        g.lineStyle(ballOutlineWidth(r), INK, 1)
+        g.strokePoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true, true)
+        drawBallFace(g, look, { x, y: by }, r, 1)
+      } else if (this.tier === 9 || this.tier === 10) {
+        // The theme ball paints its own face — part of the design. The
+        // run's theme roll (shark/pig) picks the renderer; the variant
+        // picks the palette within the theme.
+        drawCollectibleBall(g, x, by, r, this.tier, variantIdFor(this.tier), poly, 0, undefined, this.seed)
+      } else {
+        g.fillStyle(tier.color, 1)
+        g.fillPoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)
+        g.lineStyle(ballOutlineWidth(r), INK, 1)
+        g.strokePoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true, true)
+        drawBallFace(g, look, { x, y: by }, r, 1)
+      }
     }
 
     // --- cable from the stage top ---

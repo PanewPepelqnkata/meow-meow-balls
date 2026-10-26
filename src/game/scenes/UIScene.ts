@@ -111,6 +111,8 @@ export class UIScene extends Phaser.Scene {
         this.uiRoot.setScore(this.lastScore, best)
       }),
       gameBus.on('state:next', ({ tier, seed }) => this.uiRoot.setNextTier(tier, seed)),
+      // Drop cooldown: the preview ball hides while the claw is empty.
+      gameBus.on('state:dropHolding', ({ holding }) => this.uiRoot.setNextHolding(holding)),
       // Phase 2.13.0: real discovery state drives the progression path.
       gameBus.on('state:discovered', ({ tier }) => this.uiRoot.unlockTier(tier)),
       gameBus.on('walls:countdown', ({ remainingMs }) => this.uiRoot.updateRaiseCountdown(remainingMs)),
