@@ -219,9 +219,12 @@ export class UiverseDomButtons {
     // (the four navs) share ONE label size = the min of their fits, so
     // the grid reads even. PLAY (its own height) fits independently.
     const fitFor = (s: UiverseSpec, charSize: number): number => {
+      // The base size scales with the pill height (the game's play-label
+      // ratio h*0.34) — a 72px pill gets ~24px text, a 49px nav ~16px.
+      const base = Math.floor(s.h * 0.34)
       const avail = s.w - charSize - 44
-      const w17 = UiverseDomButtons.textWidth(s.label, 17)
-      return w17 <= avail ? 17 : Math.max(14, Math.floor((17 * avail) / w17))
+      const wBase = UiverseDomButtons.textWidth(s.label, base)
+      return wBase <= avail ? base : Math.max(14, Math.floor((base * avail) / wBase))
     }
     const byH = new Map<number, { spec: UiverseSpec; charSize: number; btn: DomButton }[]>()
     for (let i = 0; i < specs.length; i++) {
