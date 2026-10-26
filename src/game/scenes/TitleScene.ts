@@ -19,6 +19,7 @@ import { runVariantFor, variantIdFor, VARIANT_COUNT } from '../state/runVariant'
 import { session } from '../state/session'
 import { bakeCanvas, roundedRectPath } from '../rendering/RoughArt'
 import { cycleColor } from '../rendering/rgbCycle'
+import { UiverseButton } from '../../ui/UiverseButton'
 import { bakeIrisCover, IRIS_COVER_KEY } from './StartIntroScene'
 import { StartIntroScene } from './StartIntroScene'
 
@@ -104,6 +105,8 @@ export class TitleScene extends Phaser.Scene {
   private chipRect: { x: number; y: number; w: number; h: number } | null = null
   /** The PLAY button's container — pulsed gently every frame. */
   private playC: Phaser.GameObjects.Container | null = null
+  /** The uiverse-style menu buttons (PLAY + nav) — animated in update(). */
+  private uiverseButtons: UiverseButton[] = []
   /** The gumball machine (bobbed gently every frame). */
   private machineC: Phaser.GameObjects.Container | null = null
   private machineBaseY = 0
@@ -252,6 +255,16 @@ export class TitleScene extends Phaser.Scene {
     }
     // PLAY invites: a slow, gentle pulse (scale 1 → 1.044).
     if (this.playC) this.playC.setScale(1 + Math.sin(t * 2.6) * 0.022 + 0.022)
+    // Uiverse buttons: the ball characters live (gaze at the pointer,
+    // blink, egg expressions) — pointer in CSS px for the gaze.
+    if (this.uiverseButtons.length) {
+      const p = this.input.activePointer
+      const z = this.game.scale.displayScale.x || 1
+      const cw = this.scale.width / z
+      const ch = this.scale.height / z
+      const gaze = { x: (p.x - cw / 2) / (cw / 2), y: (p.y - ch / 2) / (ch / 2) }
+      for (const ub of this.uiverseButtons) ub.refresh(time, gaze)
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -279,6 +292,7 @@ export class TitleScene extends Phaser.Scene {
     this.panelLayer.remove(this.panelBackdrop)
     this.panelLayer.remove(this.panelContent)
     this.menuLayer.removeAll(true)
+    this.uiverseButtons = []
     this.panelLayer.removeAll(true)
     this.panelLayer.add(this.panelBackdrop)
     this.panelLayer.add(this.panelContent)
@@ -824,21 +838,24 @@ export class TitleScene extends Phaser.Scene {
     navH: number,
     navPos: Array<{ x: number; y: number }>,
   ): void {
-    const play = new CartoonButton(this, {
+    // ---- PLAY (uiverse big-moose-69 recipe): yellow pill, ink border,
+    // the blue tier-1 ball character on the left with ALL the easter eggs
+    // (pointer gaze, blink, wink/grin/tongue flashes), hover text-swap
+    // PLAY → NOW!, press squash. Font = the game's Lilita One.
+    const play = new UiverseButton(this, {
       x: vw / 2,
       y: playY,
       w: playW,
       h: playH,
-      fill: 0x43d64f,
       label: 'PLAY',
-      labelSize: Math.max(17, playH * 0.34),
-      style: 'doodle',
+      hoverLabel: 'NOW!',
+      tier: 1,
+      seed: 4242,
       onPress: () => this.pressStart(),
     })
-    if (play.containerObj) {
-      this.menuLayer.add(play.containerObj)
-      this.playC = play.containerObj
-    }
+    this.menuLayer.add(play.containerObj)
+    this.playC = play.containerObj
+    this.uiverseButtons.push(play)
     this.menuRects.push({
       label: 'PLAY',
       x: vw / 2 - playW / 2,
@@ -848,26 +865,29 @@ export class TitleScene extends Phaser.Scene {
       screen: 'menu',
     })
 
-    const defs: Array<{ label: string; fill: number; screen: ScreenName }> = [
-      { label: 'LEADERBOARD', fill: 0xffd93b, screen: 'leaderboard' },
-      { label: 'JOURNAL', fill: 0x4fc3f7, screen: 'journal' },
-      { label: 'COLLECTION', fill: 0xff8a3d, screen: 'collection' },
-      { label: 'SETTINGS', fill: 0xa98bd8, screen: 'settings' },
+    // ---- the four nav buttons: same uiverse style, each showcasing a
+    // DIFFERENT ball character (tier 2/3/4/6 — distinct faces/colours).
+    const defs: Array<{ label: string; screen: ScreenName; tier: number; seed: number }> = [
+      { label: 'LEADERBOARD', screen: 'leaderboard', tier: 2, seed: 4242 + 2 * 7 },
+      { label: 'JOURNAL', screen: 'journal', tier: 3, seed: 4242 + 3 * 7 },
+      { label: 'COLLECTION', screen: 'collection', tier: 4, seed: 4242 + 4 * 7 },
+      { label: 'SETTINGS', screen: 'settings', tier: 6, seed: 4242 + 6 * 7 },
     ]
     defs.forEach((d, i) => {
       const pos = navPos[i]!
-      const btn = new CartoonButton(this, {
+      const btn = new UiverseButton(this, {
         x: pos.x,
         y: pos.y,
         w: navW,
         h: navH,
-        fill: d.fill,
         label: d.label,
-        labelSize: Math.max(10, navH * (navW < 150 ? 0.2 : 0.24)),
-        style: 'doodle',
+        hoverLabel: 'GO!',
+        tier: d.tier,
+        seed: d.seed,
         onPress: () => this.openScreen(d.screen),
       })
-      if (btn.containerObj) this.menuLayer.add(btn.containerObj)
+      this.menuLayer.add(btn.containerObj)
+      this.uiverseButtons.push(btn)
       this.menuRects.push({
         label: d.label,
         x: pos.x - navW / 2,
