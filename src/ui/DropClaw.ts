@@ -100,7 +100,7 @@ export class DropClaw {
       g.lineStyle(ballOutlineWidth(r), INK, 1)
       g.strokePoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true, true)
       drawBallFace(g, look, { x, y: by }, r, 1)
-    } else if (this.tier === 9) {
+    } else if (this.tier === 9 || this.tier === 10) {
       // The theme ball paints its own face — part of the design. The
       // run's theme roll (shark/pig) picks the renderer; the variant
       // picks the palette within the theme.

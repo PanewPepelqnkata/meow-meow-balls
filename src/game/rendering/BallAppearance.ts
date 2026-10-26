@@ -1272,113 +1272,125 @@ export function drawCrabBall(
 ): void {
   void seed
   const pal = CRAB_PALETTES[variant % CRAB_PALETTES.length]!
-  const ink = Math.max(2, r * 0.05)
+  const ink = Math.max(2.5, r * 0.055)
   const now = Date.now()
-  // Fear tremble.
-  const jx = Math.sin(now * 0.041) * r * 0.02 * panic * panic
-  const jy = Math.cos(now * 0.037) * r * 0.015 * panic * panic
-  cx += jx
-  cy += jy
 
-  // ---- THE GLOW — soft radial stack in the palette's aura colour. ----
+  // ---- THE GLOW — a clean radial stack, warm crab-orange. ----
   const glowWobble = Math.sin(now * 0.0007)
   const glowLayers: ReadonlyArray<{ rr: number; alpha: number }> = [
-    { rr: 1.62 + glowWobble * 0.03, alpha: 0.1 },
-    { rr: 1.42, alpha: 0.16 },
-    { rr: 1.24, alpha: 0.24 },
-    { rr: 1.08, alpha: 0.3 },
+    { rr: 1.62 + glowWobble * 0.03, alpha: 0.12 },
+    { rr: 1.4, alpha: 0.18 },
+    { rr: 1.2, alpha: 0.26 },
+    { rr: 1.05, alpha: 0.32 },
   ]
   for (const layer of glowLayers) {
     g.fillStyle(pal.glow, layer.alpha + glowWobble * 0.02)
     g.fillCircle(cx, cy, r * layer.rr)
   }
 
-  // ---- THE WALKING LEGS — four per side, scuttling slightly (each leg
-  // a two-segment polyline; the tip bobs with the clock). Drawn BEFORE
-  // the body so they tuck behind it. ----
+  // ---- THE CLAWS — the crab's identity: two BIG pincers raised UP and
+  // OUTWARD at the upper sides. Each claw = a fat arm (two filled
+  // segments) + a big pincer body + two open jaws. They wave up/down on
+  // offset clock phases; faster and higher with panic, dropping flat
+  // with fear. Drawn BEFORE the body so the arms emerge from behind it.
+  const clawWave = Math.sin(now * 0.004)
+  const clawWaveR = Math.sin(now * 0.004 + Math.PI * 0.8)
   for (const side of [-1, 1]) {
-    for (let i = 0; i < 4; i++) {
-      const t = i / 3
-      const baseX = cx + side * r * (0.55 + t * 0.25)
-      const baseY = cy + r * (0.3 + t * 0.14)
-      const phase = now * 0.006 * (1 + panic) + i * 1.9 + (side > 0 ? Math.PI : 0)
-      const tipX = baseX + side * r * (0.3 - t * 0.06)
-      const tipY = baseY + r * 0.32 + Math.sin(phase) * r * 0.06 * (1 + panic)
-      g.lineStyle(Math.max(2, r * 0.055), pal.claw, 1)
-      g.beginPath()
-      g.moveTo(baseX, baseY)
-      // Knee joint: outward-up, then down to the tip.
-      g.lineTo(baseX + side * r * 0.22, baseY - r * 0.12)
-      g.lineTo(tipX, tipY)
-      g.strokePath()
-      // The leg tip: a tiny pointed foot.
-      g.fillStyle(pal.claw, 1)
-      g.fillCircle(tipX, tipY, Math.max(1.5, r * 0.035))
-    }
+    const wave = side < 0 ? clawWave : clawWaveR
+    const droop = panic * r * 0.25 // fear drops the claws
+    const tremble = Math.sin(now * 0.05) * r * 0.02 * panic
+    // The arm root (behind the shell's upper side).
+    const rootX = cx + side * r * 0.62
+    const rootY = cy - r * 0.3
+    // The arm's mid joint — out and up.
+    const midX = rootX + side * r * 0.38
+    const midY = rootY - r * 0.42 - wave * r * 0.14 * (1 - panic * 0.5) - droop * 0.4 + tremble
+    // The pincer base — further out and slightly up from the mid joint.
+    const baseX = midX + side * r * 0.3
+    const baseY = midY - r * 0.08 - wave * r * 0.06 + tremble * 0.5
+
+    // ARM upper segment: fat filled quad (root → mid).
+    const armW1 = r * 0.11
+    const armW2 = r * 0.085
+    g.fillStyle(pal.claw, 1)
+    g.beginPath()
+    g.moveTo(rootX - side * armW1 * 0.4, rootY - armW1)
+    g.lineTo(midX - side * armW2 * 0.5, midY - armW2)
+    g.lineTo(midX + side * armW2 * 0.5, midY + armW2)
+    g.lineTo(rootX + side * armW1 * 0.6, rootY + armW1 * 0.6)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(ink * 0.75, INK, 1)
+    g.strokePath()
+    // ARM lower segment (mid → pincer base).
+    g.fillStyle(pal.claw, 1)
+    g.beginPath()
+    g.moveTo(midX - side * armW2 * 0.5, midY - armW2)
+    g.lineTo(baseX - side * r * 0.06, baseY - r * 0.07)
+    g.lineTo(baseX + side * r * 0.06, baseY + r * 0.07)
+    g.lineTo(midX + side * armW2 * 0.5, midY + armW2)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(ink * 0.75, INK, 1)
+    g.strokePath()
+
+    // THE PINCER — the big claw: a fat rounded palm + two open jaws.
+    const palmR = r * 0.19
+    g.fillStyle(pal.claw, 1)
+    g.fillCircle(baseX, baseY, palmR)
+    g.lineStyle(ink * 0.75, INK, 1)
+    g.strokeCircle(baseX, baseY, palmR)
+    // UPPER jaw: a fat crescent curving up-and-inward toward the face.
+    const jawL = r * 0.34
+    const snip = 0.25 + 0.2 * Math.abs(Math.sin(now * 0.005 + side))
+    const uTipX = baseX + side * jawL * 0.55
+    const uTipY = baseY - jawL * 0.8 - snip * r * 0.06
+    g.fillStyle(pal.claw, 1)
+    g.beginPath()
+    g.moveTo(baseX - side * palmR * 0.3, baseY - palmR * 0.5)
+    quadFrom(g, baseX - side * palmR * 0.3, baseY - palmR * 0.5, baseX + side * jawL * 0.5, baseY - jawL * 0.85, uTipX, uTipY)
+    quadFrom(g, uTipX, uTipY, baseX + side * jawL * 0.62, baseY - jawL * 0.42, baseX + side * palmR * 0.4, baseY - palmR * 0.1)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(ink * 0.7, INK, 1)
+    g.strokePath()
+    // LOWER jaw: a fatter crescent curving out-and-down.
+    const lTipX = baseX + side * jawL * 0.72
+    const lTipY = baseY - jawL * 0.18 + snip * r * 0.04
+    g.fillStyle(pal.claw, 1)
+    g.beginPath()
+    g.moveTo(baseX - side * palmR * 0.2, baseY + palmR * 0.5)
+    quadFrom(g, baseX - side * palmR * 0.2, baseY + palmR * 0.5, baseX + side * jawL * 0.55, baseY + jawL * 0.28, lTipX, lTipY)
+    quadFrom(g, lTipX, lTipY, baseX + side * jawL * 0.68, baseY - jawL * 0.05, baseX + side * palmR * 0.45, baseY + palmR * 0.1)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(ink * 0.7, INK, 1)
+    g.strokePath()
+    // White tip accents on both jaws.
+    g.fillStyle(pal.belly, 0.95)
+    g.fillCircle(uTipX, uTipY, r * 0.045)
+    g.fillCircle(lTipX, lTipY, r * 0.045)
   }
 
-  // ---- THE CHELIPEDS — two BIG claws raised UP and OUTWARD (the crab
-  // identity). Each: a fat tapered arm (filled quad, not a stroke) from
-  // a shoulder inside the shell up to a fist, then TWO open pincer jaws
-  // (fat crescents with ink outlines) that snip with the clock. Wave on
-  // offset phases; drop + tremble with fear. ----
+  // ---- THE WALKING LEGS — three thin pointed legs per side, angled
+  // downward-out from the lower shell, tips bobbing with the clock. ----
   for (const side of [-1, 1]) {
-    const shoulderX = cx + side * r * 0.5
-    const shoulderY = cy - r * 0.24
-    const phase = now * 0.0045 * (1 + panic * 1.4) + (side > 0 ? 0 : Math.PI * 0.75)
-    const swing = Math.sin(phase) // -1..1
-    const lift = swing * r * 0.32 * (1 - 0.35 * panic)
-    const tremble = Math.sin(now * 0.09) * r * 0.02 * panic
-    // ARM — a filled tapered quad from the shoulder to the fist.
-    const fistX = shoulderX + side * r * 0.5 + tremble
-    const fistY = shoulderY - r * 0.62 - lift + tremble * 0.5
-    const armHalfBase = r * 0.075
-    const armHalfFist = r * 0.085
-    g.fillStyle(pal.claw, 1)
-    g.beginPath()
-    g.moveTo(shoulderX - armHalfBase, shoulderY + r * 0.06)
-    g.lineTo(fistX - armHalfFist, fistY + r * 0.1)
-    g.lineTo(fistX + armHalfFist, fistY + r * 0.02)
-    g.lineTo(shoulderX + armHalfBase, shoulderY - r * 0.04)
-    g.closePath()
-    g.fillPath()
-    g.lineStyle(Math.max(1.5, r * 0.04), INK, 1)
-    g.strokePath()
-    // THE FIST — a fat blob at the arm's end (the pincer's base).
-    g.fillStyle(pal.claw, 1)
-    g.fillCircle(fistX, fistY, r * 0.15)
-    g.lineStyle(Math.max(1.5, r * 0.04), INK, 1)
-    g.strokeCircle(fistX, fistY, r * 0.15)
-    // THE PINCER JAWS — two open crescents: upper jaw (slimmer, pointing
-    // up-out) and lower jaw (fatter, pointing out-down). The gap between
-    // them opens/closes (the snip).
-    const snip = 0.3 + 0.25 * Math.abs(Math.sin(phase * 1.3))
-    const jawLen = r * 0.34
-    const jawW = r * 0.11
-    // Upper jaw: from the fist, curving up-out to a tip.
-    g.fillStyle(pal.claw, 1)
-    g.beginPath()
-    g.moveTo(fistX, fistY - r * 0.04)
-    quadFrom(g, fistX, fistY - r * 0.04, fistX + side * jawLen * 0.7, fistY - jawLen * 0.55 - jawW * snip, fistX + side * jawLen, fistY - jawLen * 0.62 - jawW * snip)
-    quadFrom(g, fistX + side * jawLen, fistY - jawLen * 0.62 - jawW * snip, fistX + side * jawLen * 0.62, fistY - jawLen * 0.18, fistX + r * 0.05, fistY + r * 0.03)
-    g.closePath()
-    g.fillPath()
-    g.lineStyle(Math.max(1.5, r * 0.04), INK, 1)
-    g.strokePath()
-    // Lower jaw: fatter, curving out-down from under the fist.
-    g.fillStyle(pal.claw, 1)
-    g.beginPath()
-    g.moveTo(fistX, fistY + r * 0.05)
-    quadFrom(g, fistX, fistY + r * 0.05, fistX + side * jawLen * 0.65, fistY + jawLen * 0.28 + jawW * snip * 0.5, fistX + side * jawLen * 0.92, fistY + jawLen * 0.18)
-    quadFrom(g, fistX + side * jawLen * 0.92, fistY + jawLen * 0.18, fistX + side * jawLen * 0.5, fistY + jawLen * 0.08, fistX + r * 0.06, fistY - r * 0.01)
-    g.closePath()
-    g.fillPath()
-    g.lineStyle(Math.max(1.5, r * 0.04), INK, 1)
-    g.strokePath()
-    // White tip accents on both jaw tips.
-    g.fillStyle(pal.clawLight, 1)
-    g.fillCircle(fistX + side * jawLen * 0.98, fistY - jawLen * 0.6 - jawW * snip, r * 0.045)
-    g.fillCircle(fistX + side * jawLen * 0.9, fistY + jawLen * 0.17, r * 0.045)
+    for (let i = 0; i < 3; i++) {
+      const t = i / 2
+      const baseX = cx + side * r * (0.6 + t * 0.22)
+      const baseY = cy + r * (0.22 + t * 0.2)
+      const phase = now * 0.005 + i * 2.1 + (side > 0 ? Math.PI : 0)
+      const tipX = baseX + side * r * (0.3 - t * 0.08)
+      const tipY = baseY + r * 0.3 + Math.sin(phase) * r * 0.04 * (1 + panic)
+      g.lineStyle(Math.max(2, r * 0.05), pal.claw, 1)
+      g.beginPath()
+      g.moveTo(baseX, baseY)
+      g.lineTo(baseX + side * r * 0.14, baseY + r * 0.06)
+      g.lineTo(tipX, tipY)
+      g.strokePath()
+      g.lineStyle(Math.max(1.2, r * 0.03), INK, 0.8)
+      g.strokePath()
+    }
   }
 
   // ---- THE BODY — the shell: the contour, countershaded. ----
@@ -1390,45 +1402,39 @@ export function drawCrabBall(
     g.fillCircle(cx, cy, r)
   }
   // Shell light: a lighter band across the top of the carapace.
-  g.fillStyle(pal.shellLight, 0.8)
+  g.fillStyle(pal.shellLight, 0.85)
   g.beginPath()
-  g.fillEllipse(cx - r * 0.05, cy - r * 0.5, r * 1.3, r * 0.62)
+  g.fillEllipse(cx - r * 0.05, cy - r * 0.5, r * 1.3, r * 0.55)
   g.fillPath()
-  // Belly: the light underside.
+  // Belly: the light underside, low.
   g.fillStyle(pal.belly, 0.9)
   g.beginPath()
-  g.fillEllipse(cx, cy + r * 0.45, r * 1.5, r * 0.66)
+  g.fillEllipse(cx, cy + r * 0.48, r * 1.4, r * 0.55)
   g.fillPath()
 
-  // ---- GILL DOTS — three small shell-light dots per side on the
-  // carapace (crab gills read as dots at this scale). ----
-  g.fillStyle(pal.belly, 0.55)
-  for (const side of [-1, 1]) {
-    for (let i = 0; i < 3; i++) {
-      const gx = cx + side * r * (0.42 + i * 0.14)
-      const gy = cy + r * 0.02 + i * r * 0.03
-      g.fillCircle(gx, gy, Math.max(1.5, r * 0.035))
-    }
+  // ---- SHELL SPOTS — three lighter dots on the carapace. ----
+  g.fillStyle(pal.shellLight, 0.6)
+  for (const [sx, sy] of [[-0.4, -0.15], [0.12, -0.28], [0.42, -0.08]] as const) {
+    g.fillCircle(cx + sx * r, cy + sy * r, Math.max(2, r * 0.05))
   }
 
-  // ---- THE STALK EYES — two eyes on short stalks rising from the
-  // shell's top (the crab signature). The eyeball sits on a short thick
-  // stalk; the pupil moves with the gaze; fear shrinks them wide. ----
+  // ---- THE STALK EYES — two eyes on stalks rising from the shell top,
+  // between the claws. Big white eyeballs with ink rims and gaze pupils.
+  // Fear widens them. ----
   for (const side of [-1, 1]) {
-    const stalkX = cx + side * r * 0.24
-    const stalkBaseY = cy - r * 0.82
-    const stalkLen = r * 0.22
-    const stalkTopY = stalkBaseY - stalkLen
-    // Stalk.
-    g.lineStyle(Math.max(2.5, r * 0.07), pal.shell, 1)
+    const stalkX = cx + side * r * 0.22
+    const stalkBaseY = cy - r * 0.78
+    const stalkTopY = stalkBaseY - r * 0.26
+    // Stalk: thick, tapering.
+    g.lineStyle(Math.max(3, r * 0.085), pal.shell, 1)
     g.beginPath()
     g.moveTo(stalkX, stalkBaseY)
     g.lineTo(stalkX, stalkTopY)
     g.strokePath()
-    g.lineStyle(Math.max(1.2, r * 0.035), INK, 1)
+    g.lineStyle(Math.max(1.5, r * 0.04), INK, 1)
     g.strokePath()
-    // Eyeball.
-    const eyeR = r * (0.15 + 0.03 * panic)
+    // Eyeball: white + ink rim, pupil with gaze, highlight.
+    const eyeR = r * (0.16 - 0.02 * panic)
     g.fillStyle(0xffffff, 1)
     g.fillCircle(stalkX, stalkTopY, eyeR)
     g.fillStyle(INK, 1)
@@ -1436,17 +1442,19 @@ export function drawCrabBall(
     const gy = (gaze?.y ?? 0) * eyeR * 0.3
     g.fillCircle(stalkX + gx, stalkTopY + gy, eyeR * 0.5)
     g.fillStyle(0xffffff, 0.9)
-    g.fillCircle(stalkX - eyeR * 0.3, stalkTopY - eyeR * 0.3, eyeR * 0.2)
-    // Ink rim.
+    g.fillCircle(stalkX - eyeR * 0.28, stalkTopY - eyeR * 0.3, eyeR * 0.2)
     g.lineStyle(Math.max(1.2, r * 0.035), INK, 1)
     g.strokeCircle(stalkX, stalkTopY, eyeR)
   }
 
-  // ---- THE MOUTH — a small wavy line under the eyes (crab mouthparts).
+  // ---- THE MOUTH — a small wavy line under the eyes. ----
   g.lineStyle(ink * 0.9, INK, 0.9)
   g.beginPath()
-  g.moveTo(cx - r * 0.14, cy + r * 0.28)
-  g.lineTo(cx + r * 0.14, cy + r * 0.28)
+  const mwY = cy + r * 0.24
+  g.moveTo(cx - r * 0.16, mwY)
+  g.lineTo(cx - r * 0.05, mwY + r * 0.035)
+  g.lineTo(cx + r * 0.06, mwY - r * 0.02)
+  g.lineTo(cx + r * 0.16, mwY + r * 0.02)
   g.strokePath()
 
   // Fear sweat: one drop at the side of the shell.
@@ -1464,6 +1472,7 @@ export function drawCrabBall(
     g.strokeCircle(cx, cy, r)
   }
 }
+
 
 /**
  * The ONE tier-9 entry point for every consumer (renderer, previews,
