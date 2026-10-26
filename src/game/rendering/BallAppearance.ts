@@ -1332,10 +1332,12 @@ export function drawCrabBall(
     // ELEMENT 2 — THE CLAW: one fat pac-man style shape — a filled
     // circle with a wedge cut out (the open mouth), rotated to point
     // up-and-out. ONE fillCircle-ish path + ONE stroke. The gap between
-    // the wedge edges IS the pincer opening; snip animates it.
-    const clawR = r * 0.3
-    const gap = 0.5 + 0.35 * Math.abs(Math.sin(now * 0.005 + side)) // radians, animated
-    const aim = -0.9 // centre of the mouth gap, radians (up-and-out)
+    // the wedge edges IS the pincer opening; snip animates it, fear
+    // clamps it shut.
+    const clawR = r * 0.33
+    const gap = (0.55 + 0.35 * Math.abs(Math.sin(now * 0.005 + side))) * (1 - panic * 0.55)
+    // The mouth aims up-and-OUT on both sides (mirrored per side).
+    const aim = -Math.PI / 2 + side * 0.67
     g.fillStyle(pal.claw, 1)
     g.beginPath()
     // Start at centre, arc from (aim + gap/2) around to (aim - gap/2),
@@ -1348,7 +1350,7 @@ export function drawCrabBall(
     g.strokePath()
     // White tip accents at the two wedge corners.
     g.fillStyle(pal.belly, 0.95)
-    const tipR = r * 0.05
+    const tipR = clawR * 0.17
     for (const a of [aim - gap / 2, aim + gap / 2]) {
       g.fillCircle(clawX + Math.cos(a) * clawR * 0.92, clawY + Math.sin(a) * clawR * 0.92, tipR)
     }
