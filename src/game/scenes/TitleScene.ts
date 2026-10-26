@@ -841,12 +841,12 @@ export class TitleScene extends Phaser.Scene {
     // (1:1 CSS from the source), each showcasing a live ball character
     // (gaze/blink/egg expressions) drawn into a small canvas per frame.
     // The Phaser-side hit rects stay the authoritative input surface.
-    const specs: Array<{ x: number; y: number; w: number; h: number; label: string; hoverLabel: string; tier: number; seed: number }> = [
-      { x: vw / 2, y: playY, w: playW, h: playH, label: 'PLAY', hoverLabel: 'NOW!', tier: 1, seed: 4242 },
-      { x: navPos[0]!.x, y: navPos[0]!.y, w: navW, h: navH, label: 'LEADERBOARD', hoverLabel: 'GO!', tier: 2, seed: 4242 + 2 * 7 },
-      { x: navPos[1]!.x, y: navPos[1]!.y, w: navW, h: navH, label: 'JOURNAL', hoverLabel: 'GO!', tier: 3, seed: 4242 + 3 * 7 },
-      { x: navPos[2]!.x, y: navPos[2]!.y, w: navW, h: navH, label: 'COLLECTION', hoverLabel: 'GO!', tier: 4, seed: 4242 + 4 * 7 },
-      { x: navPos[3]!.x, y: navPos[3]!.y, w: navW, h: navH, label: 'SETTINGS', hoverLabel: 'GO!', tier: 6, seed: 4242 + 6 * 7 },
+    const specs: Array<{ x: number; y: number; w: number; h: number; label: string; tier: number; seed: number }> = [
+      { x: vw / 2, y: playY, w: playW, h: playH, label: 'PLAY', tier: 1, seed: 4242 },
+      { x: navPos[0]!.x, y: navPos[0]!.y, w: navW, h: navH, label: 'LEADERBOARD', tier: 2, seed: 4242 + 2 * 7 },
+      { x: navPos[1]!.x, y: navPos[1]!.y, w: navW, h: navH, label: 'JOURNAL', tier: 3, seed: 4242 + 3 * 7 },
+      { x: navPos[2]!.x, y: navPos[2]!.y, w: navW, h: navH, label: 'COLLECTION', tier: 4, seed: 4242 + 4 * 7 },
+      { x: navPos[3]!.x, y: navPos[3]!.y, w: navW, h: navH, label: 'SETTINGS', tier: 6, seed: 4242 + 6 * 7 },
     ]
     if (!this.uiverseDom) this.uiverseDom = new UiverseDomButtons(this)
     this.uiverseDom.build(specs)
@@ -859,8 +859,13 @@ export class TitleScene extends Phaser.Scene {
         .setInteractive({ useHandCursor: true })
       this.menuLayer.add(hit)
       hit.on('pointerover', () => this.uiverseDom?.setHover(i, true))
-      hit.on('pointerout', () => this.uiverseDom?.setHover(i, false))
+      hit.on('pointerout', () => {
+        this.uiverseDom?.setHover(i, false)
+        this.uiverseDom?.setPressed(i, false)
+      })
+      hit.on('pointerdown', () => this.uiverseDom?.setPressed(i, true))
       hit.on('pointerup', () => {
+        this.uiverseDom?.setPressed(i, false)
         if (i === 0) this.pressStart()
         else this.openScreen(specs[i]!.label.toLowerCase() as ScreenName)
       })

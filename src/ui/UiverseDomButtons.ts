@@ -32,8 +32,7 @@ interface DomButton {
   root: HTMLButtonElement
   charCanvas: HTMLCanvasElement
   ctx: CanvasRenderingContext2D
-  labelPlay: HTMLSpanElement
-  labelNow: HTMLSpanElement
+  label: HTMLSpanElement
   cx: number
   cy: number
   r: number
@@ -50,7 +49,6 @@ export interface UiverseSpec {
   w: number
   h: number
   label: string
-  hoverLabel: string
   tier: number
   seed: number
 }
@@ -165,60 +163,58 @@ export class UiverseDomButtons {
     for (const s of specs) {
       const root = document.createElement('button')
       root.type = 'button'
-      root.className = 'uiverse-mooses'
+      root.className = 'uiverse-button'
+      root.style.cssText = `position:absolute;left:${s.x - s.w / 2}px;top:${s.y - s.h / 2}px;width:${s.w}px;height:${s.h}px;`
 
-      // The character canvas — a small icon slot at the pill's left edge:
-      // 72% of the pill height (capped at 30% of its width), with the ball
-      // radius at 72% of the slot so wobble spikes + ink outline stay inside.
-      const slotPad = Math.round(s.h * 0.12)
+      // The wrap/inner/content nest carries the uiverse shadow stack,
+      // dots pattern and ink pill (see the CSS block).
+      const wrap = document.createElement('div')
+      wrap.className = 'wrap'
+      const inner = document.createElement('div')
+      inner.className = 'inner'
+      const content = document.createElement('div')
+      content.className = 'content'
+
+      // The character canvas — a small icon slot left of the label:
+      // 72% of the pill height (capped at 30% of its width), ball radius
+      // at 72% of the slot so wobble spikes + ink outline stay inside.
       const charSize = Math.round(Math.min(s.h * 0.72, s.w * 0.3))
-
-      root.style.cssText = `position:absolute;left:${s.x - s.w / 2}px;top:${s.y - s.h / 2}px;width:${s.w}px;height:${s.h}px;padding-left:${slotPad}px;--ball-slot:${slotPad + charSize + 10}px;--char-size:${charSize}px;`
-
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
       const charCanvas = document.createElement('canvas')
       charCanvas.width = charSize * dpr
       charCanvas.height = charSize * dpr
       charCanvas.style.width = charSize + 'px'
       charCanvas.style.height = charSize + 'px'
+      charCanvas.style.setProperty('--char-size', charSize + 'px')
       const ctx = charCanvas.getContext('2d')!
       ctx.scale(dpr, dpr)
 
-      const labelPlay = document.createElement('span')
-      labelPlay.className = 'uiverse-play'
-      labelPlay.textContent = s.label
+      const label = document.createElement('span')
+      label.className = 'label'
+      label.textContent = s.label
 
-      const labelNow = document.createElement('span')
-      labelNow.className = 'uiverse-now'
-      labelNow.textContent = s.hoverLabel
-
-      // Auto-fit the label into the region right of the ball slot (the
-      // uiverse 17px base, shrinking only when a long label would
-      // otherwise overflow the pill). Re-fitted once webfonts load, since
-      // the first measurement may fall back to Arial Black.
-      const labelW = s.w - 24 - slotPad - charSize
+      // Auto-fit the label: shrink only when a long label would overflow.
       const fit = (): void => {
+        const avail = s.w - charSize - 44
         const w17 = UiverseDomButtons.textWidth(s.label, 17)
-        const fs = w17 <= labelW ? 17 : Math.max(12, Math.floor((17 * labelW) / w17))
-        labelPlay.style.fontSize = fs + 'px'
-        labelNow.style.fontSize = fs + 'px'
+        const fs = w17 <= avail ? 17 : Math.max(12, Math.floor((17 * avail) / w17))
+        label.style.fontSize = fs + 'px'
       }
       fit()
       if (document.fonts) void document.fonts.ready.then(fit)
 
-      // Labels first (under), canvas last (over) — the icon slot never
-      // occludes the text.
-      root.appendChild(labelNow)
-      root.appendChild(labelPlay)
-      root.appendChild(charCanvas)
+      content.appendChild(charCanvas)
+      content.appendChild(label)
+      inner.appendChild(content)
+      wrap.appendChild(inner)
+      root.appendChild(wrap)
       this.layer.appendChild(root)
 
       this.buttons.push({
         root,
         charCanvas,
         ctx,
-        labelPlay,
-        labelNow,
+        label,
         cx: s.x,
         cy: s.y,
         r: (charSize / 2) * 0.72,
@@ -241,6 +237,12 @@ export class UiverseDomButtons {
    * layer is click-transparent, so CSS :hover never fires). */
   setHover(index: number, on: boolean): void {
     this.buttons[index]?.root.classList.toggle('uiverse-hover', on)
+  }
+
+  /** Press state (the :active outline + content nudge, driven from the
+   * Phaser hit rects — the DOM layer is click-transparent). */
+  setPressed(index: number, on: boolean): void {
+    this.buttons[index]?.root.classList.toggle('uiverse-pressed', on)
   }
 
   /**
