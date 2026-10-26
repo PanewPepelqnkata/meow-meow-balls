@@ -1300,17 +1300,18 @@ export function drawCrabBall(
     const droop = panic * r * 0.25 // fear drops the claws
     const tremble = Math.sin(now * 0.05) * r * 0.02 * panic
     // ELEMENT 1 — THE HAND (arm): ONE fat filled tapered shape from the
-    // shell's upper side out to the claw base. Ink-outlined.
-    const rootX = cx + side * r * 0.6
-    const rootY = cy - r * 0.28
-    const clawBaseX = rootX + side * r * 0.48 - wave * r * 0.06 * side
-    const clawBaseY = rootY - r * 0.35 - wave * r * 0.1 * (1 - panic * 0.5) + droop * 0.3 + tremble
-    const armBaseW = r * 0.14
-    const armClawW = r * 0.1
+    // shell's upper side out to the claw base. The arm gets WIDER toward
+    // the claw (crab arms bulge at the claw end). Ink-outlined.
+    const rootX = cx + side * r * 0.55
+    const rootY = cy - r * 0.3
+    const clawBaseX = rootX + side * r * 0.55 - wave * r * 0.04 * side
+    const clawBaseY = rootY - r * 0.3 - wave * r * 0.08 * (1 - panic * 0.5) + droop * 0.3 + tremble
+    const armBaseW = r * 0.09
+    const armClawW = r * 0.13
     g.fillStyle(pal.claw, 1)
     g.beginPath()
     g.moveTo(rootX - side * armBaseW * 0.5, rootY - armBaseW)
-    quadFrom(g, rootX - side * armBaseW * 0.5, rootY - armBaseW, rootX + side * r * 0.08, rootY - r * 0.52, clawBaseX - side * armClawW * 0.5, clawBaseY - armClawW)
+    quadFrom(g, rootX - side * armBaseW * 0.5, rootY - armBaseW, rootX + side * r * 0.15, rootY - r * 0.55, clawBaseX - side * armClawW * 0.5, clawBaseY - armClawW)
     g.lineTo(clawBaseX + side * armClawW * 0.5, clawBaseY + armClawW)
     g.lineTo(rootX + side * armBaseW * 0.7, rootY + armBaseW * 0.5)
     g.closePath()
@@ -1322,17 +1323,18 @@ export function drawCrabBall(
     // a single closed path — the outer edge curves from the claw base
     // out to the tip, and the inner edge curves back with a notch (the
     // pincer opening). Ink-outlined, with a white tip accent.
-    const clawLen = r * 0.42
-    const clawW = r * 0.14
-    const tipX = clawBaseX + side * clawLen * 0.72
-    const tipY = clawBaseY - clawLen * 0.52 - wave * r * 0.04
+    // The claw is BIG: ~0.8r long, ~0.3r wide at the base.
+    const clawLen = r * 0.8
+    const clawW = r * 0.15
+    const tipX = clawBaseX + side * clawLen * 0.68
+    const tipY = clawBaseY - clawLen * 0.42 - wave * r * 0.03
     g.fillStyle(pal.claw, 1)
     g.beginPath()
     // Outer edge: from the claw base's bottom, curving out to the tip.
     g.moveTo(clawBaseX - side * clawW * 0.5, clawBaseY + clawW * 0.4)
-    quadFrom(g, clawBaseX - side * clawW * 0.5, clawBaseY + clawW * 0.4, clawBaseX + side * clawLen * 0.4, clawBaseY + clawLen * 0.18, tipX, tipY)
+    quadFrom(g, clawBaseX - side * clawW * 0.5, clawBaseY + clawW * 0.4, clawBaseX + side * clawLen * 0.45, clawBaseY + clawLen * 0.15, tipX, tipY)
     // Inner edge: back from the tip with a notch (the pincer opening).
-    quadFrom(g, tipX, tipY, clawBaseX + side * clawLen * 0.28, clawBaseY - clawLen * 0.12, clawBaseX + side * clawW * 0.3, clawBaseY - clawW * 0.3)
+    quadFrom(g, tipX, tipY, clawBaseX + side * clawLen * 0.3, clawBaseY - clawLen * 0.08, clawBaseX + side * clawW * 0.3, clawBaseY - clawW * 0.3)
     g.closePath()
     g.fillPath()
     g.lineStyle(ink * 0.85, INK, 1)
