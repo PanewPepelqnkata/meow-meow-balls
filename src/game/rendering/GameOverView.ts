@@ -88,12 +88,13 @@ export class GameOverView {
     scene.tweens.add({ targets: dim, alpha: 1, duration: 240, ease: 'Quad.easeOut' })
 
     // ---- Panel: one container so the spring entrance scales everything.
-    // Height = the stacked content (title 74 + ball 2·46+38 + score 112 +
-    // best 56 + buttons 58 + pad ≈ 660) + top/bottom breathing room.
+    // Height is DERIVED from the stacked content (see the row stack below):
+    // title 74 + ball 2·46+38 + score 112 + best 56 + banner 42 + buttons
+    // 58 + top/bottom breathing room. No fixed guess — no dead space.
     const panel = scene.add.container(cx, cy).setDepth(61)
     this.objs.push(panel)
     const pw = 470 * scale
-    const ph = 660 * scale
+    const ph = 520 * scale
     const pr = 34 * scale
 
     // DOODLE PLATE (menu button recipe, scaled up to a card): wobbly
