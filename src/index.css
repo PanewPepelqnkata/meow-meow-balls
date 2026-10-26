@@ -89,3 +89,75 @@ body,
   user-select: none;
   pointer-events: none;
 }
+
+/* ---- Uiverse "big-moose-69" buttons (menu overlay, 1:1 with the source)
+ * Font swapped to the game's Lilita One; the layer is click-transparent
+ * (Phaser hit rects drive the actions). ---- */
+.uiverse-btn-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 40;
+}
+
+.uiverse-btn-layer button.uiverse-mooses {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 10px;
+  color: white;
+  text-shadow: 2px 2px rgb(116 116 116);
+  text-transform: uppercase;
+  cursor: pointer;
+  border: solid 2px black;
+  letter-spacing: 1px;
+  font-weight: 600;
+  font-family: "Lilita One", "Arial Black", sans-serif;
+  font-size: 17px;
+  background-color: hsl(49deg 98% 60%);
+  border-radius: 50px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.5s ease;
+}
+
+.uiverse-btn-layer button.uiverse-mooses:active {
+  transform: scale(0.9);
+  transition: all 100ms ease;
+}
+
+.uiverse-btn-layer button.uiverse-mooses canvas {
+  transition: all 0.5s ease;
+  z-index: 2;
+}
+
+.uiverse-btn-layer .uiverse-play {
+  transition: all 0.5s ease;
+  transition-delay: 300ms;
+}
+
+.uiverse-btn-layer button.uiverse-mooses:hover canvas,
+.uiverse-btn-layer button.uiverse-mooses.uiverse-hover canvas {
+  transform: scale(3) translate(50%);
+}
+
+.uiverse-btn-layer .uiverse-now {
+  position: absolute;
+  left: 0;
+  transform: translateX(-100%);
+  transition: all 0.5s ease;
+  z-index: 2;
+}
+
+.uiverse-btn-layer button.uiverse-mooses:hover .uiverse-now,
+.uiverse-btn-layer button.uiverse-mooses.uiverse-hover .uiverse-now {
+  transform: translateX(10px);
+  transition-delay: 300ms;
+}
+
+.uiverse-btn-layer button.uiverse-mooses:hover .uiverse-play,
+.uiverse-btn-layer button.uiverse-mooses.uiverse-hover .uiverse-play {
+  transform: translateX(200%);
+  transition-delay: 300ms;
+}

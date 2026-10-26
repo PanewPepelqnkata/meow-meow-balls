@@ -19,7 +19,7 @@ import { runVariantFor, variantIdFor, VARIANT_COUNT } from '../state/runVariant'
 import { session } from '../state/session'
 import { bakeCanvas, roundedRectPath } from '../rendering/RoughArt'
 import { cycleColor } from '../rendering/rgbCycle'
-import { UiverseButton } from '../../ui/UiverseButton'
+import { UiverseDomButtons } from '../../ui/UiverseDomButtons'
 import { bakeIrisCover, IRIS_COVER_KEY } from './StartIntroScene'
 import { StartIntroScene } from './StartIntroScene'
 
@@ -105,8 +105,8 @@ export class TitleScene extends Phaser.Scene {
   private chipRect: { x: number; y: number; w: number; h: number } | null = null
   /** The PLAY button's container — pulsed gently every frame. */
   private playC: Phaser.GameObjects.Container | null = null
-  /** The uiverse-style menu buttons (PLAY + nav) — animated in update(). */
-  private uiverseButtons: UiverseButton[] = []
+  /** The uiverse DOM button layer (PLAY + nav) — built on menu rebuild. */
+  private uiverseDom: UiverseDomButtons | null = null
   /** The gumball machine (bobbed gently every frame). */
   private machineC: Phaser.GameObjects.Container | null = null
   private machineBaseY = 0
@@ -257,13 +257,13 @@ export class TitleScene extends Phaser.Scene {
     if (this.playC) this.playC.setScale(1 + Math.sin(t * 2.6) * 0.022 + 0.022)
     // Uiverse buttons: the ball characters live (gaze at the pointer,
     // blink, egg expressions) — pointer in CSS px for the gaze.
-    if (this.uiverseButtons.length) {
+    if (this.uiverseDom) {
       const p = this.input.activePointer
       const z = this.game.scale.displayScale.x || 1
       const cw = this.scale.width / z
       const ch = this.scale.height / z
       const gaze = { x: (p.x - cw / 2) / (cw / 2), y: (p.y - ch / 2) / (ch / 2) }
-      for (const ub of this.uiverseButtons) ub.refresh(time, gaze)
+      this.uiverseDom.refresh(time, this.uiverseDom.currentSpecs(), gaze)
     }
   }
 
@@ -292,7 +292,6 @@ export class TitleScene extends Phaser.Scene {
     this.panelLayer.remove(this.panelBackdrop)
     this.panelLayer.remove(this.panelContent)
     this.menuLayer.removeAll(true)
-    this.uiverseButtons = []
     this.panelLayer.removeAll(true)
     this.panelLayer.add(this.panelBackdrop)
     this.panelLayer.add(this.panelContent)
@@ -838,62 +837,39 @@ export class TitleScene extends Phaser.Scene {
     navH: number,
     navPos: Array<{ x: number; y: number }>,
   ): void {
-    // ---- PLAY (uiverse big-moose-69 recipe): yellow pill, ink border,
-    // the blue tier-1 ball character on the left with ALL the easter eggs
-    // (pointer gaze, blink, wink/grin/tongue flashes), hover text-swap
-    // PLAY → NOW!, press squash. Font = the game's Lilita One.
-    const play = new UiverseButton(this, {
-      x: vw / 2,
-      y: playY,
-      w: playW,
-      h: playH,
-      label: 'PLAY',
-      hoverLabel: 'NOW!',
-      tier: 1,
-      seed: 4242,
-      onPress: () => this.pressStart(),
-    })
-    this.menuLayer.add(play.containerObj)
-    this.playC = play.containerObj
-    this.uiverseButtons.push(play)
-    this.menuRects.push({
-      label: 'PLAY',
-      x: vw / 2 - playW / 2,
-      y: playY - playH / 2,
-      w: playW,
-      h: playH,
-      screen: 'menu',
-    })
-
-    // ---- the four nav buttons: same uiverse style, each showcasing a
-    // DIFFERENT ball character (tier 2/3/4/6 — distinct faces/colours).
-    const defs: Array<{ label: string; screen: ScreenName; tier: number; seed: number }> = [
-      { label: 'LEADERBOARD', screen: 'leaderboard', tier: 2, seed: 4242 + 2 * 7 },
-      { label: 'JOURNAL', screen: 'journal', tier: 3, seed: 4242 + 3 * 7 },
-      { label: 'COLLECTION', screen: 'collection', tier: 4, seed: 4242 + 4 * 7 },
-      { label: 'SETTINGS', screen: 'settings', tier: 6, seed: 4242 + 6 * 7 },
+    // ---- PLAY + nav: uiverse big-moose-69 buttons as a DOM layer
+    // (1:1 CSS from the source), each showcasing a live ball character
+    // (gaze/blink/egg expressions) drawn into a small canvas per frame.
+    // The Phaser-side hit rects stay the authoritative input surface.
+    const specs: Array<{ x: number; y: number; w: number; h: number; label: string; hoverLabel: string; tier: number; seed: number }> = [
+      { x: vw / 2, y: playY, w: playW, h: playH, label: 'PLAY', hoverLabel: 'NOW!', tier: 1, seed: 4242 },
+      { x: navPos[0]!.x, y: navPos[0]!.y, w: navW, h: navH, label: 'LEADERBOARD', hoverLabel: 'GO!', tier: 2, seed: 4242 + 2 * 7 },
+      { x: navPos[1]!.x, y: navPos[1]!.y, w: navW, h: navH, label: 'JOURNAL', hoverLabel: 'GO!', tier: 3, seed: 4242 + 3 * 7 },
+      { x: navPos[2]!.x, y: navPos[2]!.y, w: navW, h: navH, label: 'COLLECTION', hoverLabel: 'GO!', tier: 4, seed: 4242 + 4 * 7 },
+      { x: navPos[3]!.x, y: navPos[3]!.y, w: navW, h: navH, label: 'SETTINGS', hoverLabel: 'GO!', tier: 6, seed: 4242 + 6 * 7 },
     ]
-    defs.forEach((d, i) => {
-      const pos = navPos[i]!
-      const btn = new UiverseButton(this, {
-        x: pos.x,
-        y: pos.y,
-        w: navW,
-        h: navH,
-        label: d.label,
-        hoverLabel: 'GO!',
-        tier: d.tier,
-        seed: d.seed,
-        onPress: () => this.openScreen(d.screen),
+    if (!this.uiverseDom) this.uiverseDom = new UiverseDomButtons(this)
+    this.uiverseDom.build(specs)
+    this.uiverseDom.setVisible(!this.closed && this.screen === 'menu')
+    // Invisible hit rects (above the canvas) drive press + hover — the DOM
+    // layer is click-transparent, CSS :hover can't fire on its own.
+    specs.forEach((s, i) => {
+      const hit = this.add
+        .rectangle(s.x, s.y, s.w, s.h, 0xffffff, 0.001)
+        .setInteractive({ useHandCursor: true })
+      this.menuLayer.add(hit)
+      hit.on('pointerover', () => this.uiverseDom?.setHover(i, true))
+      hit.on('pointerout', () => this.uiverseDom?.setHover(i, false))
+      hit.on('pointerup', () => {
+        if (i === 0) this.pressStart()
+        else this.openScreen(specs[i]!.label.toLowerCase() as ScreenName)
       })
-      this.menuLayer.add(btn.containerObj)
-      this.uiverseButtons.push(btn)
       this.menuRects.push({
-        label: d.label,
-        x: pos.x - navW / 2,
-        y: pos.y - navH / 2,
-        w: navW,
-        h: navH,
+        label: s.label,
+        x: s.x - s.w / 2,
+        y: s.y - s.h / 2,
+        w: s.w,
+        h: s.h,
         screen: 'menu',
       })
     })
@@ -1004,6 +980,8 @@ export class TitleScene extends Phaser.Scene {
     const isMenu = this.screen === 'menu'
     this.panelLayer.setVisible(!isMenu)
     this.menuLayer.setVisible(isMenu)
+    // The uiverse DOM layer mirrors the menu (hidden under any panel).
+    this.uiverseDom?.setVisible(isMenu && !this.closed)
     if (isMenu) return
     // Rebuild the open panel's CONTENT fresh (data may have changed). Only
     // the persistent BACK rect survives; screen-specific buttons (theme
@@ -1613,6 +1591,7 @@ export class TitleScene extends Phaser.Scene {
   private pressStart(): void {
     if (this.closed) return
     this.closed = true
+    this.uiverseDom?.setVisible(false)
     session.menuActive = false
     // Phase 2.22: portrait phones route through the start-intro scene —
     // the comic ring + scared ball covers the gameplay scenes' expensive
