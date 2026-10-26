@@ -193,16 +193,6 @@ export class UiverseDomButtons {
       label.className = 'label'
       label.textContent = s.label
 
-      // Auto-fit the label: shrink only when a long label would overflow.
-      const fit = (): void => {
-        const avail = s.w - charSize - 44
-        const w17 = UiverseDomButtons.textWidth(s.label, 17)
-        const fs = w17 <= avail ? 17 : Math.max(12, Math.floor((17 * avail) / w17))
-        label.style.fontSize = fs + 'px'
-      }
-      fit()
-      if (document.fonts) void document.fonts.ready.then(fit)
-
       content.appendChild(charCanvas)
       content.appendChild(label)
       inner.appendChild(content)
@@ -225,6 +215,29 @@ export class UiverseDomButtons {
         blinkT: 1200 + Math.random() * 2400,
       })
     }
+    // Uniform font per height class: buttons of the same pill height
+    // (the four navs) share ONE label size = the min of their fits, so
+    // the grid reads even. PLAY (its own height) fits independently.
+    const fitFor = (s: UiverseSpec, charSize: number): number => {
+      const avail = s.w - charSize - 44
+      const w17 = UiverseDomButtons.textWidth(s.label, 17)
+      return w17 <= avail ? 17 : Math.max(14, Math.floor((17 * avail) / w17))
+    }
+    const byH = new Map<number, { spec: UiverseSpec; charSize: number; btn: DomButton }[]>()
+    for (let i = 0; i < specs.length; i++) {
+      const h = specs[i]!.h
+      const arr = byH.get(h) ?? []
+      arr.push({ spec: specs[i]!, charSize: Math.round(Math.min(h * 0.72, specs[i]!.w * 0.3)), btn: this.buttons[i]! })
+      byH.set(h, arr)
+    }
+    const applyFits = (): void => {
+      for (const [, arr] of byH) {
+        const size = Math.min(...arr.map((e) => fitFor(e.spec, e.charSize)))
+        for (const e of arr) e.btn.label.style.fontSize = size + 'px'
+      }
+    }
+    applyFits()
+    if (document.fonts) void document.fonts.ready.then(applyFits)
   }
 
   /** Show/hide with the menu (the layer is inert when hidden). */
