@@ -128,6 +128,11 @@ body,
 }
 
 .uiverse-btn-layer .uiverse-button > .wrap {
+  /* Fill the button: without this the wrap shrink-wraps the content and
+   * the pill floats small inside the hit rect. */
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
   padding: 2px;
   border-radius: 1rem;
   background-color: var(--yellow-400);
@@ -195,6 +200,8 @@ body,
   border-radius: calc(1rem - 2px);
   background-color: var(--stone-800);
   overflow: hidden;
+  width: 100%;
+  height: 100%;
 }
 
 .uiverse-btn-layer .uiverse-button > .wrap > .inner::before {
@@ -221,6 +228,9 @@ body,
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
   gap: 0.6rem;
   padding: 0.75rem 1.25rem;
   filter: drop-shadow(0 -1px 0 var(--stone-800));
