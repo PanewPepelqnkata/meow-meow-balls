@@ -19,8 +19,6 @@ export class NextBall {
   private seed = 1
   private pos: { x: number; y: number } = { x: 0, y: 0 }
   private diameter = 56
-  /** false during the drop cooldown — the preview ball hides. */
-  private holding = true
   private readonly scene: Phaser.Scene
 
   /** Hide the next-ball preview (the collectible card owns the screen). */
@@ -29,13 +27,10 @@ export class NextBall {
     this.label?.setVisible(visible)
   }
 
-  /** Cooldown state: while `holding` is false (drop cooldown active) the
-   * preview ball hides — it reappears with the refreshed slot. */
+  /** Cooldown state: the preview ball STAYS VISIBLE (the user asked for
+   * it back) — kept as a no-op so the bus contract stays intact. */
   setHolding(holding: boolean): void {
-    if (this.holding !== holding) {
-      this.holding = holding
-      this.redraw()
-    }
+    void holding
   }
 
   constructor(scene: Phaser.Scene) {
@@ -78,9 +73,6 @@ export class NextBall {
     g.clear()
     const tier = getTier(this.tier)
     if (!tier || !this.label) return
-    // During the drop cooldown the box shows only the label — the ball
-    // reappears when the claw is holding again.
-    if (!this.holding) return
     const r = this.diameter / 2
     const look = ballLookFor(this.tier, this.seed)
     const poly = restContour(look, r, this.pos.x, this.pos.y, 40)
