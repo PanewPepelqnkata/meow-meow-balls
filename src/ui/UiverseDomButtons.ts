@@ -166,10 +166,15 @@ export class UiverseDomButtons {
       const root = document.createElement('button')
       root.type = 'button'
       root.className = 'uiverse-mooses'
-      root.style.cssText = `position:absolute;left:${s.x - s.w / 2}px;top:${s.y - s.h / 2}px;width:${s.w}px;height:${s.h}px;`
 
-      // The character canvas — square, button-height sized.
-      const charSize = Math.round(s.h * 0.92)
+      // The character canvas — a small icon slot at the pill's left edge:
+      // 72% of the pill height (capped at 30% of its width), with the ball
+      // radius at 72% of the slot so wobble spikes + ink outline stay inside.
+      const slotPad = Math.round(s.h * 0.12)
+      const charSize = Math.round(Math.min(s.h * 0.72, s.w * 0.3))
+
+      root.style.cssText = `position:absolute;left:${s.x - s.w / 2}px;top:${s.y - s.h / 2}px;width:${s.w}px;height:${s.h}px;padding-left:${slotPad}px;--ball-slot:${slotPad + charSize + 10}px;--char-size:${charSize}px;`
+
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
       const charCanvas = document.createElement('canvas')
       charCanvas.width = charSize * dpr
@@ -187,6 +192,22 @@ export class UiverseDomButtons {
       labelNow.className = 'uiverse-now'
       labelNow.textContent = s.hoverLabel
 
+      // Auto-fit the label into the region right of the ball slot (the
+      // uiverse 17px base, shrinking only when a long label would
+      // otherwise overflow the pill). Re-fitted once webfonts load, since
+      // the first measurement may fall back to Arial Black.
+      const labelW = s.w - 24 - slotPad - charSize
+      const fit = (): void => {
+        const w17 = UiverseDomButtons.textWidth(s.label, 17)
+        const fs = w17 <= labelW ? 17 : Math.max(12, Math.floor((17 * labelW) / w17))
+        labelPlay.style.fontSize = fs + 'px'
+        labelNow.style.fontSize = fs + 'px'
+      }
+      fit()
+      if (document.fonts) void document.fonts.ready.then(fit)
+
+      // Labels first (under), canvas last (over) — the icon slot never
+      // occludes the text.
       root.appendChild(labelNow)
       root.appendChild(labelPlay)
       root.appendChild(charCanvas)
@@ -200,7 +221,7 @@ export class UiverseDomButtons {
         labelNow,
         cx: s.x,
         cy: s.y,
-        r: (charSize / 2) * 0.86,
+        r: (charSize / 2) * 0.72,
         tier: s.tier,
         seed: s.seed,
         look: ballLookFor(s.tier, s.seed),
@@ -247,6 +268,19 @@ export class UiverseDomButtons {
 
   currentSpecs(): UiverseSpec[] {
     return this.specs
+  }
+
+  /** Measured text width at the uiverse label style (letter-spacing 1px
+   * included) — used to auto-fit labels into the region right of the
+   * ball slot. */
+  private static measureCtx: CanvasRenderingContext2D | null = null
+  private static textWidth(text: string, px: number): number {
+    if (!UiverseDomButtons.measureCtx) {
+      UiverseDomButtons.measureCtx = document.createElement('canvas').getContext('2d')!
+    }
+    const ctx = UiverseDomButtons.measureCtx!
+    ctx.font = `600 ${px}px "Lilita One", "Arial Black", sans-serif`
+    return ctx.measureText(text).width + text.length
   }
 
   /** Paint one character canvas: body, ink outline, face — 1:1 gameplay. */

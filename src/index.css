@@ -103,7 +103,7 @@ body,
 .uiverse-btn-layer button.uiverse-mooses {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 10px;
   padding: 0 10px;
   color: white;
@@ -128,31 +128,60 @@ body,
 }
 
 .uiverse-btn-layer button.uiverse-mooses canvas {
+  /* The layer lives inside .game-container, whose `canvas { width/height:
+   * 100% !important }` stretch rule would blow the icon slot up to the
+   * pill size — re-pin the slot size here (higher specificity + later). */
+  width: var(--char-size, 52px) !important;
+  height: var(--char-size, 52px) !important;
+  flex: none;
   transition: all 0.5s ease;
   z-index: 2;
 }
 
+/* Labels sit above the canvas, centred in the width right of the ball
+ * slot (the slot edge + gap arrives per-button as --ball-slot). */
 .uiverse-btn-layer .uiverse-play {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--ball-slot, 25%);
+  right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
   transition: all 0.5s ease;
   transition-delay: 300ms;
+  z-index: 3;
 }
 
 .uiverse-btn-layer button.uiverse-mooses:hover canvas,
 .uiverse-btn-layer button.uiverse-mooses.uiverse-hover canvas {
-  transform: scale(3) translate(50%);
+  /* 1.35 keeps the whole zoomed ball inside the 72px-tall pill
+   * (52px slot × 1.35 ≈ 70px); the +30% slide keeps its right edge
+   * left of the label region. */
+  transform: scale(1.35) translate(30%);
 }
 
 .uiverse-btn-layer .uiverse-now {
   position: absolute;
-  left: 0;
-  transform: translateX(-100%);
+  top: 0;
+  bottom: 0;
+  left: var(--ball-slot, 25%);
+  right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  /* Parked fully left of the BUTTON edge so overflow:hidden clips it. */
+  transform: translateX(calc(-100% - var(--ball-slot, 25%)));
   transition: all 0.5s ease;
-  z-index: 2;
+  z-index: 3;
 }
 
 .uiverse-btn-layer button.uiverse-mooses:hover .uiverse-now,
 .uiverse-btn-layer button.uiverse-mooses.uiverse-hover .uiverse-now {
-  transform: translateX(10px);
+  transform: translateX(0);
   transition-delay: 300ms;
 }
 
