@@ -120,25 +120,29 @@ function parsePath(d: string): Seg[] {
     // Repeat count per command (in coordinate pairs/groups).
     const rep: Record<string, number> = { M: 2, L: 2, H: 1, V: 1, C: 6, S: 4, Q: 4, T: 2, A: 7 }
     const group = rep[C]!
+    // Effective command inside the repeat loop: pairs following a moveto
+    // are implicit LINETOs per the SVG spec, not more movetos.
+    let cur = C
     for (;;) {
       const v = take(group)
-      if (C === 'M') {
+      if (cur === 'M') {
         cx = rel(v[0]!, cx)
         cy = rel(v[1]!, cy)
         sx = cx
         sy = cy
         out.push({ cmd: 'M', args: [cx, cy] })
-      } else if (C === 'L') {
+        cur = 'L'
+      } else if (cur === 'L') {
         cx = rel(v[0]!, cx)
         cy = rel(v[1]!, cy)
         out.push({ cmd: 'L', args: [cx, cy] })
-      } else if (C === 'H') {
+      } else if (cur === 'H') {
         cx = rel(v[0]!, cx)
         out.push({ cmd: 'L', args: [cx, cy] })
-      } else if (C === 'V') {
+      } else if (cur === 'V') {
         cy = rel(v[0]!, cy)
         out.push({ cmd: 'L', args: [cx, cy] })
-      } else if (C === 'C') {
+      } else if (cur === 'C') {
         const x1 = rel(v[0]!, cx)
         const y1 = rel(v[1]!, cy)
         const x2 = rel(v[2]!, cx)
@@ -148,7 +152,7 @@ function parsePath(d: string): Seg[] {
         out.push({ cmd: 'C', args: [x1, y1, x2, y2, cx, cy] })
         prevC.x = x2
         prevC.y = y2
-      } else if (C === 'S') {
+      } else if (cur === 'S') {
         // Smooth cubic: reflect the previous control point.
         const x1 = 2 * cx - prevC.x
         const y1 = 2 * cy - prevC.y
@@ -159,7 +163,7 @@ function parsePath(d: string): Seg[] {
         out.push({ cmd: 'C', args: [x1, y1, x2, y2, cx, cy] })
         prevC.x = x2
         prevC.y = y2
-      } else if (C === 'Q') {
+      } else if (cur === 'Q') {
         const qx = rel(v[0]!, cx)
         const qy = rel(v[1]!, cy)
         cx = rel(v[2]!, cx)
@@ -167,7 +171,7 @@ function parsePath(d: string): Seg[] {
         out.push({ cmd: 'Q', args: [qx, qy, cx, cy] })
         prevQ.x = qx
         prevQ.y = qy
-      } else if (C === 'T') {
+      } else if (cur === 'T') {
         // Smooth quadratic: reflect the previous control point.
         const qx = 2 * cx - prevQ.x
         const qy = 2 * cy - prevQ.y
@@ -176,7 +180,7 @@ function parsePath(d: string): Seg[] {
         out.push({ cmd: 'Q', args: [qx, qy, cx, cy] })
         prevQ.x = qx
         prevQ.y = qy
-      } else if (C === 'A') {
+      } else if (cur === 'A') {
         // Arc: rx ry rot largeArc sweep x y — endpoint parameterization.
         const rx = Math.abs(v[0]!)
         const ry = Math.abs(v[1]!)
@@ -200,9 +204,6 @@ function parsePath(d: string): Seg[] {
 /** Parse one icon's element list into draw-able element plans. */
 interface Plan {
   segs: Seg[]
-  closed: boolean
-  /** rect/circle become filled+stroked outlines in Lucide's look. */
-  fillShape: boolean
 }
 function planFor(name: string): Plan[] {
   const elems = NODES[name]
@@ -210,9 +211,9 @@ function planFor(name: string): Plan[] {
   const plans: Plan[] = []
   for (const [tag, attrs] of elems) {
     if (tag === 'path') {
-      plans.push({ segs: parsePath(attrs.d ?? ''), closed: false, fillShape: false })
+      plans.push({ segs: parsePath(attrs.d ?? '') })
     } else if (tag === 'rect') {
-      plans.push({ segs: rectSegs(attrs), closed: true, fillShape: true })
+      plans.push({ segs: rectSegs(attrs) })
     } else if (tag === 'circle') {
       const cx = parseFloat(attrs.cx ?? '0')
       const cy = parseFloat(attrs.cy ?? '0')
@@ -228,8 +229,6 @@ function planFor(name: string): Plan[] {
           { cmd: 'C', args: [cx - k, cy + r, cx - r, cy + k, cx - r, cy] },
           { cmd: 'Z', args: [] },
         ],
-        closed: true,
-        fillShape: true,
       })
     } else if (tag === 'line') {
       plans.push({
@@ -237,8 +236,7 @@ function planFor(name: string): Plan[] {
           { cmd: 'M', args: [parseFloat(attrs.x1 ?? '0'), parseFloat(attrs.y1 ?? '0')] },
           { cmd: 'L', args: [parseFloat(attrs.x2 ?? '0'), parseFloat(attrs.y2 ?? '0')] },
         ],
-        closed: false,
-        fillShape: false,
+
       })
     } else {
       throw new Error(`lucide: unsupported element <${tag}> in "${name}"`)
@@ -271,7 +269,6 @@ export function drawLucide(g: Phaser.GameObjects.Graphics, name: string, cx: num
   g.save()
   g.translateCanvas(cx - (VIEW / 2) * u, cy - (VIEW / 2) * u)
   g.lineStyle(STROKE * u, color, 1)
-  g.fillStyle(color, 1)
   for (const plan of plansFor(name)) {
     g.beginPath()
     let pen = { x: 0, y: 0 }
@@ -375,12 +372,7 @@ export function drawLucide(g: Phaser.GameObjects.Graphics, name: string, cx: num
           break
       }
     }
-    if (plan.fillShape) {
-      g.fillPath()
-      g.strokePath()
-    } else {
-      g.strokePath()
-    }
+    g.strokePath()
   }
   g.restore()
 }

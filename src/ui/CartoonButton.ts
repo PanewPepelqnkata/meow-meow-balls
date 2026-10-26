@@ -212,7 +212,9 @@ export class CartoonButton {
       c.add([shadow, side, body])
       c.setDepth(depth)
       iconY = this.opts.label ? -h * 0.08 : 0
-      iconS = Math.min(w, h)
+      // Lucide painters treat `s` as the icon box edge and draw ~92% of it;
+      // half the button height keeps the glyph clear of the label row.
+      iconS = Math.min(w, h) * 0.5
     }
 
     if (this.opts.icon) {
