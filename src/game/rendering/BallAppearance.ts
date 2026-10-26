@@ -1309,14 +1309,15 @@ export function drawCrabBall(
     const baseX = midX + side * r * 0.3
     const baseY = midY - r * 0.08 - wave * r * 0.06 + tremble * 0.5
 
-    // ARM upper segment: fat filled quad (root → mid).
-    const armW1 = r * 0.11
-    const armW2 = r * 0.085
+    // ARM upper segment: fat filled quad (root → mid), rounded corners
+    // via quadFrom on the outer edge for a smooth hand-drawn feel.
+    const armW1 = r * 0.13
+    const armW2 = r * 0.1
     g.fillStyle(pal.claw, 1)
     g.beginPath()
-    g.moveTo(rootX - side * armW1 * 0.4, rootY - armW1)
-    g.lineTo(midX - side * armW2 * 0.5, midY - armW2)
-    g.lineTo(midX + side * armW2 * 0.5, midY + armW2)
+    g.moveTo(rootX - side * armW1 * 0.45, rootY - armW1)
+    quadFrom(g, rootX - side * armW1 * 0.45, rootY - armW1, midX - side * armW2 * 0.7, midY - armW2 * 1.4, midX - side * armW2 * 0.6, midY - armW2)
+    g.lineTo(midX + side * armW2 * 0.6, midY + armW2)
     g.lineTo(rootX + side * armW1 * 0.6, rootY + armW1 * 0.6)
     g.closePath()
     g.fillPath()
@@ -1335,13 +1336,14 @@ export function drawCrabBall(
     g.strokePath()
 
     // THE PINCER — the big claw: a fat rounded palm + two open jaws.
-    const palmR = r * 0.19
+    const palmR = r * 0.22
     g.fillStyle(pal.claw, 1)
     g.fillCircle(baseX, baseY, palmR)
-    g.lineStyle(ink * 0.75, INK, 1)
+    g.lineStyle(ink * 0.9, INK, 1)
     g.strokeCircle(baseX, baseY, palmR)
-    // UPPER jaw: a fat crescent curving up-and-inward toward the face.
-    const jawL = r * 0.34
+    // UPPER jaw: a fat crescent curving up-and-inward toward the face,
+    // with a white tip accent.
+    const jawL = r * 0.36
     const snip = 0.25 + 0.2 * Math.abs(Math.sin(now * 0.005 + side))
     const uTipX = baseX + side * jawL * 0.55
     const uTipY = baseY - jawL * 0.8 - snip * r * 0.06
@@ -1352,7 +1354,7 @@ export function drawCrabBall(
     quadFrom(g, uTipX, uTipY, baseX + side * jawL * 0.62, baseY - jawL * 0.42, baseX + side * palmR * 0.4, baseY - palmR * 0.1)
     g.closePath()
     g.fillPath()
-    g.lineStyle(ink * 0.7, INK, 1)
+    g.lineStyle(ink * 0.8, INK, 1)
     g.strokePath()
     // LOWER jaw: a fatter crescent curving out-and-down.
     const lTipX = baseX + side * jawL * 0.72
@@ -1364,12 +1366,12 @@ export function drawCrabBall(
     quadFrom(g, lTipX, lTipY, baseX + side * jawL * 0.68, baseY - jawL * 0.05, baseX + side * palmR * 0.45, baseY + palmR * 0.1)
     g.closePath()
     g.fillPath()
-    g.lineStyle(ink * 0.7, INK, 1)
+    g.lineStyle(ink * 0.8, INK, 1)
     g.strokePath()
     // White tip accents on both jaws.
     g.fillStyle(pal.belly, 0.95)
-    g.fillCircle(uTipX, uTipY, r * 0.045)
-    g.fillCircle(lTipX, lTipY, r * 0.045)
+    g.fillCircle(uTipX, uTipY, r * 0.05)
+    g.fillCircle(lTipX, lTipY, r * 0.05)
   }
 
   // ---- THE WALKING LEGS — three thin pointed legs per side, angled
@@ -1418,9 +1420,32 @@ export function drawCrabBall(
     g.fillCircle(cx + sx * r, cy + sy * r, Math.max(2, r * 0.05))
   }
 
+  // ---- THE MOUTH — a small frown (the crab's permanently grumpy
+  // mouthparts), centred under the eyes. ----
+  const mwY = cy + r * 0.24
+  g.lineStyle(ink * 0.9, INK, 0.9)
+  g.beginPath()
+  g.moveTo(cx - r * 0.14, mwY + r * 0.03)
+  quadFrom(g, cx - r * 0.14, mwY + r * 0.03, cx, mwY - r * 0.04, cx + r * 0.14, mwY + r * 0.03)
+  g.strokePath()
+
+  // Fear sweat: one drop at the side of the shell.
+  if (panic > 0.45) {
+    const sweat = Math.min(1, (panic - 0.45) / 0.55)
+    g.fillStyle(0x9fdcff, 0.95 * sweat)
+    g.fillCircle(cx - r * 0.6, cy - r * 0.5, r * 0.055 * (0.7 + 0.3 * sweat))
+  }
+
+  // ---- THE INK OUTLINE — the contour itself, over everything. ----
+  g.lineStyle(ballOutlineWidth(r), INK, 1)
+  if (poly && poly.length >= 3) {
+    g.strokePoints(poly as unknown as Phaser.Math.Vector2[], true, true)
+  } else {
+    g.strokeCircle(cx, cy, r)
+  }
   // ---- THE STALK EYES — two eyes on stalks rising from the shell top,
-  // between the claws. Big white eyeballs with ink rims and gaze pupils.
-  // Fear widens them. ----
+  // between the claws. Drawn AFTER the ink outline so they sit ON TOP of
+  // it. Big white eyeballs with ink rims and gaze pupils. Fear widens.
   for (const side of [-1, 1]) {
     const stalkX = cx + side * r * 0.22
     const stalkBaseY = cy - r * 0.78
@@ -1447,33 +1472,8 @@ export function drawCrabBall(
     g.strokeCircle(stalkX, stalkTopY, eyeR)
   }
 
-  // ---- THE MOUTH — a small wavy line under the eyes. ----
-  g.lineStyle(ink * 0.9, INK, 0.9)
-  g.beginPath()
-  const mwY = cy + r * 0.24
-  g.moveTo(cx - r * 0.16, mwY)
-  g.lineTo(cx - r * 0.05, mwY + r * 0.035)
-  g.lineTo(cx + r * 0.06, mwY - r * 0.02)
-  g.lineTo(cx + r * 0.16, mwY + r * 0.02)
-  g.strokePath()
 
-  // Fear sweat: one drop at the side of the shell.
-  if (panic > 0.45) {
-    const sweat = Math.min(1, (panic - 0.45) / 0.55)
-    g.fillStyle(0x9fdcff, 0.95 * sweat)
-    g.fillCircle(cx - r * 0.6, cy - r * 0.5, r * 0.055 * (0.7 + 0.3 * sweat))
-  }
-
-  // ---- THE INK OUTLINE — the contour itself, over everything. ----
-  g.lineStyle(ballOutlineWidth(r), INK, 1)
-  if (poly && poly.length >= 3) {
-    g.strokePoints(poly as unknown as Phaser.Math.Vector2[], true, true)
-  } else {
-    g.strokeCircle(cx, cy, r)
-  }
 }
-
-
 /**
  * The ONE tier-9 entry point for every consumer (renderer, previews,
  * banner, overlay, claw, progression, baker): routes to the theme the
