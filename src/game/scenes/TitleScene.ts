@@ -332,8 +332,8 @@ export class TitleScene extends Phaser.Scene {
         vh * 0.55,
         Math.max(vw, vh) * 0.55,
       )
-      glow.addColorStop(0, 'rgba(233,64,64,0.13)')
-      glow.addColorStop(1, 'rgba(233,64,64,0)')
+      glow.addColorStop(0, 'rgba(79,195,247,0.13)')
+      glow.addColorStop(1, 'rgba(79,195,247,0)')
       ctx.fillStyle = glow
       ctx.fillRect(0, 0, vw, vh)
       // Sprinkled warm dots — subtle depth, not noise.
