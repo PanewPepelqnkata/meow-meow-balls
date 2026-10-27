@@ -593,25 +593,31 @@ export class TitleScene extends Phaser.Scene {
     })
   }
 
-  /** Machine BACK layer: ground shadow, glass interior, red base body. */
+  /** Machine BACK layer: glass interior, red base body, rich cartoon shading & highlights. */
   private buildMachineBack(key: string, w: number, h: number, u: number): Phaser.GameObjects.Image {
     bakeCanvas(this, `br-gumball-back:${key}`, Math.ceil(w), Math.ceil(h), (ctx) => {
-      // Soft ground shadow — the machine stands IN the scene, not on it.
-      ctx.fillStyle = 'rgba(0,0,0,0.35)'
-      ctx.beginPath()
-      ctx.ellipse(50 * u, 126 * u, 30 * u, 5 * u, 0, 0, Math.PI * 2)
-      ctx.fill()
-      // Glass interior: near-transparent fill + pile shading at the bottom.
+      // Glass interior: near-transparent fill + subtle pile shading at the bottom.
       ctx.fillStyle = 'rgba(255,255,255,0.07)'
       ctx.beginPath()
       ctx.arc(50 * u, 33 * u, 30 * u, 0, Math.PI * 2)
       ctx.fill()
-      ctx.fillStyle = 'rgba(0,0,0,0.10)'
+      ctx.fillStyle = 'rgba(0,0,0,0.12)'
       ctx.beginPath()
       ctx.ellipse(50 * u, 52 * u, 23 * u, 10 * u, 0, 0, Math.PI * 2)
       ctx.fill()
-      // Red collar between globe and base.
-      ctx.fillStyle = '#e23b3b'
+
+      // Feet: dark rich cherry red under the base.
+      ctx.fillStyle = '#9e1b22'
+      rrPath(ctx, 23 * u, 122 * u, 11 * u, 5 * u, 2 * u)
+      ctx.fill()
+      rrPath(ctx, 66 * u, 122 * u, 11 * u, 5 * u, 2 * u)
+      ctx.fill()
+
+      // Red collar between globe and base — vibrant rich red with warm highlight top.
+      const collarGrad = ctx.createLinearGradient(0, 60 * u, 0, 70 * u)
+      collarGrad.addColorStop(0, '#ff4747')
+      collarGrad.addColorStop(1, '#e02828')
+      ctx.fillStyle = collarGrad
       ctx.beginPath()
       ctx.moveTo(39 * u, 60 * u)
       ctx.lineTo(61 * u, 60 * u)
@@ -619,7 +625,13 @@ export class TitleScene extends Phaser.Scene {
       ctx.lineTo(35 * u, 70 * u)
       ctx.closePath()
       ctx.fill()
-      // Red dispenser base (stout body, slightly rounded).
+
+      // Red dispenser base (stout body, slightly rounded) — vibrant candy red with subtle lateral form gradient.
+      const baseGrad = ctx.createLinearGradient(25 * u, 68 * u, 75 * u, 122 * u)
+      baseGrad.addColorStop(0, '#ff4747')
+      baseGrad.addColorStop(0.45, '#e52c2c')
+      baseGrad.addColorStop(1, '#cb1e1e')
+      ctx.fillStyle = baseGrad
       ctx.beginPath()
       ctx.moveTo(35 * u, 68 * u)
       ctx.lineTo(65 * u, 68 * u)
@@ -629,8 +641,12 @@ export class TitleScene extends Phaser.Scene {
       ctx.quadraticCurveTo(22 * u, 122 * u, 24 * u, 114 * u)
       ctx.closePath()
       ctx.fill()
-      // Darker bottom band — cartoon depth.
-      ctx.fillStyle = '#b32626'
+
+      // Darker bottom band — deep rich cartoon depth.
+      const bandGrad = ctx.createLinearGradient(0, 108 * u, 0, 122 * u)
+      bandGrad.addColorStop(0, '#aa1923')
+      bandGrad.addColorStop(1, '#831018')
+      ctx.fillStyle = bandGrad
       ctx.beginPath()
       ctx.moveTo(74 * u, 108 * u)
       ctx.lineTo(76 * u, 114 * u)
@@ -640,39 +656,49 @@ export class TitleScene extends Phaser.Scene {
       ctx.lineTo(26 * u, 108 * u)
       ctx.closePath()
       ctx.fill()
-      // Dispenser chute (the gumballs roll out here).
-      ctx.fillStyle = '#15161f'
+
+      // Dispenser chute (the gumballs roll out here) — crisp dark navy/charcoal cavity.
+      ctx.fillStyle = '#141722'
       rrPath(ctx, 38 * u, 101 * u, 24 * u, 15 * u, [1 * u, 1 * u, 5 * u, 5 * u])
       ctx.fill()
-      // Chute flap: cream door over the lower chute (balls push it open).
-      ctx.fillStyle = '#fafaf9'
+
+      // Chute flap: bright cream door over lower chute with subtle 3D rim.
+      ctx.fillStyle = '#fffdfa'
       rrPath(ctx, 40 * u, 106 * u, 20 * u, 8 * u, 2 * u)
       ctx.fill()
-      // Marquee bulbs: candy dots across the red collar.
-      const bulbs = ['#e94040', '#fafaf9', '#e94040', '#fafaf9', '#e94040']
+
+      // Marquee bulbs: candy dots across collar matching game palette.
+      const bulbs = ['#ffd93b', '#4fc3f7', '#ff8a3d', '#4fc3f7', '#ffd93b']
       bulbs.forEach((c, i) => {
         ctx.fillStyle = c
         ctx.beginPath()
         ctx.arc((41 + i * 4.5) * u, 65 * u, 1.7 * u, 0, Math.PI * 2)
         ctx.fill()
       })
-      // Star sticker on the base's left cheek.
-      ctx.fillStyle = '#e94040'
+
+      // Star sticker on the base's left cheek — golden yellow.
+      ctx.fillStyle = '#ffd93b'
       starPath(ctx, 31.5 * u, 96 * u, 2.8 * u)
       ctx.fill()
-      // Coin slot.
+
+      // Coin slot — metallic silver-blue tone.
+      ctx.fillStyle = '#7a8ba3'
       rrPath(ctx, 63.5 * u, 78 * u, 4.5 * u, 14 * u, 2.2 * u)
       ctx.fill()
-      // Knob.
+      // Coin insert slot line (darker inside).
+      ctx.fillStyle = '#141722'
+      rrPath(ctx, 64.7 * u, 80 * u, 2.1 * u, 10 * u, 1 * u)
+      ctx.fill()
+
+      // Knob — metallic silver dial with inner accent.
+      ctx.fillStyle = '#b0c2de'
       ctx.beginPath()
       ctx.arc(37 * u, 85 * u, 5 * u, 0, Math.PI * 2)
       ctx.fill()
-      // Feet.
-      rrPath(ctx, 23 * u, 122 * u, 11 * u, 5 * u, 2 * u)
+      ctx.fillStyle = '#e2ecfc'
+      ctx.beginPath()
+      ctx.arc(36 * u, 84 * u, 2.4 * u, 0, Math.PI * 2)
       ctx.fill()
-      rrPath(ctx, 66 * u, 122 * u, 11 * u, 5 * u, 2 * u)
-      ctx.fill()
-      // rc/seed unused: the back layer is fully deterministic shapes.
     }, window.devicePixelRatio || 1)
     // Baked at dpr× — display at the LOGICAL w×h (dpr = bitmap res only).
     const backImg = this.add.image(0, 0, `br-gumball-back:${key}`).setOrigin(0, 0)
@@ -689,7 +715,7 @@ export class TitleScene extends Phaser.Scene {
     u: number,
   ): Phaser.GameObjects.Image {
     bakeCanvas(this, `br-gumball-front:${key}`, Math.ceil(w), Math.ceil(h), (ctx) => {
-      const ink = '#111111'
+      const ink = '#1a1a1a'
       // Stroke widths clamp to a 3–6px band regardless of machine size — an
       // unclamped u-scale made the big desktop machine's base outline ~15px
       // thick (a dark wedge at every corner).
@@ -766,11 +792,18 @@ export class TitleScene extends Phaser.Scene {
       ctx.arc(37 * u, 85 * u, 2.2 * u, 0, Math.PI * 2)
       ctx.stroke()
       // Cream pinstripe where the collar meets the base.
-      ctx.strokeStyle = 'rgba(255,255,255,0.35)'
+      ctx.strokeStyle = 'rgba(255,255,255,0.65)'
       ctx.lineWidth = 1.4 * u
       ctx.beginPath()
       ctx.moveTo(33.8 * u, 73 * u)
       ctx.lineTo(66.2 * u, 73 * u)
+      ctx.stroke()
+      // Cartoon glint on top-left edge of the red body
+      ctx.strokeStyle = 'rgba(255,255,255,0.38)'
+      ctx.lineWidth = 1.5 * u
+      ctx.beginPath()
+      ctx.moveTo(36 * u, 76 * u)
+      ctx.lineTo(31.5 * u, 91 * u)
       ctx.stroke()
       // Chute flap: ink outline + handle bar.
       ctx.strokeStyle = ink
@@ -806,9 +839,14 @@ export class TitleScene extends Phaser.Scene {
       sparkle(31 * u, 13 * u, 2 * u, 0.45)
       // Star sticker outline.
       ctx.strokeStyle = ink
-      ctx.lineWidth = Math.max(1, 1.1 * u)
+      ctx.lineWidth = Math.max(1.2, 1.2 * u)
       starPath(ctx, 31.5 * u, 96 * u, 2.8 * u)
       ctx.stroke()
+      // Star center white glint dot
+      ctx.fillStyle = '#ffffff'
+      ctx.beginPath()
+      ctx.arc(31.2 * u, 95.7 * u, 0.8 * u, 0, Math.PI * 2)
+      ctx.fill()
     }, window.devicePixelRatio || 1)
     // Baked at dpr× — display at the LOGICAL w×h (dpr = bitmap res only).
     const frontImg = this.add.image(0, 0, `br-gumball-front:${key}`).setOrigin(0, 0)

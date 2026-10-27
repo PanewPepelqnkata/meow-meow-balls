@@ -403,7 +403,7 @@ export function drawMachineFills(
   }
   // Collar.
   if (a('collar') > 0) {
-    g.fillStyle(0xe23b3b, a('collar'))
+    g.fillStyle(0xf22b2b, a('collar'))
     g.fillPoints(
       asPoints([{ x: 39, y: 60 }, { x: 61, y: 60 }, { x: 65, y: 70 }, { x: 35, y: 70 }].map((p) => ({
         x: X(p.x),
@@ -414,7 +414,7 @@ export function drawMachineFills(
   }
   // Base body.
   if (a('base') > 0) {
-    g.fillStyle(0xe23b3b, a('base'))
+    g.fillStyle(0xe52525, a('base'))
     g.fillPoints(
       asPoints(
         [
@@ -429,7 +429,7 @@ export function drawMachineFills(
       true,
     )
     // Darker bottom band.
-    g.fillStyle(0xb32626, a('base'))
+    g.fillStyle(0x8a1219, a('base'))
     g.fillPoints(
       asPoints(
         [
@@ -446,30 +446,29 @@ export function drawMachineFills(
   }
   // Chute (dark) + flap (cream).
   if (a('chute') > 0) {
-    g.fillStyle(0x191919, a('chute'))
+    g.fillStyle(0x141722, a('chute'))
     g.fillPoints(asPoints(rrPts(38, 101, 24, 15, [1, 1, 5, 5]).map((p) => ({ x: X(p.x), y: X(p.y) }))), true)
-    g.fillStyle(0xf2eee2, a('chute'))
-    g.fillPoints(asPoints(rrPts(40, 106, 20, 8, 2).map((p) => ({ x: X(p.x), y: X(p.y) }))), true)
+    g.fillStyle(0xfffdfa, a('chute'))
   }
   // Coin slot.
   if (a('coinSlot') > 0) {
-    g.fillStyle(0x191919, a('coinSlot'))
+    g.fillStyle(0x7a8ba3, a('coinSlot'))
     g.fillPoints(asPoints(rrPts(63.5, 78, 4.5, 14, 2.2).map((p) => ({ x: X(p.x), y: X(p.y) }))), true)
   }
   // Knob.
   if (a('knob') > 0) {
-    g.fillStyle(0xe23b3b, a('knob'))
+    g.fillStyle(0xb0c2de, a('knob'))
     g.fillCircle(X(37), X(85), X(5))
   }
   // Feet.
   if (a('feet') > 0) {
-    g.fillStyle(0xb32626, a('feet'))
+    g.fillStyle(0x9e1b22, a('feet'))
     g.fillPoints(asPoints(rrPts(23, 122, 11, 5, 2).map((p) => ({ x: X(p.x), y: X(p.y) }))), true)
     g.fillPoints(asPoints(rrPts(66, 122, 11, 5, 2).map((p) => ({ x: X(p.x), y: X(p.y) }))), true)
   }
   // Sticker.
   if (a('sticker') > 0) {
-    g.fillStyle(0xffe08a, a('sticker'))
+    g.fillStyle(0xffd93b, a('sticker'))
     g.fillPoints(asPoints(starPts(31.5, 96, 2.8).map((p) => ({ x: X(p.x), y: X(p.y) }))), true)
   }
   // Sparkles (white glints on the glass).
