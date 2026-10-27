@@ -1546,7 +1546,9 @@ export class TitleScene extends Phaser.Scene {
     const iris = this.add.graphics().setDepth(5000)
     const drawIris = (holeR: number): void => {
       iris.clear()
-      // Zero-width annulus = GPU seam ring; guard both endpoints.
+      // Endpoint guards (zero-width annulus = GPU seam; fully closed =
+      // plain disc). The sweep-in shrinks to innerR; no feather — one
+      // clean hard edge, the classic iris read.
       if (holeR >= outerR) return
       iris.fillStyle(0x0e0f1c, 1)
       if (holeR <= 0.01) {

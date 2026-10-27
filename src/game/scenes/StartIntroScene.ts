@@ -84,40 +84,22 @@ export class StartIntroScene extends Phaser.Scene {
     // during the open magnifies its baked edge into pixel steps; live
     // geometry stays crisp at every radius (two arcs + a fill, ~no cost).
     const cover = this.add.graphics().setDepth(-1)
-    // Feathered hole edge: instead of one hard annulus (a hard circular
-    // edge sweeping past a corner reads as 'another iris opening'), the
-    // hole is drawn as N concentric bands with stepped alpha — a smooth
-    // 56px feather that fades the cover into the game at every radius.
-    const FEATHER = 56
-    const STEPS = 8
     const drawCover = (holeR: number): void => {
       cover.clear()
+      // Fully open: draw nothing — a zero-width annulus renders as a
+      // 1px GPU seam ring. Fully closed: a plain disc. The hole tween
+      // overshoots past the corners (outerR * 1.1), so the corners
+      // clear mid-open — no second-circle read at the end.
       if (holeR >= outerR) return
+      cover.fillStyle(0x0e0f1c, 1)
       if (holeR <= 0.01) {
-        cover.fillStyle(0x0e0f1c, 1)
         cover.fillCircle(cx, cy, outerR * 1.05)
         return
       }
-      // Solid ink from the outer edge down to (holeR + FEATHER)...
-      cover.fillStyle(0x0e0f1c, 1)
       cover.beginPath()
       cover.arc(cx, cy, outerR * 1.05, 0, Math.PI * 2)
-      cover.arc(cx, cy, holeR + FEATHER, 0, Math.PI * 2, true)
+      cover.arc(cx, cy, holeR, 0, Math.PI * 2, true)
       cover.fillPath()
-      // ...then the feather: STEPS bands from alpha 1/STEPS to 0 around
-      // the hole. Each band is an annulus (outer = previous, hole =
-      // shrinking radii), so the edge blends into the game.
-      for (let s = 0; s < STEPS; s++) {
-        const a1 = 1 - s / STEPS
-        const a0 = 1 - (s + 1) / STEPS
-        const rOuter = holeR + FEATHER - (FEATHER * s) / STEPS
-        const rInner = holeR + FEATHER - (FEATHER * (s + 1)) / STEPS
-        cover.fillStyle(0x0e0f1c, a1 - a0)
-        cover.beginPath()
-        cover.arc(cx, cy, rOuter, 0, Math.PI * 2)
-        cover.arc(cx, cy, rInner, 0, Math.PI * 2, true)
-        cover.fillPath()
-      }
     }
     // startClosed boots FULLY closed (2px hairline) to match
     // TitleScene's last frame; the legacy open path starts wide open.
@@ -149,12 +131,6 @@ export class StartIntroScene extends Phaser.Scene {
       setPhase('machine')
       // ---- gameplay boots UNDER the closed ring (heavy frame hidden) --
       this.startGameplay()
-      // The container fades in LATE: its rounded ink corner revealed
-      // mid-open reads as a second iris. Alpha 0 now, tweened to 1
-      // after the iris completes.
-      ;(this.scene.get('playground') as unknown as {
-        containerView?: { setOpacity(a: number): void }
-      }).containerView?.setOpacity(0)
       // Stop the menu AFTER the gameplay scenes are revealed: both render
       // targets swap in the same frame — no paint gap at the handoff.
       // (TitleScene normally already stopped itself post-handoff; this
@@ -501,26 +477,6 @@ export class StartIntroScene extends Phaser.Scene {
           onComplete: () => {
             cover.destroy()
             seal.destroy()
-            // The iris is fully open: fade the container in (300ms).
-            // The tween MUST live on the PLAYGROUND scene — this scene
-            // stops immediately, killing any tween on ITS manager (the
-            // container-stays-invisible bug).
-            const pg = this.scene.get('playground') as unknown as {
-              containerView?: { setOpacity(a: number): void }
-              tweens: Phaser.Tweens.TweenManager
-            }
-            if (pg?.containerView) {
-              const fade = { a: 0 }
-              pg.containerView.setOpacity(0)
-              pg.tweens.add({
-                targets: fade,
-                a: 1,
-                duration: 300,
-                ease: 'Quad.easeOut',
-                onUpdate: () => pg.containerView!.setOpacity(fade.a),
-                onComplete: () => pg.containerView!.setOpacity(1),
-              })
-            }
             this.scene.stop()
           },
         })
