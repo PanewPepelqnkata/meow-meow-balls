@@ -20,7 +20,6 @@ import { session } from '../state/session'
 import { bakeCanvas, roundedRectPath } from '../rendering/RoughArt'
 import { cycleColor } from '../rendering/rgbCycle'
 import { UiverseDomButtons } from '../../ui/UiverseDomButtons'
-import { bakeIrisCover, IRIS_COVER_KEY } from './StartIntroScene'
 import { StartIntroScene } from './StartIntroScene'
 
 /**
@@ -1542,15 +1541,18 @@ export class TitleScene extends Phaser.Scene {
     // Graphics buffer streaming, zero canvas repaints. Per-frame
     // viewport Graphics redraws are a known iOS blank/black trigger
     // (Phaser #6051/#6914) and the app already lost two features to
-    // that class. See bakeIrisCover() in StartIntroScene (shared bake).
-    const baked = bakeIrisCover(this, outerR, innerR)
-    const iris = this.add
-      .image(cx, cy, IRIS_COVER_KEY)
-      .setOrigin(0.5, 0.5)
-      .setDepth(5000)
-      // The bake is dpr× for crispness; display at LOGICAL 2·outerR.
-      .setDisplaySize(outerR * 2, outerR * 2)
-      .setScale(outerR / innerR)
+    // The iris is a per-tick Graphics annulus (crisp at every radius —
+    // a scaled texture magnifies its baked edge into pixel steps).
+    const iris = this.add.graphics().setDepth(5000)
+    const drawIris = (holeR: number): void => {
+      iris.clear()
+      iris.fillStyle(0x0e0f1c, 1)
+      iris.beginPath()
+      iris.arc(cx, cy, outerR, 0, Math.PI * 2)
+      iris.arc(cx, cy, Math.max(0.01, holeR), 0, Math.PI * 2, true)
+      iris.fillPath()
+    }
+    drawIris(innerR)
     // SEAL: a full-screen ink quad UNDER the iris that fades in during
     // the final third of the sweep, filling the 55px hole. The ring
     // never closes past innerR — scaling below 1 pulled the baked
@@ -1559,6 +1561,7 @@ export class TitleScene extends Phaser.Scene {
     // through 99.97% transparent coverage). With the seal, the sweep
     // reads exactly like the praised version, and the closed beat is
     // SOLID ink + cream ring at r=innerR.
+    const sweepProgress = { hole: outerR }
     const seal = this.add
       .rectangle(cx, cy, vw, vh, 0x0e0f1c)
       .setDepth(4999)
@@ -1571,10 +1574,11 @@ export class TitleScene extends Phaser.Scene {
       ease: 'Quad.easeIn',
     })
     this.tweens.add({
-      targets: iris,
-      scale: 1,
+      targets: sweepProgress,
+      hole: innerR,
       duration: 620,
       ease: 'Quad.easeInOut',
+      onUpdate: () => drawIris(sweepProgress.hole),
       onComplete: () => {
         // Full ink now covers the menu (annulus at scale 1 + seal under
         // it). Hand off WITHOUT destroying either: they stay painted
@@ -1584,7 +1588,6 @@ export class TitleScene extends Phaser.Scene {
         this.scene.start('StartIntroScene', { startClosed: true })
       },
     })
-    void baked
   }
 
   private pressStart(): void {
@@ -1596,7 +1599,7 @@ export class TitleScene extends Phaser.Scene {
     // the comic ring + scared ball covers the gameplay scenes' expensive
     // first frame (the "lag on start" on physical iPhones). Desktop keeps
     // the instant cross-dissolve.
-    if (StartIntroScene.shouldRun(window.innerWidth, window.innerHeight)) {
+    if (StartIntroScene.shouldRun()) {
       gameBus.emit('ui:start', {})
       this.scene.setVisible(false, 'playground')
       this.scene.setVisible(false, 'UIScene')

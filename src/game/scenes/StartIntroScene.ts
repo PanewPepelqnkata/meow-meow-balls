@@ -39,57 +39,11 @@ import { getTier } from '../../config/ballTiers'
  * behind the blanking menu (WebKit canvas-pool exhaustion + Phaser
  * #6051/#6914 per-frame Graphics). Hole radius at scale s = innerR·s.
  */
-/**
- * The texture key for the intro iris cover. TitleScene's iris Image and
- * StartIntroScene's iris Image are alive at the SAME time (the title's
- * cover stays painted until this scene stops) and they share the texture
- * manager, so this key is shared deliberately.
- */
-export const IRIS_COVER_KEY = 'br-intro-cover'
-
-export function bakeIrisCover(
-  scene: Phaser.Scene,
-  outerR: number,
-  innerR: number,
-): HTMLCanvasElement {
-  const size = Math.ceil(outerR * 2)
-  const key = IRIS_COVER_KEY
-  const existing = scene.textures.exists(key)
-    ? (scene.textures.get(key).getSourceImage() as HTMLCanvasElement | null)
-    : null
-  if (existing && existing.width >= size) return existing
-  // The old texture is removed from the MANAGER only — `removeKey`
-  // deletes the entry WITHOUT destroying the texture, so a live Image
-  // that is still bound to it keeps a valid source. `textures.remove()`
-  // would DESTROY the texture (nulling the frame's source), and the next
-  // render of that Image would throw inside the render pass, which kills
-  // the Phaser game loop and the whole canvas UI with it.
-  if (scene.textures.exists(key)) scene.textures.removeKey(key)
-  // Baked at min(dpr, 2)× so the annulus is crisp on Retina (a dpr-1 bake
-  // magnified by the camera zoom reads pixelated on the closed sweep).
-  // Capped at 2 — same tradeoff as the render buffer: beyond that the
-  // 2·outerR square would stress the iOS canvas pool for no visible gain.
-  const dpr = Math.min(window.devicePixelRatio || 1, 2)
-  const canvas = document.createElement('canvas')
-  canvas.width = size * dpr
-  canvas.height = size * dpr
-  const ctx = canvas.getContext('2d')!
-  ctx.scale(dpr, dpr)
-  const c = size / 2
-  ctx.fillStyle = '#0e0f1c'
-  ctx.beginPath()
-  ctx.arc(c, c, outerR, 0, Math.PI * 2)
-  ctx.arc(c, c, innerR, 0, Math.PI * 2, true)
-  ctx.fill()
-  scene.textures.addCanvas(key, canvas)
-  return canvas
-}
-
 export class StartIntroScene extends Phaser.Scene {
   /** Runs on EVERY viewport now — the machine intro is the start
    * experience on desktop too (the machine scales with the viewport).
    * Kept as a method for the TitleScene gate + QA parity. */
-  static shouldRun(_vw: number, _vh: number): boolean {
+  static shouldRun(): boolean {
     return true
   }
 
@@ -126,20 +80,17 @@ export class StartIntroScene extends Phaser.Scene {
 
 
     // ---- 1. Ring sweep: screen covered by a scaled iris annulus --------
-    // Baked ONCE (bakeIrisCover): ink annulus + cream ring at the hole
-    // edge; hole radius = innerR at scale 1. Animating = pure GPU scale
-    // (hole radius = innerR * scale). NO per-frame Graphics redraws —
-    // the iOS blanking class (canvas-pool exhaustion + Phaser #6051/
-    // #6914) is eliminated from the transition entirely.
-    bakeIrisCover(this, outerR, innerR)
-    const cover = this.add
-      .image(cx, cy, IRIS_COVER_KEY)
-      .setOrigin(0.5, 0.5)
-      .setDepth(-1)
-    // The bake is dpr× for crispness; display at LOGICAL 2·outerR.
-    cover.setDisplaySize(outerR * 2, outerR * 2)
+    // The iris is a per-tick Graphics annulus — a texture scaled 60x+
+    // during the open magnifies its baked edge into pixel steps; live
+    // geometry stays crisp at every radius (two arcs + a fill, ~no cost).
+    const cover = this.add.graphics().setDepth(-1)
     const drawCover = (holeR: number): void => {
-      cover.setScale(Math.max(1e-4, holeR / innerR))
+      cover.clear()
+      cover.fillStyle(0x0e0f1c, 1)
+      cover.beginPath()
+      cover.arc(cx, cy, outerR, 0, Math.PI * 2)
+      cover.arc(cx, cy, Math.max(0.01, holeR), 0, Math.PI * 2, true)
+      cover.fillPath()
     }
     // startClosed boots FULLY closed (2px hairline) to match
     // TitleScene's last frame; the legacy open path starts wide open.
