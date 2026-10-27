@@ -333,7 +333,7 @@ export class StartIntroScene extends Phaser.Scene {
           scale: 1,
           delay: 3350 + i * 80,
           duration: 320,
-          ease: 'Back.easeOut',
+          ease: 'Back.easeOut.config(0.6)',
           onUpdate: () => drawCast(),
           onComplete: () => drawCast(),
         })
