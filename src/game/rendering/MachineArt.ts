@@ -159,8 +159,6 @@ function sparklePts(cx: number, cy: number, s: number): Array<{ x: number; y: nu
 /** Machine body / glass / trim outlines, in DRAW-ON ORDER (the order the
  * intro strokes them; the fill layer indexes the same groups). */
 export const MACHINE_UNIT_PATHS: Record<string, UnitPath> = {
-  /** Ground shadow ellipse (outline only; the soft fill comes separately). */
-  shadow: { pts: arcPts(50, 126, 30, 5, 0, Math.PI * 2, 36).slice(0, -1) as UnitPath['pts'], closed: true },
   /** Dispenser base body + its darker bottom band share this rounded outline. */
   base: {
     pts: [
@@ -235,7 +233,11 @@ export const MACHINE_UNIT_PATHS: Record<string, UnitPath> = {
  * and glints last. Bulbs are NOT polylines — they flash in with color at
  * the very end (see MACHINE_BULBS). */
 export const MACHINE_DRAW_ORDER: readonly string[] = [
-  'shadow',
+  // footL/footR FIRST: the undraw erase walks this order from the front,
+  // so the feet vanish first ("the feet must go first" — user ask). The
+  // shadow key is gone (no ground circle anywhere).
+  'footL',
+  'footR',
   'base',
   'band',
   'collar',
@@ -246,8 +248,6 @@ export const MACHINE_DRAW_ORDER: readonly string[] = [
   'coinSlot',
   'knob',
   'knobInner',
-  'footL',
-  'footR',
   'pinstripe',
   'sheen1',
   'sheen2',
@@ -391,11 +391,6 @@ export function drawMachineFills(
   const a = (k: string): number => alphaMap?.[k] ?? 0
   const X = (v: number): number => v * u
   // Layer order back → front (same as the menu's back bake).
-  // Ground shadow (soft ellipse).
-  if (a('shadow') > 0) {
-    g.fillStyle(0x000000, 0.35 * a('shadow'))
-    g.fillEllipse(X(50), X(126), X(60), X(10))
-  }
   // Glass interior + pile shading.
   if (a('glass') > 0) {
     g.fillStyle(0xffffff, 0.07 * a('glass'))

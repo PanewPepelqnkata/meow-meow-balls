@@ -203,7 +203,6 @@ export class StartIntroScene extends Phaser.Scene {
       // Outline groups → fill-layer group keys (band/pinstripe/flap handle
       // are strokes only; they inherit their part's fill).
       const fillGroupOf: Record<string, string> = {
-        shadow: 'shadow',
         base: 'base',
         band: 'base',
         collar: 'collar',
