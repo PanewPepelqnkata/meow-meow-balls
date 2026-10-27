@@ -317,9 +317,9 @@ export class TitleScene extends Phaser.Scene {
       // Deep warm stone — the buttons' --stone-800 world, darkened for
       // contrast so the yellow accents pop.
       const grad = ctx.createLinearGradient(0, 0, 0, vh)
-      grad.addColorStop(0, '#232019')
-      grad.addColorStop(0.55, '#1c1a17')
-      grad.addColorStop(1, '#141210')
+      grad.addColorStop(0, '#161a2e')
+      grad.addColorStop(0.55, '#121528')
+      grad.addColorStop(1, '#0c0e1d')
       ctx.fillStyle = grad
       ctx.fillRect(0, 0, vw, vh)
       // A soft warm glow where the machine will sit (center, slightly low)
@@ -332,12 +332,12 @@ export class TitleScene extends Phaser.Scene {
         vh * 0.55,
         Math.max(vw, vh) * 0.55,
       )
-      glow.addColorStop(0, 'rgba(250,204,21,0.12)')
-      glow.addColorStop(1, 'rgba(250,204,21,0)')
+      glow.addColorStop(0, 'rgba(233,64,64,0.13)')
+      glow.addColorStop(1, 'rgba(233,64,64,0)')
       ctx.fillStyle = glow
       ctx.fillRect(0, 0, vw, vh)
       // Sprinkled warm dots — subtle depth, not noise.
-      ctx.fillStyle = 'rgba(250,240,215,0.10)'
+      ctx.fillStyle = 'rgba(200,220,255,0.10)'
       const dots = Math.round((vw * vh) / 26000)
       for (let i = 0; i < dots; i++) {
         const x = (((seed * (i + 7) * 9301 + 49297) % 233280) / 233280) * vw
@@ -450,7 +450,7 @@ export class TitleScene extends Phaser.Scene {
    * verified in-browser against the same font (qa/_probe font test).
    */
   private buildLogoInto(vw: number, vh: number): number {
-    const palette = ['#facc15', '#fafaf9', '#fde68a', '#ffffff', '#facc15']
+    const palette = ['#4fc3f7', '#fafaf9', '#e94040', '#ffffff', '#4fc3f7']
     const size = Math.max(30, Math.min(72, Math.min(vw * 0.115, vh * 0.1)))
     const stroke = Math.max(4, Math.min(6, size * 0.11))
     const m = Math.ceil(stroke / 2) + 2 // ink margin around every glyph ink box
@@ -617,7 +617,7 @@ export class TitleScene extends Phaser.Scene {
       ctx.ellipse(50 * u, 52 * u, 23 * u, 10 * u, 0, 0, Math.PI * 2)
       ctx.fill()
       // Red collar between globe and base.
-      ctx.fillStyle = '#3d372f'
+      ctx.fillStyle = '#e23b3b'
       ctx.beginPath()
       ctx.moveTo(39 * u, 60 * u)
       ctx.lineTo(61 * u, 60 * u)
@@ -636,7 +636,7 @@ export class TitleScene extends Phaser.Scene {
       ctx.closePath()
       ctx.fill()
       // Darker bottom band — cartoon depth.
-      ctx.fillStyle = '#26221c'
+      ctx.fillStyle = '#b32626'
       ctx.beginPath()
       ctx.moveTo(74 * u, 108 * u)
       ctx.lineTo(76 * u, 114 * u)
@@ -647,7 +647,7 @@ export class TitleScene extends Phaser.Scene {
       ctx.closePath()
       ctx.fill()
       // Dispenser chute (the gumballs roll out here).
-      ctx.fillStyle = '#181512'
+      ctx.fillStyle = '#15161f'
       rrPath(ctx, 38 * u, 101 * u, 24 * u, 15 * u, [1 * u, 1 * u, 5 * u, 5 * u])
       ctx.fill()
       // Chute flap: cream door over the lower chute (balls push it open).
@@ -655,7 +655,7 @@ export class TitleScene extends Phaser.Scene {
       rrPath(ctx, 40 * u, 106 * u, 20 * u, 8 * u, 2 * u)
       ctx.fill()
       // Marquee bulbs: candy dots across the red collar.
-      const bulbs = ['#facc15', '#fafaf9', '#facc15', '#fafaf9', '#facc15']
+      const bulbs = ['#e94040', '#fafaf9', '#e94040', '#fafaf9', '#e94040']
       bulbs.forEach((c, i) => {
         ctx.fillStyle = c
         ctx.beginPath()
@@ -663,7 +663,7 @@ export class TitleScene extends Phaser.Scene {
         ctx.fill()
       })
       // Star sticker on the base's left cheek.
-      ctx.fillStyle = '#facc15'
+      ctx.fillStyle = '#e94040'
       starPath(ctx, 31.5 * u, 96 * u, 2.8 * u)
       ctx.fill()
       // Coin slot.
