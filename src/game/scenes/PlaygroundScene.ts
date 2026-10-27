@@ -234,8 +234,12 @@ export class PlaygroundScene extends Phaser.Scene {
         // Combo glow: a light sheet sweeps the frame left→right in the
         // container's color; big combos (chain ≥ 4) sweep in rainbow RGB.
         if (chainDepth >= 2) this.containerView.playGlow(chainDepth)
-        // Deep chains get a camera shake — camera-only, zero physics contact.
-        if (chainDepth >= 3) this.cameras.main.shake(120, 0.004)
+        // Micro camera shake scales dynamically with chain depth and high tiers
+        if (chainDepth >= 2 || tier >= 5) {
+          const duration = chainDepth >= 4 ? 140 : chainDepth >= 3 ? 110 : 70
+          const intensity = chainDepth >= 4 ? 0.005 : chainDepth >= 3 ? 0.0035 : 0.0018
+          this.cameras.main.shake(duration, intensity)
+        }
 
         // Phase 2.13.0 (spec §1/§7): the discovery presentation fires ONLY
         // for first-time-this-run tiers 4+ — tiers 1–3 merge silently. The
