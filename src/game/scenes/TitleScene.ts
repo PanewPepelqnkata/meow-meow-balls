@@ -172,9 +172,10 @@ export class TitleScene extends Phaser.Scene {
     this.buildAll()
     this.cameras.main.fadeIn(260, 8, 10, 20)
 
-    this.scale.on(Phaser.Scale.Events.RESIZE, this.buildAll, this)
     this.scale.on(Phaser.Scale.Events.RESIZE, this.applyDprCamera, this)
+    this.scale.on(Phaser.Scale.Events.RESIZE, this.buildAll, this)
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.scale.off(Phaser.Scale.Events.RESIZE, this.applyDprCamera, this)
       this.scale.off(Phaser.Scale.Events.RESIZE, this.buildAll, this)
       for (const off of this.offs) off()
       this.offs.length = 0
