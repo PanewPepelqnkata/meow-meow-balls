@@ -86,10 +86,18 @@ export class StartIntroScene extends Phaser.Scene {
     const cover = this.add.graphics().setDepth(-1)
     const drawCover = (holeR: number): void => {
       cover.clear()
+      // Fully open: draw nothing — a zero-width annulus renders as a
+      // 1px GPU seam ring (the 'another iris' glitch at the end).
+      if (holeR >= outerR) return
       cover.fillStyle(0x0e0f1c, 1)
+      if (holeR <= 0.01) {
+        // Fully closed: a plain full-screen disc (no hole seam).
+        cover.fillCircle(cx, cy, outerR * 1.05)
+        return
+      }
       cover.beginPath()
-      cover.arc(cx, cy, outerR, 0, Math.PI * 2)
-      cover.arc(cx, cy, Math.max(0.01, holeR), 0, Math.PI * 2, true)
+      cover.arc(cx, cy, outerR * 1.05, 0, Math.PI * 2)
+      cover.arc(cx, cy, holeR, 0, Math.PI * 2, true)
       cover.fillPath()
     }
     // startClosed boots FULLY closed (2px hairline) to match
