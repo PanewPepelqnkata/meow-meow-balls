@@ -388,9 +388,9 @@ export class TitleScene extends Phaser.Scene {
       // Centered flow, bottom-anchored so the stats chip always sits in the
       // safe area: chip → nav grid (2×2) → PLAY → machine → logo.
       const chipY = vh - m - chipH / 2
-      const nav2Y = chipY - chipH / 2 - 12 - navH / 2
-      const nav1Y = nav2Y - navH - 10
-      const playY = nav1Y - navH / 2 - 12 - playH / 2
+      const nav2Y = chipY - chipH / 2 - 18 - navH / 2
+      const nav1Y = nav2Y - navH - 18
+      const playY = nav1Y - navH / 2 - 18 - playH / 2
       const bandTop = logoCY + logoH / 2 + 10
       const bandBottom = playY - playH / 2 - 10
       this.buildMachine(
@@ -400,10 +400,10 @@ export class TitleScene extends Phaser.Scene {
         Math.min(vw * 0.6, 340),
       )
       this.buildPlayAndNav(vw, playY, playW, playH, navW, navH, [
-        { x: vw / 2 - (navW + 12) / 2, y: nav1Y },
-        { x: vw / 2 + (navW + 12) / 2, y: nav1Y },
-        { x: vw / 2 - (navW + 12) / 2, y: nav2Y },
-        { x: vw / 2 + (navW + 12) / 2, y: nav2Y },
+        { x: vw / 2 - (navW + 18) / 2, y: nav1Y },
+        { x: vw / 2 + (navW + 18) / 2, y: nav1Y },
+        { x: vw / 2 - (navW + 18) / 2, y: nav2Y },
+        { x: vw / 2 + (navW + 18) / 2, y: nav2Y },
       ])
       this.buildStatsChip(vw / 2, chipY, chipW, chipH)
     } else {
@@ -421,10 +421,10 @@ export class TitleScene extends Phaser.Scene {
         Math.min(vw * 0.45, 420),
       )
       this.buildPlayAndNav(vw, playY, playW, playH, navW, navH, [
-        { x: vw / 2 - 1.5 * (navW + 12), y: navY },
-        { x: vw / 2 - 0.5 * (navW + 12), y: navY },
-        { x: vw / 2 + 0.5 * (navW + 12), y: navY },
-        { x: vw / 2 + 1.5 * (navW + 12), y: navY },
+        { x: vw / 2 - 1.5 * (navW + 18), y: navY },
+        { x: vw / 2 - 0.5 * (navW + 18), y: navY },
+        { x: vw / 2 + 0.5 * (navW + 18), y: navY },
+        { x: vw / 2 + 1.5 * (navW + 18), y: navY },
       ])
       this.buildStatsChip(vw / 2, chipY, chipW, chipH)
     }
