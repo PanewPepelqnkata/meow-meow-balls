@@ -21,7 +21,7 @@ import { bakeCanvas, roundedRectPath } from '../rendering/RoughArt'
 import { cycleColor } from '../rendering/rgbCycle'
 import { UiverseDomButtons } from '../../ui/UiverseDomButtons'
 import { StartIntroScene } from './StartIntroScene'
-
+import { readSafeArea } from '../../ui/ResponsiveLayout'
 /**
  * Phase 2.14.0 (spec §2) — the START SCREEN.
  * Phase 2.15.0 (spec §2) — redesigned as a full cartoon game HOME SCREEN.
@@ -363,17 +363,19 @@ export class TitleScene extends Phaser.Scene {
   // -------------------------------------------------------------------------
 
   private buildHome(vw: number, vh: number): void {
+    const safe = readSafeArea()
     const portrait = vh >= vw || vw < 700
     const m = Math.round(Math.max(12, Math.min(22, Math.min(vw, vh) * 0.025)))
+    const topInset = Math.max(m, safe.top)
+    const bottomInset = Math.max(m, safe.bottom)
 
     // --- the wordmark (its own container, bobbed in update) ---
     this.logoC = this.add.container(0, 0)
     this.menuLayer.add(this.logoC)
     const logoH = this.buildLogoInto(vw, vh)
-    const logoCY = m + 8 + logoH / 2
+    const logoCY = topInset + 8 + logoH / 2
     this.logoC.setPosition(vw / 2, logoCY)
     this.logoBaseY = logoCY
-
     // --- measured element sizes ---
     const chipH = Math.round(Math.max(30, Math.min(44, vh * 0.052)))
     const chipW = Math.round(Math.max(170, Math.min(310, Math.min(vw * 0.86, chipH * 7.2))))
@@ -391,7 +393,7 @@ export class TitleScene extends Phaser.Scene {
     if (portrait) {
       // Centered flow, bottom-anchored so the stats chip always sits in the
       // safe area: chip → nav grid (2×2) → PLAY → machine → logo.
-      const chipY = vh - m - chipH / 2
+      const chipY = vh - bottomInset - chipH / 2
       const nav2Y = chipY - chipH / 2 - 18 - navH / 2
       const nav1Y = nav2Y - navH - 18
       const playY = nav1Y - navH / 2 - 18 - playH / 2

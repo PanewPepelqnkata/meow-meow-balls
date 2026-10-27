@@ -344,20 +344,21 @@ export function resolveLayout(vw: number, vh: number, safe: SafeArea = { top: 0,
   }
 }
 
-/** Read CSS env() safe-area insets via a probe element (once per resize). */
+/** Read CSS env() safe-area insets via a single persistent probe element (avoid DOM thrash on resize). */
+let safeAreaProbe: HTMLDivElement | null = null
 export function readSafeArea(): SafeArea {
   if (typeof document === 'undefined') return { top: 0, right: 0, bottom: 0, left: 0 }
-  const probe = document.createElement('div')
-  probe.style.cssText =
-    'position:fixed;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top);padding-right:env(safe-area-inset-right);padding-bottom:env(safe-area-inset-bottom);padding-left:env(safe-area-inset-left)'
-  document.body.appendChild(probe)
-  const cs = getComputedStyle(probe)
-  const out = {
+  if (!safeAreaProbe) {
+    safeAreaProbe = document.createElement('div')
+    safeAreaProbe.style.cssText =
+      'position:fixed;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top);padding-right:env(safe-area-inset-right);padding-bottom:env(safe-area-inset-bottom);padding-left:env(safe-area-inset-left);top:0;left:0;'
+    document.body.appendChild(safeAreaProbe)
+  }
+  const cs = getComputedStyle(safeAreaProbe)
+  return {
     top: parseFloat(cs.paddingTop) || 0,
     right: parseFloat(cs.paddingRight) || 0,
     bottom: parseFloat(cs.paddingBottom) || 0,
     left: parseFloat(cs.paddingLeft) || 0,
   }
-  probe.remove()
-  return out
 }
