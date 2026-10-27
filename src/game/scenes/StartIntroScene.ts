@@ -40,8 +40,6 @@ import { getTier } from '../../config/ballTiers'
  * #6051/#6914 per-frame Graphics). Hole radius at scale s = innerR·s.
  */
 export class StartIntroScene extends Phaser.Scene {
-  /** Guards the outro early-exit (one-shot per transition). */
-  private transitionLive = true
   /** Runs on EVERY viewport now — the machine intro is the start
    * experience on desktop too (the machine scales with the viewport).
    * Kept as a method for the TitleScene gate + QA parity. */
@@ -389,16 +387,6 @@ export class StartIntroScene extends Phaser.Scene {
       this.time.delayedCall(3200 + cast.length * 80 + 320 + 700, () => {
         blinkTimer.remove()
         setPhase('outro')
-        this.transitionLive = true
-        // The seal dissolves in overlap so the hole that reappears as the
-        // ring pulls back is pre-filled with ink — no sudden hole pop.
-        this.tweens.add({
-          targets: seal,
-          alpha: 0,
-          duration: 300,
-          delay: 200,
-          ease: 'Quad.easeOut',
-        })
         // UN-DRAW: the erase stroke walks the same bottom-up order as the
         // draw-on — shadow/base/band vanish first, glass/chute next, the
         // top details (sheens/sparkles) last. 1.4s, started with the iris.
@@ -463,31 +451,14 @@ export class StartIntroScene extends Phaser.Scene {
             onComplete: () => drawCast(),
           })
         })
-        // ...while the cover reopens outward SLOWER than the undraw — the
-        // machine vanishes inside the growing hole (the iris outlives the
-        // undraw, or the scene stop would cut the erase short).
-        this.tweens.add({
-          targets: sweepState,
-          // End at outerR exactly (corner clear): the onUpdate early-
-          // exit fires the tick the corners clear — no lingering cover
-          // tail, no second-circle read.
-          r: outerR,
-          duration: 600,
-          ease: 'Cubic.easeOut',
-          onUpdate: () => {
-            drawCover(sweepState.r)
-            if (sweepState.r >= outerR && this.transitionLive) {
-              this.transitionLive = false
-              cover.destroy()
-              seal.destroy()
-              this.scene.stop()
-            }
-          },
-          onComplete: () => {
-            cover.destroy()
-            seal.destroy()
-            this.scene.stop()
-          },
+        // NO IRIS REOPEN: the machine erases itself + the balls pop out
+        // over the full-ink cover, then the scene just ends — the game
+        // is simply there. (The iris reopen read as a second-circle
+        // glitch; removed at the user's request.)
+        this.time.delayedCall(500 + cast.length * 60 + 200 + 100, () => {
+          cover.destroy()
+          seal.destroy()
+          this.scene.stop()
         })
       })
     }
