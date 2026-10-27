@@ -961,7 +961,7 @@ export class TitleScene extends Phaser.Scene {
       y: backY,
       w: 118,
       h: 40,
-      fill: 0x51566b,
+      fill: 0x2563eb,
       icon: Icons.back,
       label: 'BACK',
       labelSize: 14,
