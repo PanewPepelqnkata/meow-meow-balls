@@ -95,11 +95,11 @@ export class StartIntroScene extends Phaser.Scene {
       if (holeR >= outerR) return
       cover.fillStyle(0x0e0f1c, 1)
       if (holeR <= 0.01) {
-        cover.fillCircle(cx, cy, outerR * 1.05)
+        cover.fillCircle(cx, cy, outerR * 1.3)
         return
       }
       cover.beginPath()
-      cover.arc(cx, cy, outerR * 1.05, 0, Math.PI * 2)
+      cover.arc(cx, cy, outerR * 1.3, 0, Math.PI * 2)
       cover.arc(cx, cy, holeR, 0, Math.PI * 2, true)
       cover.fillPath()
     }

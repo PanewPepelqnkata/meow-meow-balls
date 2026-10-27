@@ -1552,11 +1552,11 @@ export class TitleScene extends Phaser.Scene {
       if (holeR >= outerR) return
       iris.fillStyle(0x0e0f1c, 1)
       if (holeR <= 0.01) {
-        iris.fillCircle(cx, cy, outerR * 1.05)
+        iris.fillCircle(cx, cy, outerR * 1.3)
         return
       }
       iris.beginPath()
-      iris.arc(cx, cy, outerR * 1.05, 0, Math.PI * 2)
+      iris.arc(cx, cy, outerR * 1.3, 0, Math.PI * 2)
       iris.arc(cx, cy, holeR, 0, Math.PI * 2, true)
       iris.fillPath()
     }
