@@ -1067,9 +1067,9 @@ export class TitleScene extends Phaser.Scene {
       this.panelContent.add(g)
 
       // Card
-      g.fillStyle(0x181a28, discovered ? 0.95 : 0.7)
+      g.fillStyle(0x161b2e, discovered ? 0.95 : 0.7)
       g.fillRoundedRect(cx - colW / 2 + 6, cy - rowH / 2 + 6, colW - 12, rowH - 12, 12)
-      g.lineStyle(2.5, 0x2a2d42, 1)
+      g.lineStyle(2.5, 0x2b3555, 1)
       g.strokeRoundedRect(cx - colW / 2 + 6, cy - rowH / 2 + 6, colW - 12, rowH - 12, 12)
 
       const iconR = Math.min(30, rowH * 0.33)
@@ -1127,7 +1127,7 @@ export class TitleScene extends Phaser.Scene {
               layer: this.panelContent,
             })
           } else {
-            chipG.lineStyle(2, 0x3a3d55, 1)
+            chipG.lineStyle(2, 0x2b3555, 1)
             chipG.strokeCircle(hx, chipY, chipR)
             const q = hudText(this, 0, 0, '?', 1, {
               color: '#3a3d55',
@@ -1173,7 +1173,7 @@ export class TitleScene extends Phaser.Scene {
       const medal = rank === 1 ? 0xffd93b : rank === 2 ? 0xc9d1e3 : rank === 3 ? 0xd08a4e : 0x272a40
       g.fillStyle(medal, 1)
       g.fillRoundedRect(vw / 2 - w / 2, y - rowH / 2 + 5, w, rowH - 10, 10)
-      g.lineStyle(2, rank <= 3 ? INK : 0x2a2d42, 1)
+      g.lineStyle(2, rank <= 3 ? INK : 0x2b3555, 1)
       g.strokeRoundedRect(vw / 2 - w / 2, y - rowH / 2 + 5, w, rowH - 10, 10)
 
       const rankT = hudText(this, 0, 0, `#${rank}`, 1, {
