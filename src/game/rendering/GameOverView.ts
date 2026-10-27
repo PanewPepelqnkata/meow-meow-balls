@@ -82,8 +82,8 @@ export class GameOverView {
     // of this screen: size it generously (the content stack is ~450 units
     // tall inside a 520-tall card, so this still fits anything that passes
     // the fit check below).
-    const scale = Math.max(0.5, Math.min(1.6, Math.min(vw / 620, (vh - 90) / 620)))
-
+    // Safe minimum scale 0.70 ensures touch buttons remain >= 42px on compact phones.
+    const scale = Math.max(0.7, Math.min(1.6, Math.min(vw / 620, (vh - 90) / 620)))
     // Soft dim — gameplay stays visible behind it.
     const dim = scene.add.rectangle(cx, vh / 2, vw, vh, 0x1a1a2e, 0.55).setDepth(60)
     dim.setAlpha(0)
