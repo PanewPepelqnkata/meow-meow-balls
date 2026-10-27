@@ -258,6 +258,15 @@ export class ContainerView {
   private glowPath: Pt[] = []
   private glowLen = 0
 
+  /** Fade the whole container (frame + mid-anim frame + glow) — used by
+   * the intro to fade the container in AFTER the iris passes, so its
+   * rounded ink corner never reads as a 'second iris' mid-reveal. */
+  setOpacity(alpha: number): void {
+    this.frameImage.setAlpha(alpha)
+    this.fastFrameImage.setAlpha(alpha)
+    this.glowG.setAlpha(alpha)
+  }
+
   constructor(scene: Phaser.Scene) {
     // Canvas texture: 720x1280 stage units, 1:1 — crisp at any zoom, and
     // repainted only when the wall height changes (never per frame).
