@@ -5,51 +5,67 @@ import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK, drawColl
 import { cycleColor } from '../game/rendering/rgbCycle'
 import { variantIdFor } from '../game/state/runVariant'
 
-/** Palette constants: Hazardous Industrial Doodle (Hazard Yellow & Ink Chevron) */
-const PALETTE = {
-  hazardYellow: 0xffd028,   // High-vis vibrant doodle yellow
-  hazardDark: 0x1f2229,     // Deep ink / dark chevron stripe
-  steelMid: 0x4a525d,       // Structural chassis grey
-  steelLight: 0x8d96a0,     // Beveled plate highlight
-  boltBrass: 0xeb9c26,      // Cartoon bolt / pin gold
-  boltHighlight: 0xffea78,  // Bolt specular gleam
-  pistonSilver: 0xc8d0d8,   // Hydraulic rod
-  warnRed: 0xee3838,        // Tiny blinking warning beacon
+/**
+ * Metal shading palette directly sampled and matched to the reference arcade claw:
+ * - Steel light highlight: #dcdfe3
+ * - Steel mid body: #b2b7be
+ * - Steel dark shadow/core: #797f88
+ * - Rim/bevel light: #ffffff
+ * - Black rubber tips: #151618
+ * - Ink outlines: INK (0x1a1a1a)
+ */
+const METAL = {
+  highlight: 0xdcdfe3,
+  body: 0xb2b7be,
+  shadow: 0x797f88,
+  glint: 0xffffff,
+  rubber: 0x151618,
+  rubberHighlight: 0x3d4147,
+  collarLight: 0xc4c9cf,
+  collarDark: 0x6e737c,
 }
 
 /**
- * Desktop drop claw: HAZARDOUS MECHANICAL DOODLE CLAW (2-joint).
+ * Desktop drop claw recreated 1:1 from the reference mechanical arcade claw illustration:
  *
- * Visuals:
- * - Hand-drawn doodle ink outlines (matching the game's bold ink line art).
- * - Hazard chevron warning stripes (hazard yellow + ink black diagonal bands).
- * - Chunky cartoon mechanical joints: oversized shoulder hinge, exposed hydraulic
- *   piston rod, bolted elbow disc, and curved dual-prong pincer clamp pads.
- * - Center industrial chassis box with warning chevrons, mounting bolts, and red beacon light.
+ * Anatomy:
+ * 1. Top square mounting block with right-side rivets and beveled highlight.
+ * 2. Vertical cylindrical telescopic shaft running through the center (divided into
+ *    upper segment, ring collar, middle shaft, and lower collar/stop).
+ * 3. Wide hexagonal sliding loop bracket (hollow geometric hexagon that slides vertically
+ *    along the shaft, driving the claw linkage).
+ * 4. Two elegant curved chrome tubular arms extending outward from the sliding bracket's
+ *    lower corners, sweeping gracefully down around the ball, ending with black rubber pincer tips.
  *
- * Animations:
- * - Drop (release): Fluid mechanical snap open (arms whip back with smooth Quad.easeOut
- *   and gentle settle; chassis executes a damped springy recoil bob).
- * - Reload (grab): Arms swing inward and clamp the new ball with an elastic cushioned
- *   squeeze (smooth overshoot and settle, perfectly hugging the contour).
+ * Mechanical Linkage & Animation:
+ * - Drop (release):
+ *   * The center hexagonal bracket slides UP along the central shaft (~10-12px)
+ *   * The two curved prongs swing wide open (~38° outward) as the linkage pulls up
+ *   * Snappy, tactile hydraulic release (Back.easeOut.config(1.2), 160ms)
+ * - Reload (grab):
+ *   * As the new ball enters, the bracket drives DOWN the shaft
+ *   * The prongs clamp inward and embrace the ball with a cushioned elastic grab
+ *     (Back.easeOut.config(1.3), 260ms), snugly gripping the lower curvature
+ * - Aim Performance Contract:
+ *   * Transforms operate purely on container positions and rotations (zero re-tessellation).
  */
 export class DropClaw {
   private readonly scene: Phaser.Scene
   private readonly g: Phaser.GameObjects.Graphics
   private holder: Phaser.GameObjects.Container | null = null
-  private chassisG: Phaser.GameObjects.Graphics | null = null
 
-  // Articulated Arm Containers (Left and Right)
-  // Hierarchy: holder -> armContainer (shoulder pivot) -> forearmContainer (elbow pivot)
+  // Central stationary shaft assembly
+  private shaftG: Phaser.GameObjects.Graphics | null = null
+
+  // Vertical sliding bracket container (slides up when opening, down when closing)
+  private sliderContainer: Phaser.GameObjects.Container | null = null
+  private hexG: Phaser.GameObjects.Graphics | null = null
+
+  // Left and Right articulated prongs (pivoting on sliderContainer)
   private armL: Phaser.GameObjects.Container | null = null
   private armR: Phaser.GameObjects.Container | null = null
-  private forearmL: Phaser.GameObjects.Container | null = null
-  private forearmR: Phaser.GameObjects.Container | null = null
-
-  private upperGL: Phaser.GameObjects.Graphics | null = null
-  private upperGR: Phaser.GameObjects.Graphics | null = null
-  private foreGL: Phaser.GameObjects.Graphics | null = null
-  private foreGR: Phaser.GameObjects.Graphics | null = null
+  private armGL: Phaser.GameObjects.Graphics | null = null
+  private armGR: Phaser.GameObjects.Graphics | null = null
 
   private objectsCache: Array<Phaser.GameObjects.GameObject> | null = null
   private aimX = 360
@@ -60,6 +76,9 @@ export class DropClaw {
   private holding = true
   /** Mobile composition: the mechanical claw is hidden — the current ball simply floats. */
   private mobile = false
+
+  // Base Y position for the sliding hexagonal bracket
+  private sliderBaseY = 0
 
   // Track active tweens
   private activeTweens: Phaser.Tweens.Tween[] = []
@@ -102,18 +121,16 @@ export class DropClaw {
   }
 
   /**
-   * Cooldown state: on drop (holding: false) arms snap open with smooth recoil.
-   * On reload (holding: true) arms clamp the new ball with cushioned bounce.
+   * Cooldown state: on drop (holding: false) bracket slides UP and prongs swing open.
+   * On reload (holding: true) bracket drives DOWN and prongs clamp the ball.
    */
   setHolding(holding: boolean): void {
     if (this.holding !== holding) {
       this.holding = holding
       if (!holding) {
-        // Drop trigger: immediately hide ball and fire snappy open animation
         this.redrawBallOnly()
         if (!this.mobile) this.playDropAnimation()
       } else {
-        // Reload trigger: new ball arrives, fire cushioned clamp animation
         this.redraw()
         if (!this.mobile) this.playReloadAnimation()
       }
@@ -128,95 +145,76 @@ export class DropClaw {
   }
 
   /**
-   * Smooth, punchy drop animation:
-   * Upper arm swings outward smoothly while forearm curls slightly outward;
-   * Chassis kicks up by 3px with a damped elastic rebound.
+   * Fluid mechanical drop animation:
+   * Hexagonal bracket retracts UPWARDS along the shaft;
+   * Left and right prongs swing outward with crisp mechanical snap.
    */
   private playDropAnimation(): void {
-    if (!this.armL || !this.armR || !this.forearmL || !this.forearmR || !this.chassisG) return
+    if (!this.sliderContainer || !this.armL || !this.armR) return
     this.stopArmTweens()
 
-    const openAngleShoulder = 0.44 // ~25 deg
-    const openAngleElbow = -0.28    // ~16 deg
+    const openAngle = 0.58 // ~33 deg outward swing
+    const liftY = this.sliderBaseY - 14
 
-    // Shoulder swing (smooth punchy release)
-    const twL1 = this.scene.tweens.add({
+    // 1. Sliding hex bracket moves UP
+    const twSlide = this.scene.tweens.add({
+      targets: this.sliderContainer,
+      y: liftY,
+      duration: 170,
+      ease: 'Back.easeOut.config(1.2)',
+    })
+
+    // 2. Prongs swing open smoothly
+    const twArmL = this.scene.tweens.add({
       targets: this.armL,
-      rotation: -openAngleShoulder,
+      rotation: -openAngle,
       duration: 180,
-      ease: 'Back.easeOut.config(1.1)',
+      ease: 'Back.easeOut.config(1.2)',
     })
-    const twR1 = this.scene.tweens.add({
+    const twArmR = this.scene.tweens.add({
       targets: this.armR,
-      rotation: openAngleShoulder,
+      rotation: openAngle,
       duration: 180,
-      ease: 'Back.easeOut.config(1.1)',
+      ease: 'Back.easeOut.config(1.2)',
     })
 
-    // Forearm secondary motion (fluid lag behind shoulder)
-    const twL2 = this.scene.tweens.add({
-      targets: this.forearmL,
-      rotation: -openAngleElbow,
-      duration: 200,
-      ease: 'Quad.easeOut',
-    })
-    const twR2 = this.scene.tweens.add({
-      targets: this.forearmR,
-      rotation: openAngleElbow,
-      duration: 200,
-      ease: 'Quad.easeOut',
-    })
-
-    // Chassis springy recoil
-    const twRecoil = this.scene.tweens.add({
-      targets: [this.chassisG, this.armL, this.armR],
-      y: '-=4',
-      duration: 80,
-      yoyo: true,
-      ease: 'Quad.easeOut',
-    })
-
-    this.activeTweens.push(twL1, twR1, twL2, twR2, twRecoil)
+    this.activeTweens.push(twSlide, twArmL, twArmR)
   }
 
   /**
-   * Fluid reload animation:
-   * Arms reach inward and clamp the new ball with an elastic cushioned squeeze.
+   * Fluid mechanical reload animation:
+   * Hexagonal bracket pushes DOWN into grip position;
+   * Prongs swing inward and embrace the new ball with cushioned elastic grab.
    */
   private playReloadAnimation(): void {
-    if (!this.armL || !this.armR || !this.forearmL || !this.forearmR) return
+    if (!this.sliderContainer || !this.armL || !this.armR) return
     this.stopArmTweens()
 
-    // Smooth cushioned grab: Back.easeOut creates a gentle settling squeeze
-    const twL1 = this.scene.tweens.add({
+    // 1. Slider bracket descends back to closed base Y
+    const twSlide = this.scene.tweens.add({
+      targets: this.sliderContainer,
+      y: this.sliderBaseY,
+      duration: 250,
+      ease: 'Back.easeOut.config(1.3)',
+    })
+
+    // 2. Prongs clamp inward to rotation 0 with cushioned squeeze
+    const twArmL = this.scene.tweens.add({
       targets: this.armL,
       rotation: 0,
       duration: 260,
-      ease: 'Back.easeOut.config(1.25)',
+      ease: 'Back.easeOut.config(1.3)',
     })
-    const twR1 = this.scene.tweens.add({
+    const twArmR = this.scene.tweens.add({
       targets: this.armR,
       rotation: 0,
       duration: 260,
-      ease: 'Back.easeOut.config(1.25)',
-    })
-    const twL2 = this.scene.tweens.add({
-      targets: this.forearmL,
-      rotation: 0,
-      duration: 280,
-      ease: 'Back.easeOut.config(1.2)',
-    })
-    const twR2 = this.scene.tweens.add({
-      targets: this.forearmR,
-      rotation: 0,
-      duration: 280,
-      ease: 'Back.easeOut.config(1.2)',
+      ease: 'Back.easeOut.config(1.3)',
     })
 
-    this.activeTweens.push(twL1, twR1, twL2, twR2)
+    this.activeTweens.push(twSlide, twArmL, twArmR)
   }
 
-  /** Redraws only the ball graphics without re-creating arm structures */
   private redrawBallOnly(): void {
     this.g.clear()
     if (!this.holding || !this.visible) return
@@ -249,281 +247,329 @@ export class DropClaw {
   }
 
   /**
-   * Draws the Hazardous Doodle Chassis:
-   * Heavy suspension cable, hazard chevron stripe band, chunky bolts, and warning beacon.
+   * Draws the stationary central shaft assembly:
+   * - Top square mounting block with right-side rivet dots.
+   * - Vertical cylindrical chrome shaft with left highlight and right shadow.
+   * - Middle cylindrical collar ring with chamfered bevels.
+   * - Bottom cylindrical stopper.
    */
-  private drawChassis(g: Phaser.GameObjects.Graphics, headY: number): void {
+  private drawShaftAssembly(g: Phaser.GameObjects.Graphics, topBlockY: number, bottomStopY: number): void {
     g.clear()
-    const x = 0
-    const topY = 0
+    const cx = 0
 
-    // 1. Chunky Doodle Cable & Conduit Lines
-    g.lineStyle(6, INK, 1)
-    g.lineBetween(x, topY, x, headY - 14)
-    g.lineStyle(3.5, PALETTE.steelMid, 1)
-    g.lineBetween(x, topY, x, headY - 14)
-
-    // Pneumatic hose with doodle curl/stripe
-    g.lineStyle(3, PALETTE.hazardYellow, 0.9)
-    g.lineBetween(x + 5, topY, x + 5, headY - 14)
-    g.lineStyle(1.5, INK, 0.8)
-    g.lineBetween(x + 5, topY, x + 5, headY - 14)
-
-    // Mounting Top Collar
-    g.fillStyle(PALETTE.hazardDark, 1)
-    g.fillRect(x - 12, headY - 18, 24, 6)
-    g.lineStyle(2.5, INK, 1)
-    g.strokeRect(x - 12, headY - 18, 24, 6)
-
-    // 2. Main Chassis Box
-    const w = 48
-    const h = 26
-    const left = x - w / 2
-    const top = headY - 12
-
-    // Shadow under chassis
-    g.fillStyle(INK, 0.35)
-    g.fillRoundedRect(left + 2, top + 2, w, h, 4)
-
-    // Yellow hazard base plate
-    g.fillStyle(PALETTE.hazardYellow, 1)
-    g.fillRoundedRect(left, top, w, h, 4)
-
-    // Diagonal Hazard Chevron Stripes across the center plate
-    // Draw 4 diagonal dark stripes
-    const stripeW = 6
-    for (let sx = left - 6; sx < left + w + 12; sx += stripeW * 2) {
-      g.fillStyle(PALETTE.hazardDark, 1)
-      g.beginPath()
-      g.moveTo(Math.max(left, sx), top)
-      g.lineTo(Math.min(left + w, sx + stripeW), top)
-      g.lineTo(Math.min(left + w, sx + stripeW - 8), top + h)
-      g.lineTo(Math.max(left, sx - 8), top + h)
-      g.closePath()
-      g.fillPath()
-    }
-
-    // Heavy doodle ink border over chassis
-    g.lineStyle(3, INK, 1)
-    g.strokeRoundedRect(left, top, w, h, 4)
-
-    // Inner plate bevel
-    g.lineStyle(1.5, 0xffffff, 0.4)
-    g.strokeRoundedRect(left + 2, top + 2, w - 4, h - 4, 3)
-
-    // Center Warning Beacon Lamp (red glowing dome)
-    g.fillStyle(PALETTE.hazardDark, 1)
-    g.fillCircle(x, headY + 1, 6)
-    g.lineStyle(2, INK, 1)
-    g.strokeCircle(x, headY + 1, 6)
-
-    g.fillStyle(PALETTE.warnRed, 1)
-    g.fillCircle(x, headY + 1, 4)
-    g.fillStyle(0xffffff, 0.9)
-    g.fillCircle(x - 1.2, headY - 0.2, 1.3) // specular doodle gleam
-
-    // Chunky Cartoon Corner Bolts
-    const bolts = [
-      { bx: left + 5, by: top + 5 },
-      { bx: left + w - 5, by: top + 5 },
-      { bx: left + 5, by: top + h - 5 },
-      { bx: left + w - 5, by: top + h - 5 },
-    ]
-    for (const b of bolts) {
-      g.fillStyle(PALETTE.boltBrass, 1)
-      g.fillCircle(b.bx, b.by, 2.8)
-      g.fillStyle(PALETTE.boltHighlight, 1)
-      g.fillCircle(b.bx - 0.8, b.by - 0.8, 1.2)
-      g.lineStyle(1.5, INK, 1)
-      g.strokeCircle(b.bx, b.by, 2.8)
-    }
-
-    // Shoulder Hinge Protrusions on sides
-    for (const s of [-1, 1]) {
-      const hx = s * 21
-      const hy = headY + 5
-      g.fillStyle(PALETTE.hazardDark, 1)
-      g.fillCircle(hx, hy, 7)
-      g.lineStyle(2.5, INK, 1)
-      g.strokeCircle(hx, hy, 7)
-
-      g.fillStyle(PALETTE.hazardYellow, 1)
-      g.fillCircle(hx, hy, 4.5)
-      g.fillStyle(PALETTE.boltBrass, 1)
-      g.fillCircle(hx, hy, 2.5)
-      g.lineStyle(1.5, INK, 1)
-      g.strokeCircle(hx, hy, 2.5)
-    }
-  }
-
-  /**
-   * Upper Arm: Shoulder joint (0, 0) -> Elbow joint (elbowX, elbowY).
-   * Hazardous beam featuring yellow/black chevrons, exposed hydraulic strut, and chunky bolts.
-   */
-  private drawUpperArm(g: Phaser.GameObjects.Graphics, elbowX: number, elbowY: number): void {
-    g.clear()
-
-    // 1. Diagonal Hydraulic Cylinder Strut
-    const midX = elbowX * 0.45
-    const midY = elbowY * 0.45
-    g.lineStyle(5, INK, 1)
-    g.lineBetween(0, 0, midX, midY)
-    g.lineStyle(3, PALETTE.hazardDark, 1)
-    g.lineBetween(0, 0, midX, midY)
-
+    // Top cable entering from stage top
     g.lineStyle(4, INK, 1)
-    g.lineBetween(midX, midY, elbowX, elbowY)
-    g.lineStyle(2.5, PALETTE.pistonSilver, 1)
-    g.lineBetween(midX, midY, elbowX, elbowY)
+    g.lineBetween(cx, 0, cx, topBlockY)
 
-    // 2. Main Structural Beam with Doodle Hazard Striping
-    // Heavy black underlay stroke
-    g.lineStyle(11, INK, 1)
-    g.lineBetween(0, 0, elbowX, elbowY)
+    // 1. TOP SQUARE MOUNTING BLOCK (approx 36 x 34 px)
+    const blockW = 36
+    const blockH = 34
+    const blockX = cx - blockW / 2
 
-    // Vibrant hazard yellow beam body
-    g.lineStyle(8, PALETTE.hazardYellow, 1)
-    g.lineBetween(0, 0, elbowX, elbowY)
+    // Main base fill
+    g.fillStyle(METAL.body, 1)
+    g.fillRect(blockX, topBlockY, blockW, blockH)
 
-    // Draw hazard chevron bands across the upper arm
-    const len = Math.hypot(elbowX, elbowY)
-    const bandCount = Math.max(3, Math.floor(len / 10))
-    for (let i = 1; i < bandCount; i += 2) {
-      const t0 = (i - 0.4) / bandCount
-      const t1 = (i + 0.4) / bandCount
-      g.lineStyle(7.5, PALETTE.hazardDark, 1)
-      g.lineBetween(elbowX * t0, elbowY * t0, elbowX * t1, elbowY * t1)
-    }
+    // Left highlight facet
+    g.fillStyle(METAL.highlight, 1)
+    g.fillRect(blockX + 2, topBlockY + 2, blockW * 0.45, blockH - 4)
 
-    // Specular highlight line along top edge
-    g.lineStyle(2, 0xffffff, 0.4)
-    g.lineBetween(0, -1, elbowX, elbowY - 1)
+    // Specular glint line on top/left
+    g.lineStyle(1.5, METAL.glint, 0.9)
+    g.lineBetween(blockX + 2, topBlockY + 2, blockX + blockW - 4, topBlockY + 2)
+    g.lineBetween(blockX + 2, topBlockY + 2, blockX + 2, topBlockY + blockH - 4)
 
-    // 3. Shoulder Knuckle Joint at (0, 0)
-    g.fillStyle(PALETTE.hazardDark, 1)
-    g.fillCircle(0, 0, 7.5)
+    // Right shadow facet
+    g.fillStyle(METAL.shadow, 1)
+    g.fillRect(blockX + blockW - 6, topBlockY + 2, 4, blockH - 4)
+
+    // Block ink outline
     g.lineStyle(2.5, INK, 1)
-    g.strokeCircle(0, 0, 7.5)
+    g.strokeRect(blockX, topBlockY, blockW, blockH)
 
-    g.fillStyle(PALETTE.boltBrass, 1)
-    g.fillCircle(0, 0, 4)
-    g.fillStyle(PALETTE.boltHighlight, 1)
-    g.fillCircle(-1, -1, 1.5)
-    g.lineStyle(1.5, INK, 1)
-    g.strokeCircle(0, 0, 4)
+    // Rivet dots on the right edge (like reference image)
+    g.fillStyle(INK, 1)
+    g.fillCircle(blockX + blockW - 4, topBlockY + 11, 1.6)
+    g.fillCircle(blockX + blockW - 4, topBlockY + 22, 1.6)
 
-    // 4. Large Bolted Elbow Knuckle at (elbowX, elbowY)
-    g.fillStyle(PALETTE.hazardDark, 1)
-    g.fillCircle(elbowX, elbowY, 9)
+    // 2. CENTRAL CYLINDRICAL SHAFT (width ~24px)
+    const shaftW = 24
+    const shaftX = cx - shaftW / 2
+    const shaftTopY = topBlockY + blockH
+    const shaftH = bottomStopY - shaftTopY
+
+    // Cylindrical gradient representation:
+    // Base body
+    g.fillStyle(METAL.body, 1)
+    g.fillRect(shaftX, shaftTopY, shaftW, shaftH)
+
+    // Left broad bright highlight strip
+    g.fillStyle(METAL.highlight, 1)
+    g.fillRect(shaftX + 2, shaftTopY, shaftW * 0.42, shaftH)
+
+    // Thin white specular shine
+    g.fillStyle(METAL.glint, 0.8)
+    g.fillRect(shaftX + 4, shaftTopY, 2.5, shaftH)
+
+    // Right dark core shadow strip
+    g.fillStyle(METAL.shadow, 1)
+    g.fillRect(shaftX + shaftW - 7, shaftTopY, 5, shaftH)
+
+    // Shaft ink outline
     g.lineStyle(2.5, INK, 1)
-    g.strokeCircle(elbowX, elbowY, 9)
+    g.strokeRect(shaftX, shaftTopY, shaftW, shaftH)
 
-    g.fillStyle(PALETTE.hazardYellow, 1)
-    g.fillCircle(elbowX, elbowY, 6.5)
-    g.lineStyle(1.5, INK, 1)
-    g.strokeCircle(elbowX, elbowY, 6.5)
+    // 3. MIDDLE CYLINDRICAL COLLAR RING (positioned below top block)
+    const collarY = shaftTopY + 32
+    const collarW = 38
+    const collarH = 14
+    const collarX = cx - collarW / 2
 
-    g.fillStyle(PALETTE.boltBrass, 1)
-    g.fillCircle(elbowX, elbowY, 4)
-    g.fillStyle(PALETTE.boltHighlight, 1)
-    g.fillCircle(elbowX - 1, elbowY - 1, 1.5)
-    g.lineStyle(1.5, INK, 1)
-    g.strokeCircle(elbowX, elbowY, 4)
+    // Collar body
+    g.fillStyle(METAL.collarLight, 1)
+    g.fillRect(collarX, collarY, collarW, collarH)
+
+    // Left highlight
+    g.fillStyle(METAL.highlight, 1)
+    g.fillRect(collarX + 2, collarY + 2, collarW * 0.45, collarH - 4)
+
+    // Right shadow
+    g.fillStyle(METAL.collarDark, 1)
+    g.fillRect(collarX + collarW - 7, collarY + 2, 5, collarH - 4)
+
+    // Collar ink outline
+    g.lineStyle(2.5, INK, 1)
+    g.strokeRect(collarX, collarY, collarW, collarH)
+
+    // Horizontal seam line through collar center (reference detail)
+    g.lineStyle(1.5, INK, 0.7)
+    g.lineBetween(collarX, collarY + collarH * 0.5, collarX + collarW, collarY + collarH * 0.5)
+
+    // 4. BOTTOM CYLINDRICAL STOPPER (width ~32px, below hexagon)
+    const stopW = 34
+    const stopH = 18
+    const stopX = cx - stopW / 2
+
+    g.fillStyle(METAL.body, 1)
+    g.fillRect(stopX, bottomStopY - stopH, stopW, stopH)
+    g.fillStyle(METAL.highlight, 1)
+    g.fillRect(stopX + 2, bottomStopY - stopH + 2, stopW * 0.42, stopH - 4)
+    g.fillStyle(METAL.shadow, 1)
+    g.fillRect(stopX + stopW - 7, bottomStopY - stopH + 2, 5, stopH - 4)
+
+    g.lineStyle(2.5, INK, 1)
+    g.strokeRect(stopX, bottomStopY - stopH, stopW, stopH)
   }
 
   /**
-   * Forearm & Gripper Claw: Pivots at Elbow (0, 0).
-   * Curved heavy doodle beam with hazard stripe segments, ending in dual-prong mechanical
-   * pincer pads that cradle the ball's lower curvature.
+   * Draws the sliding Hexagonal Bracket (Local Coords with (0,0) at its center).
+   * Exact hollow hexagonal loop from the reference image with chamfered beveled facets.
    */
-  private drawForearm(g: Phaser.GameObjects.Graphics, r: number, tipX: number, tipY: number): void {
+  private drawHexBracket(g: Phaser.GameObjects.Graphics): void {
     g.clear()
 
-    const cpx = r * 0.52
-    const cpy = tipY * 0.44
+    // Outer hexagon dimensions: width ~68px, height ~52px
+    const halfW = 34
+    const halfH = 26
+    const chamferX = 14
+    const chamferY = 13
+
+    // Outer polygon vertices (symmetrical horizontal hexagon)
+    const outerPts: Array<{ x: number; y: number }> = [
+      { x: -chamferX, y: -halfH },
+      { x: chamferX, y: -halfH },
+      { x: halfW, y: -halfH + chamferY },
+      { x: halfW, y: halfH - chamferY },
+      { x: chamferX, y: halfH },
+      { x: -chamferX, y: halfH },
+      { x: -halfW, y: halfH - chamferY },
+      { x: -halfW, y: -halfH + chamferY },
+    ]
+
+    // Inner hollow cut-out dimensions (wall thickness approx 8.5px)
+    const inHalfW = 25
+    const inHalfH = 17.5
+    const inChamferX = 10
+    const inChamferY = 9
+
+    const innerPts: Array<{ x: number; y: number }> = [
+      { x: -inChamferX, y: -inHalfH },
+      { x: inChamferX, y: -inHalfH },
+      { x: inHalfW, y: -inHalfH + inChamferY },
+      { x: inHalfW, y: inHalfH - inChamferY },
+      { x: inChamferX, y: inHalfH },
+      { x: -inChamferX, y: inHalfH },
+      { x: -inHalfW, y: inHalfH - inChamferY },
+      { x: -inHalfW, y: -inHalfH + inChamferY },
+    ]
+
+    // 1. Draw solid outer hexagon fill
+    g.fillStyle(METAL.body, 1)
+    g.beginPath()
+    g.moveTo(outerPts[0]!.x, outerPts[0]!.y)
+    for (let i = 1; i < outerPts.length; i++) {
+      g.lineTo(outerPts[i]!.x, outerPts[i]!.y)
+    }
+    g.closePath()
+    g.fillPath()
+
+    // 2. Cut-out inner hexagon (draw with background/transparency)
+    // In Phaser Graphics, we draw the inner facet shading and bevels:
+    // Left/Top bevel highlight
+    g.fillStyle(METAL.highlight, 1)
+    g.beginPath()
+    g.moveTo(outerPts[7]!.x, outerPts[7]!.y)
+    g.lineTo(outerPts[0]!.x, outerPts[0]!.y)
+    g.lineTo(outerPts[1]!.x, outerPts[1]!.y)
+    g.lineTo(innerPts[1]!.x, innerPts[1]!.y)
+    g.lineTo(innerPts[0]!.x, innerPts[0]!.y)
+    g.lineTo(innerPts[7]!.x, innerPts[7]!.y)
+    g.closePath()
+    g.fillPath()
+
+    // Right/Bottom bevel shadow
+    g.fillStyle(METAL.shadow, 1)
+    g.beginPath()
+    g.moveTo(outerPts[2]!.x, outerPts[2]!.y)
+    g.lineTo(outerPts[3]!.x, outerPts[3]!.y)
+    g.lineTo(outerPts[4]!.x, outerPts[4]!.y)
+    g.lineTo(innerPts[4]!.x, innerPts[4]!.y)
+    g.lineTo(innerPts[3]!.x, innerPts[3]!.y)
+    g.lineTo(innerPts[2]!.x, innerPts[2]!.y)
+    g.closePath()
+    g.fillPath()
+
+    // Hollow clear out the center hole (so central shaft shows through)
+    // We achieve the hollow frame look by drawing the inner hole with clear/shaft reveal
+    // Phaser Graphics: clear inner area by stroking outer and inner paths with ink
+    g.fillStyle(0x000000, 0) // transparent
+    // To ensure hole reveals the shaft beneath, we redraw the visible shaft slice inside the hole:
+    const shaftW = 24
+    const shaftX = -shaftW / 2
+    g.fillStyle(METAL.body, 1)
+    g.fillRect(shaftX, -inHalfH, shaftW, inHalfH * 2)
+    g.fillStyle(METAL.highlight, 1)
+    g.fillRect(shaftX + 2, -inHalfH, shaftW * 0.42, inHalfH * 2)
+    g.fillStyle(METAL.shadow, 1)
+    g.fillRect(shaftX + shaftW - 7, -inHalfH, 5, inHalfH * 2)
+    g.lineStyle(2, INK, 1)
+    g.lineBetween(shaftX, -inHalfH, shaftX, inHalfH)
+    g.lineBetween(shaftX + shaftW, -inHalfH, shaftX + shaftW, inHalfH)
+
+    // Outer Hexagon Ink Outline
+    g.lineStyle(2.5, INK, 1)
+    g.beginPath()
+    g.moveTo(outerPts[0]!.x, outerPts[0]!.y)
+    for (let i = 1; i < outerPts.length; i++) {
+      g.lineTo(outerPts[i]!.x, outerPts[i]!.y)
+    }
+    g.closePath()
+    g.strokePath()
+
+    // Inner Hexagon Ink Outline
+    g.beginPath()
+    g.moveTo(innerPts[0]!.x, innerPts[0]!.y)
+    for (let i = 1; i < innerPts.length; i++) {
+      g.lineTo(innerPts[i]!.x, innerPts[i]!.y)
+    }
+    g.closePath()
+    g.strokePath()
+
+    // Diagonal chamfer facet lines (corners)
+    for (let i = 0; i < outerPts.length; i++) {
+      g.lineStyle(1.5, INK, 0.7)
+      g.lineBetween(outerPts[i]!.x, outerPts[i]!.y, innerPts[i]!.x, innerPts[i]!.y)
+    }
+
+    // Specular white gleams along top-left outer chamfer
+    g.lineStyle(2, METAL.glint, 0.85)
+    g.lineBetween(outerPts[7]!.x + 1, outerPts[7]!.y + 1, outerPts[0]!.x, outerPts[0]!.y + 1)
+    g.lineBetween(outerPts[0]!.x, outerPts[0]!.y + 1, outerPts[1]!.x - 1, outerPts[1]!.y + 1)
+  }
+
+  /**
+   * Draws one articulated tubular curved arm:
+   * Origin (0,0) is at the bracket hinge mount.
+   * Sweeps smoothly down and around the ball radius r, terminating in the
+   * signature black rubber claw boot (angled inward).
+   */
+  private drawArmProng(g: Phaser.GameObjects.Graphics, r: number, tipX: number, tipY: number): void {
+    g.clear()
+
+    // Bezier control points for the smooth outward tubular curve
+    const cpx = r * 0.95 + 16
+    const cpy = tipY * 0.35
 
     const pts: Array<{ x: number; y: number }> = []
-    const numSegments = 14
-    for (let i = 0; i <= numSegments; i++) {
-      const t = i / numSegments
+    const segs = 20
+    for (let i = 0; i <= segs; i++) {
+      const t = i / segs
       const ax = 0 + (cpx - 0) * t
       const ay = 0 + (cpy - 0) * t
       const bx = cpx + (tipX - cpx) * t
-      const byPoint = cpy + (tipY - cpy) * t
-      pts.push({ x: ax + (bx - ax) * t, y: ay + (byPoint - ay) * t })
+      const byy = cpy + (tipY - cpy) * t
+      pts.push({ x: ax + (bx - ax) * t, y: ay + (byy - ay) * t })
     }
 
     const v2 = pts.map((p) => new Phaser.Math.Vector2(p.x, p.y))
 
-    // 1. Chunky Doodle Ink Outline
-    g.lineStyle(11, INK, 1)
+    // 1. Heavy Black Ink Underlay (tubular outline)
+    g.lineStyle(9, INK, 1)
     g.strokePoints(v2, false, false)
 
-    // 2. High-Vis Hazard Yellow Forearm Core
-    g.lineStyle(7.5, PALETTE.hazardYellow, 1)
+    // 2. Chrome Metallic Tubular Body
+    g.lineStyle(6, METAL.body, 1)
     g.strokePoints(v2, false, false)
 
-    // 3. Diagonal Hazard Stripe Accents along the curved beam
-    for (let i = 2; i < pts.length - 2; i += 3) {
-      const pA = pts[i]
-      const pB = pts[i + 1]
-      if (pA && pB) {
-        g.lineStyle(7, PALETTE.hazardDark, 1)
-        g.lineBetween(pA.x, pA.y, pB.x, pB.y)
-      }
-    }
-
-    // Doodle inner highlight glint
-    g.lineStyle(2, 0xffffff, 0.4)
+    // 3. Bright Specular Reflection Line along outer curve
+    g.lineStyle(2.5, METAL.highlight, 1)
     g.strokePoints(v2, false, false)
 
-    // 4. Mid-Forearm Reinforcement Bolt
-    const midIdx = Math.floor(pts.length * 0.5)
-    const midPt = pts[midIdx] ?? { x: cpx, y: cpy }
-    g.fillStyle(PALETTE.hazardDark, 1)
-    g.fillCircle(midPt.x, midPt.y, 4)
+    // 4. White Highlight Glint along the apex
+    const apexStart = Math.floor(segs * 0.2)
+    const apexEnd = Math.floor(segs * 0.65)
+    const apexPts = pts.slice(apexStart, apexEnd).map((p) => new Phaser.Math.Vector2(p.x - 0.8, p.y - 0.8))
+    g.lineStyle(1.5, METAL.glint, 0.9)
+    g.strokePoints(apexPts, false, false)
+
+    // 5. Shoulder Pivot Joint at (0, 0)
+    g.fillStyle(METAL.shadow, 1)
+    g.fillCircle(0, 0, 5)
+    g.lineStyle(2, INK, 1)
+    g.strokeCircle(0, 0, 5)
+    g.fillStyle(METAL.highlight, 1)
+    g.fillCircle(-1, -1, 2)
+
+    // 6. Black Rubber Boot / Pincer Tip (angled inward towards the ball)
+    // The boot angles horizontally inward towards -x by ~18-24px
+    const bootLen = Math.max(16, r * 0.26)
+    const bootAngle = Math.PI * 0.92 // nearly horizontal inward
+    const bootEndX = tipX + Math.cos(bootAngle) * bootLen
+    const bootEndY = tipY + Math.sin(bootAngle) * bootLen
+
+    // Rubber boot ink underlay
+    g.lineStyle(10, INK, 1)
+    g.lineBetween(tipX, tipY, bootEndX, bootEndY)
+
+    // Rubber boot dark body
+    g.lineStyle(7.5, METAL.rubber, 1)
+    g.lineBetween(tipX, tipY, bootEndX, bootEndY)
+
+    // Subtle rubber sheen line
+    g.lineStyle(2, METAL.rubberHighlight, 0.7)
+    g.lineBetween(tipX - 2, tipY - 1, bootEndX + 2, bootEndY - 1)
+
+    // Rounded tip cap
+    g.fillStyle(METAL.rubber, 1)
+    g.fillCircle(bootEndX, bootEndY, 3.5)
     g.lineStyle(1.5, INK, 1)
-    g.strokeCircle(midPt.x, midPt.y, 4)
-    g.fillStyle(PALETTE.boltBrass, 1)
-    g.fillCircle(midPt.x, midPt.y, 2.5)
+    g.strokeCircle(bootEndX, bootEndY, 3.5)
 
-    // 5. Wrist Joint at (tipX, tipY)
-    g.fillStyle(PALETTE.hazardDark, 1)
-    g.fillCircle(tipX, tipY, 7)
-    g.lineStyle(2.5, INK, 1)
-    g.strokeCircle(tipX, tipY, 7)
-    g.fillStyle(PALETTE.hazardYellow, 1)
+    // Metal collar ring securing the rubber boot
+    g.fillStyle(METAL.highlight, 1)
     g.fillCircle(tipX, tipY, 4.5)
-    g.fillStyle(PALETTE.boltBrass, 1)
-    g.fillCircle(tipX, tipY, 2.8)
-
-    // 6. Articulated Dual-Prong Pincer Grippers (Chunky Doodle Pincer Claws)
-    // Outer claw prong
-    const p1x = tipX - r * 0.26
-    const p1y = tipY + r * 0.22
-    g.lineStyle(8, INK, 1)
-    g.lineBetween(tipX, tipY, p1x, p1y)
-    g.lineStyle(5, PALETTE.hazardDark, 1)
-    g.lineBetween(tipX, tipY, p1x, p1y)
-
-    // Inner claw prong (hugging ball contour)
-    const p2x = tipX - r * 0.14
-    const p2y = tipY + r * 0.28
-    g.lineStyle(7, INK, 1)
-    g.lineBetween(tipX, tipY, p2x, p2y)
-    g.lineStyle(4, PALETTE.hazardYellow, 1)
-    g.lineBetween(tipX, tipY, p2x, p2y)
-
-    // Textured doodle gripper pads at tips
-    g.fillStyle(PALETTE.hazardYellow, 1)
-    g.fillCircle(p1x, p1y, 3)
     g.lineStyle(1.5, INK, 1)
-    g.strokeCircle(p1x, p1y, 3)
-
-    g.fillStyle(PALETTE.boltBrass, 1)
-    g.fillCircle(p2x, p2y, 3)
-    g.lineStyle(1.5, INK, 1)
-    g.strokeCircle(p2x, p2y, 3)
+    g.strokeCircle(tipX, tipY, 4.5)
   }
 
   private redraw(): void {
@@ -532,27 +578,27 @@ export class DropClaw {
       this.holder.setDepth(this.g.depth)
       this.holder.add(this.g)
 
-      // Chassis graphics
-      this.chassisG = this.scene.add.graphics()
-      this.holder.add(this.chassisG)
+      // Stationary shaft assembly
+      this.shaftG = this.scene.add.graphics()
+      this.holder.add(this.shaftG)
 
-      // Left Arm assembly
+      // Sliding hexagonal bracket container
+      this.sliderContainer = this.scene.add.container(0, 0)
+      this.hexG = this.scene.add.graphics()
+      this.sliderContainer.add(this.hexG)
+
+      // Articulated arms mounted onto the sliding bracket
       this.armL = this.scene.add.container(0, 0)
-      this.upperGL = this.scene.add.graphics()
-      this.forearmL = this.scene.add.container(0, 0)
-      this.foreGL = this.scene.add.graphics()
-      this.forearmL.add(this.foreGL)
-      this.armL.add([this.upperGL, this.forearmL])
+      this.armGL = this.scene.add.graphics()
+      this.armL.add(this.armGL)
 
-      // Right Arm assembly
       this.armR = this.scene.add.container(0, 0)
-      this.upperGR = this.scene.add.graphics()
-      this.forearmR = this.scene.add.container(0, 0)
-      this.foreGR = this.scene.add.graphics()
-      this.forearmR.add(this.foreGR)
-      this.armR.add([this.upperGR, this.forearmR])
+      this.armGR = this.scene.add.graphics()
+      this.armR.add(this.armGR)
 
-      this.holder.add([this.armL, this.armR])
+      this.sliderContainer.add([this.armL, this.armR])
+      this.holder.add(this.sliderContainer)
+
       this.objectsCache = [this.holder]
     }
 
@@ -571,64 +617,62 @@ export class DropClaw {
 
     // Mobile: hide claw hardware
     if (this.mobile) {
-      this.chassisG?.setVisible(false)
-      this.armL?.setVisible(false)
-      this.armR?.setVisible(false)
+      this.shaftG?.setVisible(false)
+      this.sliderContainer?.setVisible(false)
       return
     }
 
-    this.chassisG?.setVisible(true)
-    this.armL?.setVisible(true)
-    this.armR?.setVisible(true)
+    this.shaftG?.setVisible(true)
+    this.sliderContainer?.setVisible(true)
 
     const tier = getTier(this.tier)
     if (!tier) return
     const r = tier.radius
     const by = spawnY(r)
-    const headY = by - r - 12
 
-    // 1. Draw Hazardous Doodle Chassis
-    this.drawChassis(this.chassisG!, headY)
+    // Reference Proportions:
+    // The top block sits near the ceiling; the hex bracket rests above the ball.
+    const topBlockY = 40
+    const hexCenterY = by - r - 26
+    const bottomStopY = hexCenterY + 36
 
-    // 2. Kinematics tailored to ball radius r
-    const shoulderMountX = 21
-    const shoulderMountY = headY + 5
+    // 1. Draw Stationary Shaft Assembly
+    this.drawShaftAssembly(this.shaftG!, topBlockY, bottomStopY)
 
-    this.armL!.setPosition(-shoulderMountX, shoulderMountY)
-    this.armR!.setPosition(shoulderMountX, shoulderMountY)
+    // 2. Position Sliding Hexagonal Bracket
+    this.sliderBaseY = hexCenterY
+    this.sliderContainer!.setPosition(0, this.holding ? this.sliderBaseY : this.sliderBaseY - 14)
 
-    // Kinematics for closed grip pose:
-    const elbowLocalX = r * 0.42 + 10
-    const elbowLocalY = r * 0.45 + 12
+    // Draw Hexagon graphics inside sliding container
+    this.drawHexBracket(this.hexG!)
 
-    this.forearmL!.setPosition(elbowLocalX, elbowLocalY)
-    this.forearmR!.setPosition(elbowLocalX, elbowLocalY)
+    // 3. Mount and Draw Prongs (pivot at the hexagon's lower corners: ±24px, +13px)
+    const mountX = 24
+    const mountY = 13
 
-    const tipRelX = r * 0.38 + 4
-    const tipRelY = r * 0.95 + 8
+    this.armL!.setPosition(-mountX, mountY)
+    this.armR!.setPosition(mountX, mountY)
 
-    // Draw Left and Right Arm Art (mirrored via scaleX)
+    // Mirror left and right arms
     this.armL!.scaleX = -1
     this.armR!.scaleX = 1
 
-    this.drawUpperArm(this.upperGL!, elbowLocalX, elbowLocalY)
-    this.drawUpperArm(this.upperGR!, elbowLocalX, elbowLocalY)
+    // Tip coordinates relative to the mount:
+    // Grips down to the lower third of the ball
+    const tipRelX = r * 0.82
+    const tipRelY = (by + r * 0.55) - (hexCenterY + mountY)
 
-    this.drawForearm(this.foreGL!, r, tipRelX, tipRelY)
-    this.drawForearm(this.foreGR!, r, tipRelX, tipRelY)
+    this.drawArmProng(this.armGL!, r, tipRelX, tipRelY)
+    this.drawArmProng(this.armGR!, r, tipRelX, tipRelY)
 
-    // Set initial poses
+    // Set initial rotations
     this.stopArmTweens()
     if (this.holding) {
       this.armL!.rotation = 0
       this.armR!.rotation = 0
-      this.forearmL!.rotation = 0
-      this.forearmR!.rotation = 0
     } else {
-      this.armL!.rotation = -0.44
-      this.armR!.rotation = 0.44
-      this.forearmL!.rotation = 0.28
-      this.forearmR!.rotation = -0.28
+      this.armL!.rotation = -0.58
+      this.armR!.rotation = 0.58
     }
   }
 }
