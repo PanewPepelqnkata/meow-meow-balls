@@ -87,9 +87,9 @@ export class StartIntroScene extends Phaser.Scene {
     const drawCover = (holeR: number): void => {
       cover.clear()
       // Fully open: draw nothing — a zero-width annulus renders as a
-      // 1px GPU seam ring. Fully closed: a plain disc. The hole tween
-      // overshoots past the corners (outerR * 1.1), so the corners
-      // clear mid-open — no second-circle read at the end.
+      // 1px GPU seam ring. Fully closed: a plain disc. The outer edge
+      // sits at outerR * 1.3 — past the corners on any viewport, so
+      // only the single hole edge is ever visible.
       if (holeR >= outerR) return
       cover.fillStyle(0x0e0f1c, 1)
       if (holeR <= 0.01) {
@@ -101,10 +101,6 @@ export class StartIntroScene extends Phaser.Scene {
       cover.arc(cx, cy, holeR, 0, Math.PI * 2, true)
       cover.fillPath()
     }
-    // startClosed boots FULLY closed (2px hairline) to match
-    // TitleScene's last frame; the legacy open path starts wide open.
-    cover.setScale(startClosed ? (2 / innerR) * 0.5 : outerR / innerR)
-
     // ---- 2. Timeline ------------------------------------------------------
     let sweepState = { r: outerR }
     // ?diag=1 device readout: sweep progress + cover geometry, sampled by
@@ -387,6 +383,16 @@ export class StartIntroScene extends Phaser.Scene {
       this.time.delayedCall(3200 + cast.length * 80 + 320 + 700, () => {
         blinkTimer.remove()
         setPhase('outro')
+        // The seal dissolves as the iris reopens: the growing hole is
+        // pre-filled with ink (no sudden hole pop), then the seal fades
+        // to reveal the game under the accelerating sweep.
+        this.tweens.add({
+          targets: seal,
+          alpha: 0,
+          duration: 350,
+          delay: 350,
+          ease: 'Quad.easeIn',
+        })
         // UN-DRAW: the erase stroke walks the same bottom-up order as the
         // draw-on — shadow/base/band vanish first, glass/chute next, the
         // top details (sheens/sparkles) last. 1.4s, started with the iris.
@@ -451,14 +457,23 @@ export class StartIntroScene extends Phaser.Scene {
             onComplete: () => drawCast(),
           })
         })
-        // NO IRIS REOPEN: the machine erases itself + the balls pop out
-        // over the full-ink cover, then the scene just ends — the game
-        // is simply there. (The iris reopen read as a second-circle
-        // glitch; removed at the user's request.)
-        this.time.delayedCall(500 + cast.length * 60 + 200 + 100, () => {
-          cover.destroy()
-          seal.destroy()
-          this.scene.stop()
+        // The iris reopens while the machine erases — slow start under
+        // the erasing art, then it ACCELERATES out (Cubic.easeIn): the
+        // corner ink sweeps away fast instead of crawling (the old
+        // easeOut tail read as a second circle). Ends at outerR exactly
+        // — corner clear — then a plain cut to the live game.
+        this.tweens.add({
+          targets: sweepState,
+          r: outerR,
+          duration: 1100,
+          delay: 350,
+          ease: 'Cubic.easeIn',
+          onUpdate: () => drawCover(sweepState.r),
+          onComplete: () => {
+            cover.destroy()
+            seal.destroy()
+            this.scene.stop()
+          },
         })
       })
     }
