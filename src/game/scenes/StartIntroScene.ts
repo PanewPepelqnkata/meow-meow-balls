@@ -486,27 +486,26 @@ export class StartIntroScene extends Phaser.Scene {
             machineC.destroy()
           },
         })
-        // The balls pop OUT top-first (reverse pop order) — strictly
-        // AFTER the machine has fully un-drawn (undraw = 1300ms). The
-        // balls are the LAST thing on screen.
+        // The balls pop OUT top-first (reverse pop order), starting after
+        // the erase has cleared the base — "lastly the balls".
         ;[...cast].reverse().forEach((b, i) => {
           this.tweens.add({
             targets: b,
             scale: 0,
-            delay: 1300 + i * 60,
+            delay: 500 + i * 60,
             duration: 200,
             ease: 'Quad.easeIn',
             onUpdate: () => drawCast(),
             onComplete: () => drawCast(),
           })
         })
-        // ...and ONLY when the last ball is gone does the iris reopen
-        // (the machine undraws, then the balls leave, then the reveal).
+        // ...while the cover reopens outward SLOWER than the undraw — the
+        // machine vanishes inside the growing hole (the iris outlives the
+        // undraw, or the scene stop would cut the erase short).
         this.tweens.add({
           targets: sweepState,
           r: outerR,
-          duration: 700,
-          delay: 1300 + cast.length * 60 + 200,
+          duration: 1500,
           ease: 'Cubic.easeInOut',
           onUpdate: () => {
             drawCover(sweepState.r)
