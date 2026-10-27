@@ -86,9 +86,11 @@ export function bakeIrisCover(
 }
 
 export class StartIntroScene extends Phaser.Scene {
-  /** Skipped (non-phone viewport): flag for the menu to fast-path. */
-  static shouldRun(vw: number, vh: number): boolean {
-    return vh > vw && vw <= 500
+  /** Runs on EVERY viewport now — the machine intro is the start
+   * experience on desktop too (the machine scales with the viewport).
+   * Kept as a method for the TitleScene gate + QA parity. */
+  static shouldRun(_vw: number, _vh: number): boolean {
+    return true
   }
 
   constructor() {
