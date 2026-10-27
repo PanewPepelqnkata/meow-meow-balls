@@ -155,7 +155,6 @@ export class DropClaw {
         if (!this.mobile) this.playWidenDropAnimation()
       } else {
         this.redraw()
-        if (!this.mobile) this.playTightenReloadAnimation()
       }
     }
   }
@@ -238,48 +237,6 @@ export class DropClaw {
     this.activeTweens.push(twSlide, twArmL, twArmR)
   }
 
-  /**
-   * Reload Clamping Animation:
-   * When the new ball arrives (after the 1s cooldown), the claw gives a soft, tactile
-   * cushioned squeeze around the new ball (pulse in by 0.06 rad, then settle to 0).
-   */
-  private playTightenReloadAnimation(): void {
-    if (!this.sliderContainer || !this.armL || !this.armR) return
-    this.stopArmTweens()
-
-    // If arms already settled at 0, perform a brief cushioned embrace around the new ball
-    const twArmL = this.scene.tweens.add({
-      targets: this.armL,
-      rotation: -0.06, // subtle inward hug
-      duration: 120,
-      ease: 'Quad.easeOut',
-      yoyo: true,
-      onYoyo: () => {
-        if (this.armL) this.armL.rotation = 0
-      },
-    })
-    const twArmR = this.scene.tweens.add({
-      targets: this.armR,
-      rotation: 0.06, // subtle inward hug
-      duration: 120,
-      ease: 'Quad.easeOut',
-      yoyo: true,
-      onYoyo: () => {
-        if (this.armR) this.armR.rotation = 0
-      },
-    })
-
-    // Micro bounce on slider bracket to give mechanical feedback
-    const twSlide = this.scene.tweens.add({
-      targets: this.sliderContainer,
-      y: this.sliderBaseY + 2,
-      duration: 110,
-      ease: 'Quad.easeOut',
-      yoyo: true,
-    })
-
-    this.activeTweens.push(twSlide, twArmL, twArmR)
-  }
 
   private redrawBallOnly(): void {
     this.g.clear()
