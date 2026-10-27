@@ -19,7 +19,7 @@ import { runVariantFor, variantIdFor, VARIANT_COUNT } from '../state/runVariant'
 import { session } from '../state/session'
 import { bakeCanvas, roundedRectPath } from '../rendering/RoughArt'
 import { cycleColor } from '../rendering/rgbCycle'
-import { UiverseDomButtons } from '../../ui/UiverseDomButtons'
+import { MenuButton, type MenuButtonSpec } from '../../ui/MenuButton'
 import { bakeIrisCover, IRIS_COVER_KEY } from './StartIntroScene'
 import { StartIntroScene } from './StartIntroScene'
 
@@ -101,15 +101,46 @@ export class TitleScene extends Phaser.Scene {
   private cast: CastBall[] = []
   private logoC!: Phaser.GameObjects.Container
   private logoBaseY = 0
+  private logoBaseX = 0
   private logoImg: Phaser.GameObjects.Image | null = null
   private chipRect: { x: number; y: number; w: number; h: number } | null = null
-  /** The PLAY button's container — pulsed gently every frame. */
-  private playC: Phaser.GameObjects.Container | null = null
-  /** The uiverse DOM button layer (PLAY + nav) — built on menu rebuild. */
-  private uiverseDom: UiverseDomButtons | null = null
+  /** The in-canvas menu buttons (PLAY + navs) — juice + idle life. */
+  private menuButtons: MenuButton[] = []
+  /**
+   * Entrance choreography state. The staggered bounce-in plays ONCE per
+   * boot (not on every resize rebuild): `entrancePlayed` survives rebuilds,
+   * and elements above the fold are hidden (alpha 0 / scale 0) until their
+   * choreography slot starts. `entranceT` clocks the whole sequence.
+   */
+  private entrancePlayed = false
+  private entranceT = 0
+  private entranceDone = false
+  /** Parallax targets (pointer-driven) — lerped every frame. */
+  private parallaxX = 0
+  private parallaxY = 0
+  private parallaxTX = 0
+  private parallaxTY = 0
+  /** Live marquee bulbs across the machine's collar (chase animation). */
+  private bulbs: Array<{ g: Phaser.GameObjects.Arc; base: number; phase: number }> = []
+  /** Floating dust motes — slow drift, GPU alpha/pos only. */
+  private dust: Array<{ s: Phaser.GameObjects.Ellipse; bx: number; by: number; ph: number; sp: number; amp: number }> = []
+  /** Ambient god-ray wedge behind the machine (pointer-parallax + shimmer). */
+  private rays: Phaser.GameObjects.Graphics | null = null
+  /** Sun/glow pool disc behind the machine (breathe + parallax). */
+  private glowPool: Phaser.GameObjects.Ellipse | null = null
+  /** Decorative drifting shapes far behind the machine (parallax bed). */
+  private clouds: Array<{ c: Phaser.GameObjects.Container; bx: number; by: number; sp: number; sc: number }> = []
+  /** The stats chip container (breathed + entrance-animated). */
+  private chipC: Phaser.GameObjects.Container | null = null
+  private chipBreathPh = 0
   /** The gumball machine (bobbed gently every frame). */
   private machineC: Phaser.GameObjects.Container | null = null
   private machineBaseY = 0
+  private machineBaseX = 0
+  /** Entrance beat latches — each fires exactly once per boot. */
+  private logoEnterDone = false
+  private machineEnterDone = false
+  private castEnterDone = false
   private blinkT = 1800
   private menuRects: Array<{
     label: string
@@ -208,7 +239,8 @@ export class TitleScene extends Phaser.Scene {
             }),
           ),
         // Phase 2.15.0 QA: live home-screen presentation probes (read-only).
-        pulse: () => Math.round(1000 * (this.playC?.scale ?? -1)) / 1000,
+        // `pulse` now reads the in-canvas PLAY button's live scale.
+        pulse: () => Math.round(1000 * (this.menuButtons[0]?.c.scale ?? -1)) / 1000,
         cast: () =>
           this.cast.map((b) => ({ x: Math.round(b.c.x), y: Math.round(b.c.y), tier: b.tier })),
         chip: () => (this.chipRect ? { ...this.chipRect } : null),
@@ -224,20 +256,80 @@ export class TitleScene extends Phaser.Scene {
     }
   }
 
-  override update(time: number): void {
+  override update(time: number, delta: number): void {
     if (this.closed) return
     const t = time / 1000
-    // The machine breathes as one piece — a heavy vending machine sway.
+    const dt = Math.min(delta, 50)
+
+    // --- entrance choreography (one-shot per boot) -------------------------
+    if (!this.entranceDone) {
+      this.entranceT += delta
+      this.runEntrance()
+      if (this.entranceT > 1300) this.entranceDone = true
+    }
+
+    // --- pointer parallax: targets from the pointer, lerped each frame ----
+    const p = this.input.activePointer
+    const z = this.game.scale.displayScale.x || 1
+    const cw = this.scale.width / z
+    const chh = this.scale.height / z
+    this.parallaxTX = cw > 0 ? (p.x - cw / 2) / (cw / 2) : 0
+    this.parallaxTY = chh > 0 ? (p.y - chh / 2) / (chh / 2) : 0
+    const kk = Math.min(1, dt / 1000 * 5)
+    this.parallaxX += (this.parallaxTX - this.parallaxX) * kk
+    this.parallaxY += (this.parallaxTY - this.parallaxY) * kk
+    const px = this.parallaxX
+    const py = this.parallaxY
+
+    // --- the machine: heavy idle sway + pointer tilt toward the hand ------
     if (this.machineC) {
-      this.machineC.y = this.machineBaseY + Math.sin(t * 0.9) * 4.5
-      this.machineC.rotation = Math.sin(t * 0.7) * 0.006
+      const idleSway = Math.sin(t * 0.9) * 4.5
+      const idleRot = Math.sin(t * 0.7) * 0.006
+      this.machineC.y = this.machineBaseY + idleSway + py * 7
+      this.machineC.x = this.machineBaseX + px * 11
+      // 3D-ish lean: rotation toward the pointer + a slight squeeze —
+      // reads as a chunky cardboard cutout leaning in.
+      this.machineC.rotation = idleRot + px * 0.018
+      this.machineC.setScale(1 - Math.abs(px) * 0.012, 1)
     }
-    // The wordmark breathes as one piece (a living logo, not a static line).
+    // Marquee bulbs chase each other around the collar.
+    for (const b of this.bulbs) {
+      const wave = Math.sin(t * 3.4 - b.phase) * 0.5 + 0.5
+      b.g.setScale(0.72 + wave * 0.55)
+      b.g.setAlpha(0.55 + wave * 0.45)
+    }
+
+    // --- the wordmark breathes and leans with the pointer ------------------
     if (this.logoC) {
-      this.logoC.y = this.logoBaseY + Math.sin(t * 1.1) * 3.5
-      this.logoC.rotation = Math.sin(t * 0.8) * 0.008
+      this.logoC.y = this.logoBaseY + Math.sin(t * 1.1) * 3.5 + py * 4.5
+      this.logoC.rotation = Math.sin(t * 0.8) * 0.008 + px * 0.012
+      // Counter-drift: an OFFSET from the layout anchor, never an absolute
+      // x — the container's x IS the layout position (vw/2).
+      this.logoC.x = this.logoBaseX - px * 7
     }
-    // The showcase cast: each ball bobs in place inside the container art.
+
+    // --- far parallax bed: clouds/glow/rays drift at shallower rates ------
+    if (this.rays) {
+      this.rays.x = -px * 14
+      this.rays.y = -py * 5
+      this.rays.setAlpha(0.5 + Math.sin(t * 0.6) * 0.08)
+    }
+    if (this.glowPool) {
+      this.glowPool.x = -px * 10
+      this.glowPool.setScale(1 + Math.sin(t * 0.8) * 0.04)
+      this.glowPool.setAlpha(0.5 + Math.sin(t * 0.8) * 0.05)
+    }
+    for (const cl of this.clouds) {
+      cl.c.x = cl.bx + Math.sin(t * cl.sp) * 14 - px * 22 * cl.sc
+      cl.c.y = cl.by + Math.cos(t * cl.sp * 0.8) * 6 - py * 10 * cl.sc
+    }
+    for (const d of this.dust) {
+      d.s.x = d.bx + Math.sin(t * d.sp + d.ph) * d.amp - px * 16
+      d.s.y = d.by + Math.cos(t * d.sp * 0.6 + d.ph) * d.amp * 0.7 - py * 9
+      d.s.setAlpha(0.16 + Math.sin(t * 0.9 + d.ph * 2.1) * 0.1)
+    }
+
+    // --- the showcase cast: bobs, glances at the pointer -------------------
     for (const b of this.cast) {
       b.c.x = b.baseX + Math.sin(t * b.speed * 0.7 + b.phase * 1.7) * b.amp * 0.4
       b.c.y = b.baseY + Math.sin(t * b.speed + b.phase) * b.amp
@@ -246,24 +338,85 @@ export class TitleScene extends Phaser.Scene {
     // The star ball (top of the pile) blinks like the old mascot did.
     const star = this.cast.find((b) => b.blink)
     if (star) {
-      this.blinkT -= this.game.loop.delta
+      this.blinkT -= delta
       if (this.blinkT <= 0) {
         star.blinkClosed = !star.blinkClosed
         this.blinkT = star.blinkClosed ? 140 : 2200 + Math.random() * 2600
         this.drawCastBall(star)
       }
     }
-    // PLAY invites: a slow, gentle pulse (scale 1 → 1.044).
-    if (this.playC) this.playC.setScale(1 + Math.sin(t * 2.6) * 0.022 + 0.022)
-    // Uiverse buttons: the ball characters live (gaze at the pointer,
-    // blink, egg expressions) — pointer in CSS px for the gaze.
-    if (this.uiverseDom) {
-      const p = this.input.activePointer
-      const z = this.game.scale.displayScale.x || 1
-      const cw = this.scale.width / z
-      const ch = this.scale.height / z
-      const gaze = { x: (p.x - cw / 2) / (cw / 2), y: (p.y - ch / 2) / (ch / 2) }
-      this.uiverseDom.refresh(time, this.uiverseDom.currentSpecs(), gaze)
+
+    // Chip: a slow tertiary breath (scale-only, never fights its entrance
+    // tween which drives y/alpha).
+    if (this.chipC) {
+      this.chipC.setScale(1 + Math.sin(t * 1.3 + this.chipBreathPh) * 0.014)
+    }
+
+    // --- buttons: springs, characters, glow (one refresh each) ------------
+    const gaze = { x: this.parallaxTX, y: this.parallaxTY }
+    for (const mb of this.menuButtons) mb.refresh(t, time, dt, gaze)
+
+    // Backdrop dust-parallax anchor (the baked image itself shifts a hair).
+    if (this.backdropImg) {
+      this.backdropImg.x = -px * 6
+      this.backdropImg.y = -py * 3
+    }
+  }
+
+  /**
+   * The entrance choreography — one timeline, driven by the elapsed clock
+   * so a resize mid-flight can never restart or double-play it. Beats:
+   *   0.10s wordmark drops in with a settle bounce
+   *   0.34s machine bounces up with overshoot
+   *   0.42s cast balls hop in, staggered
+   * PLAY + navs + chip pop via MenuButton.enter / explicit tweens queued
+   * at build time (buildPlayAndNav / buildStatsChip) — nothing per-frame
+   * beyond the clock advancing.
+   */
+  private runEntrance(): void {
+    const T = this.entranceT
+    const started = (ms: number): boolean => T >= ms
+
+    // Wordmark: drops from above with a settle bounce.
+    if (this.logoC && !this.logoEnterDone && started(60)) {
+      this.logoEnterDone = true
+      this.logoC.setAlpha(1)
+      this.tweens.add({
+        targets: this.logoC,
+        y: { from: this.logoBaseY - 70, to: this.logoBaseY },
+        alpha: { from: 0, to: 1 },
+        duration: 420,
+        ease: 'Back.easeOut',
+        easeParams: [1.4],
+      })
+    }
+    // Machine: big soft bounce up from below.
+    if (this.machineC && !this.machineEnterDone && started(180)) {
+      this.machineEnterDone = true
+      this.machineC.setAlpha(1)
+      this.tweens.add({
+        targets: this.machineC,
+        y: { from: this.machineBaseY + 110, to: this.machineBaseY },
+        alpha: { from: 0, to: 1 },
+        duration: 520,
+        ease: 'Back.easeOut',
+        easeParams: [1.25],
+      })
+    }
+    // Cast hop-in: staggered per ball, driven by the same clock.
+    if (this.machineC && !this.castEnterDone && started(240)) {
+      this.castEnterDone = true
+      this.cast.forEach((b, i) => {
+        b.c.setScale(0)
+        this.tweens.add({
+          targets: b.c,
+          scale: 1,
+          duration: 380,
+          delay: i * 38,
+          ease: 'Back.easeOut',
+          easeParams: [2.1],
+        })
+      })
     }
   }
 
@@ -293,6 +446,8 @@ export class TitleScene extends Phaser.Scene {
     this.panelLayer.remove(this.panelContent)
     this.menuLayer.removeAll(true)
     this.panelLayer.removeAll(true)
+    this.menuButtons.forEach((b) => b.destroy())
+    this.menuButtons = []
     this.panelLayer.add(this.panelBackdrop)
     this.panelLayer.add(this.panelContent)
     this.backdropImg = this.buildBackdrop(vw, vh)
@@ -300,14 +455,41 @@ export class TitleScene extends Phaser.Scene {
     this.cast.length = 0
     this.menuRects.length = 0
     this.panelRects.length = 0
-    this.playC = null
     this.machineC = null
     this.logoImg = null
     this.chipRect = null
+    this.chipC = null
+    this.bulbs = []
+    this.dust = []
+    this.clouds = []
+    this.rays = null
+    this.glowPool = null
 
     this.buildHome(vw, vh)
     this.buildPanelChrome(vw, vh)
     this.applyScreenVisibility()
+
+    // Entrance choreography: on the FIRST build the wordmark + machine
+    // start hidden (their beats reveal them via runEntrance()); later
+    // rebuilds (resize) appear settled. MenuButtons handle their own
+    // enter/settle in buildPlayAndNav.
+    if (!this.entrancePlayed) {
+      const logo = this.logoC as Phaser.GameObjects.Container | null
+      const machine = this.machineC as Phaser.GameObjects.Container | null
+      logo?.setAlpha(0)
+      machine?.setAlpha(0)
+    } else {
+      this.logoEnterDone = true
+      this.machineEnterDone = true
+      this.castEnterDone = true
+      this.entranceDone = true
+      const logo = this.logoC as Phaser.GameObjects.Container | null
+      const machine = this.machineC as Phaser.GameObjects.Container | null
+      logo?.setAlpha(1)
+      machine?.setAlpha(1)
+      this.cast.forEach((b) => b.c.setScale(1))
+    }
+    this.entrancePlayed = true
   }
 
   /** The baked ink-gradient backdrop (see buildAll). */
@@ -350,7 +532,84 @@ export class TitleScene extends Phaser.Scene {
     // dpr changes bitmap resolution only, never world coordinates.
     img.setDisplaySize(Math.ceil(vw), Math.ceil(vh))
     img.setAlpha(0.9)
+    this.buildAmbience(vw, vh)
     return img
+  }
+
+  /**
+   * Ambient LIFE behind the composition — every element a real, cheap GPU
+   * object (never a per-frame bake): a warm glow pool under the machine,
+   * two painted god-ray wedges, drifting cartoon clouds, and floating dust
+   * motes. All parallax at shallower rates than the machine (update()).
+   */
+  private buildAmbience(vw: number, vh: number): void {
+    const cx = vw / 2
+
+    // Glow pool — the stage light the machine stands in.
+    this.glowPool = this.add.ellipse(
+      cx,
+      vh * 0.62,
+      Math.min(vw * 0.9, 780),
+      Math.min(vh * 0.42, 340),
+      0xffc46b,
+      0.16,
+    )
+    this.glowPool.setBlendMode(Phaser.BlendModes.ADD)
+    this.menuLayer.addAt(this.glowPool, 1)
+
+    // God-rays: two soft wedge fans behind the machine, ADD blended.
+    this.rays = this.add.graphics()
+    this.rays.setBlendMode(Phaser.BlendModes.ADD)
+    const rayLen = Math.max(vw, vh) * 0.75
+    const ray = (ang: number, wd: number, a: number): void => {
+      this.rays!.fillStyle(0xffe9b8, a)
+      this.rays!.fillPoints(
+        [
+          new Phaser.Math.Vector2(0, 0),
+          new Phaser.Math.Vector2(Math.cos(ang - wd) * rayLen, Math.sin(ang - wd) * rayLen),
+          new Phaser.Math.Vector2(Math.cos(ang + wd) * rayLen, Math.sin(ang + wd) * rayLen),
+        ],
+        true,
+      )
+    }
+    this.rays.save()
+    this.rays.translateCanvas(cx, vh * 0.28)
+    ray(-Math.PI * 0.62, 0.05, 0.05)
+    ray(-Math.PI * 0.5, 0.035, 0.07)
+    ray(-Math.PI * 0.38, 0.045, 0.045)
+    this.rays.restore()
+    this.menuLayer.addAt(this.rays, 1)
+
+    // Drifting cartoon clouds — chunky cream puffs, slow wander.
+    this.clouds = []
+    const cloudYs = [vh * 0.12, vh * 0.2, vh * 0.09]
+    const cloudXs = [vw * 0.14, vw * 0.86, vw * 0.5]
+    const cloudScales = [1, 0.8, 0.55]
+    for (let i = 0; i < 3; i++) {
+      const c = this.add.container(cloudXs[i]!, cloudYs[i]!)
+      const g = this.add.graphics()
+      const s = 26 * cloudScales[i]!
+      g.fillStyle(0xfff6e0, 0.1)
+      g.fillCircle(-s * 0.8, 0, s * 0.62)
+      g.fillCircle(0, -s * 0.3, s * 0.8)
+      g.fillCircle(s * 0.8, 0, s * 0.58)
+      g.fillCircle(s * 0.2, s * 0.25, s * 0.7)
+      c.add(g)
+      this.menuLayer.addAt(c, 2)
+      this.clouds.push({ c, bx: cloudXs[i]!, by: cloudYs[i]!, sp: 0.14 + i * 0.05, sc: cloudScales[i]! })
+    }
+
+    // Dust motes — tiny cream ellipses, drifting + twinkling.
+    this.dust = []
+    const n = Math.round(Math.min(26, (vw * vh) / 34000))
+    for (let i = 0; i < n; i++) {
+      const bx = ((i * 197 + 31) % 100) / 100 * vw
+      const by = ((i * 149 + 67) % 100) / 100 * vh
+      const amp = 8 + (i % 4) * 5
+      const s = this.add.ellipse(bx, by, 3.2, 3.2, 0xfff6e0, 0.2)
+      this.menuLayer.addAt(s, 3)
+      this.dust.push({ s, bx, by, ph: (i * 2.399) % 6.283, sp: 0.22 + (i % 5) * 0.06, amp })
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -369,6 +628,7 @@ export class TitleScene extends Phaser.Scene {
     const logoCY = m + 8 + logoH / 2
     this.logoC.setPosition(vw / 2, logoCY)
     this.logoBaseY = logoCY
+    this.logoBaseX = vw / 2
 
     // --- measured element sizes ---
     const chipH = Math.round(Math.max(30, Math.min(44, vh * 0.052)))
@@ -546,6 +806,7 @@ export class TitleScene extends Phaser.Scene {
 
     this.machineC = this.add.container(Math.round(cx - w / 2), Math.round(cy - h / 2))
     this.machineBaseY = this.machineC.y
+    this.machineBaseX = this.machineC.x
     this.menuLayer.add(this.machineC)
 
     // --- the gumball cast: colorful characters bobbing inside the globe ---
@@ -594,6 +855,21 @@ export class TitleScene extends Phaser.Scene {
       this.drawCastBall(ball)
       this.cast.push(ball)
     })
+
+    // --- the marquee: LIVE chase lights across the collar ------------------
+    // Real Phaser arcs above the front layer — scale/alpha animated in
+    // update() (pure GPU), chasing across the band; two staggered rows.
+    const bulbColors = [0xffd93b, 0x4fc3f7, 0xff8a3d, 0xa98bd8, 0x43d64f]
+    this.bulbs = []
+    for (let i = 0; i < 10; i++) {
+      const row = Math.floor(i / 5)
+      const bx = (40 + (i % 5) * 5) * u
+      const by = (64.4 + row * 2.2) * u
+      const b = this.add.circle(bx, by, 1.9 * u, bulbColors[i % 5]!, 1)
+      b.setBlendMode(Phaser.BlendModes.ADD)
+      this.machineC.add(b)
+      this.bulbs.push({ g: b, base: 1.9 * u, phase: i * 0.63 })
+    }
   }
 
   /** Machine BACK layer: ground shadow, glass interior, red base body. */
@@ -651,13 +927,16 @@ export class TitleScene extends Phaser.Scene {
       ctx.fillStyle = '#f2eee2'
       rrPath(ctx, 40 * u, 106 * u, 20 * u, 8 * u, 2 * u)
       ctx.fill()
-      // Marquee bulbs: candy dots across the red collar.
+      // Marquee bulbs: painted as soft mounts; the LIVE chase lights are
+      // real Phaser arcs added in buildMachine (animated every frame).
       const bulbs = ['#ffd93b', '#4fc3f7', '#ff8a3d', '#a98bd8', '#43d64f']
       bulbs.forEach((c, i) => {
         ctx.fillStyle = c
+        ctx.globalAlpha = 0.5
         ctx.beginPath()
-        ctx.arc((41 + i * 4.5) * u, 65 * u, 1.7 * u, 0, Math.PI * 2)
+        ctx.arc((41 + i * 4.5) * u, 65 * u, 1.9 * u, 0, Math.PI * 2)
         ctx.fill()
+        ctx.globalAlpha = 1
       })
       // Star sticker on the base's left cheek.
       ctx.fillStyle = '#ffe08a'
@@ -837,37 +1116,43 @@ export class TitleScene extends Phaser.Scene {
     navH: number,
     navPos: Array<{ x: number; y: number }>,
   ): void {
-    // ---- PLAY + nav: uiverse big-moose-69 buttons as a DOM layer
-    // (1:1 CSS from the source), each showcasing a live ball character
-    // (gaze/blink/egg expressions) drawn into a small canvas per frame.
-    // The Phaser-side hit rects stay the authoritative input surface.
-    const specs: Array<{ x: number; y: number; w: number; h: number; label: string; tier: number; seed: number }> = [
-      { x: vw / 2, y: playY, w: playW, h: playH, label: 'PLAY', tier: 1, seed: 4242 },
+    // ---- PLAY + nav: fully IN-CANVAS menu buttons (MenuButton) — chunky
+    // doodle pills with a live ball character each, hover/press juice and
+    // idle breath. The hit rects below stay the authoritative input
+    // surface (menuRects QA contract).
+    const specs: MenuButtonSpec[] = [
+      { x: vw / 2, y: playY, w: playW, h: playH, label: 'PLAY', tier: 1, seed: 4242, primary: true },
       { x: navPos[0]!.x, y: navPos[0]!.y, w: navW, h: navH, label: 'LEADERBOARD', tier: 2, seed: 4242 + 2 * 7 },
       { x: navPos[1]!.x, y: navPos[1]!.y, w: navW, h: navH, label: 'JOURNAL', tier: 3, seed: 4242 + 3 * 7 },
       { x: navPos[2]!.x, y: navPos[2]!.y, w: navW, h: navH, label: 'COLLECTION', tier: 4, seed: 4242 + 4 * 7 },
       { x: navPos[3]!.x, y: navPos[3]!.y, w: navW, h: navH, label: 'SETTINGS', tier: 6, seed: 4242 + 6 * 7 },
     ]
-    if (!this.uiverseDom) this.uiverseDom = new UiverseDomButtons(this)
-    this.uiverseDom.build(specs)
-    this.uiverseDom.setVisible(!this.closed && this.screen === 'menu')
-    // Invisible hit rects (above the canvas) drive press + hover — the DOM
-    // layer is click-transparent, CSS :hover can't fire on its own.
+    this.menuButtons.forEach((b) => b.destroy())
+    this.menuButtons = specs.map(
+      (s) => new MenuButton(this, s, this.menuLayer),
+    )
+    // Entrance choreography: PLAY pops first, then the navs staggered —
+    // but only on the FIRST build (boot); resize rebuilds appear settled.
+    if (!this.entrancePlayed) {
+      this.menuButtons.forEach((b, i) => b.enter(300 + i * 70))
+    } else {
+      this.menuButtons.forEach((b) => b.settle())
+    }
+    // Invisible hit rects (above the visuals) drive press + hover.
     specs.forEach((s, i) => {
       const hit = this.add
-        .rectangle(s.x, s.y, s.w, s.h, 0xffffff, 0.001)
+        .rectangle(s.x, s.y, s.w + 8, s.h + 8, 0xffffff, 0.001)
         .setInteractive({ useHandCursor: true })
       this.menuLayer.add(hit)
-      hit.on('pointerover', () => this.uiverseDom?.setHover(i, true))
+      hit.on('pointerover', () => this.menuButtons[i]?.setHover(true))
       hit.on('pointerout', () => {
-        this.uiverseDom?.setHover(i, false)
-        this.uiverseDom?.setPressed(i, false)
+        this.menuButtons[i]?.setHover(false)
       })
-      hit.on('pointerdown', () => this.uiverseDom?.setPressed(i, true))
+      hit.on('pointerdown', () => this.menuButtons[i]?.setPress(true))
       hit.on('pointerup', () => {
-        this.uiverseDom?.setPressed(i, false)
+        this.menuButtons[i]?.setPress(false)
         if (i === 0) this.pressStart()
-        else this.openScreen(specs[i]!.label.toLowerCase() as ScreenName)
+        else this.openScreen(s.label.toLowerCase() as ScreenName)
       })
       this.menuRects.push({
         label: s.label,
@@ -881,7 +1166,9 @@ export class TitleScene extends Phaser.Scene {
   }
 
   /** Compact lifetime stats: best score + discovered tiers (a progress
-   * pill with the highest discovered ball as its icon). */
+   * pill with the highest discovered ball as its icon). Built into its own
+   * container so the entrance can slide it up, and update() can breathe it
+   * (a living tertiary layer, not a dead sticker). */
   private buildStatsChip(cx: number, cy: number, w: number, h: number): void {
     const save = loadSave()
     const TOTAL_TIERS = BALL_TIERS.length
@@ -891,13 +1178,17 @@ export class TitleScene extends Phaser.Scene {
     const got = discovered.length
     const bestTier = discovered.length ? Math.max(...discovered) : 1
     this.chipRect = { x: cx - w / 2, y: cy - h / 2, w, h }
+    const c = this.add.container(cx, cy)
+    this.menuLayer.add(c)
+    this.chipC = c
+    this.chipBreathPh = (bestTier * 1.31) % 6.283
     const g = this.add.graphics()
-    this.menuLayer.add(g)
+    c.add(g)
     g.fillStyle(0x181a28, 0.92)
-    g.fillRoundedRect(cx - w / 2, cy - h / 2, w, h, h / 2)
+    g.fillRoundedRect(-w / 2, -h / 2, w, h, h / 2)
     // Clean vector ink outline.
     g.lineStyle(3, 0x111111, 1)
-    g.strokeRoundedRect(cx - w / 2, cy - h / 2, w, h, h / 2)
+    g.strokeRoundedRect(-w / 2, -h / 2, w, h, h / 2)
 
     const label = hudText(this, 0, 0, 'BEST', 1, {
       color: YELLOW,
@@ -906,8 +1197,8 @@ export class TitleScene extends Phaser.Scene {
       origin: [1, 0.5],
       shadow: false,
     })
-    label.setPosition(cx - w * 0.24, cy)
-    this.menuLayer.add(label)
+    label.setPosition(-w * 0.24, 0)
+    c.add(label)
     const score = hudText(this, 0, 0, `${save.best}`, 1, {
       color: '#ffffff',
       size: Math.max(13, h * 0.5),
@@ -915,8 +1206,8 @@ export class TitleScene extends Phaser.Scene {
       origin: [0, 0.5],
       shadow: false,
     })
-    score.setPosition(cx - w * 0.2, cy)
-    this.menuLayer.add(score)
+    score.setPosition(-w * 0.2, 0)
+    c.add(score)
 
     const dot = hudText(this, 0, 0, '·', 1, {
       color: '#565a72',
@@ -925,10 +1216,10 @@ export class TitleScene extends Phaser.Scene {
       origin: [0.5, 0.5],
       shadow: false,
     })
-    dot.setPosition(cx + w * 0.02, cy)
-    this.menuLayer.add(dot)
+    dot.setPosition(w * 0.02, 0)
+    c.add(dot)
 
-    drawBallIcon(this, g, bestTier, cx + w * 0.13, cy, h * 0.3, { seed: 991 * bestTier })
+    drawBallIcon(this, g, bestTier, w * 0.13, 0, h * 0.3, { seed: 991 * bestTier })
     const tiers = hudText(this, 0, 0, `${got}/${TOTAL_TIERS}`, 1, {
       color: CREAM,
       size: Math.max(13, h * 0.5),
@@ -936,8 +1227,22 @@ export class TitleScene extends Phaser.Scene {
       origin: [0, 0.5],
       shadow: false,
     })
-    tiers.setPosition(cx + w * 0.2, cy)
-    this.menuLayer.add(tiers)
+    tiers.setPosition(w * 0.2, 0)
+    c.add(tiers)
+
+    // Entrance: slides up + fades in as the last choreography beat.
+    if (!this.entrancePlayed) {
+      c.setAlpha(0)
+      this.tweens.add({
+        targets: c,
+        y: { from: cy + 22, to: cy },
+        alpha: { from: 0, to: 1 },
+        duration: 440,
+        delay: 640,
+        ease: 'Back.easeOut',
+        easeParams: [1.2],
+      })
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -985,8 +1290,6 @@ export class TitleScene extends Phaser.Scene {
     const isMenu = this.screen === 'menu'
     this.panelLayer.setVisible(!isMenu)
     this.menuLayer.setVisible(isMenu)
-    // The uiverse DOM layer mirrors the menu (hidden under any panel).
-    this.uiverseDom?.setVisible(isMenu && !this.closed)
     if (isMenu) return
     // Rebuild the open panel's CONTENT fresh (data may have changed). Only
     // the persistent BACK rect survives; screen-specific buttons (theme
@@ -1596,7 +1899,6 @@ export class TitleScene extends Phaser.Scene {
   private pressStart(): void {
     if (this.closed) return
     this.closed = true
-    this.uiverseDom?.setVisible(false)
     session.menuActive = false
     // Phase 2.22: portrait phones route through the start-intro scene —
     // the comic ring + scared ball covers the gameplay scenes' expensive
