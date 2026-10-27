@@ -965,6 +965,7 @@ export class TitleScene extends Phaser.Scene {
       icon: Icons.back,
       label: 'BACK',
       labelSize: 14,
+      style: 'doodle',
       onPress: () => this.openScreen('menu'),
     })
     if (back.containerObj) this.panelLayer.add(back.containerObj)
@@ -1249,9 +1250,9 @@ export class TitleScene extends Phaser.Scene {
         w: bw,
         h: 46,
         fill: selected ? 0x2563eb : 0x1d4ed8,
-        icon: Icons.palette,
         label: t.label,
         labelSize: Math.max(10, bw * 0.19),
+        style: 'doodle',
         onPress: () => {
           setThemeSetting(t.key)
           const bg = this.scene.get('BackgroundScene') as BackgroundScene | undefined
@@ -1309,9 +1310,9 @@ export class TitleScene extends Phaser.Scene {
       w: Math.min(300, w),
       h: 48,
       fill: this.resetArmed > 0 ? 0xe5484d : 0x2563eb,
-      icon: Icons.trash,
       label: this.resetArmed > 0 ? 'TAP AGAIN TO WIPE' : 'RESET PROGRESS',
       labelSize: 14,
+      style: 'doodle',
       onPress: () => {
         const now = Date.now()
         if (this.resetArmed > 0 && now - this.resetArmed < 4000) {
