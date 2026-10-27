@@ -509,17 +509,7 @@ export class TitleScene extends Phaser.Scene {
     image.setDisplaySize(cW, cH)
     this.logoImg = image
     this.logoC.add(image)
-    const sub = hudText(this, 0, 0, 'soft-body merge rush', 1, {
-      color: CREAM,
-      size: Math.max(12, Math.min(20, vw * 0.021)),
-      stroke: 3,
-      origin: [0.5, 0.5],
-      shadow: false,
-    })
-    sub.setAlpha(0.9)
-    sub.setPosition(0, cH / 2 + 12)
-    this.logoC.add(sub)
-    return cH + 26
+    return cH
   }
 
   /**
