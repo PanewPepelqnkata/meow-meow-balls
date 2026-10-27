@@ -168,74 +168,114 @@ export class DropClaw {
   }
 
   /**
-   * Refined Widen on Drop:
-   * - Smooth outward widening flair (left arm rotates counter-clockwise/positive in mirrored space,
-   *   right arm rotates clockwise/negative in mirrored space).
-   * - Gentle upward glide of the center hex collar (12px over 190ms, Quad.easeOut).
-   * - Fluid, natural motion without jarring snaps or stiffness.
+   * Drop Release and Return Lifecycle:
+   * 1. Release: Prongs widen smoothly (0.58 rad outward) while bracket lifts 12px (180ms).
+   * 2. Return: After ball clears (~140ms hold), prongs smoothly glide back to resting position
+   *    (rotation 0) and bracket glides back to sliderBaseY (over 320ms, Cubic.easeInOut).
    */
   private playWidenDropAnimation(): void {
     if (!this.sliderContainer || !this.armL || !this.armR) return
     this.stopArmTweens()
 
-    const openAngle = 0.58 // ~33.2 deg graceful outward swing
+    const openAngle = 0.58 // ~33.2 deg outward release
     const liftY = this.sliderBaseY - 12
 
-    // 1. Sliding hex bracket glides UP smoothly
+    // 1. Sliding hex bracket glides UP on release, then smoothly glides back down
     const twSlide = this.scene.tweens.add({
       targets: this.sliderContainer,
       y: liftY,
-      duration: 190,
+      duration: 180,
       ease: 'Cubic.easeOut',
+      onComplete: () => {
+        if (!this.sliderContainer) return
+        const twReturn = this.scene.tweens.add({
+          targets: this.sliderContainer,
+          y: this.sliderBaseY,
+          delay: 140, // brief pause so ball clears
+          duration: 320,
+          ease: 'Cubic.easeInOut',
+        })
+        this.activeTweens.push(twReturn)
+      },
     })
 
-    // 2. Left and Right prongs widen open smoothly
+    // 2. Left and Right prongs widen open on release, then smoothly return to resting state
     const twArmL = this.scene.tweens.add({
       targets: this.armL,
       rotation: openAngle,
-      duration: 210,
+      duration: 190,
       ease: 'Back.easeOut.config(1.05)',
+      onComplete: () => {
+        if (!this.armL) return
+        const twReturnL = this.scene.tweens.add({
+          targets: this.armL,
+          rotation: 0,
+          delay: 140, // brief pause so ball clears
+          duration: 320,
+          ease: 'Cubic.easeInOut',
+        })
+        this.activeTweens.push(twReturnL)
+      },
     })
     const twArmR = this.scene.tweens.add({
       targets: this.armR,
       rotation: -openAngle,
-      duration: 210,
+      duration: 190,
       ease: 'Back.easeOut.config(1.05)',
+      onComplete: () => {
+        if (!this.armR) return
+        const twReturnR = this.scene.tweens.add({
+          targets: this.armR,
+          rotation: 0,
+          delay: 140, // brief pause so ball clears
+          duration: 320,
+          ease: 'Cubic.easeInOut',
+        })
+        this.activeTweens.push(twReturnR)
+      },
     })
 
     this.activeTweens.push(twSlide, twArmL, twArmR)
   }
 
   /**
-   * Refined Tighten on Reload:
-   * - Hexagonal bracket glides DOWN into resting grip position with soft settle.
-   * - Both arms swing inward and clamp around the new ball with an organic, cushioned grab
-   *   (`Back.easeOut.config(1.22)` over 270ms) providing a snug, tactile embrace.
+   * Reload Clamping Animation:
+   * When the new ball arrives (after the 1s cooldown), the claw gives a soft, tactile
+   * cushioned squeeze around the new ball (pulse in by 0.06 rad, then settle to 0).
    */
   private playTightenReloadAnimation(): void {
     if (!this.sliderContainer || !this.armL || !this.armR) return
     this.stopArmTweens()
 
-    // 1. Sliding bracket glides back down
-    const twSlide = this.scene.tweens.add({
-      targets: this.sliderContainer,
-      y: this.sliderBaseY,
-      duration: 250,
-      ease: 'Cubic.easeOut',
-    })
-
-    // 2. Prongs clamp inward with a soft cushioned squeeze
+    // If arms already settled at 0, perform a brief cushioned embrace around the new ball
     const twArmL = this.scene.tweens.add({
       targets: this.armL,
-      rotation: 0,
-      duration: 270,
-      ease: 'Back.easeOut.config(1.22)',
+      rotation: -0.06, // subtle inward hug
+      duration: 120,
+      ease: 'Quad.easeOut',
+      yoyo: true,
+      onYoyo: () => {
+        if (this.armL) this.armL.rotation = 0
+      },
     })
     const twArmR = this.scene.tweens.add({
       targets: this.armR,
-      rotation: 0,
-      duration: 270,
-      ease: 'Back.easeOut.config(1.22)',
+      rotation: 0.06, // subtle inward hug
+      duration: 120,
+      ease: 'Quad.easeOut',
+      yoyo: true,
+      onYoyo: () => {
+        if (this.armR) this.armR.rotation = 0
+      },
+    })
+
+    // Micro bounce on slider bracket to give mechanical feedback
+    const twSlide = this.scene.tweens.add({
+      targets: this.sliderContainer,
+      y: this.sliderBaseY + 2,
+      duration: 110,
+      ease: 'Quad.easeOut',
+      yoyo: true,
     })
 
     this.activeTweens.push(twSlide, twArmL, twArmR)
@@ -711,13 +751,7 @@ export class DropClaw {
 
     // Set initial rotations
     this.stopArmTweens()
-    if (this.holding) {
-      this.armL!.rotation = 0
-      this.armR!.rotation = 0
-    } else {
-      // Widen open on holding = false:
-      this.armL!.rotation = 0.58
-      this.armR!.rotation = -0.58
-    }
+    this.armL!.rotation = 0
+    this.armR!.rotation = 0
   }
 }
