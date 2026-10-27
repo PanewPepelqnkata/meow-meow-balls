@@ -155,12 +155,6 @@ export class StartIntroScene extends Phaser.Scene {
       ;(this.scene.get('playground') as unknown as {
         containerView?: { setOpacity(a: number): void }
       }).containerView?.setOpacity(0)
-      // The container fades in LATE: its rounded ink corner revealed
-      // mid-open reads as a second iris. Alpha 0 now, tweened to 1
-      // after the iris completes.
-      ;(this.scene.get('playground') as unknown as {
-        containerView?: { setOpacity(a: number): void }
-      }).containerView?.setOpacity(0)
       // Stop the menu AFTER the gameplay scenes are revealed: both render
       // targets swap in the same frame — no paint gap at the handoff.
       // (TitleScene normally already stopped itself post-handoff; this
@@ -508,13 +502,17 @@ export class StartIntroScene extends Phaser.Scene {
             cover.destroy()
             seal.destroy()
             // The iris is fully open: fade the container in (300ms).
+            // The tween MUST live on the PLAYGROUND scene — this scene
+            // stops immediately, killing any tween on ITS manager (the
+            // container-stays-invisible bug).
             const pg = this.scene.get('playground') as unknown as {
               containerView?: { setOpacity(a: number): void }
+              tweens: Phaser.Tweens.TweenManager
             }
             if (pg?.containerView) {
-              pg.containerView.setOpacity(0)
               const fade = { a: 0 }
-              this.tweens.add({
+              pg.containerView.setOpacity(0)
+              pg.tweens.add({
                 targets: fade,
                 a: 1,
                 duration: 300,
