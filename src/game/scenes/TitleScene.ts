@@ -678,6 +678,70 @@ export class TitleScene extends Phaser.Scene {
       ctx.fill()
       rrPath(ctx, 66 * u, 122 * u, 11 * u, 5 * u, 2 * u)
       ctx.fill()
+
+      // ---- DETAILS pass (blue/red retheme extras) ----
+      // Body highlight: a soft vertical sheen on the red base's left —
+      // cheap volume.
+      ctx.fillStyle = 'rgba(255,120,110,0.22)'
+      ctx.beginPath()
+      ctx.moveTo(38 * u, 70 * u)
+      ctx.quadraticCurveTo(35 * u, 92 * u, 37.5 * u, 114 * u)
+      ctx.lineTo(43 * u, 114 * u)
+      ctx.quadraticCurveTo(41 * u, 92 * u, 43.5 * u, 70 * u)
+      ctx.closePath()
+      ctx.fill()
+      // Body rivets: three ink studs down the base's right cheek.
+      ctx.fillStyle = '#111111'
+      for (const ry of [80, 92, 104]) {
+        ctx.beginPath()
+        ctx.arc(70 * u, ry * u, 1.3 * u, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      // "BALLS" sign panel above the chute — cream plate + red letters.
+      ctx.fillStyle = '#fafaf9'
+      rrPath(ctx, 36 * u, 88 * u, 18 * u, 8.5 * u, 1.5 * u)
+      ctx.fill()
+      ctx.fillStyle = '#e94040'
+      ctx.font = `bold ${4.2 * u}px sans-serif`
+      ctx.textAlign = 'center'
+      ctx.fillText('BALLS', 45 * u, 93.8 * u)
+      // Price tag: a tiny red tag swinging under the plate's right edge.
+      ctx.fillStyle = '#e94040'
+      rrPath(ctx, 45 * u, 97 * u, 7.5 * u, 4.6 * u, 1.1 * u)
+      ctx.fill()
+      ctx.fillStyle = '#fafaf9'
+      ctx.font = `${2.8 * u}px sans-serif`
+      ctx.textAlign = 'center'
+      ctx.fillText('1', 48.7 * u, 100.3 * u)
+      // Coin-slot slot line (the slit inside the slot plate).
+      ctx.strokeStyle = '#fafaf9'
+      ctx.lineWidth = 0.9 * u
+      ctx.beginPath()
+      ctx.moveTo(65.7 * u, 81 * u)
+      ctx.lineTo(65.7 * u, 89 * u)
+      ctx.stroke()
+      // Knob grip ticks: three knurl lines across the knob.
+      ctx.strokeStyle = '#fafaf9'
+      ctx.lineWidth = 0.8 * u
+      for (const gy of [83.4, 85, 86.6]) {
+        ctx.beginPath()
+        ctx.moveTo(35.4 * u, gy * u)
+        ctx.lineTo(38.6 * u, gy * u)
+        ctx.stroke()
+      }
+      // Feet tread lines: two horizontal grooves per foot.
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)'
+      ctx.lineWidth = 0.9 * u
+      for (const fy of [124, 125.6]) {
+        ctx.beginPath()
+        ctx.moveTo(24.5 * u, fy * u)
+        ctx.lineTo(32.5 * u, fy * u)
+        ctx.stroke()
+        ctx.beginPath()
+        ctx.moveTo(67.5 * u, fy * u)
+        ctx.lineTo(75.5 * u, fy * u)
+        ctx.stroke()
+      }
       // rc/seed unused: the back layer is fully deterministic shapes.
     }, window.devicePixelRatio || 1)
     // Baked at dpr× — display at the LOGICAL w×h (dpr = bitmap res only).
@@ -815,6 +879,41 @@ export class TitleScene extends Phaser.Scene {
       ctx.lineWidth = Math.max(1, 1.1 * u)
       starPath(ctx, 31.5 * u, 96 * u, 2.8 * u)
       ctx.stroke()
+
+      // ---- DETAILS pass (front layer) ----
+      // Top cap finial: a little dome + stem crowning the globe.
+      ctx.fillStyle = ink
+      ctx.beginPath()
+      ctx.arc(50 * u, 1.6 * u, 2.2 * u, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = ink
+      ctx.lineWidth = 2.4 * u
+      ctx.beginPath()
+      ctx.moveTo(50 * u, 2.8 * u)
+      ctx.lineTo(50 * u, 4.6 * u)
+      ctx.stroke()
+      // "PUSH" hint on the chute flap.
+      ctx.fillStyle = ink
+      ctx.font = `bold ${2.6 * u}px sans-serif`
+      ctx.textAlign = 'center'
+      ctx.fillText('PUSH', 50 * u, 111.6 * u)
+      // Glass condensation: three tiny droplets on the globe's lower rim.
+      ctx.fillStyle = 'rgba(255,255,255,0.5)'
+      for (const [dx, dy, dr] of [[28, 50, 1.1], [34, 55, 0.8], [69, 47, 0.9]] as const) {
+        ctx.beginPath()
+        ctx.arc(dx * u, dy * u, dr * u, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      // Colour "legend" chips inside the globe: two tiny fake gumball
+      // silhouettes tucked behind the cast (depth filler).
+      ctx.fillStyle = 'rgba(250,250,249,0.5)'
+      ctx.beginPath()
+      ctx.arc(38.5 * u, 57.5 * u, 3 * u, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.fillStyle = 'rgba(233,64,64,0.45)'
+      ctx.beginPath()
+      ctx.arc(62 * u, 58.5 * u, 2.7 * u, 0, Math.PI * 2)
+      ctx.fill()
     }, window.devicePixelRatio || 1)
     // Baked at dpr× — display at the LOGICAL w×h (dpr = bitmap res only).
     const frontImg = this.add.image(0, 0, `br-gumball-front:${key}`).setOrigin(0, 0)
