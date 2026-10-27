@@ -214,7 +214,11 @@ export function wobbleContour(
   r: number,
   capOutward = 1.5,
 ): Array<{ x: number; y: number }> {
-  const out = pts.map((p) => {
+  const n = pts.length
+  const rawX = new Float64Array(n)
+  const rawY = new Float64Array(n)
+  for (let i = 0; i < n; i++) {
+    const p = pts[i]!
     const dx = p.x - cx
     const dy = p.y - cy
     const d = Math.hypot(dx, dy) || 1e-6
@@ -222,20 +226,22 @@ export function wobbleContour(
     const w =
       Math.sin(look.lobes1 * th + look.phase1) * look.amp1 * r +
       Math.sin(look.lobes2 * th + look.phase2) * look.amp2 * r
-    // Rest = a ball: deep INWARD reshaping is the impact deform system's job
-    // (deform.ts). Inward capped at ~3% of radius, outward at capOutward
-    // (gameplay: 1.5px so the decorative contour stays inside the verified
-    // collision envelope).
     const dr = w < 0 ? Math.max(w, -r * 0.03) : Math.min(w, capOutward)
     const nd = d + dr
-    return { x: cx + (dx / d) * nd, y: cy + (dy / d) * nd }
-  })
+    rawX[i] = cx + (dx / d) * nd
+    rawY[i] = cy + (dy / d) * nd
+  }
   // One smoothing pass — kills kinks while keeping the wobble legible.
-  return out.map((p, i) => {
-    const a = out[(i - 1 + out.length) % out.length]!
-    const b = out[(i + 1) % out.length]!
-    return { x: (a.x + 2 * p.x + b.x) / 4, y: (a.y + 2 * p.y + b.y) / 4 }
-  })
+  const out: Array<{ x: number; y: number }> = new Array(n)
+  for (let i = 0; i < n; i++) {
+    const prev = (i - 1 + n) % n
+    const next = (i + 1) % n
+    out[i] = {
+      x: (rawX[prev]! + 2 * rawX[i]! + rawX[next]!) / 4,
+      y: (rawY[prev]! + 2 * rawY[i]! + rawY[next]!) / 4,
+    }
+  }
+  return out
 }
 
 export function restContour(

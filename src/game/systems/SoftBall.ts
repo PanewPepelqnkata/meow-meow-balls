@@ -688,22 +688,23 @@ export function renderContour(
   ball: SoftBall,
   samplesPerSegment = 6,
   outset: number,
+  targetOut?: Matter.Vector[],
 ): Matter.Vector[] {
-  const pts = ball.particles.map((p) => p.position)
-  const n = pts.length
+  const n = ball.particles.length
   const raw: Matter.Vector[] = []
   for (let i = 0; i < n; i++) {
-    const p0 = pts[(i - 1 + n) % n]!
-    const p1 = pts[i]!
-    const p2 = pts[(i + 1) % n]!
-    const p3 = pts[(i + 2) % n]!
+    const p0 = ball.particles[(i - 1 + n) % n]!.position
+    const p1 = ball.particles[i]!.position
+    const p2 = ball.particles[(i + 1) % n]!.position
+    const p3 = ball.particles[(i + 2) % n]!.position
     for (let j = 0; j < samplesPerSegment; j++) {
       raw.push(catmullRomPoint(p0, p1, p2, p3, j / samplesPerSegment))
     }
   }
   // Offset outward along edge normals (dense sampling → smooth offset)
   const m = raw.length
-  const out: Matter.Vector[] = []
+  const out = targetOut ?? []
+  out.length = 0
   const cx = ball.center.position.x
   const cy = ball.center.position.y
   // Phase 2.9.7 hand-drawn contour: 2 low-frequency harmonics for a subtle,
@@ -761,7 +762,9 @@ export function renderContour(
     // sub-pixel/invisible at every playable tier) restores the invariant
     // `contour ≤ particle collision discs` for ALL radii.
     const envelopeSafety = 0.2 + 0.006 * ball.radius
-    out.push({ x: cur.x + nx * (outset - dip - envelopeSafety), y: cur.y + ny * (outset - dip - envelopeSafety) })
+    const ox = cur.x + nx * (outset - dip - envelopeSafety)
+    const oy = cur.y + ny * (outset - dip - envelopeSafety)
+    out.push({ x: ox, y: oy })
   }
   return out
 }
