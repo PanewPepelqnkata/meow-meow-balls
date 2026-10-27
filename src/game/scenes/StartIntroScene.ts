@@ -464,7 +464,10 @@ export class StartIntroScene extends Phaser.Scene {
         // undraw, or the scene stop would cut the erase short).
         this.tweens.add({
           targets: sweepState,
-          r: outerR,
+          // Overshoot past the corners: the hole must fully clear them
+          // before the final tick, or a corner sliver reads as a mini-arc
+          // ('another iris') at the very end.
+          r: outerR * 1.1,
           duration: 1500,
           ease: 'Cubic.easeInOut',
           onUpdate: () => {
