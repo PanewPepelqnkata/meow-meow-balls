@@ -40,6 +40,8 @@ import { getTier } from '../../config/ballTiers'
  * #6051/#6914 per-frame Graphics). Hole radius at scale s = innerR·s.
  */
 export class StartIntroScene extends Phaser.Scene {
+  /** Guards the outro early-exit (one-shot per transition). */
+  private transitionLive = true
   /** Runs on EVERY viewport now — the machine intro is the start
    * experience on desktop too (the machine scales with the viewport).
    * Kept as a method for the TitleScene gate + QA parity. */
@@ -387,6 +389,7 @@ export class StartIntroScene extends Phaser.Scene {
       this.time.delayedCall(3200 + cast.length * 80 + 320 + 700, () => {
         blinkTimer.remove()
         setPhase('outro')
+        this.transitionLive = true
         // The seal dissolves in overlap so the hole that reappears as the
         // ring pulls back is pre-filled with ink — no sudden hole pop.
         this.tweens.add({
@@ -465,14 +468,25 @@ export class StartIntroScene extends Phaser.Scene {
         // undraw, or the scene stop would cut the erase short).
         this.tweens.add({
           targets: sweepState,
-          // Overshoot past the corners: the hole must fully clear them
-          // before the final tick, or a corner sliver reads as a mini-arc
-          // ('another iris') at the very end.
+          // Overshoot past the corners (outerR * 1.1): the corners
+          // clear mid-open instead of a sliver vanishing on the final
+          // tick (the 'second iris closes' glitch).
           r: outerR * 1.1,
           duration: 1500,
           ease: 'Cubic.easeInOut',
           onUpdate: () => {
             drawCover(sweepState.r)
+            // The moment the hole clears the corners, the reveal is
+            // done — the remaining tween is invisible tail (Cubic
+            // flattens hard at the end), during which the last corner
+            // sliver of cover ink lingers and reads as a small circle
+            // 'opening' in the corner. End immediately.
+            if (sweepState.r >= outerR && this.transitionLive) {
+              this.transitionLive = false
+              cover.destroy()
+              seal.destroy()
+              this.scene.stop()
+            }
           },
           onComplete: () => {
             cover.destroy()
