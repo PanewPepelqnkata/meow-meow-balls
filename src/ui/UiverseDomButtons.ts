@@ -160,11 +160,15 @@ export class UiverseDomButtons {
   build(specs: UiverseSpec[]): void {
     this.clear()
     this.specs = specs
+    let enterIndex = 0
     for (const s of specs) {
       const root = document.createElement('button')
       root.type = 'button'
       root.className = 'uiverse-button'
-      root.style.cssText = `position:absolute;left:${s.x - s.w / 2}px;top:${s.y - s.h / 2}px;width:${s.w}px;height:${s.h}px;`
+      // --uiv-delay staggers the entrance animation (PLAY leads, navs
+      // cascade 70ms apart).
+      root.style.cssText = `position:absolute;left:${s.x - s.w / 2}px;top:${s.y - s.h / 2}px;width:${s.w}px;height:${s.h}px;--uiv-delay:${enterIndex * 70}ms;`
+      enterIndex++
 
       // The wrap/inner/content nest carries the uiverse shadow stack,
       // dots pattern and ink pill (see the CSS block).
