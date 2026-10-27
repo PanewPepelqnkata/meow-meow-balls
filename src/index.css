@@ -89,3 +89,187 @@ body,
   user-select: none;
   pointer-events: none;
 }
+
+/* ---- Uiverse "dangerous-monkey-48" buttons (menu overlay, 1:1 with the
+ * source, MINUS the spinning star wheel behind them — user ask). Font
+ * swapped to the game's Lilita One; the layer is click-transparent
+ * (Phaser hit rects drive hover/press/actions via classes). ---- */
+.uiverse-btn-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 40;
+}
+
+.uiverse-btn-layer .uiverse-button {
+  --stone-50: #fafaf9;
+  --stone-800: #292524;
+  --yellow-400: #facc15;
+
+  font-family: "Lilita One", "Arial Black", sans-serif;
+  cursor: pointer;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  line-height: 1;
+  border-radius: 1rem;
+  outline: 2px solid transparent;
+  outline-offset: 6px;
+  color: var(--stone-50);
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.uiverse-btn-layer .uiverse-button.uiverse-pressed {
+  outline-color: var(--yellow-400);
+}
+
+.uiverse-btn-layer .uiverse-button > .wrap {
+  /* Fill the button: without this the wrap shrink-wraps the content and
+   * the pill floats small inside the hit rect. */
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 2px;
+  border-radius: 1rem;
+  background-color: var(--yellow-400);
+  transform: translate(-4px, -4px);
+  transition: all 150ms ease;
+  box-shadow:
+    0.5px 0.5px 0 0 var(--yellow-400),
+    1px 1px 0 0 var(--yellow-400),
+    1.5px 1.5px 0 0 var(--yellow-400),
+    2px 2px 0 0 var(--yellow-400),
+    2.5px 2.5px 0 0 var(--yellow-400),
+    3px 3px 0 0 var(--yellow-400),
+    0 0 0 2px var(--stone-800),
+    0.5px 0.5px 0 2px var(--stone-800),
+    1px 1px 0 2px var(--stone-800),
+    1.5px 1.5px 0 2px var(--stone-800),
+    2px 2px 0 2px var(--stone-800),
+    2.5px 2.5px 0 2px var(--stone-800),
+    3px 3px 0 2px var(--stone-800),
+    3.5px 3.5px 0 2px var(--stone-800),
+    4px 4px 0 2px var(--stone-800),
+    0 0 0 4px var(--stone-50),
+    0.5px 0.5px 0 4px var(--stone-50),
+    1px 1px 0 4px var(--stone-50),
+    1.5px 1.5px 0 4px var(--stone-50),
+    2px 2px 0 4px var(--stone-50),
+    2.5px 2.5px 0 4px var(--stone-50),
+    3px 3px 0 4px var(--stone-50),
+    3.5px 3.5px 0 4px var(--stone-50),
+    4px 4px 0 4px var(--stone-50);
+}
+
+.uiverse-btn-layer .uiverse-button.uiverse-hover > .wrap {
+  transform: translate(0, 0);
+  box-shadow:
+    0 0 0 0 var(--yellow-400),
+    0 0 0 0 var(--yellow-400),
+    0 0 0 0 var(--yellow-400),
+    0 0 0 0 var(--yellow-400),
+    0 0 0 0 var(--yellow-400),
+    0 0 0 0 var(--yellow-400),
+    0 0 0 2px var(--stone-800),
+    0 0 0 2px var(--stone-800),
+    0 0 0 2px var(--stone-800),
+    0 0 0 2px var(--stone-800),
+    0 0 0 2px var(--stone-800),
+    0 0 0 2px var(--stone-800),
+    0 0 0 2px var(--stone-800),
+    0 0 0 2px var(--stone-800),
+    0 0 0 2px var(--stone-800),
+    0 0 0 4px var(--stone-50),
+    0 0 0 4px var(--stone-50),
+    0 0 0 4px var(--stone-50),
+    0 0 0 4px var(--stone-50),
+    0 0 0 4px var(--stone-50),
+    0 0 0 4px var(--stone-50),
+    0 0 0 4px var(--stone-50),
+    0 0 0 4px var(--stone-50),
+    0 0 0 4px var(--stone-50);
+}
+
+.uiverse-btn-layer .uiverse-button > .wrap > .inner {
+  position: relative;
+  pointer-events: none;
+  border-radius: calc(1rem - 2px);
+  background-color: var(--stone-800);
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+}
+
+.uiverse-btn-layer .uiverse-button > .wrap > .inner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 1rem;
+  opacity: 0.1;
+  background-image:
+    radial-gradient(rgb(255 255 255 / 80%) 20%, transparent 20%),
+    radial-gradient(rgb(255 255 255 / 100%) 20%, transparent 20%);
+  background-position:
+    0 0,
+    4px 4px;
+  background-size: 8px 8px;
+  mix-blend-mode: hard-light;
+  box-shadow: inset 0 0 0 1px var(--stone-800);
+  animation: uiverse-dots 0.4s infinite linear;
+  transition: opacity 150ms ease;
+}
+
+.uiverse-btn-layer .uiverse-button > .wrap > .inner > .content {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  gap: 0.6rem;
+  padding: 0.75rem 1.25rem;
+  filter: drop-shadow(0 -1px 0 var(--stone-800));
+}
+
+.uiverse-btn-layer .uiverse-button.uiverse-hover > .wrap > .inner > .content {
+  filter: drop-shadow(0 -1px 0 rgba(255, 255, 255, 0.1));
+}
+
+.uiverse-btn-layer .uiverse-button.uiverse-pressed > .wrap > .inner > .content {
+  transform: translateY(2px);
+}
+
+.uiverse-btn-layer .uiverse-button canvas {
+  /* The layer lives inside .game-container, whose
+   * `canvas { width/height: 100% !important }` stretch rule would blow
+   * the character slot up to the pill size — re-pin it per button. */
+  width: var(--char-size, 40px) !important;
+  height: var(--char-size, 40px) !important;
+  flex: none;
+  position: relative;
+  z-index: 2;
+}
+
+.uiverse-btn-layer .uiverse-button .label {
+  white-space: nowrap;
+  position: relative;
+  z-index: 2;
+}
+
+@keyframes uiverse-dots {
+  0% {
+    background-position:
+      0 0,
+      4px 4px;
+  }
+  100% {
+    background-position:
+      8px 0,
+      12px 4px;
+  }
+}
