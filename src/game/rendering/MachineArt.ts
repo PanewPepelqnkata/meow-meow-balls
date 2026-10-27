@@ -236,12 +236,15 @@ export const MACHINE_DRAW_ORDER: readonly string[] = [
   // footL/footR FIRST: the undraw erase walks this order from the front,
   // so the feet vanish first ("the feet must go first" — user ask). The
   // shadow key is gone (no ground circle anywhere).
+  // 'glass' sits right after the feet too: its 60-unit rim arc is the
+  // biggest circle in the drawing — if it lingered mid-undraw it read
+  // as 'another iris opening'. Erased early, only small details remain.
   'footL',
   'footR',
+  'glass',
   'base',
   'band',
   'collar',
-  'glass',
   'chute',
   'flap',
   'flapHandle',
