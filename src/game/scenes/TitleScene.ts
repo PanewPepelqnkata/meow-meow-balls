@@ -314,13 +314,16 @@ export class TitleScene extends Phaser.Scene {
   private buildBackdrop(vw: number, vh: number): Phaser.GameObjects.Image {
     const key = 'br-menu-bg'
     bakeCanvas(this, key, Math.ceil(vw), Math.ceil(vh), (ctx, seed) => {
+      // Deep warm stone — the buttons' --stone-800 world, darkened for
+      // contrast so the yellow accents pop.
       const grad = ctx.createLinearGradient(0, 0, 0, vh)
-      grad.addColorStop(0, '#1b1d30')
-      grad.addColorStop(0.55, '#15162a')
-      grad.addColorStop(1, '#0e0f1c')
+      grad.addColorStop(0, '#232019')
+      grad.addColorStop(0.55, '#1c1a17')
+      grad.addColorStop(1, '#141210')
       ctx.fillStyle = grad
       ctx.fillRect(0, 0, vw, vh)
-      // A soft warm glow where the machine will sit (center, slightly low).
+      // A soft warm glow where the machine will sit (center, slightly low)
+      // — the buttons' yellow-400 as atmosphere.
       const glow = ctx.createRadialGradient(
         vw / 2,
         vh * 0.55,
@@ -329,12 +332,12 @@ export class TitleScene extends Phaser.Scene {
         vh * 0.55,
         Math.max(vw, vh) * 0.55,
       )
-      glow.addColorStop(0, 'rgba(255,190,120,0.10)')
-      glow.addColorStop(1, 'rgba(255,190,120,0)')
+      glow.addColorStop(0, 'rgba(250,204,21,0.12)')
+      glow.addColorStop(1, 'rgba(250,204,21,0)')
       ctx.fillStyle = glow
       ctx.fillRect(0, 0, vw, vh)
-      // Sprinkled cream dots — subtle depth, not noise.
-      ctx.fillStyle = 'rgba(255,246,224,0.14)'
+      // Sprinkled warm dots — subtle depth, not noise.
+      ctx.fillStyle = 'rgba(250,240,215,0.10)'
       const dots = Math.round((vw * vh) / 26000)
       for (let i = 0; i < dots; i++) {
         const x = (((seed * (i + 7) * 9301 + 49297) % 233280) / 233280) * vw
@@ -447,7 +450,7 @@ export class TitleScene extends Phaser.Scene {
    * verified in-browser against the same font (qa/_probe font test).
    */
   private buildLogoInto(vw: number, vh: number): number {
-    const palette = ['#ffeb3b', '#ff8a3d', '#4fc3f7', '#43d64f', '#ff6fa5']
+    const palette = ['#facc15', '#fafaf9', '#fde68a', '#ffffff', '#facc15']
     const size = Math.max(30, Math.min(72, Math.min(vw * 0.115, vh * 0.1)))
     const stroke = Math.max(4, Math.min(6, size * 0.11))
     const m = Math.ceil(stroke / 2) + 2 // ink margin around every glyph ink box
@@ -614,7 +617,7 @@ export class TitleScene extends Phaser.Scene {
       ctx.ellipse(50 * u, 52 * u, 23 * u, 10 * u, 0, 0, Math.PI * 2)
       ctx.fill()
       // Red collar between globe and base.
-      ctx.fillStyle = '#e23b3b'
+      ctx.fillStyle = '#3d372f'
       ctx.beginPath()
       ctx.moveTo(39 * u, 60 * u)
       ctx.lineTo(61 * u, 60 * u)
@@ -633,7 +636,7 @@ export class TitleScene extends Phaser.Scene {
       ctx.closePath()
       ctx.fill()
       // Darker bottom band — cartoon depth.
-      ctx.fillStyle = '#b32626'
+      ctx.fillStyle = '#26221c'
       ctx.beginPath()
       ctx.moveTo(74 * u, 108 * u)
       ctx.lineTo(76 * u, 114 * u)
@@ -644,15 +647,15 @@ export class TitleScene extends Phaser.Scene {
       ctx.closePath()
       ctx.fill()
       // Dispenser chute (the gumballs roll out here).
-      ctx.fillStyle = '#191919'
+      ctx.fillStyle = '#181512'
       rrPath(ctx, 38 * u, 101 * u, 24 * u, 15 * u, [1 * u, 1 * u, 5 * u, 5 * u])
       ctx.fill()
       // Chute flap: cream door over the lower chute (balls push it open).
-      ctx.fillStyle = '#f2eee2'
+      ctx.fillStyle = '#fafaf9'
       rrPath(ctx, 40 * u, 106 * u, 20 * u, 8 * u, 2 * u)
       ctx.fill()
       // Marquee bulbs: candy dots across the red collar.
-      const bulbs = ['#ffd93b', '#4fc3f7', '#ff8a3d', '#a98bd8', '#43d64f']
+      const bulbs = ['#facc15', '#fafaf9', '#facc15', '#fafaf9', '#facc15']
       bulbs.forEach((c, i) => {
         ctx.fillStyle = c
         ctx.beginPath()
@@ -660,7 +663,7 @@ export class TitleScene extends Phaser.Scene {
         ctx.fill()
       })
       // Star sticker on the base's left cheek.
-      ctx.fillStyle = '#ffe08a'
+      ctx.fillStyle = '#facc15'
       starPath(ctx, 31.5 * u, 96 * u, 2.8 * u)
       ctx.fill()
       // Coin slot.
@@ -893,7 +896,7 @@ export class TitleScene extends Phaser.Scene {
     this.chipRect = { x: cx - w / 2, y: cy - h / 2, w, h }
     const g = this.add.graphics()
     this.menuLayer.add(g)
-    g.fillStyle(0x181a28, 0.92)
+    g.fillStyle(0x292524, 0.92)
     g.fillRoundedRect(cx - w / 2, cy - h / 2, w, h, h / 2)
     // Clean vector ink outline.
     g.lineStyle(3, 0x111111, 1)
