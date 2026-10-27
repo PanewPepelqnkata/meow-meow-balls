@@ -32,9 +32,21 @@ export function GameCanvas() {
     if (!fontReady) return
     const container = containerRef.current
     if (!container) return
-    const game = createGame(container)
-    return () => destroyGame(game)
-  }, [fontReady])
 
+    // Intercept native mobile gestures (pinch-zoom, pull-to-refresh, edge swipe)
+    // directly on the canvas mount container with non-passive listeners.
+    const preventNativeGestures = (e: TouchEvent) => {
+      if (e.cancelable) e.preventDefault()
+    }
+    container.addEventListener('touchstart', preventNativeGestures, { passive: false })
+    container.addEventListener('touchmove', preventNativeGestures, { passive: false })
+
+    const game = createGame(container)
+    return () => {
+      container.removeEventListener('touchstart', preventNativeGestures)
+      container.removeEventListener('touchmove', preventNativeGestures)
+      destroyGame(game)
+    }
+  }, [fontReady])
   return <div ref={containerRef} className="game-container" />
 }

@@ -269,9 +269,17 @@ export class MergeSystem {
       return null
     }
 
-    // RESERVE both sources immediately and idempotently: from this point no
-    // other event (this frame or via revalidation) can touch them.
-    if (!this.reserve(ea) || !this.reserve(eb)) {
+    // RESERVE both sources atomically: if either ball fails reservation
+    // (e.g. already reserved in a concurrent 3-way collision race),
+    // the first ball is immediately rolled back to 'active' to prevent ghost balls.
+    const reservedA = this.reserve(ea)
+    if (!reservedA) {
+      this.stats.duplicateEventsRejected++
+      return null
+    }
+    const reservedB = this.reserve(eb)
+    if (!reservedB) {
+      this.unreserve(ea)
       this.stats.duplicateEventsRejected++
       return null
     }
@@ -359,6 +367,12 @@ export class MergeSystem {
     const soft = this.balls as SoftBallManager
     if (typeof soft.markMerging === 'function') return soft.markMerging(e!.id)
     return true // legacy rigid manager: no lifecycle states
+  }
+
+  /** Rollback reservation when paired source reservation fails. */
+  private unreserve(e: { id: number } | undefined): void {
+    const soft = this.balls as SoftBallManager
+    if (typeof soft.rollbackMerging === 'function') soft.rollbackMerging(e!.id)
   }
 
   private centroidOf(ball: PlacementEntity): { x: number; y: number } {

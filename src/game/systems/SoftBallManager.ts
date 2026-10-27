@@ -398,6 +398,16 @@ export class SoftBallManager {
     ball.state = 'merging'
     return true
   }
+  /**
+   * Roll back a reserved ball if a multi-party merge reservation fails.
+   * Transitions 'merging' back to 'active' safely.
+   */
+  rollbackMerging(id: number): void {
+    const ball = this.getBallById(id)
+    if (ball && ball.state === 'merging') {
+      ball.state = 'active'
+    }
+  }
 
   /** Remove a logical ball: composite (all particles + constraints) and refs.
    * Wakes only the NEARBY balls (their support may have changed) — waking
@@ -1007,18 +1017,21 @@ export class SoftBallManager {
       // contact flattening, band half-width at most) is still clamped back.
       const bc = softBallCentroid(ball.soft)
       const bcYLine = Math.min(bc.y, b.floorY)
-      const pastRight = bc.x - b.innerRightAt(bcYLine)
-      const pastLeft = b.innerLeftAt(bcYLine) - bc.x
-      const past = Math.max(pastRight, pastLeft)
+      // Slanted wall parameters (normal distance calculation)
+      const slopeL = (b.innerLeftAt(b.floorY) - b.innerLeftAt(b.top)) / (b.floorY - b.top)
+      const cL = b.innerLeftAt(b.top) - slopeL * b.top
+      const hypL = Math.hypot(1, slopeL)
+      const slopeR = (b.innerRightAt(b.floorY) - b.innerRightAt(b.top)) / (b.floorY - b.top)
+      const cR = b.innerRightAt(b.top) - slopeR * b.top
+      const hypR = Math.hypot(1, slopeR)
+
+      // Orthogonal distance past inner boundary line (positive when outside)
+      const distOutsideLeft = -(bc.x - slopeL * bcYLine - cL) / hypL
+      const distOutsideRight = -(cR + slopeR * bcYLine - bc.x) / hypR
+      const past = Math.max(distOutsideLeft, distOutsideRight)
       const aboveTops = bc.y <= sideClampFromY
       const beyondBand = past > CONTAINER.frameThickness + GAME_OVER.outsideMargin
       const clampExempt = aboveTops || beyondBand
-      // left wall line: x = innerLeftAt(y) → f = x − slopeL·y − cL (f>0 inside)
-      const slopeL = (b.innerLeftAt(b.floorY) - b.innerLeftAt(b.top)) / (b.floorY - b.top)
-      const cL = b.innerLeftAt(b.top) - slopeL * b.top
-      // right wall line: f = cR + slopeR·y − x (f>0 inside)
-      const slopeR = (b.innerRightAt(b.floorY) - b.innerRightAt(b.top)) / (b.floorY - b.top)
-      const cR = b.innerRightAt(b.top) - slopeR * b.top
       for (const p of ball.soft.particles) {
         let nx = 0
         let ny = 0
