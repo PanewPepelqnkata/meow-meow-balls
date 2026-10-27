@@ -167,13 +167,13 @@ export class DropClaw {
     // 2. Prongs swing open smoothly
     const twArmL = this.scene.tweens.add({
       targets: this.armL,
-      rotation: -openAngle,
+      rotation: openAngle,
       duration: 180,
       ease: 'Back.easeOut.config(1.2)',
     })
     const twArmR = this.scene.tweens.add({
       targets: this.armR,
-      rotation: openAngle,
+      rotation: -openAngle,
       duration: 180,
       ease: 'Back.easeOut.config(1.2)',
     })
@@ -671,8 +671,8 @@ export class DropClaw {
       this.armL!.rotation = 0
       this.armR!.rotation = 0
     } else {
-      this.armL!.rotation = -0.58
-      this.armR!.rotation = 0.58
+      this.armL!.rotation = 0.58
+      this.armR!.rotation = -0.58
     }
   }
 }
