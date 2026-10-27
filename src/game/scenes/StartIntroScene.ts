@@ -468,19 +468,14 @@ export class StartIntroScene extends Phaser.Scene {
         // undraw, or the scene stop would cut the erase short).
         this.tweens.add({
           targets: sweepState,
-          // Overshoot past the corners (outerR * 1.1): the corners
-          // clear mid-open instead of a sliver vanishing on the final
-          // tick (the 'second iris closes' glitch).
+          // End at outerR exactly (corner clear): the onUpdate early-
+          // exit fires the tick the corners clear — no lingering cover
+          // tail, no second-circle read.
           r: outerR,
-          duration: 1500,
-          ease: 'Cubic.easeInOut',
+          duration: 600,
+          ease: 'Cubic.easeOut',
           onUpdate: () => {
             drawCover(sweepState.r)
-            // The moment the hole clears the corners, the reveal is
-            // done — the remaining tween is invisible tail (Cubic
-            // flattens hard at the end), during which the last corner
-            // sliver of cover ink lingers and reads as a small circle
-            // 'opening' in the corner. End immediately.
             if (sweepState.r >= outerR && this.transitionLive) {
               this.transitionLive = false
               cover.destroy()
