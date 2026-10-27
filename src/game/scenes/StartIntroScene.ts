@@ -471,7 +471,7 @@ export class StartIntroScene extends Phaser.Scene {
           // Overshoot past the corners (outerR * 1.1): the corners
           // clear mid-open instead of a sliver vanishing on the final
           // tick (the 'second iris closes' glitch).
-          r: outerR * 1.1,
+          r: outerR,
           duration: 1500,
           ease: 'Cubic.easeInOut',
           onUpdate: () => {
