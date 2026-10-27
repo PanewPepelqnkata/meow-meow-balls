@@ -178,6 +178,8 @@ export class TitleScene extends Phaser.Scene {
       this.scale.off(Phaser.Scale.Events.RESIZE, this.buildAll, this)
       for (const off of this.offs) off()
       this.offs.length = 0
+      this.uiverseDom?.destroy()
+      this.uiverseDom = null
       // NOTE: the DEV __brMenu hook deliberately SURVIVES the scene stop
       // (visible() reports false via `closed`) so QA can assert the menu
       // never returns; a reload re-registers it anyway.
@@ -840,7 +842,11 @@ export class TitleScene extends Phaser.Scene {
       { x: navPos[2]!.x, y: navPos[2]!.y, w: navW, h: navH, label: 'COLLECTION', tier: 4, seed: 4242 + 4 * 7 },
       { x: navPos[3]!.x, y: navPos[3]!.y, w: navW, h: navH, label: 'SETTINGS', tier: 6, seed: 4242 + 6 * 7 },
     ]
-    if (!this.uiverseDom) this.uiverseDom = new UiverseDomButtons(this)
+    if (this.uiverseDom) {
+      this.uiverseDom.destroy()
+      this.uiverseDom = null
+    }
+    this.uiverseDom = new UiverseDomButtons(this)
     this.uiverseDom.build(specs)
     this.uiverseDom.setVisible(!this.closed && this.screen === 'menu')
     // Invisible hit rects (above the canvas) drive press + hover — the DOM
