@@ -102,9 +102,9 @@ body,
 }
 
 .uiverse-btn-layer .uiverse-button {
-  --stone-50: #fafaf9;
-  --stone-800: #292524;
-  --yellow-400: #facc15;
+  --stone-50: #eef2ff;
+  --stone-800: #1d2233;
+  --yellow-400: #e94040;
 
   font-family: "Lilita One", "Arial Black", sans-serif;
   cursor: pointer;
