@@ -1,6 +1,7 @@
 import Phaser from 'phaser'
 import { hudText } from './Typography'
 import { drawLucide } from './LucideIcon'
+import { readSafeArea } from './ResponsiveLayout'
 
 /**
  * Ball Rush Unified UI Design System & Tokens.
@@ -77,6 +78,7 @@ export class ChunkyButton {
   private hitZone: Phaser.GameObjects.Zone
   private options: ChunkyButtonOptions
   private isPressed = false
+  private pressPointerId: number | null = null
   // no hover state needed
 
   constructor(options: ChunkyButtonOptions) {
@@ -103,44 +105,44 @@ export class ChunkyButton {
       this.container.add(this.iconG)
     }
 
-    // Position label and icon side-by-side if both exist
-    if (this.labelText && this.iconG && options.label) {
-      const iconSize = options.iconSize ?? Math.round(h * 0.45)
-      const gap = 6
-      const labelW = this.labelText.width
-      const totalW = iconSize + gap + labelW
-      this.iconG.setX(-totalW / 2 + iconSize / 2)
-      this.labelText.setOrigin(0, 0.5)
-      this.labelText.setX(-totalW / 2 + iconSize + gap)
-    }
+    this.layoutContent()
 
     this.hitZone = scene.add.zone(0, 0, w, h).setInteractive({ useHandCursor: !options.disabled })
     this.container.add(this.hitZone)
 
-    this.hitZone.on('pointerdown', () => {
-      if (this.options.disabled) return
+    this.hitZone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (this.options.disabled || this.pressPointerId !== null) return
+      this.pressPointerId = pointer.id
       this.isPressed = true
       this.render()
     })
 
-    this.hitZone.on('pointerup', () => {
-      if (this.options.disabled) return
+    this.hitZone.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+      if (this.options.disabled || this.pressPointerId !== pointer.id) return
+      this.pressPointerId = null
       this.isPressed = false
       this.render()
       options.onClick?.()
     })
 
-    this.hitZone.on('pointerout', () => {
+    this.hitZone.on('pointerout', (pointer: Phaser.Input.Pointer) => {
+      if (this.pressPointerId !== null && this.pressPointerId !== pointer.id) return
+      this.pressPointerId = null
       this.isPressed = false
       this.render()
     })
 
-    this.render()
+    this.setDisabled(!!options.disabled)
   }
 
   public setDisabled(disabled: boolean): void {
     this.options.disabled = disabled
+    if (disabled) {
+      this.pressPointerId = null
+      this.isPressed = false
+    }
     if (this.hitZone.input) {
+      this.hitZone.input.enabled = !disabled
       this.hitZone.input.cursor = disabled ? 'default' : 'pointer'
     }
     this.render()
@@ -150,6 +152,20 @@ export class ChunkyButton {
     this.options.label = label
     if (this.labelText) {
       this.labelText.setText(label)
+    }
+    this.layoutContent()
+  }
+
+  private layoutContent(): void {
+    if (!this.labelText) return
+    const iconSize = this.iconG ? (this.options.iconSize ?? Math.round(this.options.h * 0.45)) : 0
+    const gap = this.iconG ? 6 : 0
+    const availableW = Math.max(1, this.options.w - 20 - iconSize - gap)
+    this.labelText.setScale(Math.min(1, availableW / Math.max(1, this.labelText.width)))
+    if (this.iconG) {
+      const totalW = iconSize + gap + this.labelText.displayWidth
+      this.iconG.setX(-totalW / 2 + iconSize / 2)
+      this.labelText.setOrigin(0, 0.5).setX(-totalW / 2 + iconSize + gap)
     }
   }
 
@@ -210,7 +226,7 @@ export class ChunkyButton {
 }
 
 /**
- * Standard secondary screen header with left-aligned Back button, centered Title, and Subtitle.
+ * Safe-area-aware secondary header. Narrow screens reserve a separate title slot beside Back.
  */
 export function buildScreenHeader(
   scene: Phaser.Scene,
@@ -226,10 +242,15 @@ export function buildScreenHeader(
 ): { headerH: number; contentTopY: number } {
   const { vw, vh, title, subtitle, onBack, rectsCollector } = opts
 
-  const topMargin = Math.max(28, Math.round(vh * 0.055))
-  const backW = Math.min(110, Math.max(90, Math.round(vw * 0.24)))
-  const backH = 40
-  const backX = Math.round(backW / 2 + Math.max(16, vw * 0.05))
+  const safe = readSafeArea()
+  const compact = vh < 480
+  const edge = Math.max(12, Math.min(28, Math.round(vw * 0.035)))
+  const left = Math.max(edge, safe.left + 8)
+  const right = Math.max(edge, safe.right + 8)
+  const topMargin = Math.max(compact ? 10 : 18, safe.top + 8)
+  const backW = vw < 600 || compact ? 82 : 100
+  const backH = compact ? 36 : 40
+  const backX = left + backW / 2
   const backY = topMargin + backH / 2
   const backBtn = new ChunkyButton({
     scene,
@@ -258,32 +279,34 @@ export function buildScreenHeader(
     screen: 'panel',
   })
 
-  // Title
-  const titleSize = Math.max(20, Math.min(32, Math.round(vw * 0.06)))
-  const titleY = topMargin + backH / 2 - 2
-  const titleText = hudText(scene, vw / 2, titleY, title.toUpperCase(), 1, {
+  const titleLeft = left + backW + 12
+  const titleRight = vw < 700 ? vw - right : vw - Math.max(titleLeft, right)
+  const titleX = vw < 700 ? (titleLeft + titleRight) / 2 : vw / 2
+  const titleMaxW = Math.max(1, titleRight - titleLeft)
+  const titleSize = compact || vw < 600 ? 26 : 32
+  const titleText = hudText(scene, titleX, backY - 1, title.toUpperCase(), 1, {
     color: UI_COLORS.TEXT_GOLD,
     size: titleSize,
     stroke: 5,
     origin: [0.5, 0.5],
   })
+  titleText.setScale(Math.min(1, titleMaxW / Math.max(1, titleText.width)))
   parentContainer.add(titleText)
 
-  // Subtitle sits clearly beneath the header bar
-  let subtitleOffset = 0
+  // The subtitle is bounded independently of the title / Back row.
   if (subtitle) {
-    subtitleOffset = 28
-    const subText = hudText(scene, vw / 2, titleY + backH / 2 + 18, subtitle, 1, {
+    const subText = hudText(scene, (left + vw - right) / 2, topMargin + backH + (compact ? 14 : 18), subtitle, 1, {
       color: UI_COLORS.TEXT_MUTED,
-      size: Math.max(10, Math.min(13, Math.round(vw * 0.028))),
+      size: compact ? 11 : vw < 600 ? 10 : 12,
       stroke: 0,
       origin: [0.5, 0.5],
       shadow: false,
     })
     subText.setAlpha(0.9)
+    subText.setScale(Math.min(1, (vw - left - right) / Math.max(1, subText.width)))
     parentContainer.add(subText)
   }
 
-  const contentTopY = topMargin + backH + subtitleOffset + 18
+  const contentTopY = topMargin + backH + (subtitle ? (compact ? 28 : 36) : (compact ? 10 : 18))
   return { headerH: contentTopY - topMargin, contentTopY }
 }

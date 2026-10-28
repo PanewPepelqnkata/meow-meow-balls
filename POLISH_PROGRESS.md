@@ -107,3 +107,13 @@
   - Clean up type casts and assert clean test suites across all 39 test files.
 - [ ] **PHASE 8: Adversarial Verification**
   - Verify complete lifecycle on mobile viewport (390x844 DPR 2/3) and desktop (1280x800).
+
+## 5. Collection Book and Secondary Menus — 2026-10-28
+
+- `CollectionBookView` lays out each paper leaf in its own local coordinates. Core tiers and Tier 9 variants occupy four entries per leaf; crab artwork and field notes use separate leaves. Text, portraits, stamps, and page numbers reserve the binding gutter and stay inside the parchment. Discovery dates remain visible on recorded entries.
+- Page turns lift only the source paper leaf, reveal the destination underneath, and settle its readable back face across the spine. The leather cover, rings, bookmarks, and navigation never scale with the sheet. Bookmark and Prev/Next hit zones persist across turns, including rapid successive navigation. Horizontal swipes start only inside the paper.
+- TitleScene owns the book lifetime. Back, PLAY, resize, panel rebuild, and shutdown dispose its active tween, live-art timer, and scene-level swipe listeners. Relayout follows GameRoot's settled `br:dpr` event rather than intermediate native resize dimensions.
+- Headers reserve separate Back/title bounds. Narrow home navigation prioritizes readable labels; PLAY retains its animated character. Secondary menus use the existing blue tactile button style without a duplicate DOM input path.
+- Leaderboard displays the saved local top ten, with two five-row columns in short landscape and a bounded empty state. Settings persists background choices, displays lifetime statistics, and resets saved progress only after a second distinct tap within four seconds. Navigation and timeout cancel reset confirmation; reset refreshes home and HUD best scores.
+- Browser smoke covered 320×568, 390×844, 844×390, and 1280×800: all four chapters, forward/backward turns, Prev/Next, swipe, populated/empty leaderboard, persisted theme choice, reset expiry/confirmation, and Back/resize during an active turn.
+

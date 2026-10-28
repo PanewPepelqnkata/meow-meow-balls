@@ -30,6 +30,7 @@ import { variantIdFor } from '../game/state/runVariant'
 
 interface DomButton {
   root: HTMLButtonElement
+  showCharacter: boolean
   charCanvas: HTMLCanvasElement
   ctx: CanvasRenderingContext2D
   label: HTMLSpanElement
@@ -162,9 +163,13 @@ export class UiverseDomButtons {
     this.specs = specs
     let enterIndex = 0
     for (const s of specs) {
+      const showCharacter = s.w >= 120
       const root = document.createElement('button')
       root.type = 'button'
-      root.className = 'uiverse-button'
+      root.className = showCharacter ? 'uiverse-button' : 'uiverse-button uiverse-compact'
+      // This is decorative art over a Phaser hit zone, not a second interactive control.
+      root.tabIndex = -1
+      root.setAttribute('aria-hidden', 'true')
       // --uiv-delay staggers the entrance animation (PLAY leads, navs
       // cascade 70ms apart).
       root.style.cssText = `position:absolute;left:${s.x - s.w / 2}px;top:${s.y - s.h / 2}px;width:${s.w}px;height:${s.h}px;--uiv-delay:${enterIndex * 70}ms;`
@@ -206,6 +211,7 @@ export class UiverseDomButtons {
 
       this.buttons.push({
         root,
+        showCharacter,
         charCanvas,
         ctx,
         label,
@@ -220,15 +226,16 @@ export class UiverseDomButtons {
       })
     }
     // Uniform font per height class: buttons of the same pill height
-    // (the four navs) share ONE label size = the min of their fits, so
+    // (the three navs) share ONE label size = the min of their fits, so
     // the grid reads even. PLAY (its own height) fits independently.
     const fitFor = (s: UiverseSpec, charSize: number): number => {
       // The base size scales with the pill height (the game's play-label
       // ratio h*0.34) — a 72px pill gets ~24px text, a 49px nav ~16px.
       const base = Math.floor(s.h * 0.34)
-      const avail = s.w - charSize - 16
+      // Account for the wrap border, content padding and gap; compact navs use label-only pills.
+      const avail = s.w - (s.w >= 120 ? charSize + 27 : 14)
       const wBase = UiverseDomButtons.textWidth(s.label, base)
-      return wBase <= avail ? base : Math.max(10, Math.floor((base * avail) / wBase))
+      return wBase <= avail ? base : Math.max(8, Math.floor((base * avail) / wBase))
     }
     const byH = new Map<number, { spec: UiverseSpec; charSize: number; btn: DomButton }[]>()
     for (let i = 0; i < specs.length; i++) {
@@ -278,6 +285,7 @@ export class UiverseDomButtons {
         b.root.style.left = s.x - s.w / 2 + 'px'
         b.root.style.top = s.y - s.h / 2 + 'px'
       }
+      if (!b.showCharacter) continue
       // Blink cycle (the menu cast recipe).
       b.blinkT -= this.scene.game.loop.delta
       if (b.blinkT <= 0) {

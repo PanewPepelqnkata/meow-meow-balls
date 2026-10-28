@@ -108,6 +108,7 @@ body,
 
   font-family: "Lilita One", "Arial Black", sans-serif;
   cursor: pointer;
+  pointer-events: none;
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -234,6 +235,16 @@ body,
   gap: 0.4rem;
   padding: 0 0.5rem;
   filter: drop-shadow(0 -1px 0 var(--stone-800));
+}
+
+/* Narrow home-nav pills prioritize readable labels over a squeezed character slot. */
+.uiverse-btn-layer .uiverse-button.uiverse-compact > .wrap > .inner > .content {
+  gap: 0;
+  padding: 0 5px;
+}
+
+.uiverse-btn-layer .uiverse-button.uiverse-compact canvas {
+  display: none;
 }
 
 .uiverse-btn-layer .uiverse-button.uiverse-hover > .wrap > .inner > .content {

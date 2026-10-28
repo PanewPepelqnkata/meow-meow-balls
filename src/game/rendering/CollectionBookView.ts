@@ -1,975 +1,556 @@
 import Phaser from 'phaser'
 import { getTier } from '../../config/ballTiers'
+import { ChunkyButton, UI_COLORS } from '../../ui/DesignSystem'
+import { readSafeArea } from '../../ui/ResponsiveLayout'
+import { hudText } from '../../ui/Typography'
+import { loadSave } from '../state/save'
+import { VARIANT_COUNT } from '../state/runVariant'
 import {
   ballLookFor,
   ballOutlineWidth,
   drawBallFace,
-  drawCrabBall,
-  drawSharkBall,
-  drawPigBall,
-  restContour,
+  drawCollectibleBall,
   INK,
+  restContour,
 } from './BallAppearance'
 import { cycleColor } from './rgbCycle'
-import { loadSave, type SaveDataV1 } from '../state/save'
-import { VARIANT_COUNT } from '../state/runVariant'
-import { UI_COLORS, ChunkyButton } from '../../ui/DesignSystem'
-import { hudText } from '../../ui/Typography'
 
-/**
- * Authentic physical cartoon book / album binder representation of the Collection.
- *
- * Visual & Physical Design:
- * - Hardcover binder with warm rich leather tones (drop shadows, rounded corners, stitching notches).
- * - Multi-layer cream / aged parchment spread with deckled edges and center spine crease/shadow.
- * - Real binder brass/metal spine rings and stitching along the spine.
- * - Interactive physical bookmark tabs at top/side to switch chapters:
- *     [T1-8 CORE] [T9 VARIANTS] [T10 CRABS] [MYTHIC]
- * - Tangible page flip transition:
- *     When tapping PREV/NEXT, bookmark tabs, or dragging/swiping horizontally:
- *     Smooth 3D page curl/turn animation using scaleX, skew/shear, dynamic shadow sweep,
- *     and depth stacking without per-frame canvas viewport bakes.
- * - Alive cartoon balls:
- *     Draws balls using the live pipeline (`drawCollectibleBall` / `drawBallFace` / `drawCrabBall`),
- *     with idle breathing/bobbing animations.
- * - Discovery ink stamps:
- *     Tilted retro circular/oval ink stamps with discovery dates and "CERTIFIED" / "RECORDED" ink imprint.
- * - Mystery locked silhouettes:
- *     Authentic rough pencil-sketch / ink-wash silhouettes (strictly zero emojis, clean cartoon typography).
- * - Full horizontal swipe / drag support for touch and desktop.
- */
+interface BookLeaf {
+  container: Phaser.GameObjects.Container
+  redraws: Array<() => void>
+}
+
+const CHAPTERS = [
+  { label: 'CORE', tab: 'CORE T1–8', color: 0x3b82f6 },
+  { label: 'TIER 9', tab: 'T9 VARIANTS', color: 0xec4899 },
+  { label: 'CRABS', tab: 'T10 CRABS', color: 0xf97316 },
+  { label: 'MYTHIC', tab: 'MYTHIC', color: 0xa855f7 },
+] as const
+
+/** Leather binder with two independently laid-out, spine-hinged paper leaves. */
 export class CollectionBookView {
-  private scene: Phaser.Scene
-  private parentContainer: Phaser.GameObjects.Container
-  private bookContainer: Phaser.GameObjects.Container
-  private pageLayer: Phaser.GameObjects.Container
-  private tabContainer: Phaser.GameObjects.Container
-  private navContainer: Phaser.GameObjects.Container
-  private overlayG: Phaser.GameObjects.Graphics
-
-  private vw: number
-  private vh: number
-  private topY: number
+  private readonly bookContainer: Phaser.GameObjects.Container
+  private readonly binderBaseG: Phaser.GameObjects.Graphics
+  private readonly tabContainer: Phaser.GameObjects.Container
+  private readonly spreadContainer: Phaser.GameObjects.Container
+  private readonly turningLeafContainer: Phaser.GameObjects.Container
+  private readonly shadowG: Phaser.GameObjects.Graphics
+  private readonly leafShadeG: Phaser.GameObjects.Graphics
+  private readonly spineG: Phaser.GameObjects.Graphics
+  private readonly navContainer: Phaser.GameObjects.Container
+  private readonly save = loadSave()
+  private readonly bookX: number
+  private readonly bookTopY: number
+  private readonly bookW: number
+  private readonly bookH: number
+  private readonly pageX: number
+  private readonly pageY: number
+  private readonly pageW: number
+  private readonly pageH: number
+  private readonly leafW: number
+  private readonly spineX: number
+  private readonly navY: number
+  private leftPage: BookLeaf
+  private rightPage: BookLeaf
+  private prevButton!: ChunkyButton
+  private nextButton!: ChunkyButton
+  private readonly tabs: Array<{ graphics: Phaser.GameObjects.Graphics; text: Phaser.GameObjects.Text }> = []
+  private pageNumberText: Phaser.GameObjects.Text | null = null
+  private chapterText: Phaser.GameObjects.Text | null = null
   private currentPage = 0
-  private readonly totalPages = 4
   private isTurningPage = false
-
-  // Drag / swipe gesture tracking
+  private destroyed = false
+  private pageTween: Phaser.Tweens.Tween | null = null
+  private animTimerEvent: Phaser.Time.TimerEvent | null = null
+  private readonly turnState = { progress: 0 }
+  private swipePointer: number | null = null
   private pointerDownX = 0
   private pointerDownY = 0
   private pointerDownTime = 0
-  private isPointerDragging = false
 
-  // Animation update handle
-  private animTimerEvent: Phaser.Time.TimerEvent | null = null
-  private liveBalls: Array<{
-    g: Phaser.GameObjects.Graphics
-    renderFn: () => void
-  }> = []
+  constructor(
+    private readonly scene: Phaser.Scene,
+    parentContainer: Phaser.GameObjects.Container,
+    vw: number,
+    vh: number,
+    topY: number,
+  ) {
+    const safe = readSafeArea()
+    const left = Math.max(12, safe.left + 8)
+    const right = Math.max(12, safe.right + 8)
+    this.bookW = Math.floor(Math.min(760, vw - left - right))
+    this.bookX = Math.floor(left + (vw - left - right - this.bookW) / 2)
+    this.bookTopY = topY + 30
+    this.navY = vh - Math.max(36, safe.bottom + 30)
+    this.bookH = Math.floor(Math.min(640, this.navY - 36 - this.bookTopY))
+    this.pageX = this.bookX + 8
+    this.pageY = this.bookTopY + 8
+    this.pageW = this.bookW - 16
+    this.pageH = this.bookH - 16
+    this.leafW = this.pageW / 2
+    this.spineX = this.pageX + this.leafW
 
-  constructor(scene: Phaser.Scene, parentContainer: Phaser.GameObjects.Container, vw: number, vh: number, topY: number) {
-    this.scene = scene
-    this.parentContainer = parentContainer
-    this.bookContainer = scene.add.container(0, 0)
-    this.parentContainer.add(this.bookContainer)
-
-    this.vw = vw
-    this.vh = vh
-    this.topY = topY
-
-    // Sub-containers to layer tabs, book binder, animated page spread, and nav controls
+    this.bookContainer = scene.add.container(0, 0).setName('collection-book')
+    parentContainer.add(this.bookContainer)
+    this.binderBaseG = scene.add.graphics().setName('book-cover')
     this.tabContainer = scene.add.container(0, 0)
-    this.pageLayer = scene.add.container(0, 0)
-    this.overlayG = scene.add.graphics()
+    this.spreadContainer = scene.add.container(this.spineX, this.pageY)
+    this.shadowG = scene.add.graphics()
+    this.turningLeafContainer = scene.add.container(this.spineX, this.pageY).setVisible(false)
+    this.leafShadeG = scene.add.graphics()
+    this.spineG = scene.add.graphics().setName('book-binding')
     this.navContainer = scene.add.container(0, 0)
+    this.bookContainer.add([
+      this.binderBaseG,
+      this.tabContainer,
+      this.spreadContainer,
+      this.shadowG,
+      this.turningLeafContainer,
+      this.spineG,
+      this.navContainer,
+    ])
 
-    this.bookContainer.add(this.tabContainer)
-    this.bookContainer.add(this.pageLayer)
-    this.bookContainer.add(this.overlayG)
-    this.bookContainer.add(this.navContainer)
-
+    this.leftPage = this.createLeaf(0, 0)
+    this.rightPage = this.createLeaf(0, 1)
+    this.spreadContainer.add([this.leftPage.container, this.rightPage.container])
+    this.positionLeaf(this.leftPage, 0)
+    this.positionLeaf(this.rightPage, 1)
+    this.renderStaticBinder()
+    this.renderSpine()
+    this.renderTabs()
+    this.renderBottomNav()
     this.setupSwipeInput()
-    this.renderFull()
-    this.startLivingLoop()
+    this.animTimerEvent = scene.time.addEvent({
+      delay: 50,
+      loop: true,
+      callback: () => {
+        if (this.destroyed || this.isTurningPage) return
+        for (const draw of this.leftPage.redraws) draw()
+        for (const draw of this.rightPage.redraws) draw()
+      },
+    })
+    // Parent destruction also releases scene-level input/tweens, including mid-turn exits.
+    this.bookContainer.once(Phaser.GameObjects.Events.DESTROY, this.release, this)
   }
 
   public destroy(): void {
-    if (this.animTimerEvent) {
-      this.animTimerEvent.remove()
-      this.animTimerEvent = null
-    }
-    this.liveBalls.length = 0
+    if (this.destroyed) return
+    this.release()
     this.bookContainer.destroy()
   }
 
-  /**
-   * Continuous gentle update loop for breathing/pulsing ball faces, crab claws, and prism cycle.
-   */
-  private startLivingLoop(): void {
-    if (this.animTimerEvent) {
-      this.animTimerEvent.remove()
+  private release(): void {
+    if (this.destroyed) return
+    this.destroyed = true
+    this.pageTween?.remove()
+    this.pageTween = null
+    this.animTimerEvent?.remove()
+    this.animTimerEvent = null
+    this.scene.input.off('pointerup', this.finishSwipe, this)
+    this.scene.input.off('pointerupoutside', this.cancelSwipe, this)
+    this.scene.input.off('gameout', this.cancelSwipe, this)
+    this.leafShadeG.destroy()
+  }
+
+  private renderStaticBinder(): void {
+    const g = this.binderBaseG
+    const { bookX: x, bookTopY: y, bookW: w, bookH: h } = this
+    g.fillStyle(0x05070e, 0.65)
+    g.fillRoundedRect(x - 4, y + 6, w + 8, h + 6, 16)
+    g.fillStyle(0x2b1e16, 1)
+    g.fillRoundedRect(x - 4, y - 3, w + 8, h + 6, 16)
+    g.lineStyle(3, 0x140e0b, 1)
+    g.strokeRoundedRect(x - 4, y - 3, w + 8, h + 6, 16)
+    g.lineStyle(1.5, 0x6a5035, 0.8)
+    g.strokeRoundedRect(x - 1, y, w + 2, h, 13)
+
+    // Stitched leather perimeter; the cover never participates in the page tween.
+    g.lineStyle(1, 0xb29461, 0.7)
+    for (let sx = x + 26; sx < x + w - 26; sx += 9) {
+      g.lineBetween(sx, y + 3, sx + 4, y + 3)
+      g.lineBetween(sx, y + h - 3, sx + 4, y + h - 3)
     }
-    this.animTimerEvent = this.scene.time.addEvent({
-      delay: 50, // 20fps gentle repaint for live showcase elements (safe for iOS WebGL)
-      loop: true,
-      callback: () => {
-        if (!this.bookContainer.visible || this.isTurningPage) return
-        for (const item of this.liveBalls) {
-          item.renderFn()
+    for (let sy = y + 26; sy < y + h - 26; sy += 9) {
+      g.lineBetween(x + 2, sy, x + 2, sy + 4)
+      g.lineBetween(x + w - 2, sy, x + w - 2, sy + 4)
+    }
+    const corner = 20
+    g.fillStyle(0xd4af37, 1)
+    g.fillTriangle(x - 4, y - 3, x - 4 + corner, y - 3, x - 4, y - 3 + corner)
+    g.fillTriangle(x + w + 4, y - 3, x + w + 4 - corner, y - 3, x + w + 4, y - 3 + corner)
+    g.fillTriangle(x - 4, y + h + 3, x - 4 + corner, y + h + 3, x - 4, y + h + 3 - corner)
+    g.fillTriangle(x + w + 4, y + h + 3, x + w + 4 - corner, y + h + 3, x + w + 4, y + h + 3 - corner)
+    g.fillStyle(0x251a12, 1)
+    g.fillCircle(x + 3, y + 4, 1.7)
+    g.fillCircle(x + w - 3, y + 4, 1.7)
+    g.fillCircle(x + 3, y + h - 4, 1.7)
+    g.fillCircle(x + w - 3, y + h - 4, 1.7)
+
+    g.fillStyle(0xcabc9e, 1)
+    g.fillRoundedRect(this.pageX - 2, this.pageY + 3, this.pageW + 4, this.pageH + 2, 8)
+    g.fillStyle(0xe6dac2, 1)
+    g.fillRoundedRect(this.pageX - 1, this.pageY + 1, this.pageW + 2, this.pageH + 1, 8)
+  }
+
+  private renderSpine(): void {
+    const g = this.spineG
+    const { spineX: x, pageY: y, pageH: h } = this
+    for (let i = 0; i < 6; i++) {
+      g.fillStyle(0x3c2b17, 0.025 + i * 0.012)
+      g.fillRect(x - 12 + i * 2, y, 24 - i * 4, h)
+    }
+    g.lineStyle(1, 0xb8aa92, 0.9)
+    g.lineBetween(x, y + 3, x, y + h - 3)
+    const count = h < 280 ? 3 : 5
+    for (let i = 0; i < count; i++) {
+      const ringY = y + 20 + (i * (h - 40)) / (count - 1)
+      g.fillStyle(0x000000, 0.22)
+      g.fillEllipse(x + 2, ringY + 2, 16, 6)
+      g.fillStyle(0xb58b2a, 1)
+      g.fillEllipse(x, ringY, 15, 6)
+      g.fillStyle(0xfde087, 1)
+      g.fillEllipse(x, ringY - 1, 11, 3)
+      g.fillStyle(0x2b1e16, 1)
+      g.fillCircle(x - 6, ringY, 1.8)
+      g.fillCircle(x + 6, ringY, 1.8)
+    }
+  }
+
+  private renderTabs(): void {
+    const gap = 4
+    const w = (this.bookW - 24 - gap * 3) / CHAPTERS.length
+    const y = this.bookTopY - 20
+    CHAPTERS.forEach((chapter, i) => {
+      const x = this.bookX + 12 + i * (w + gap)
+      const active = i === this.currentPage
+      const top = y - (active ? 3 : 0)
+      let tab = this.tabs[i]
+      if (!tab) {
+        const graphics = this.scene.add.graphics()
+        const text = hudText(this.scene, x + w / 2, top + 11, chapter.tab, 1, {
+          color: '#ffffff', size: 11, stroke: 2, origin: [0.5, 0.5], shadow: false,
+        })
+        text.setScale(Math.min(1, (w - 8) / text.width))
+        const hit = this.scene.add.zone(x + w / 2, y + 9, w, 28).setInteractive({ useHandCursor: true })
+        hit.setName(`book-tab-${i}`)
+        hit.on('pointerdown', () => this.turnToPage(i))
+        this.tabContainer.add([graphics, text, hit])
+        tab = { graphics, text }
+        this.tabs.push(tab)
+      }
+      const g = tab.graphics
+      g.clear()
+      g.fillStyle(0x000000, 0.35)
+      g.fillRoundedRect(x, top + 3, w, 28, 7)
+      g.fillStyle(chapter.color, active ? 1 : 0.7)
+      g.fillRoundedRect(x, top, w, 28, 7)
+      g.lineStyle(1.5, INK, 1)
+      g.strokeRoundedRect(x, top, w, 28, 7)
+      g.lineStyle(1, 0xffffff, active ? 0.7 : 0.35)
+      g.strokeRoundedRect(x + 2, top + 2, w - 4, 24, 5)
+      tab.text.setY(top + 11)
+    })
+  }
+
+  private positionLeaf(leaf: BookLeaf, side: number): void {
+    leaf.container.setPosition(side === 0 ? -this.leafW : 0, 0).setScale(1).setVisible(true)
+  }
+
+  private turnToPage(target: number): void {
+    if (this.destroyed || this.isTurningPage || target < 0 || target >= CHAPTERS.length || target === this.currentPage) return
+    this.isTurningPage = true
+    this.cancelSwipe()
+    this.prevButton.setDisabled(true)
+    this.nextButton.setDisabled(true)
+    const forward = target > this.currentPage
+    const source = forward ? this.rightPage : this.leftPage
+    const oldUnder = forward ? this.leftPage : this.rightPage
+    const newLeft = this.createLeaf(target, 0)
+    const newRight = this.createLeaf(target, 1)
+    const under = forward ? newRight : newLeft
+    const back = forward ? newLeft : newRight
+
+    // Only the source leaf lifts. Its neighbor stays until covered by the back face.
+    this.spreadContainer.add(under.container)
+    this.positionLeaf(under, forward ? 1 : 0)
+    this.turningLeafContainer.add([source.container, back.container, this.leafShadeG])
+    this.positionLeaf(source, forward ? 1 : 0)
+    this.positionLeaf(back, forward ? 0 : 1)
+    back.container.setVisible(false)
+    this.turningLeafContainer.setScale(1).setVisible(true)
+    this.turnState.progress = 0
+    this.pageTween = this.scene.tweens.add({
+      targets: this.turnState,
+      progress: 1,
+      duration: 540,
+      ease: 'Sine.easeInOut',
+      onUpdate: () => {
+        const p = this.turnState.progress
+        const firstFace = p < 0.5
+        const lift = Math.sin(Math.PI * p)
+        const side = (firstFace ? forward : !forward) ? 1 : -1
+        source.container.setVisible(firstFace)
+        back.container.setVisible(!firstFace)
+        // Positive scale on each face keeps all lettering readable, never mirror-written.
+        this.turningLeafContainer.scaleX = Math.max(0.002, Math.abs(Math.cos(Math.PI * p)))
+        this.leafShadeG.clear()
+        this.leafShadeG.fillStyle(0x675032, lift * 0.16)
+        this.leafShadeG.fillRect(side > 0 ? 0 : -this.leafW, 0, this.leafW, this.pageH)
+        this.shadowG.clear()
+        const shadowW = this.leafW * 0.28 * lift
+        for (let i = 0; i < 8; i++) {
+          const bandW = shadowW / 8
+          this.shadowG.fillStyle(0x251a12, lift * (1 - i / 8) * 0.2)
+          this.shadowG.fillRect(side > 0 ? i * bandW + 1 : -(i + 1) * bandW - 1, this.pageY, bandW, this.pageH)
         }
+        this.shadowG.x = this.spineX
+      },
+      onComplete: () => {
+        this.pageTween = null
+        source.container.destroy()
+        oldUnder.container.destroy()
+        this.spreadContainer.add(back.container)
+        this.positionLeaf(newLeft, 0)
+        this.positionLeaf(newRight, 1)
+        this.leftPage = newLeft
+        this.rightPage = newRight
+        this.turningLeafContainer.setVisible(false).setScale(1)
+        this.shadowG.clear()
+        this.leafShadeG.clear()
+        this.currentPage = target
+        this.isTurningPage = false
+        this.renderTabs()
+        this.renderBottomNav()
       },
     })
+  }
+
+  private createLeaf(chapter: number, side: number): BookLeaf {
+    const container = this.scene.add.container(0, 0).setName(`book-leaf-${chapter}-${side}`)
+    const leaf: BookLeaf = { container, redraws: [] }
+    const paper = this.scene.add.graphics().setName('book-paper')
+    container.add(paper)
+    paper.fillStyle(0xf8f2e1, 1)
+    paper.fillRoundedRect(0, 0, this.leafW, this.pageH, { tl: side === 0 ? 8 : 0, tr: side === 1 ? 8 : 0, bl: side === 0 ? 8 : 0, br: side === 1 ? 8 : 0 })
+    paper.lineStyle(1, 0xd0c2a5, 1)
+    paper.strokeRect(1, 1, this.leafW - 2, this.pageH - 2)
+    const x = side === 0 ? 10 : 18
+    const w = this.leafW - 28
+    const header = chapter === 0 ? (side === 0 ? 'CORE • I–IV' : 'CORE • V–VIII')
+      : chapter === 1 ? (side === 0 ? 'T9 • VARIANTS I–IV' : 'T9 • VARIANTS V–VIII')
+        : chapter === 2 ? (side === 0 ? 'CRAB ALCOVE' : 'FIELD NOTES')
+          : (side === 0 ? 'TIER 11' : 'TIER 12')
+    this.paperText(leaf, x, 10, w, header, 15, '#2d241e', 20)
+    paper.lineStyle(1, 0xc7b491, 0.7)
+    paper.lineBetween(x, 35, x + w, 35)
+    const bodyY = 44
+    const bodyH = this.pageH - bodyY - 24
+    if (chapter <= 1) {
+      const count = chapter === 0 ? 8 : VARIANT_COUNT
+      const first = side * Math.ceil(count / 2)
+      const last = Math.min(count, first + Math.ceil(count / 2))
+      const cols = w >= 260 && bodyH < 300 ? 2 : 1
+      const rows = Math.ceil((last - first) / cols)
+      const gap = 6
+      const cardW = (w - gap * (cols - 1)) / cols
+      const cardH = (bodyH - gap * (rows - 1)) / rows
+      for (let i = first; i < last; i++) {
+        const slot = i - first
+        this.renderEntry(leaf, x + (slot % cols) * (cardW + gap), bodyY + Math.floor(slot / cols) * (cardH + gap), cardW, cardH, chapter === 0 ? i + 1 : 9, chapter === 0 ? 0 : i)
+      }
+    } else if (chapter === 2) {
+      if (side === 0) this.renderShowcase(leaf, x, bodyY, w, bodyH, 10)
+      else this.renderCrabNotes(leaf, x, bodyY, w, bodyH)
+    } else {
+      this.renderShowcase(leaf, x, bodyY, w, bodyH, side === 0 ? 11 : 12)
+    }
+    this.paperText(leaf, x, this.pageH - 18, w, `${chapter * 2 + side + 1}  /  ${CHAPTERS.length * 2}`, 10, '#8a7a66', 14)
+    return leaf
+  }
+
+  /** All bounds are leaf-local; the inner margin is reserved for the brass rings. */
+  private paperText(leaf: BookLeaf, x: number, y: number, w: number, text: string, size: number, color: string, maxH: number, wrap = false): Phaser.GameObjects.Text {
+    const label = hudText(this.scene, x + w / 2, y, text, 1, {
+      color, size, stroke: 0, origin: [0.5, 0], shadow: false,
+    }).setStroke('#000000', 0).setName('book-text')
+    if (wrap) label.setWordWrapWidth(w, true).setAlign('center')
+    label.setScale(Math.min(1, w / Math.max(1, label.width), maxH / Math.max(1, label.height)))
+    leaf.container.add(label)
+    return label
+  }
+
+  private renderEntry(leaf: BookLeaf, x: number, y: number, w: number, h: number, tier: number, variant: number): void {
+    const at = tier === 9 ? this.save.variants[`9:${variant}`] : this.save.discovered[String(tier)]
+    const known = at != null
+    const card = this.scene.add.graphics().setName('book-entry')
+    leaf.container.add(card)
+    card.fillStyle(known ? 0xfffcf5 : 0xede4d1, 1)
+    card.fillRoundedRect(x, y, w, h, 6)
+    card.lineStyle(1, known ? 0xd8c6a2 : 0xc7b491, 1)
+    card.strokeRoundedRect(x, y, w, h, 6)
+    const title = tier === 9 ? `VARIANT ${variant + 1}` : `T${tier} • ${known ? (tier === 8 ? 'PRISM' : getTier(tier)!.face.toUpperCase()) : '????'}`
+    const status = known ? this.discoveryDate(at) : 'UNDISCOVERED'
+    if (h < 72) {
+      const r = tier === 9 ? Math.min(11, (h - 6) / 3.2) : Math.min(14, (h - 8) / 2)
+      this.addBall(leaf, x + 24, y + h / 2, r, tier, variant, known)
+      this.paperText(leaf, x + 46, y + h / 2 - 14, w - 52, title, 11, known ? '#2d241e' : '#7a6f62', 14)
+      this.paperText(leaf, x + 46, y + h / 2 + 3, w - 52, status, 10, known ? '#2563eb' : '#8c7d6b', 12)
+    } else {
+      this.paperText(leaf, x + 6, y + 6, w - 12, title, 12, known ? '#2d241e' : '#7a6f62', 16)
+      const extent = tier === 9 ? 1.6 : 1.1
+      const r = Math.min(26, w / (extent * 3), (h - 50) / (extent * 2))
+      this.addBall(leaf, x + w / 2, y + 24 + (h - 46) / 2, r, tier, variant, known)
+      if (known) this.drawInkStamp(leaf, x + w / 2, y + h - 17, status, CHAPTERS[tier === 9 ? 1 : 0].color, Math.min(w - 12, 88))
+      else this.paperText(leaf, x + 4, y + h - 21, w - 8, status, 10, '#8c7d6b', 14)
+    }
+  }
+
+  private renderShowcase(leaf: BookLeaf, x: number, y: number, w: number, h: number, tier: number): void {
+    const known = this.save.discovered[String(tier)] != null
+    const g = this.scene.add.graphics().setName('book-showcase')
+    leaf.container.add(g)
+    g.fillStyle(known ? 0xfffcf5 : 0xede4d1, 1)
+    g.fillRoundedRect(x, y, w, h, 8)
+    g.lineStyle(1.5, known ? CHAPTERS[tier === 10 ? 2 : 3].color : 0xc7b491, 0.8)
+    g.strokeRoundedRect(x, y, w, h, 8)
+    const pictureH = Math.max(30, h - 86)
+    const extent = tier === 10 ? 2.6 : 1.3
+    const radius = Math.min(52, (w - 12) / (2 * extent), pictureH / (2 * extent))
+    this.addBall(leaf, x + w / 2, y + 8 + pictureH / 2, radius, tier, 0, known)
+    this.paperText(leaf, x + 6, y + h - 76, w - 12, tier === 10 ? (known ? 'CORAL CRAB' : 'MYSTERY CRAB') : 'SEALED ENTRY', 13, '#5b4631', 20)
+    const description = tier === 10 ? (known ? 'A run-rolled palette with mighty claws.' : 'Merge two Tier 9 animals to discover this crab.')
+      : getTier(tier)?.playable ? 'A rare discovery for your collection.' : 'This collectible tier is not yet playable.'
+    this.paperText(leaf, x + 8, y + h - 51, w - 16, description, 11, '#8c7d6b', 42, true)
+  }
+
+  private renderCrabNotes(leaf: BookLeaf, x: number, y: number, w: number, h: number): void {
+    const at = this.save.discovered['10']
+    const known = at != null
+    const stampY = y + Math.min(24, h * 0.12)
+    this.drawInkStamp(leaf, x + w / 2, stampY, known ? 'COLLECTED' : 'NOT FOUND', 0xc2410c, Math.min(w - 8, 96))
+    const noteY = stampY + 25
+    const note = known
+      ? `First logged\n${this.discoveryDate(at)}\n\nTwo Tier 9 animals merge into Tier 10.\n\nOne crab palette stays fixed for the whole run.`
+      : 'Merge two Tier 9 animals to open this entry.\n\nYour run keeps the same crab palette for every Tier 10 ball.'
+    this.paperText(leaf, x + 4, noteY, w - 8, note, 13, '#6f5941', h - (noteY - y) - 8, true)
+  }
+
+  private addBall(leaf: BookLeaf, x: number, y: number, r: number, tier: number, variant: number, known: boolean): void {
+    const g = this.scene.add.graphics().setName('book-ball')
+    leaf.container.add(g)
+    if (!known) {
+      g.fillStyle(0xd5c8b2, 0.75)
+      g.fillCircle(x, y, r)
+      g.lineStyle(1.5, 0x8a7a66, 0.9)
+      g.strokeCircle(x, y, r)
+      g.lineStyle(1, 0x8a7a66, 0.4)
+      g.lineBetween(x - r * 0.7, y - r * 0.7, x + r * 0.7, y + r * 0.7)
+      this.paperText(leaf, x - r, y - Math.min(6, r * 0.4), r * 2, `T${tier}`, Math.min(14, r), '#655745', Math.min(18, r * 1.4))
+      return
+    }
+    const seed = tier * 1013 + variant
+    const look = ballLookFor(tier, seed)
+    const poly = restContour(look, r, x, y, 24).map((point) => new Phaser.Math.Vector2(point.x, point.y))
+    const center = { x, y }
+    const tierColor = getTier(tier)!.color
+    const draw = (): void => {
+      g.clear()
+      if (tier === 9 || tier === 10) {
+        drawCollectibleBall(g, x, y, r, tier, variant, undefined, 0, undefined, seed)
+      } else {
+        g.fillStyle(tier === 8 ? cycleColor(Date.now()) : tierColor, 1)
+        g.fillPoints(poly, true)
+        g.lineStyle(ballOutlineWidth(r), INK, 1)
+        g.strokePoints(poly, true, true)
+        drawBallFace(g, look, center, r, 1)
+      }
+    }
+    draw()
+    leaf.redraws.push(draw)
+  }
+
+  private drawInkStamp(leaf: BookLeaf, x: number, y: number, text: string, color: number, w: number): void {
+    const stamp = this.scene.add.container(x, y).setRotation(-0.055)
+    leaf.container.add(stamp)
+    const g = this.scene.add.graphics()
+    stamp.add(g)
+    g.lineStyle(1.3, color, 0.8)
+    g.strokeRoundedRect(-w / 2, -9, w, 18, 3)
+    g.lineStyle(0.7, color, 0.5)
+    g.strokeRoundedRect(-w / 2 + 2, -7, w - 4, 14, 2)
+    const label = hudText(this.scene, 0, 0, text, 1, {
+      color: `#${color.toString(16).padStart(6, '0')}`, size: 10, stroke: 0, shadow: false, origin: [0.5, 0.5],
+    }).setStroke('#000000', 0).setAlpha(0.85)
+    label.setScale(Math.min(1, (w - 8) / label.width))
+    stamp.add(label)
+  }
+
+  private discoveryDate(at: number): string {
+    return new Date(at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
+  }
+
+  private renderBottomNav(): void {
+    // Keep hit zones registered across turns; rebuilding them loses taps on the completion frame.
+    if (this.pageNumberText && this.chapterText) {
+      this.prevButton.setDisabled(this.currentPage === 0)
+      this.nextButton.setDisabled(this.currentPage === CHAPTERS.length - 1)
+      this.pageNumberText.setText(`${this.currentPage + 1} / ${CHAPTERS.length}`)
+      this.chapterText.setText(CHAPTERS[this.currentPage]!.label)
+      return
+    }
+    const w = Math.min(116, (this.bookW - 94) / 2)
+    this.prevButton = new ChunkyButton({
+      scene: this.scene, x: this.bookX + w / 2 + 4, y: this.navY, w, h: 42,
+      label: 'PREV', fontSize: 13, fill: UI_COLORS.BTN_BLUE, disabled: this.currentPage === 0,
+      onClick: () => this.turnToPage(this.currentPage - 1),
+    })
+    this.prevButton.container.setName('book-prev')
+    this.nextButton = new ChunkyButton({
+      scene: this.scene, x: this.bookX + this.bookW - w / 2 - 4, y: this.navY, w, h: 42,
+      label: 'NEXT', fontSize: 13, fill: UI_COLORS.BTN_BLUE, disabled: this.currentPage === CHAPTERS.length - 1,
+      onClick: () => this.turnToPage(this.currentPage + 1),
+    })
+    this.nextButton.container.setName('book-next')
+    this.navContainer.add([this.prevButton.container, this.nextButton.container])
+    const page = hudText(this.scene, this.spineX, this.navY - 7, `${this.currentPage + 1} / ${CHAPTERS.length}`, 1, {
+      color: '#ffffff', size: 14, stroke: 3, origin: [0.5, 0.5],
+    })
+    const title = hudText(this.scene, this.spineX, this.navY + 10, CHAPTERS[this.currentPage]!.label, 1, {
+      color: UI_COLORS.TEXT_GOLD, size: 10, stroke: 2, origin: [0.5, 0.5], shadow: false,
+    })
+    this.navContainer.add([page, title])
+    this.pageNumberText = page
+    this.chapterText = title
   }
 
   private setupSwipeInput(): void {
-    const hitZone = this.scene.add.zone(this.vw / 2, this.vh / 2, this.vw, this.vh).setInteractive()
-    this.bookContainer.addAt(hitZone, 0)
-
-    hitZone.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      this.pointerDownX = p.x
-      this.pointerDownY = p.y
-      this.pointerDownTime = Date.now()
-      this.isPointerDragging = true
+    const zone = this.scene.add.zone(this.spineX, this.pageY + this.pageH / 2, this.pageW, this.pageH).setInteractive()
+    this.bookContainer.addAt(zone, 0)
+    zone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      if (this.isTurningPage) return
+      const world = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y)
+      this.swipePointer = pointer.id
+      this.pointerDownX = world.x
+      this.pointerDownY = world.y
+      this.pointerDownTime = this.scene.time.now
     })
-
-    hitZone.on('pointerup', (p: Phaser.Input.Pointer) => {
-      if (!this.isPointerDragging) return
-      this.isPointerDragging = false
-
-      const dx = p.x - this.pointerDownX
-      const dy = p.y - this.pointerDownY
-      const elapsed = Date.now() - this.pointerDownTime
-
-      // Swipe detected: horizontal movement > 45px and predominantly horizontal
-      if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy) * 1.2 && elapsed < 650) {
-        if (dx < 0 && this.currentPage < this.totalPages - 1) {
-          this.turnToPage(this.currentPage + 1, 1)
-        } else if (dx > 0 && this.currentPage > 0) {
-          this.turnToPage(this.currentPage - 1, -1)
-        }
-      }
-    })
+    this.scene.input.on('pointerup', this.finishSwipe, this)
+    this.scene.input.on('pointerupoutside', this.cancelSwipe, this)
+    this.scene.input.on('gameout', this.cancelSwipe, this)
   }
 
-  public renderFull(): void {
-    this.renderTabs()
-    this.renderPageSpread(this.currentPage)
-    this.renderBottomNav()
-  }
-
-  /**
-   * Chapter bookmark tabs protruding from top edge of binder.
-   */
-  private renderTabs(): void {
-    this.tabContainer.removeAll(true)
-
-    const tabs = [
-      { id: 0, label: 'CORE T1-8', color: 0x3b82f6 },
-      { id: 1, label: 'T9 VARIANTS', color: 0xec4899 },
-      { id: 2, label: 'T10 CRABS', color: 0xf97316 },
-      { id: 3, label: 'MYTHIC', color: 0xa855f7 },
-    ]
-
-    const bookW = Math.min(500, this.vw * 0.94)
-    const bookX = this.vw / 2 - bookW / 2
-    const bookTopY = this.topY + 36
-
-    const tabCount = tabs.length
-    const tabGap = 6
-    const totalGap = (tabCount - 1) * tabGap
-    const tabW = Math.max(70, Math.min(108, (bookW - 32 - totalGap) / tabCount))
-    const tabH = 30
-    const startX = bookX + 16
-
-    tabs.forEach((tab, idx) => {
-      const tx = startX + idx * (tabW + tabGap)
-      const isSelected = this.currentPage === tab.id
-      const ty = isSelected ? bookTopY - tabH + 6 : bookTopY - tabH + 12
-
-      const g = this.scene.add.graphics()
-      this.tabContainer.add(g)
-
-      // Tab drop shadow
-      g.fillStyle(0x0a0c14, 0.6)
-      g.fillRoundedRect(tx + 2, ty + 2, tabW, tabH, { tl: 8, tr: 8, bl: 0, br: 0 })
-
-      // Tab leather/cloth fill
-      g.fillStyle(isSelected ? tab.color : 0x1f263d, 1)
-      g.fillRoundedRect(tx, ty, tabW, tabH, { tl: 8, tr: 8, bl: 0, br: 0 })
-
-      // Top stitching
-      g.lineStyle(1.5, isSelected ? 0xffffff : 0x475569, isSelected ? 0.7 : 0.5)
-      g.strokeRoundedRect(tx + 2, ty + 2, tabW - 4, tabH - 2, { tl: 6, tr: 6, bl: 0, br: 0 })
-
-      // Tab label
-      const txt = hudText(this.scene, tx + tabW / 2, ty + tabH / 2 - 2, tab.label, 1, {
-        color: isSelected ? '#ffffff' : '#94a3b8',
-        size: Math.max(9, Math.min(11, tabW * 0.12)),
-        stroke: isSelected ? 2 : 0,
-        origin: [0.5, 0.5],
-      })
-      this.tabContainer.add(txt)
-
-      // Interactive hit zone for tab
-      const zone = this.scene.add.zone(tx + tabW / 2, ty + tabH / 2, tabW, tabH).setInteractive({ useHandCursor: true })
-      this.tabContainer.add(zone)
-
-      zone.on('pointerdown', () => {
-        if (this.currentPage !== tab.id && !this.isTurningPage) {
-          const dir = tab.id > this.currentPage ? 1 : -1
-          this.turnToPage(tab.id, dir)
-        }
-      })
-    })
-  }
-
-  /**
-   * Turns to target page with animated paper curl/flip transition.
-   */
-  private turnToPage(targetPage: number, direction: number): void {
-    if (this.isTurningPage || targetPage === this.currentPage) return
-    this.isTurningPage = true
-
-    // Animate page peel / flip
-    const bookW = Math.min(500, this.vw * 0.94)
-    const bookX = this.vw / 2 - bookW / 2
-    const bookTopY = this.topY + 36
-    const bottomNavH = 56
-    const bookH = this.vh - bookTopY - bottomNavH - 16
-
-    // Sweep shadow graphics
-    this.overlayG.clear()
-
-    // Flip timeline
-    this.scene.tweens.add({
-      targets: this.pageLayer,
-      scaleX: 0.05,
-      x: direction > 0 ? this.vw / 2 - bookW * 0.4 : this.vw / 2 + bookW * 0.4,
-      duration: 160,
-      ease: 'Quad.easeIn',
-      onUpdate: (tween) => {
-        const p = tween.progress
-        this.overlayG.clear()
-        // Sweeping flip shadow
-        const shadowAlpha = Math.sin(p * Math.PI) * 0.45
-        this.overlayG.fillStyle(0x000000, shadowAlpha)
-        this.overlayG.fillRect(bookX + 8, bookTopY + 8, bookW - 16, bookH - 16)
-      },
-      onComplete: () => {
-        this.currentPage = targetPage
-        this.renderPageSpread(this.currentPage)
-        this.renderTabs()
-        this.renderBottomNav()
-
-        // Page unfolding back to full scale
-        this.pageLayer.x = direction > 0 ? this.vw / 2 + bookW * 0.4 : this.vw / 2 - bookW * 0.4
-        this.scene.tweens.add({
-          targets: this.pageLayer,
-          scaleX: 1,
-          x: 0,
-          duration: 200,
-          ease: 'Back.easeOut',
-          onUpdate: (tween) => {
-            const p = tween.progress
-            this.overlayG.clear()
-            const shadowAlpha = (1 - p) * 0.35
-            this.overlayG.fillStyle(0x000000, shadowAlpha)
-            this.overlayG.fillRect(bookX + 8, bookTopY + 8, bookW - 16, bookH - 16)
-          },
-          onComplete: () => {
-            this.overlayG.clear()
-            this.isTurningPage = false
-          },
-        })
-      },
-    })
-  }
-
-  /**
-   * Renders the physical open binder spread and current page contents.
-   */
-  private renderPageSpread(pageIndex: number): void {
-    this.pageLayer.removeAll(true)
-    this.liveBalls.length = 0
-
-    const save = loadSave()
-    const bookW = Math.min(500, this.vw * 0.94)
-    const bookX = this.vw / 2 - bookW / 2
-    const bookTopY = this.topY + 36
-    const bottomNavH = 56
-    const bookH = this.vh - bookTopY - bottomNavH - 16
-
-    const bgG = this.scene.add.graphics()
-    this.pageLayer.add(bgG)
-
-    // 1. Heavy physical book drop shadow
-    bgG.fillStyle(0x05070e, 0.75)
-    bgG.fillRoundedRect(bookX - 6, bookTopY + 6, bookW + 12, bookH + 8, 20)
-
-    // 2. Outer Hardcover Binder Leather (Warm rich brown/tan binder)
-    bgG.fillStyle(0x281e18, 1)
-    bgG.fillRoundedRect(bookX - 4, bookTopY - 3, bookW + 8, bookH + 6, 18)
-    bgG.lineStyle(3, 0x140e0b, 1)
-    bgG.strokeRoundedRect(bookX - 4, bookTopY - 3, bookW + 8, bookH + 6, 18)
-
-    // Gold embossed corner protectors on hardcover
-    const cornerSize = 22
-    bgG.fillStyle(0xd4af37, 0.9)
-    // Top-left
-    bgG.fillTriangle(bookX - 4, bookTopY - 3, bookX - 4 + cornerSize, bookTopY - 3, bookX - 4, bookTopY - 3 + cornerSize)
-    // Top-right
-    bgG.fillTriangle(bookX + bookW + 4, bookTopY - 3, bookX + bookW + 4 - cornerSize, bookTopY - 3, bookX + bookW + 4, bookTopY - 3 + cornerSize)
-    // Bottom-left
-    bgG.fillTriangle(bookX - 4, bookTopY + bookH + 3, bookX - 4 + cornerSize, bookTopY + bookH + 3, bookX - 4, bookTopY + bookH + 3 - cornerSize)
-    // Bottom-right
-    bgG.fillTriangle(bookX + bookW + 4, bookTopY + bookH + 3, bookX + bookW + 4 - cornerSize, bookTopY + bookH + 3, bookX + bookW + 4, bookTopY + bookH + 3 - cornerSize)
-
-    // 3. Thick Cream Parchment Paper Spread
-    const pageInsetX = bookX + 8
-    const pageInsetY = bookTopY + 8
-    const pageW = bookW - 16
-    const pageH = bookH - 16
-
-    // Stacked page effect (under-pages edge shadow)
-    bgG.fillStyle(0xd5c6a5, 0.8)
-    bgG.fillRoundedRect(pageInsetX - 2, pageInsetY + 2, pageW + 4, pageH + 2, 12)
-    bgG.fillStyle(0xe2d6ba, 0.9)
-    bgG.fillRoundedRect(pageInsetX - 1, pageInsetY + 1, pageW + 2, pageH + 1, 12)
-
-    // Main parchment paper surface
-    bgG.fillStyle(0xf7f0dd, 1) // authentic cream parchment tone
-    bgG.fillRoundedRect(pageInsetX, pageInsetY, pageW, pageH, 10)
-
-    // Subtle paper deckled stitching perimeter
-    bgG.lineStyle(1.5, 0xd4c29d, 0.7)
-    bgG.strokeRoundedRect(pageInsetX + 6, pageInsetY + 6, pageW - 12, pageH - 12, 8)
-
-    // 4. Center Spine Crease & Shadow (Two-page spread illusion)
-    const spineX = this.vw / 2
-    bgG.fillStyle(0x000000, 0.08)
-    bgG.fillRect(spineX - 18, pageInsetY, 36, pageH)
-    bgG.fillStyle(0x000000, 0.12)
-    bgG.fillRect(spineX - 8, pageInsetY, 16, pageH)
-    bgG.lineStyle(2, 0x9c8360, 0.45)
-    bgG.lineBetween(spineX, pageInsetY + 4, spineX, pageInsetY + pageH - 4)
-
-    // Brass binder spine rings
-    const ringCount = 5
-    const ringSpacing = (pageH - 40) / (ringCount - 1)
-    for (let r = 0; r < ringCount; r++) {
-      const ry = pageInsetY + 20 + r * ringSpacing
-      // Ring shadow
-      bgG.fillStyle(0x000000, 0.3)
-      bgG.fillEllipse(spineX + 2, ry + 2, 14, 8)
-      // Metallic brass ring
-      bgG.fillStyle(0xb5892b, 1)
-      bgG.fillEllipse(spineX, ry, 12, 6)
-      bgG.fillStyle(0xfff3a1, 0.9)
-      bgG.fillEllipse(spineX - 2, ry - 1, 6, 2)
-      bgG.lineStyle(1, 0x4d380e, 1)
-      bgG.strokeEllipse(spineX, ry, 12, 6)
-    }
-
-    // 5. Render Page Specific Contents
-    const contentX = pageInsetX + 16
-    const contentY = pageInsetY + 14
-    const contentW = pageW - 32
-    const contentH = pageH - 28
-
-    switch (pageIndex) {
-      case 0:
-        this.renderCoreTiersPage(contentX, contentY, contentW, contentH, save)
-        break
-      case 1:
-        this.renderTier9VariantsPage(contentX, contentY, contentW, contentH, save)
-        break
-      case 2:
-        this.renderTier10CrabsPage(contentX, contentY, contentW, contentH, save)
-        break
-      case 3:
-        this.renderMythicPage(contentX, contentY, contentW, contentH, save)
-        break
+  private finishSwipe(pointer: Phaser.Input.Pointer): void {
+    if (this.swipePointer !== pointer.id) return
+    this.swipePointer = null
+    const world = this.scene.cameras.main.getWorldPoint(pointer.x, pointer.y)
+    const dx = world.x - this.pointerDownX
+    const dy = world.y - this.pointerDownY
+    if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy) * 1.2 && this.scene.time.now - this.pointerDownTime < 650) {
+      this.turnToPage(this.currentPage + (dx < 0 ? 1 : -1))
     }
   }
 
-  /**
-   * PAGE 1: Core Tiers 1-8 progression with live bouncing balls and discovery ink stamps.
-   */
-  private renderCoreTiersPage(
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-    save: SaveDataV1,
-  ): void {
-    const pageHeader = hudText(this.scene, x + w / 2, y, 'CORE SPHERE COMPENDIUM', 1, {
-      color: '#2d241e',
-      size: 16,
-      stroke: 0,
-      origin: [0.5, 0],
-    })
-    this.pageLayer.add(pageHeader)
-
-    const pageSub = hudText(this.scene, x + w / 2, y + 20, 'Tiers 1 through 8 — foundation of the merge journey', 1, {
-      color: '#7c6a58',
-      size: 10.5,
-      stroke: 0,
-      origin: [0.5, 0],
-      shadow: false,
-    })
-    this.pageLayer.add(pageSub)
-
-    const listTopY = y + 40
-    const totalItems = 8
-    const itemH = Math.min(52, (h - 48) / totalItems)
-
-    for (let tier = 1; tier <= totalItems; tier++) {
-      const rowY = listTopY + (tier - 1) * itemH
-      const discoveredAt = save.discovered[String(tier)]
-      const isDiscovered = discoveredAt != null
-
-      const rowG = this.scene.add.graphics()
-      this.pageLayer.add(rowG)
-
-      // Parchment cutout card row
-      rowG.fillStyle(isDiscovered ? 0xfffcf5 : 0xede4d1, 0.95)
-      rowG.fillRoundedRect(x, rowY + 2, w, itemH - 4, 8)
-      rowG.lineStyle(1.5, isDiscovered ? 0xd8c6a2 : 0xc7b491, 1)
-      rowG.strokeRoundedRect(x, rowY + 2, w, itemH - 4, 8)
-
-      // Ball center
-      const ballR = Math.min(18, (itemH - 12) / 2)
-      const ballX = x + ballR + 10
-      const ballY = rowY + itemH / 2
-
-      // Live animated ball graphics container
-      const ballG = this.scene.add.graphics()
-      this.pageLayer.add(ballG)
-
-      if (isDiscovered) {
-        const renderBall = () => {
-          ballG.clear()
-          const look = ballLookFor(tier, tier * 1013)
-          const poly = restContour(look, ballR, ballX, ballY, 28)
-          const pts = poly.map((p) => new Phaser.Math.Vector2(p.x, p.y))
-          const t = getTier(tier)
-          const fillColor = tier === 8 ? cycleColor(Date.now()) : (t?.color ?? 0xffffff)
-
-          ballG.fillStyle(fillColor, 1)
-          ballG.fillPoints(pts, true)
-          ballG.lineStyle(ballOutlineWidth(ballR), INK, 1)
-          ballG.strokePoints(pts, true, true)
-          drawBallFace(ballG, look, { x: ballX, y: ballY }, ballR, 1)
-        }
-        renderBall()
-        this.liveBalls.push({ g: ballG, renderFn: renderBall })
-      } else {
-        // Locked Rough Pencil Silhouette (Strictly NO question mark emoji)
-        this.drawLockedSilhouette(ballG, ballX, ballY, ballR, tier)
-      }
-
-      // Tier Name / Identity
-      const tierDef = getTier(tier)
-      const faceLabel = tier === 8 ? 'PRISM' : (tierDef?.face.toUpperCase() ?? 'SPHERE')
-      const titleStr = isDiscovered ? `TIER ${tier}: ${faceLabel}` : `TIER ${tier}: ??????`
-
-      const title = hudText(this.scene, ballX + ballR + 12, rowY + 8, titleStr, 1, {
-        color: isDiscovered ? '#1e1b18' : '#7a6f62',
-        size: 13,
-        stroke: 0,
-        origin: [0, 0],
-      })
-      this.pageLayer.add(title)
-
-      // Discovery date / Status stamp
-      if (isDiscovered) {
-        const d = new Date(discoveredAt)
-        const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: '2-digit' })
-        const sub = hudText(this.scene, ballX + ballR + 12, rowY + 25, `First recorded: ${dateStr}`, 1, {
-          color: '#3b82f6',
-          size: 10,
-          stroke: 0,
-          origin: [0, 0],
-          shadow: false,
-        })
-        this.pageLayer.add(sub)
-
-        // Physical ink stamp on right edge
-        this.drawInkStamp(x + w - 44, rowY + itemH / 2, 'RECORDED', 0x1e40af, (tier % 2 === 0 ? 0.08 : -0.06))
-      } else {
-        const sub = hudText(this.scene, ballX + ballR + 12, rowY + 25, 'Merge lower spheres to unlock log', 1, {
-          color: '#8c7d6b',
-          size: 10,
-          stroke: 0,
-          origin: [0, 0],
-          shadow: false,
-        })
-        this.pageLayer.add(sub)
-      }
-    }
-  }
-
-  /**
-   * PAGE 2: Tier 9 Collectibles (Shark & Pig run-rolled skins with swatch stamps).
-   */
-  private renderTier9VariantsPage(
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-    save: SaveDataV1,
-  ): void {
-    const pageHeader = hudText(this.scene, x + w / 2, y, 'TIER 9: ANIMAL CHRONICLES', 1, {
-      color: '#2d241e',
-      size: 16,
-      stroke: 0,
-      origin: [0.5, 0],
-    })
-    this.pageLayer.add(pageHeader)
-
-    const pageSub = hudText(this.scene, x + w / 2, y + 20, 'Unique Shark & Pig mutations rolled across your runs', 1, {
-      color: '#7c6a58',
-      size: 10.5,
-      stroke: 0,
-      origin: [0.5, 0],
-      shadow: false,
-    })
-    this.pageLayer.add(pageSub)
-
-    const gridTopY = y + 44
-    const cols = 2
-    const rows = 4
-    const cellW = (w - 12) / cols
-    const cellH = Math.min(84, (h - 56) / rows)
-
-    for (let i = 0; i < VARIANT_COUNT; i++) {
-      const col = i % cols
-      const row = Math.floor(i / cols)
-      const cx = x + col * (cellW + 12)
-      const cy = gridTopY + row * (cellH + 6)
-
-      const key = `9:${i}`
-      const isGot = save.variants[key] != null
-      const isShark = i < 4 // Half shark, half pig representation
-      const themeLabel = isShark ? 'SHARK' : 'PIG'
-
-      const g = this.scene.add.graphics()
-      this.pageLayer.add(g)
-
-      // Card frame
-      g.fillStyle(isGot ? 0xfffcf5 : 0xede4d1, 0.95)
-      g.fillRoundedRect(cx, cy, cellW, cellH, 8)
-      g.lineStyle(1.5, isGot ? 0xdb2777 : 0xc7b491, isGot ? 0.7 : 0.4)
-      g.strokeRoundedRect(cx, cy, cellW, cellH, 8)
-
-      // Ball preview
-      const ballR = Math.min(20, cellH * 0.28)
-      const ballCx = cx + cellW * 0.26
-      const ballCy = cy + cellH / 2
-
-      const ballG = this.scene.add.graphics()
-      this.pageLayer.add(ballG)
-
-      if (isGot) {
-        const renderT9 = () => {
-          ballG.clear()
-          if (isShark) {
-            drawSharkBall(ballG, ballCx, ballCy, ballR, i, undefined, 0, undefined, 9 * 7717 + i)
-          } else {
-            drawPigBall(ballG, ballCx, ballCy, ballR, i - 4, undefined, 0, undefined, 9 * 7717 + i)
-          }
-        }
-        renderT9()
-        this.liveBalls.push({ g: ballG, renderFn: renderT9 })
-
-        // Discovery stamp
-        this.drawInkStamp(cx + cellW - 24, cy + 18, 'LOGGED', 0x9d174d, 0.12)
-      } else {
-        this.drawLockedSilhouette(ballG, ballCx, ballCy, ballR, 9)
-      }
-
-      // Title & label
-      const name = isGot ? `${themeLabel} #${(i % 4) + 1}` : `SPECIES #${i + 1}`
-      const title = hudText(this.scene, cx + cellW * 0.52, cy + cellH / 2 - 8, name, 1, {
-        color: isGot ? '#1e1b18' : '#7a6f62',
-        size: 11.5,
-        stroke: 0,
-        origin: [0, 0.5],
-      })
-      this.pageLayer.add(title)
-
-      const status = hudText(
-        this.scene,
-        cx + cellW * 0.52,
-        cy + cellH / 2 + 10,
-        isGot ? 'COLLECTED' : 'Mystery Seed',
-        1,
-        {
-          color: isGot ? '#b45309' : '#8c7d6b',
-          size: 9.5,
-          stroke: 0,
-          origin: [0, 0.5],
-          shadow: false,
-        },
-      )
-      this.pageLayer.add(status)
-    }
-  }
-
-  /**
-   * PAGE 3: Tier 10 Crab Sanctum with live claws, pincers, and walking leg animations.
-   */
-  private renderTier10CrabsPage(
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-    save: SaveDataV1,
-  ): void {
-    const pageHeader = hudText(this.scene, x + w / 2, y, 'TIER 10: CRAB ALCOVE', 1, {
-      color: '#2d241e',
-      size: 16,
-      stroke: 0,
-      origin: [0.5, 0],
-    })
-    this.pageLayer.add(pageHeader)
-
-    const pageSub = hudText(this.scene, x + w / 2, y + 20, 'The mighty Clawed Crusher — sovereign of the high merges', 1, {
-      color: '#7c6a58',
-      size: 10.5,
-      stroke: 0,
-      origin: [0.5, 0],
-      shadow: false,
-    })
-    this.pageLayer.add(pageSub)
-
-    const isCrabDiscovered = save.discovered['10'] != null
-    const centerCardY = y + 46
-    const centerCardH = Math.min(220, h - 68)
-
-    const g = this.scene.add.graphics()
-    this.pageLayer.add(g)
-
-    // Center showcase paper card
-    g.fillStyle(isCrabDiscovered ? 0xfffcf5 : 0xede4d1, 0.95)
-    g.fillRoundedRect(x, centerCardY, w, centerCardH, 12)
-    g.lineStyle(2, isCrabDiscovered ? 0xc2410c : 0xc7b491, 0.8)
-    g.strokeRoundedRect(x, centerCardY, w, centerCardH, 12)
-
-    const ballCx = x + w / 2
-    const ballCy = centerCardY + centerCardH * 0.42
-    const ballR = Math.min(48, centerCardH * 0.24)
-
-    const crabG = this.scene.add.graphics()
-    this.pageLayer.add(crabG)
-
-    if (isCrabDiscovered) {
-      const renderCrab = () => {
-        crabG.clear()
-        drawCrabBall(crabG, ballCx, ballCy, ballR, 0, undefined, 0, undefined, 1010)
-      }
-      renderCrab()
-      this.liveBalls.push({ g: crabG, renderFn: renderCrab })
-
-      // Official discovery seal
-      this.drawInkStamp(x + w - 48, centerCardY + 44, 'COLLECTED', 0xc2410c, -0.15)
-    } else {
-      this.drawLockedSilhouette(crabG, ballCx, ballCy, ballR, 10)
-    }
-
-    const crabTitle = hudText(
-      this.scene,
-      x + w / 2,
-      centerCardY + centerCardH * 0.74,
-      isCrabDiscovered ? 'CRAB (THEME 10)' : 'UNIDENTIFIED PINCH CRAB',
-      1,
-      {
-        color: isCrabDiscovered ? '#1e1b18' : '#7a6f62',
-        size: 15,
-        stroke: 0,
-        origin: [0.5, 0.5],
-      },
-    )
-    this.pageLayer.add(crabTitle)
-
-    const crabDesc = hudText(
-      this.scene,
-      x + w / 2,
-      centerCardY + centerCardH * 0.88,
-      isCrabDiscovered ? 'Pincers armed and ready. Merged from two Tier 9 beasts.' : 'Merge two Tier 9 animals to reveal the apex crustacean.',
-      1,
-      {
-        color: isCrabDiscovered ? '#c2410c' : '#8c7d6b',
-        size: 11,
-        stroke: 0,
-        origin: [0.5, 0.5],
-        shadow: false,
-      },
-    )
-    this.pageLayer.add(crabDesc)
-  }
-
-  /**
-   * PAGE 4: Mythic Tiers 11 & 12 secret silhouettes and discovery entries.
-   */
-  private renderMythicPage(
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-    save: SaveDataV1,
-  ): void {
-    const pageHeader = hudText(this.scene, x + w / 2, y, 'MYTHIC & FINAL SECRETS', 1, {
-      color: '#2d241e',
-      size: 16,
-      stroke: 0,
-      origin: [0.5, 0],
-    })
-    this.pageLayer.add(pageHeader)
-
-    const pageSub = hudText(this.scene, x + w / 2, y + 20, 'The legendary heights of the Ball Rush merge universe', 1, {
-      color: '#7c6a58',
-      size: 10.5,
-      stroke: 0,
-      origin: [0.5, 0],
-      shadow: false,
-    })
-    this.pageLayer.add(pageSub)
-
-    const tiers = [11, 12]
-    const cardH = Math.min(130, (h - 58) / 2)
-
-    tiers.forEach((tier, index) => {
-      const cardY = y + 46 + index * (cardH + 12)
-      const isGot = save.discovered[String(tier)] != null
-
-      const g = this.scene.add.graphics()
-      this.pageLayer.add(g)
-
-      g.fillStyle(isGot ? 0xfffcf5 : 0xede4d1, 0.95)
-      g.fillRoundedRect(x, cardY, w, cardH, 12)
-      g.lineStyle(2, isGot ? 0x7c3aed : 0xc7b491, 0.7)
-      g.strokeRoundedRect(x, cardY, w, cardH, 12)
-
-      const ballCx = x + 44
-      const ballCy = cardY + cardH / 2
-      const ballR = 26
-
-      const ballG = this.scene.add.graphics()
-      this.pageLayer.add(ballG)
-
-      if (isGot) {
-        const renderMythic = () => {
-          ballG.clear()
-          const look = ballLookFor(tier, tier * 9991)
-          const poly = restContour(look, ballR, ballCx, ballCy, 32)
-          const pts = poly.map((p) => new Phaser.Math.Vector2(p.x, p.y))
-
-          // Radiant aura
-          ballG.fillStyle(0x7c3aed, 0.2)
-          ballG.fillCircle(ballCx, ballCy, ballR * 1.3)
-
-          ballG.fillStyle(0x18181b, 1)
-          ballG.fillPoints(pts, true)
-          ballG.lineStyle(ballOutlineWidth(ballR), 0xa855f7, 1)
-          ballG.strokePoints(pts, true, true)
-          drawBallFace(ballG, look, { x: ballCx, y: ballCy }, ballR, 1)
-        }
-        renderMythic()
-        this.liveBalls.push({ g: ballG, renderFn: renderMythic })
-        this.drawInkStamp(x + w - 44, cardY + cardH / 2, 'LEGEND', 0x6d28d9, 0.1)
-      } else {
-        this.drawLockedSilhouette(ballG, ballCx, ballCy, ballR, tier)
-      }
-
-      const label = tier === 12 ? 'TIER 12: THE FINAL SECRET' : 'TIER 11: COSMIC BEACON'
-      const title = hudText(this.scene, ballCx + ballR + 16, cardY + 24, label, 1, {
-        color: isGot ? '#1e1b18' : '#7a6f62',
-        size: 13.5,
-        stroke: 0,
-        origin: [0, 0],
-      })
-      this.pageLayer.add(title)
-
-      const desc = hudText(
-        this.scene,
-        ballCx + ballR + 16,
-        cardY + 48,
-        isGot ? 'Uncovered and engraved in the royal hall of fame.' : 'Surpass all known limits to unlock this cosmic mystery.',
-        1,
-        {
-          color: isGot ? '#7c3aed' : '#8c7d6b',
-          size: 11,
-          stroke: 0,
-          origin: [0, 0],
-          shadow: false,
-        },
-      )
-      this.pageLayer.add(desc)
-    })
-  }
-
-  /**
-   * Renders a mystery locked silhouette with a rough hand-drawn pencil/ink look.
-   * Strictly zero emojis: uses clean cartoon typography and sketch hatching.
-   */
-  private drawLockedSilhouette(
-    g: Phaser.GameObjects.Graphics,
-    cx: number,
-    cy: number,
-    r: number,
-    tier: number,
-  ): void {
-    // Soft pencil sketch background disc
-    g.fillStyle(0xd5c9b0, 0.6)
-    g.fillCircle(cx, cy, r)
-
-    // Hand-drawn sketchy contour
-    g.lineStyle(1.5, 0x82735f, 0.75)
-    g.strokeCircle(cx, cy, r)
-    g.lineStyle(1.0, 0x5e5241, 0.5)
-    g.strokeCircle(cx + 0.5, cy - 0.5, r - 1.5)
-
-    // Rough sketch hatch marks across silhouette
-    g.lineStyle(1, 0x82735f, 0.35)
-    for (let i = -r * 0.6; i <= r * 0.6; i += 5) {
-      const len = Math.sqrt(Math.max(0, r * r - i * i)) * 0.7
-      g.lineBetween(cx + i - len * 0.4, cy + i - len * 0.4, cx + i + len * 0.4, cy + i + len * 0.4)
-    }
-
-    // Clean Roman numeral or tier watermark inside the sketched ball
-    const numStr = `T${tier}`
-    const label = hudText(this.scene, cx, cy, numStr, 1, {
-      color: '#716353',
-      size: Math.max(10, r * 0.75),
-      stroke: 0,
-      origin: [0.5, 0.5],
-      shadow: false,
-    })
-    this.pageLayer.add(label)
-  }
-
-  /**
-   * Renders a tilted rubber ink stamp with authentic ink bleed and rim.
-   */
-  private drawInkStamp(
-    cx: number,
-    cy: number,
-    text: string,
-    color: number,
-    angleRad = 0.08,
-  ): void {
-    const stampC = this.scene.add.container(cx, cy)
-    stampC.setRotation(angleRad)
-    this.pageLayer.add(stampC)
-
-    const g = this.scene.add.graphics()
-    stampC.add(g)
-
-    const sw = Math.max(54, text.length * 7.5 + 16)
-    const sh = 20
-
-    // Outer inked border
-    g.lineStyle(2, color, 0.75)
-    g.strokeRoundedRect(-sw / 2, -sh / 2, sw, sh, 5)
-
-    // Inner fine border
-    g.lineStyle(1, color, 0.4)
-    g.strokeRoundedRect(-sw / 2 + 2, -sh / 2 + 2, sw - 4, sh - 4, 3)
-
-    // Inked text
-    const colorHex = '#' + color.toString(16).padStart(6, '0')
-    const t = hudText(this.scene, 0, 0, text, 1, {
-      color: colorHex,
-      size: 9,
-      stroke: 0,
-      origin: [0.5, 0.5],
-      shadow: false,
-    })
-    t.setAlpha(0.85)
-    stampC.add(t)
-  }
-
-  /**
-   * Bottom page navigation with Uiverse tactile buttons and page indicator stamp.
-   */
-  private renderBottomNav(): void {
-    this.navContainer.removeAll(true)
-
-    const bookW = Math.min(500, this.vw * 0.94)
-    const bottomNavH = 56
-    const navY = this.vh - bottomNavH / 2 - 8
-    const btnW = Math.max(92, Math.min(124, this.vw * 0.28))
-    const btnH = 42
-
-    // Prev Button
-    const prevBtn = new ChunkyButton({
-      scene: this.scene,
-      x: this.vw / 2 - bookW / 2 + btnW / 2 + 8,
-      y: navY,
-      w: btnW,
-      h: btnH,
-      label: '< PREV',
-      fontSize: 13,
-      fill: UI_COLORS.BTN_BLUE,
-      disabled: this.currentPage === 0,
-      onClick: () => {
-        if (this.currentPage > 0) {
-          this.turnToPage(this.currentPage - 1, -1)
-        }
-      },
-    })
-    this.navContainer.add(prevBtn.container)
-
-    // Center Page Indicator Stamp
-    const pageLabels = ['CORE (T1-8)', 'T9 VARIANTS', 'T10 CRABS', 'MYTHIC']
-    const pageBadgeText = hudText(
-      this.scene,
-      this.vw / 2,
-      navY - 6,
-      `PAGE ${this.currentPage + 1} OF ${this.totalPages}`,
-      1,
-      {
-        color: '#ffffff',
-        size: 13,
-        stroke: 3,
-        origin: [0.5, 0.5],
-      },
-    )
-    this.navContainer.add(pageBadgeText)
-
-    const sectionTitleText = hudText(
-      this.scene,
-      this.vw / 2,
-      navY + 10,
-      pageLabels[this.currentPage] ?? '',
-      1,
-      {
-        color: UI_COLORS.TEXT_GOLD,
-        size: 11,
-        stroke: 2,
-        origin: [0.5, 0.5],
-      },
-    )
-    this.navContainer.add(sectionTitleText)
-
-    // Next Button
-    const nextBtn = new ChunkyButton({
-      scene: this.scene,
-      x: this.vw / 2 + bookW / 2 - btnW / 2 - 8,
-      y: navY,
-      w: btnW,
-      h: btnH,
-      label: 'NEXT >',
-      fontSize: 13,
-      fill: UI_COLORS.BTN_BLUE,
-      disabled: this.currentPage === this.totalPages - 1,
-      onClick: () => {
-        if (this.currentPage < this.totalPages - 1) {
-          this.turnToPage(this.currentPage + 1, 1)
-        }
-      },
-    })
-    this.navContainer.add(nextBtn.container)
+  private cancelSwipe(): void {
+    this.swipePointer = null
   }
 }

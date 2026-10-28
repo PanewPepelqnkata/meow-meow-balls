@@ -89,9 +89,9 @@ export class TitleScene extends Phaser.Scene {
   private backdropImg: Phaser.GameObjects.Image | null = null
   private panelLayer!: Phaser.GameObjects.Container
   private panelBackdrop!: Phaser.GameObjects.Graphics
-  /** Persistent panel chrome: backdrop + BACK button (never wiped). */
+  /** Panel chrome survives viewport rebuilds; each screen owns fresh content. */
   private panelContent!: Phaser.GameObjects.Container
-  /** Panel content rebuilt on every open (data may have changed). */
+  private collectionBook: CollectionBookView | null = null
   private cast: CastBall[] = []
   private logoC!: Phaser.GameObjects.Container
   private logoBaseY = 0
@@ -124,6 +124,8 @@ export class TitleScene extends Phaser.Scene {
   private screen: ScreenName = 'menu'
   private closed = false
   private resetArmed = 0
+  private resetArmTimer: number | null = null
+  private readonly pointerWorld = new Phaser.Math.Vector2()
   private offs: Array<() => void> = []
 
   constructor() {
@@ -132,11 +134,16 @@ export class TitleScene extends Phaser.Scene {
 
   /** HiDPI camera: zoom = display scale, centered on the CSS midpoint. */
   private applyDprCamera(): void {
-    const z = this.game.scale.displayScale.x
+    const z = this.game.scale.displayScale.x || 1
     const cssW = this.scale.width / z
     const cssH = this.scale.height / z
     this.cameras.main.setZoom(z)
     this.cameras.main.centerOn(cssW / 2, cssH / 2)
+  }
+
+  private onViewportResize(): void {
+    this.applyDprCamera()
+    this.buildAll()
   }
 
   create(): void {
@@ -145,7 +152,9 @@ export class TitleScene extends Phaser.Scene {
     // HiDPI camera setup; reapplied on resize (buildAll relayouts in CSS
     // coordinates — the camera handles the buffer scaling).
     this.applyDprCamera()
-    this.resetArmed = 0
+    this.disarmReset()
+    this.input.enabled = true
+    this.scene.bringToTop()
     // Phase 2.16.0: the menu owns the screen — the gameplay scenes are
     // COMPLETELY HIDDEN (not merely dimmed), so no second container / HUD
     // can ever show through. They keep running (input-gated), and are
@@ -167,11 +176,13 @@ export class TitleScene extends Phaser.Scene {
     this.buildAll()
     this.cameras.main.fadeIn(260, 8, 10, 20)
 
-    this.scale.on(Phaser.Scale.Events.RESIZE, this.applyDprCamera, this)
-    this.scale.on(Phaser.Scale.Events.RESIZE, this.buildAll, this)
+    // Native RESIZE can pair the old buffer with new CSS bounds; GameRoot emits this after both settle.
+    this.game.events.on('br:dpr', this.onViewportResize, this)
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      this.scale.off(Phaser.Scale.Events.RESIZE, this.applyDprCamera, this)
-      this.scale.off(Phaser.Scale.Events.RESIZE, this.buildAll, this)
+      this.closed = true
+      this.destroyCollectionBook()
+      this.disarmReset()
+      this.game.events.off('br:dpr', this.onViewportResize, this)
       for (const off of this.offs) off()
       this.offs.length = 0
       this.uiverseDom?.destroy()
@@ -255,12 +266,14 @@ export class TitleScene extends Phaser.Scene {
     if (this.playC) this.playC.setScale(1 + Math.sin(t * 2.6) * 0.022 + 0.022)
     // Uiverse buttons: the ball characters live (gaze at the pointer,
     // blink, egg expressions) — pointer in CSS px for the gaze.
-    if (this.uiverseDom) {
+    if (this.uiverseDom && this.screen === 'menu') {
       const p = this.input.activePointer
       const z = this.game.scale.displayScale.x || 1
       const cw = this.scale.width / z
       const ch = this.scale.height / z
-      const gaze = { x: (p.x - cw / 2) / (cw / 2), y: (p.y - ch / 2) / (ch / 2) }
+      // Pointer x/y are buffer pixels. The camera converts them back to the CSS-px layout.
+      const world = this.cameras.main.getWorldPoint(p.x, p.y, this.pointerWorld)
+      const gaze = { x: (world.x - cw / 2) / (cw / 2), y: (world.y - ch / 2) / (ch / 2) }
       this.uiverseDom.refresh(time, this.uiverseDom.currentSpecs(), gaze)
     }
   }
@@ -270,6 +283,9 @@ export class TitleScene extends Phaser.Scene {
   // -------------------------------------------------------------------------
 
   private buildAll(): void {
+    if (this.closed) return
+    this.disarmReset()
+    this.clearPanelContent()
     // HiDPI: the camera zooms by displayScale and frames the CSS-px region
     // (0,0)-(cssW,cssH), so the layout must be built in CSS px — the buffer
     // size divided by the display scale. At DPR 1 the two are identical.
@@ -284,9 +300,7 @@ export class TitleScene extends Phaser.Scene {
     this.backdropImg?.destroy()
     this.backdropImg = null
 
-    // Rebuild menu + panels from scratch (resize handler). The persistent
-    // panel chrome (backdrop, content container, BACK button) is detached —
-    // never destroyed — and re-added after the wipe.
+    // Detach the persistent panel backdrop and content container before rebuilding their siblings.
     this.panelLayer.remove(this.panelBackdrop)
     this.panelLayer.remove(this.panelContent)
     this.menuLayer.removeAll(true)
@@ -856,7 +870,7 @@ export class TitleScene extends Phaser.Scene {
     })
   }
 
-  /** PLAY (primary, pulsing) + the four nav buttons at explicit positions. */
+  /** PLAY (primary) + the three nav buttons at explicit CSS-px positions. */
   private buildPlayAndNav(
     vw: number,
     playY: number,
@@ -879,23 +893,30 @@ export class TitleScene extends Phaser.Scene {
     if (!this.uiverseDom) this.uiverseDom = new UiverseDomButtons(this)
     this.uiverseDom.build(specs)
     this.uiverseDom.setVisible(!this.closed && this.screen === 'menu')
-    // Invisible hit rects (above the canvas) drive press + hover — the DOM
-    // layer is click-transparent, CSS :hover can't fire on its own.
+    // Pointer-transparent DOM art mirrors these Phaser hit zones. No DOM click proxy is needed.
     specs.forEach((s, i) => {
-      const hit = this.add
-        .rectangle(s.x, s.y, s.w, s.h, 0xffffff, 0.001)
-        .setInteractive({ useHandCursor: true })
+      const hit = this.add.zone(s.x, s.y, s.w, s.h).setInteractive({ useHandCursor: true })
       this.menuLayer.add(hit)
+      let pressPointerId: number | null = null
       hit.on('pointerover', () => this.uiverseDom?.setHover(i, true))
-      hit.on('pointerout', () => {
+      hit.on('pointerout', (pointer: Phaser.Input.Pointer) => {
         this.uiverseDom?.setHover(i, false)
+        if (pressPointerId !== null && pressPointerId !== pointer.id) return
+        pressPointerId = null
         this.uiverseDom?.setPressed(i, false)
       })
-      hit.on('pointerdown', () => this.uiverseDom?.setPressed(i, true))
-      hit.on('pointerup', () => {
+      hit.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+        if (this.closed || this.screen !== 'menu' || pressPointerId !== null) return
+        pressPointerId = pointer.id
+        this.uiverseDom?.setPressed(i, true)
+      })
+      hit.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+        if (pressPointerId !== pointer.id) return
+        pressPointerId = null
         this.uiverseDom?.setPressed(i, false)
+        if (this.closed || this.screen !== 'menu') return
         if (i === 0) this.pressStart()
-        else this.openScreen(specs[i]!.screen)
+        else this.openScreen(s.screen)
       })
       this.menuRects.push({
         label: s.label,
@@ -944,6 +965,7 @@ export class TitleScene extends Phaser.Scene {
       shadow: false,
     })
     score.setPosition(cx - w * 0.2, cy)
+    score.setScale(Math.min(1, (w * 0.17) / Math.max(1, score.width)))
     this.menuLayer.add(score)
 
     const dot = hudText(this, 0, 0, '·', 1, {
@@ -956,7 +978,7 @@ export class TitleScene extends Phaser.Scene {
     dot.setPosition(cx + w * 0.02, cy)
     this.menuLayer.add(dot)
 
-    drawBallIcon(this, g, bestTier, cx + w * 0.13, cy, h * 0.3, { seed: 991 * bestTier })
+    drawBallIcon(this, g, bestTier, cx + w * 0.13, cy, h * 0.3, { seed: 991 * bestTier, layer: this.menuLayer })
     const tiers = hudText(this, 0, 0, `${got}/${TOTAL_TIERS}`, 1, {
       color: CREAM,
       size: Math.max(13, h * 0.5),
@@ -980,6 +1002,7 @@ export class TitleScene extends Phaser.Scene {
 
   private openScreen(screen: ScreenName): void {
     if (this.closed) return
+    if (screen !== this.screen) this.disarmReset()
     this.screen = screen
     this.applyScreenVisibility()
   }
@@ -990,12 +1013,8 @@ export class TitleScene extends Phaser.Scene {
     this.menuLayer.setVisible(isMenu)
     // The uiverse DOM layer mirrors the menu (hidden under any panel).
     this.uiverseDom?.setVisible(isMenu && !this.closed)
+    this.clearPanelContent()
     if (isMenu) return
-    // Rebuild the open panel's CONTENT fresh (data may have changed). Only
-    // the persistent BACK rect survives; screen-specific buttons (theme
-    // pickers, reset) re-register as they are created.
-    this.panelContent.removeAll(true)
-    this.panelRects.length = 0
     // HiDPI: CSS-px layout, matching buildAll (camera frames the CSS region).
     const z = this.game.scale.displayScale.x || 1
     const vw = this.scale.width / z
@@ -1003,8 +1022,8 @@ export class TitleScene extends Phaser.Scene {
 
     const subs: Partial<Record<ScreenName, string>> = {
       collection: 'COLLECTION ALBUM & DISCOVERY LOG',
-      leaderboard: 'YOUR TEN BEST RUNS & ACHIEVEMENTS',
-      settings: 'THEME, SOUND & SYSTEM PREFERENCES',
+      leaderboard: 'YOUR TEN BEST RUNS',
+      settings: 'BACKGROUND THEME & SAVED PROGRESS',
     }
 
     const titles: Partial<Record<ScreenName, string>> = {
@@ -1035,124 +1054,151 @@ export class TitleScene extends Phaser.Scene {
     }
   }
 
-// Removed buildJournal: integrated into CollectionBookView.
+  private destroyCollectionBook(): void {
+    this.collectionBook?.destroy()
+    this.collectionBook = null
+  }
+
+  private clearPanelContent(): void {
+    this.destroyCollectionBook()
+    this.panelContent.removeAll(true)
+    this.panelRects.length = 0
+  }
+
+  private disarmReset(): void {
+    this.resetArmed = 0
+    if (this.resetArmTimer !== null) window.clearTimeout(this.resetArmTimer)
+    this.resetArmTimer = null
+  }
 
   private buildLeaderboard(vw: number, vh: number, topY: number): void {
-    const save = loadSave()
-    const rows = save.leaderboard.slice(0, 10)
-    const cardW = Math.min(480, vw * 0.92)
-    const cardX = vw / 2 - cardW / 2
+    const rows = loadSave().leaderboard.slice(0, 10)
+    const safe = readSafeArea()
+    const left = Math.max(12, safe.left + 8)
+    const right = Math.max(12, safe.right + 8)
+    const centerX = (left + vw - right) / 2
+    const bodyY = topY + 8
+    const availableH = vh - Math.max(16, safe.bottom + 8) - bodyY
+    const columns = vw >= 700 && vh < 500 && rows.length > 5 ? 2 : 1
+    const listW = Math.min(columns === 2 ? 900 : 480, vw - left - right)
+    const columnGap = 16
+    const cardW = (listW - (columns - 1) * columnGap) / columns
+    const listX = centerX - listW / 2
+    const g = this.add.graphics()
+    this.panelContent.add(g)
 
     if (rows.length === 0) {
-      const emptyCard = this.add.graphics()
-      this.panelContent.add(emptyCard)
-      const emptyH = 120
-      const emptyY = topY + 40
-      emptyCard.fillStyle(UI_COLORS.CARD_BG, 1)
-      emptyCard.fillRoundedRect(cardX, emptyY, cardW, emptyH, 14)
-      emptyCard.lineStyle(2, UI_COLORS.CARD_BORDER, 1)
-      emptyCard.strokeRoundedRect(cardX, emptyY, cardW, emptyH, 14)
+      const emptyH = Math.min(144, availableH)
+      const emptyY = bodyY + Math.min(40, Math.max(0, (availableH - emptyH) / 3))
+      g.fillStyle(UI_COLORS.CARD_BG, 1)
+      g.fillRoundedRect(listX, emptyY, cardW, emptyH, 14)
+      g.lineStyle(2, UI_COLORS.CARD_BORDER, 1)
+      g.strokeRoundedRect(listX, emptyY, cardW, emptyH, 14)
 
-      const empty = hudText(this, vw / 2, emptyY + 44, 'NO RUNS RECORDED YET', 1, {
+      const empty = hudText(this, centerX, emptyY + 36, 'NO RUNS RECORDED YET', 1, {
         color: UI_COLORS.TEXT_GOLD,
         size: 16,
         stroke: 3,
         origin: [0.5, 0.5],
       })
+      empty.setScale(Math.min(1, (cardW - 32) / Math.max(1, empty.width)))
       this.panelContent.add(empty)
 
-      const emptySub = hudText(this, vw / 2, emptyY + 74, 'Play a game and merge balls to place on the leaderboard!', 1, {
+      const emptySub = hudText(this, centerX, emptyY + 64, 'Play a game and merge balls to place on the leaderboard!', 1, {
         color: UI_COLORS.TEXT_MUTED,
-        size: 12,
+        size: 13,
         stroke: 0,
-        origin: [0.5, 0.5],
+        origin: [0.5, 0],
         shadow: false,
       })
+      emptySub.setWordWrapWidth(cardW - 36, true).setAlign('center')
       this.panelContent.add(emptySub)
       return
     }
 
-    const availableH = vh - topY - 24
-    const rowH = Math.min(56, Math.max(42, availableH / Math.max(rows.length, 6)))
-    const g = this.add.graphics()
-    this.panelContent.add(g)
+    const rowsPerColumn = Math.ceil(rows.length / columns)
+    const rowGap = availableH < 500 ? 4 : 6
+    // Include every inter-row gap in the height budget; ten rows must never push below the safe area.
+    const rowH = Math.min(56, Math.floor((availableH - (rowsPerColumn - 1) * rowGap) / rowsPerColumn))
 
-    rows.forEach((e, i) => {
-      const y = topY + 10 + i * (rowH + 6)
+    rows.forEach((entry, i) => {
+      const column = Math.floor(i / rowsPerColumn)
+      const cardX = listX + column * (cardW + columnGap)
+      const y = bodyY + (i % rowsPerColumn) * (rowH + rowGap)
       const rank = i + 1
-
-      // Rank colors & medals
       const isTop3 = rank <= 3
       const rankBg = rank === 1 ? 0xffd93b : rank === 2 ? 0xc9d1e3 : rank === 3 ? 0xd08a4e : UI_COLORS.CARD_BG
-      const rankBorder = isTop3 ? UI_COLORS.INK : UI_COLORS.CARD_BORDER
-
-      // Row background
       g.fillStyle(rankBg, isTop3 ? 1 : 0.9)
       g.fillRoundedRect(cardX, y, cardW, rowH, 10)
-      g.lineStyle(2, rankBorder, 1)
+      g.lineStyle(2, isTop3 ? UI_COLORS.INK : UI_COLORS.CARD_BORDER, 1)
       g.strokeRoundedRect(cardX, y, cardW, rowH, 10)
 
-      // Rank text
-      const rankT = hudText(this, cardX + 32, y + rowH / 2, `#${rank}`, 1, {
-        color: isTop3 ? '#1a1a1a' : '#aeb4c9',
-        size: Math.round(rowH * 0.44),
+      const rankT = hudText(this, cardX + 26, y + rowH / 2, `#${rank}`, 1, {
+        color: isTop3 ? UI_COLORS.TEXT_DARK : '#aeb4c9',
+        size: Math.min(22, Math.round(rowH * 0.42)),
         stroke: isTop3 ? 0 : 2,
         origin: [0.5, 0.5],
         shadow: false,
       })
       this.panelContent.add(rankT)
 
-      // Signature Ball
-      const ballR = Math.min(18, rowH * 0.32)
-      drawBallIcon(this, g, Math.max(1, Math.min(12, e.bestTier)), cardX + 76, y + rowH / 2, ballR, {
-        seed: e.bestTier * 991,
+      const ballR = Math.min(18, rowH * 0.29)
+      drawBallIcon(this, g, Math.max(1, Math.min(BALL_TIERS.length, entry.bestTier)), cardX + 66, y + rowH / 2, ballR, {
+        seed: entry.bestTier * 991,
         layer: this.panelContent,
       })
 
-      // Score
-      const scoreT = hudText(this, cardX + 104, y + rowH / 2 - (rowH > 48 ? 6 : 0), `${e.score.toLocaleString()}`, 1, {
-        color: isTop3 ? '#1a1a1a' : '#ffffff',
-        size: Math.round(rowH * 0.44),
-        stroke: isTop3 ? 0 : 3,
-        origin: [0, 0.5],
-      })
-      this.panelContent.add(scoreT)
-
-      // Date / Timestamp
-      const whenStr = fmtDate(e.at)
-      const whenT = hudText(this, cardX + cardW - 16, y + rowH / 2, whenStr, 1, {
-        color: isTop3 ? '#2c2514' : '#8e9bb5',
+      const whenT = hudText(this, cardX + cardW - 12, y + rowH / 2, fmtDate(entry.at), 1, {
+        color: isTop3 ? '#2c2514' : UI_COLORS.TEXT_MUTED,
         size: 11,
         stroke: 0,
         origin: [1, 0.5],
         shadow: false,
       })
       this.panelContent.add(whenT)
+
+      const scoreX = cardX + 94
+      const scoreT = hudText(this, scoreX, y + rowH / 2, entry.score.toLocaleString('en-US'), 1, {
+        color: isTop3 ? UI_COLORS.TEXT_DARK : UI_COLORS.TEXT_WHITE,
+        size: Math.min(24, Math.round(rowH * 0.44)),
+        stroke: isTop3 ? 0 : 3,
+        origin: [0, 0.5],
+      })
+      const scoreMaxW = whenT.x - whenT.width - 12 - scoreX
+      scoreT.setScale(Math.min(1, scoreMaxW / Math.max(1, scoreT.width)))
+      this.panelContent.add(scoreT)
     })
   }
 
-  private buildSettings(vw: number, _vh: number, topY: number): void {
+  private buildSettings(vw: number, vh: number, topY: number): void {
+    if (this.resetArmed > 0 && Date.now() >= this.resetArmed) this.disarmReset()
     const save = loadSave()
-    const cardW = Math.min(480, vw * 0.92)
-    const cardX = vw / 2 - cardW / 2
-    let curY = topY + 10
-
+    const safe = readSafeArea()
+    const left = Math.max(12, safe.left + 8)
+    const right = Math.max(12, safe.right + 8)
+    const sideBySide = vw >= 700 && vh < 500
+    const contentW = Math.min(sideBySide ? 880 : 480, vw - left - right)
+    const contentX = left + (vw - left - right - contentW) / 2
+    const cardW = sideBySide ? (contentW - 16) / 2 : contentW
+    const themeX = contentX
+    const themeY = topY + 6
+    const themeCenterX = themeX + cardW / 2
+    const twoThemeRows = cardW < 420
+    const themeCardH = twoThemeRows ? 194 : 142
     const g = this.add.graphics()
     this.panelContent.add(g)
 
-    // 1. Theme Selection Card
-    const themeCardH = 148
     g.fillStyle(UI_COLORS.CARD_BG, 1)
-    g.fillRoundedRect(cardX, curY, cardW, themeCardH, 12)
+    g.fillRoundedRect(themeX, themeY, cardW, themeCardH, 12)
     g.lineStyle(2, UI_COLORS.CARD_BORDER, 1)
-    g.strokeRoundedRect(cardX, curY, cardW, themeCardH, 12)
-
-    const themeHead = hudText(this, vw / 2, curY + 22, 'BACKGROUND THEME', 1, {
+    g.strokeRoundedRect(themeX, themeY, cardW, themeCardH, 12)
+    const themeHead = hudText(this, themeCenterX, themeY + 22, 'BACKGROUND THEME', 1, {
       color: UI_COLORS.TEXT_GOLD,
       size: 15,
       stroke: 3,
       origin: [0.5, 0.5],
     })
+    themeHead.setScale(Math.min(1, (cardW - 24) / Math.max(1, themeHead.width)))
     this.panelContent.add(themeHead)
 
     const themes: Array<{ key: 'auto' | ThemeName; label: string }> = [
@@ -1162,163 +1208,170 @@ export class TitleScene extends Phaser.Scene {
       { key: 'jungle', label: 'JUNGLE' },
       { key: 'fantasy', label: 'FANTASY' },
     ]
+    const columns = twoThemeRows ? 3 : themes.length
+    const btnGap = 8
+    const bw = Math.floor((cardW - 24 - (columns - 1) * btnGap) / columns)
+    const bh = 44
 
-    const btnSpacing = 8
-    const totalBtnW = cardW - 24
-    const bw = Math.floor((totalBtnW - (themes.length - 1) * btnSpacing) / themes.length)
-    const btnStartX = cardX + 12 + bw / 2
-    const btnY = curY + 68
-
-    themes.forEach((t, ti) => {
-      const selected = save.settings.theme === t.key
-      const bx = btnStartX + ti * (bw + btnSpacing)
-
+    themes.forEach((theme, i) => {
+      const row = twoThemeRows && i >= 3 ? 1 : 0
+      const column = row === 1 ? i - 3 : i
+      const rowCount = row === 1 ? 2 : columns
+      const rowW = rowCount * bw + (rowCount - 1) * btnGap
+      const bx = themeCenterX - rowW / 2 + bw / 2 + column * (bw + btnGap)
+      const by = themeY + 66 + row * 52
+      const selected = save.settings.theme === theme.key
       const btn = new ChunkyButton({
         scene: this,
         x: bx,
-        y: btnY,
+        y: by,
         w: bw,
-        h: 40,
+        h: bh,
         pill: true,
         fill: selected ? UI_COLORS.BTN_BLUE : UI_COLORS.CARD_BG,
         shadowColor: selected ? UI_COLORS.BTN_BLUE_SHADOW : 0x0f1422,
         highlightColor: selected ? UI_COLORS.BTN_BLUE_HIGHLIGHT : 0x2b3555,
-        label: t.label,
-        fontSize: Math.max(10, Math.min(13, bw * 0.28)),
+        label: theme.label,
+        fontSize: 13,
         onClick: () => {
-          setThemeSetting(t.key)
+          this.disarmReset()
+          setThemeSetting(theme.key)
           const bg = this.scene.get('BackgroundScene') as BackgroundScene | undefined
-          if (bg) {
-            if (t.key === 'auto') bg.resetTheme()
-            else bg.setTheme(t.key as ThemeName, 400)
-          }
+          // AUTO starts at light, then follows discoveries; resetTheme intentionally leaves portrait unchanged.
+          bg?.setTheme(theme.key === 'auto' ? 'light' : theme.key, 400)
           this.applyScreenVisibility()
         },
       })
       this.panelContent.add(btn.container)
-
       this.panelRects.push({
-        label: `THEME_${t.key.toUpperCase()}`,
+        label: `THEME_${theme.key.toUpperCase()}`,
         x: bx - bw / 2,
-        y: btnY - 20,
+        y: by - bh / 2,
         w: bw,
-        h: 40,
+        h: bh,
         screen: 'settings',
       })
     })
 
-    const note = hudText(this, vw / 2, curY + 118, 'AUTO changes theme automatically as you reach higher tiers', 1, {
+    const note = hudText(this, themeCenterX, themeY + (twoThemeRows ? 156 : 104), 'AUTO follows discoveries during a run.\nFixed themes stay selected after reload.', 1, {
       color: UI_COLORS.TEXT_MUTED,
       size: 11,
       stroke: 0,
-      origin: [0.5, 0.5],
+      origin: [0.5, 0],
       shadow: false,
     })
+    note.setWordWrapWidth(cardW - 32, true).setAlign('center')
     this.panelContent.add(note)
-    curY += themeCardH + 16
 
-    // 2. Lifetime Stats Card
-    const statsCardH = 100
+    const statsX = sideBySide ? contentX + cardW + 16 : contentX
+    const statsY = sideBySide ? themeY : themeY + themeCardH + 14
+    const statsCenterX = statsX + cardW / 2
+    const statsCardH = 94
     g.fillStyle(UI_COLORS.CARD_BG, 1)
-    g.fillRoundedRect(cardX, curY, cardW, statsCardH, 12)
+    g.fillRoundedRect(statsX, statsY, cardW, statsCardH, 12)
     g.lineStyle(2, UI_COLORS.CARD_BORDER, 1)
-    g.strokeRoundedRect(cardX, curY, cardW, statsCardH, 12)
-
-    const statsHead = hudText(this, vw / 2, curY + 22, 'CAREER HIGHLIGHTS', 1, {
+    g.strokeRoundedRect(statsX, statsY, cardW, statsCardH, 12)
+    const statsHead = hudText(this, statsCenterX, statsY + 22, 'CAREER HIGHLIGHTS', 1, {
       color: UI_COLORS.TEXT_GOLD,
       size: 15,
       stroke: 3,
       origin: [0.5, 0.5],
     })
+    statsHead.setScale(Math.min(1, (cardW - 24) / Math.max(1, statsHead.width)))
     this.panelContent.add(statsHead)
 
     const stats = save.stats
     const statCols = [
-      { label: 'TOTAL RUNS', val: `${stats.runs}` },
-      { label: 'TOTAL MERGES', val: `${stats.merges}` },
-      { label: 'BEST TIER', val: `T${stats.bestTier || 1}` },
+      { label: 'TOTAL RUNS', val: stats.runs.toLocaleString('en-US') },
+      { label: 'TOTAL MERGES', val: stats.merges.toLocaleString('en-US') },
+      { label: 'BEST TIER', val: stats.bestTier > 0 ? `T${stats.bestTier}` : '-' },
     ]
-    const colW = cardW / 3
-    statCols.forEach((col, ci) => {
-      const cx = cardX + colW * (ci + 0.5)
-      const valT = hudText(this, cx, curY + 54, col.val, 1, {
+    const colW = cardW / statCols.length
+    statCols.forEach((col, i) => {
+      const cx = statsX + colW * (i + 0.5)
+      const value = hudText(this, cx, statsY + 52, col.val, 1, {
         color: UI_COLORS.TEXT_WHITE,
         size: 18,
         stroke: 3,
         origin: [0.5, 0.5],
       })
-      this.panelContent.add(valT)
-
-      const lblT = hudText(this, cx, curY + 76, col.label, 1, {
+      value.setScale(Math.min(1, (colW - 12) / Math.max(1, value.width)))
+      this.panelContent.add(value)
+      const label = hudText(this, cx, statsY + 76, col.label, 1, {
         color: UI_COLORS.TEXT_MUTED,
         size: 10,
         stroke: 0,
         origin: [0.5, 0.5],
         shadow: false,
       })
-      this.panelContent.add(lblT)
+      label.setScale(Math.min(1, (colW - 12) / Math.max(1, label.width)))
+      this.panelContent.add(label)
     })
-    curY += statsCardH + 18
 
-    // 3. Danger Zone / Reset
+    const resetY = statsY + statsCardH + 18
     const resetBtnW = Math.min(280, cardW - 32)
-    const resetBtnH = 46
+    const resetBtnH = 44
+    const armed = this.resetArmed > Date.now()
     const resetBtn = new ChunkyButton({
       scene: this,
-      x: vw / 2,
-      y: curY + resetBtnH / 2,
+      x: statsCenterX,
+      y: resetY + resetBtnH / 2,
       w: resetBtnW,
       h: resetBtnH,
       pill: true,
-      fill: this.resetArmed > 0 ? UI_COLORS.BTN_RED : UI_COLORS.CARD_BG,
-      shadowColor: this.resetArmed > 0 ? UI_COLORS.BTN_RED_SHADOW : 0x0f1422,
-      highlightColor: this.resetArmed > 0 ? UI_COLORS.BTN_RED_HIGHLIGHT : 0x2b3555,
-      label: this.resetArmed > 0 ? 'TAP AGAIN TO CONFIRM' : 'RESET PROGRESS',
+      fill: armed ? UI_COLORS.BTN_RED : UI_COLORS.CARD_BG,
+      shadowColor: armed ? UI_COLORS.BTN_RED_SHADOW : 0x0f1422,
+      highlightColor: armed ? UI_COLORS.BTN_RED_HIGHLIGHT : 0x2b3555,
+      label: armed ? 'TAP AGAIN TO CONFIRM' : 'RESET PROGRESS',
       fontSize: 13,
       onClick: () => {
-        const now = Date.now()
-        if (this.resetArmed > 0 && now - this.resetArmed < 4000) {
+        if (this.resetArmed > Date.now()) {
+          this.disarmReset()
           resetSave()
-          this.resetArmed = 0
+          this.registry.set('best', 0)
+          gameBus.emit('state:best', { best: 0 })
           const bg = this.scene.get('BackgroundScene') as BackgroundScene | undefined
-          bg?.resetTheme()
-          this.applyScreenVisibility()
+          bg?.setTheme('light', 400)
+          // Rebuild the hidden home stats as well as the visible Settings panel.
+          this.buildAll()
         } else {
-          this.resetArmed = now
+          this.disarmReset()
+          this.resetArmed = Date.now() + 4000
+          this.resetArmTimer = window.setTimeout(() => {
+            this.resetArmTimer = null
+            this.resetArmed = 0
+            if (!this.closed && this.screen === 'settings') this.applyScreenVisibility()
+          }, 4000)
           this.applyScreenVisibility()
         }
       },
     })
     this.panelContent.add(resetBtn.container)
-
     this.panelRects.push({
       label: 'RESET',
-      x: vw / 2 - resetBtnW / 2,
-      y: curY,
+      x: statsCenterX - resetBtnW / 2,
+      y: resetY,
       w: resetBtnW,
       h: resetBtnH,
       screen: 'settings',
     })
 
-    const wipe = hudText(
-      this,
-      vw / 2,
-      curY + resetBtnH + 16,
-      'Clears best score, collection, leaderboard and stats.',
-      1,
-      {
-        color: '#6b7896',
+    const wipe = hudText(this, statsCenterX, resetY + resetBtnH + 16,
+      armed
+        ? 'Tap again within 4 seconds to erase progress.\nLeaving this screen cancels confirmation.'
+        : 'Clears scores, collection, run history and stats.\nRestores AUTO theme. This cannot be undone.', 1, {
+        color: UI_COLORS.TEXT_MUTED,
         size: 11,
         stroke: 0,
-        origin: [0.5, 0.5],
+        origin: [0.5, 0],
         shadow: false,
-      },
-    )
+      })
+    wipe.setWordWrapWidth(cardW - 24, true).setAlign('center')
     this.panelContent.add(wipe)
   }
 
   private buildCollection(vw: number, vh: number, topY: number): void {
-    new CollectionBookView(this, this.panelContent, vw, vh, topY)
+    this.collectionBook = new CollectionBookView(this, this.panelContent, vw, vh, topY)
   }
 
   // -------------------------------------------------------------------------
@@ -1403,6 +1456,9 @@ export class TitleScene extends Phaser.Scene {
   private pressStart(): void {
     if (this.closed) return
     this.closed = true
+    this.destroyCollectionBook()
+    this.disarmReset()
+    this.input.enabled = false
     this.uiverseDom?.setVisible(false)
     session.menuActive = false
     // Phase 2.22: portrait phones route through the start-intro scene —
@@ -1441,7 +1497,7 @@ export class TitleScene extends Phaser.Scene {
 // ---------------------------------------------------------------------------
 
 function fmtDate(at: number): string {
-  return new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  return new Date(at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 /** Rounded-rect path on a 2D canvas context (manual — ctx.roundRect is
@@ -1506,20 +1562,19 @@ export function drawBallIcon(
 ): void {
   const t = getTier(tier)
   if (!t) return
+  if (!opts.silhouette && (tier === 9 || tier === 10)) {
+    // Claws and fins must fit the same icon slot as an ordinary ball.
+    const iconR = r / (tier === 10 ? 2.6 : 1.5)
+    drawCollectibleBall(g, cx, cy, iconR, tier, opts.variant ?? variantIdFor(tier), undefined, 0, undefined, opts.seed ?? tier)
+    return
+  }
   const look = ballLookFor(tier, opts.seed ?? 7)
   const poly = restContour(look, r, cx, cy, 32)
   const pts = poly.map((p) => new Phaser.Math.Vector2(p.x, p.y))
-  const variant = opts.variant != null ? opts.variant : null
 
-  if (opts.silhouette || tier >= 10) {
+  if (opts.silhouette || tier >= 11) {
     g.fillStyle(0x23242e, 1)
     g.fillPoints(pts, true)
-  } else if (tier === 9) {
-    // The theme ball paints its own face — part of the design. The run's
-    // theme roll (shark/pig) picks the renderer; the variant picks the
-    // palette within the theme.
-    drawCollectibleBall(g, cx, cy, r, tier, variant ?? variantIdFor(tier), poly, 0, undefined, 9)
-    return
   } else {
     // Tier 8 is a plain ball whose colour cycles; the body fills the
     // CONTOUR (so it matches its ink outline) in the current cycle colour.
@@ -1530,7 +1585,7 @@ export function drawBallIcon(
   g.lineStyle(ballOutlineWidth(r), INK, 1)
   g.strokePoints(pts, true, true)
 
-  if (opts.silhouette || tier >= 10) {
+  if (opts.silhouette || tier >= 11) {
     // The undiscovered state: a '?' where the face would be. hudText adds
     // to the scene — reparent into the caller's layer so screen switches
     // destroy it with the rest of the panel content.
