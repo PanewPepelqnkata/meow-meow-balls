@@ -276,7 +276,7 @@ export class GameOverView {
 
     if (isNewBest) {
       const banner = scene.add
-        .text(0, bestY - 44 * scale, '★ NEW BEST! ★', {
+        .text(0, bestY - 44 * scale, 'NEW BEST!', {
           fontFamily: FONT_FAMILY,
           fontSize: `${Math.round(32 * scale)}px`,
           color: NEW_BEST_COLOR,

@@ -226,9 +226,9 @@ export class UiverseDomButtons {
       // The base size scales with the pill height (the game's play-label
       // ratio h*0.34) — a 72px pill gets ~24px text, a 49px nav ~16px.
       const base = Math.floor(s.h * 0.34)
-      const avail = s.w - charSize - 44
+      const avail = s.w - charSize - 16
       const wBase = UiverseDomButtons.textWidth(s.label, base)
-      return wBase <= avail ? base : Math.max(14, Math.floor((base * avail) / wBase))
+      return wBase <= avail ? base : Math.max(10, Math.floor((base * avail) / wBase))
     }
     const byH = new Map<number, { spec: UiverseSpec; charSize: number; btn: DomButton }[]>()
     for (let i = 0; i < specs.length; i++) {

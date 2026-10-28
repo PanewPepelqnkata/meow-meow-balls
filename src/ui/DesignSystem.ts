@@ -1,5 +1,6 @@
 import Phaser from 'phaser'
 import { hudText } from './Typography'
+import { drawLucide } from './LucideIcon'
 
 /**
  * Ball Rush Unified UI Design System & Tokens.
@@ -56,6 +57,7 @@ export interface ChunkyButtonOptions {
   fill?: number
   shadowColor?: number
   highlightColor?: number
+  pill?: boolean
   textColor?: string
   fontSize?: number
   disabled?: boolean
@@ -99,6 +101,17 @@ export class ChunkyButton {
     if (options.icon) {
       this.iconG = scene.add.graphics()
       this.container.add(this.iconG)
+    }
+
+    // Position label and icon side-by-side if both exist
+    if (this.labelText && this.iconG && options.label) {
+      const iconSize = options.iconSize ?? Math.round(h * 0.45)
+      const gap = 6
+      const labelW = this.labelText.width
+      const totalW = iconSize + gap + labelW
+      this.iconG.setX(-totalW / 2 + iconSize / 2)
+      this.labelText.setOrigin(0, 0.5)
+      this.labelText.setX(-totalW / 2 + iconSize + gap)
     }
 
     this.hitZone = scene.add.zone(0, 0, w, h).setInteractive({ useHandCursor: !options.disabled })
@@ -148,13 +161,13 @@ export class ChunkyButton {
 
     this.bg.clear()
 
-    const cornerR = Math.min(12, h * 0.28)
-    const slabH = this.isPressed ? 1 : 4
+    const cornerR = this.options.pill ? h / 2 : Math.min(16, h * 0.32)
+    const slabH = this.isPressed ? 1 : 5
     const offsetY = this.isPressed ? 3 : 0
 
-    // Outline / Drop slab
+    // Outline / Drop slab (tactile 3D bottom drop)
     this.bg.fillStyle(UI_COLORS.INK, 1)
-    this.bg.fillRoundedRect(-w / 2 - 2, -h / 2 + 2 - 2 + slabH, w + 4, h + 4, cornerR + 2)
+    this.bg.fillRoundedRect(-w / 2 - 2, -h / 2 + 1 + slabH, w + 4, h + 3, cornerR)
 
     // Side 3D extrusion slab
     this.bg.fillStyle(shadow, 1)
@@ -164,10 +177,11 @@ export class ChunkyButton {
     this.bg.fillStyle(fill, 1)
     this.bg.fillRoundedRect(-w / 2, -h / 2 + offsetY, w, h - 2, cornerR)
 
-    // Top highlight pill
+    // Top highlight pill (specular gloss)
     if (!this.isPressed && !disabled) {
       this.bg.fillStyle(highlight, 0.4)
-      this.bg.fillRoundedRect(-w / 2 + 4, -h / 2 + 3, w - 8, Math.max(3, h * 0.22), cornerR * 0.6)
+      const hlInset = this.options.pill ? 12 : 6
+      this.bg.fillRoundedRect(-w / 2 + hlInset, -h / 2 + 3 + offsetY, w - hlInset * 2, Math.max(3, h * 0.2), cornerR * 0.5)
     }
 
     // Border ink line
@@ -213,7 +227,7 @@ export function buildScreenHeader(
   const { vw, vh, title, subtitle, onBack, rectsCollector } = opts
 
   const topMargin = Math.max(28, Math.round(vh * 0.055))
-  const backW = Math.min(100, Math.max(84, Math.round(vw * 0.22)))
+  const backW = Math.min(110, Math.max(90, Math.round(vw * 0.24)))
   const backH = 40
   const backX = Math.round(backW / 2 + Math.max(16, vw * 0.05))
   const backY = topMargin + backH / 2
@@ -224,8 +238,13 @@ export function buildScreenHeader(
     w: backW,
     h: backH,
     label: 'BACK',
-    fontSize: 14,
+    icon: (g, cx, cy, s) => drawLucide(g, 'arrow-left', cx, cy, s, 0xffffff, 2.5),
+    iconSize: 18,
+    fontSize: 13,
+    pill: true,
     fill: UI_COLORS.BTN_BLUE,
+    shadowColor: UI_COLORS.BTN_BLUE_SHADOW,
+    highlightColor: UI_COLORS.BTN_BLUE_HIGHLIGHT,
     onClick: onBack,
   })
   parentContainer.add(backBtn.container)

@@ -43,9 +43,9 @@ import { CollectionBookView } from '../rendering/CollectionBookView'
  *     hand-drawn (RoughJS) outlines — gently bobbing; the star gumball
  *     blinks.
  *   · A large, pulsing PLAY button below the machine (the primary action).
- *   · LEADERBOARD / JOURNAL / COLLECTION / SETTINGS as chunky outlined
- *     CartoonButtons — a 2×2 grid in portrait, a bottom row in landscape.
- *   · A compact stats chip: lifetime best score + discovered tiers.
+ * · LEADERBOARD / COLLECTION / SETTINGS as chunky outlined Uiverse buttons
+ *   balanced cleanly below PLAY.
+ * · A compact stats chip: lifetime best score + discovered tiers.
  *
  * The composition adapts intentionally: portrait (vw ≤ vh or narrow) is a
  * centered flow (logo → machine → PLAY → grid → stats chip); landscape
@@ -55,12 +55,9 @@ import { CollectionBookView } from '../rendering/CollectionBookView'
  * 1728×864.
  *
  *   PLAY         → reveal gameplay + fade-out, input unlocks ('ui:start').
- *   LEADERBOARD  → lifetime top runs (persisted save).
- *   JOURNAL      → the DISCOVERY LOG: every ball look met, with dates.
- *   COLLECTION   → the COLLECTED gallery: tier cards + the rare
- *                  randomized tier 9 variant hunt.
- *   SETTINGS     → theme (auto/fixed) + reset progress.
- *
+ * LEADERBOARD -> lifetime top runs (persisted save).
+ * COLLECTION -> physical book album with core tiers, variants, stamps & dates.
+ * SETTINGS -> theme (auto/fixed) + reset progress.
  * Restarts never re-show the menu: this scene launches once per game boot
  * and stops itself for good when PLAY is pressed.
  * `?fastboot=1` (dev-only) never launches this scene.
@@ -68,7 +65,7 @@ import { CollectionBookView } from '../rendering/CollectionBookView'
 
 const CREAM = '#fff6e0'
 const YELLOW = '#ffeb3b'
-type ScreenName = 'menu' | 'journal' | 'leaderboard' | 'settings' | 'collection'
+type ScreenName = 'menu' | 'leaderboard' | 'settings' | 'collection'
 
 interface CastBall {
   c: Phaser.GameObjects.Container
@@ -384,19 +381,18 @@ export class TitleScene extends Phaser.Scene {
       ? Math.round(Math.max(200, Math.min(340, vw * 0.72)))
       : Math.round(Math.max(220, Math.min(380, vw * 0.3)))
     const navH = portrait
-      ? Math.round(Math.max(40, Math.min(56, vh * 0.058)))
+      ? Math.round(Math.max(38, Math.min(50, vh * 0.054)))
       : Math.round(Math.max(44, Math.min(58, vh * 0.062)))
+    const navGap = portrait ? 8 : 14
     const navW = portrait
-      ? Math.round(Math.max(122, Math.min(215, (vw - 3 * m) / 2)))
-      : Math.round(Math.max(150, Math.min(232, (vw - 2 * m - 3 * 12) / 4)))
-
+      ? Math.floor((vw - 2 * m - 2 * navGap) / 3)
+      : Math.round(Math.max(130, Math.min(190, (vw - 2 * m - 2 * 16) / 3)))
     if (portrait) {
       // Centered flow, bottom-anchored so the stats chip always sits in the
-      // safe area: chip → nav grid (2×2) → PLAY → machine → logo.
+      // safe area: chip -> balanced 3 nav buttons row -> PLAY -> machine -> logo.
       const chipY = vh - bottomInset - chipH / 2
-      const nav2Y = chipY - chipH / 2 - 18 - navH / 2
-      const nav1Y = nav2Y - navH - 18
-      const playY = nav1Y - navH / 2 - 18 - playH / 2
+      const navY = chipY - chipH / 2 - 18 - navH / 2
+      const playY = navY - navH / 2 - 18 - playH / 2
       const bandTop = logoCY + logoH / 2 + 10
       const bandBottom = playY - playH / 2 - 10
       this.buildMachine(
@@ -406,10 +402,9 @@ export class TitleScene extends Phaser.Scene {
         Math.min(vw * 0.6, 340),
       )
       this.buildPlayAndNav(vw, playY, playW, playH, navW, navH, [
-        { x: vw / 2 - (navW + 18) / 2, y: nav1Y },
-        { x: vw / 2 + (navW + 18) / 2, y: nav1Y },
-        { x: vw / 2 - (navW + 18) / 2, y: nav2Y },
-        { x: vw / 2 + (navW + 18) / 2, y: nav2Y },
+        { x: vw / 2 - (navW + navGap), y: navY },
+        { x: vw / 2, y: navY },
+        { x: vw / 2 + (navW + navGap), y: navY },
       ])
       this.buildStatsChip(vw / 2, chipY, chipW, chipH)
     } else {
@@ -426,11 +421,11 @@ export class TitleScene extends Phaser.Scene {
         bandBottom - bandTop,
         Math.min(vw * 0.45, 420),
       )
+      const gap = 16
       this.buildPlayAndNav(vw, playY, playW, playH, navW, navH, [
-        { x: vw / 2 - 1.5 * (navW + 18), y: navY },
-        { x: vw / 2 - 0.5 * (navW + 18), y: navY },
-        { x: vw / 2 + 0.5 * (navW + 18), y: navY },
-        { x: vw / 2 + 1.5 * (navW + 18), y: navY },
+        { x: vw / 2 - (navW + gap), y: navY },
+        { x: vw / 2, y: navY },
+        { x: vw / 2 + (navW + gap), y: navY },
       ])
       this.buildStatsChip(vw / 2, chipY, chipW, chipH)
     }
@@ -880,9 +875,8 @@ export class TitleScene extends Phaser.Scene {
       { x: navPos[0]!.x, y: navPos[0]!.y, w: navW, h: navH, label: 'LEADERBOARD', tier: 2, seed: 4242 + 2 * 7, screen: 'leaderboard' },
       { x: navPos[1]!.x, y: navPos[1]!.y, w: navW, h: navH, label: 'COLLECTION', tier: 3, seed: 4242 + 3 * 7, screen: 'collection' },
       { x: navPos[2]!.x, y: navPos[2]!.y, w: navW, h: navH, label: 'SETTINGS', tier: 4, seed: 4242 + 4 * 7, screen: 'settings' },
-      { x: navPos[3]!.x, y: navPos[3]!.y, w: navW, h: navH, label: 'JOURNAL', tier: 6, seed: 4242 + 6 * 7, screen: 'collection' },
     ]
-    this.uiverseDom = new UiverseDomButtons(this)
+    if (!this.uiverseDom) this.uiverseDom = new UiverseDomButtons(this)
     this.uiverseDom.build(specs)
     this.uiverseDom.setVisible(!this.closed && this.screen === 'menu')
     // Invisible hit rects (above the canvas) drive press + hover — the DOM
@@ -1008,14 +1002,12 @@ export class TitleScene extends Phaser.Scene {
     const vh = this.scale.height / z
 
     const subs: Partial<Record<ScreenName, string>> = {
-      journal: 'COLLECTION ALBUM & DISCOVERY LOG',
       collection: 'COLLECTION ALBUM & DISCOVERY LOG',
       leaderboard: 'YOUR TEN BEST RUNS & ACHIEVEMENTS',
       settings: 'THEME, SOUND & SYSTEM PREFERENCES',
     }
 
     const titles: Partial<Record<ScreenName, string>> = {
-      journal: 'COLLECTION BOOK',
       collection: 'COLLECTION BOOK',
       leaderboard: 'LEADERBOARD',
       settings: 'SETTINGS',
@@ -1031,7 +1023,6 @@ export class TitleScene extends Phaser.Scene {
     })
 
     switch (this.screen) {
-      case 'journal':
       case 'collection':
         this.buildCollection(vw, vh, contentTopY)
         break
@@ -1188,8 +1179,10 @@ export class TitleScene extends Phaser.Scene {
         y: btnY,
         w: bw,
         h: 40,
+        pill: true,
         fill: selected ? UI_COLORS.BTN_BLUE : UI_COLORS.CARD_BG,
         shadowColor: selected ? UI_COLORS.BTN_BLUE_SHADOW : 0x0f1422,
+        highlightColor: selected ? UI_COLORS.BTN_BLUE_HIGHLIGHT : 0x2b3555,
         label: t.label,
         fontSize: Math.max(10, Math.min(13, bw * 0.28)),
         onClick: () => {
@@ -1276,8 +1269,10 @@ export class TitleScene extends Phaser.Scene {
       y: curY + resetBtnH / 2,
       w: resetBtnW,
       h: resetBtnH,
+      pill: true,
       fill: this.resetArmed > 0 ? UI_COLORS.BTN_RED : UI_COLORS.CARD_BG,
       shadowColor: this.resetArmed > 0 ? UI_COLORS.BTN_RED_SHADOW : 0x0f1422,
+      highlightColor: this.resetArmed > 0 ? UI_COLORS.BTN_RED_HIGHLIGHT : 0x2b3555,
       label: this.resetArmed > 0 ? 'TAP AGAIN TO CONFIRM' : 'RESET PROGRESS',
       fontSize: 13,
       onClick: () => {
