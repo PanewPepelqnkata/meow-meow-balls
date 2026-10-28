@@ -1,7 +1,5 @@
 import Phaser from 'phaser'
-import { drawLucide } from '../../ui/LucideIcon'
 import { gameBus } from '../events/gameBus'
-import { CartoonButton } from '../../ui/CartoonButton'
 import { hudText } from '../../ui/Typography'
 import {
   INK,
@@ -15,13 +13,15 @@ import { BALL_TIERS, getTier } from '../../config/ballTiers'
 import type { BackgroundScene } from './BackgroundScene'
 import type { ThemeName } from '../rendering/BackgroundTheme'
 import { loadSave, resetSave, setThemeSetting } from '../state/save'
-import { runVariantFor, variantIdFor, VARIANT_COUNT } from '../state/runVariant'
+import { variantIdFor } from '../state/runVariant'
 import { session } from '../state/session'
 import { bakeCanvas, roundedRectPath } from '../rendering/RoughArt'
 import { cycleColor } from '../rendering/rgbCycle'
 import { UiverseDomButtons } from '../../ui/UiverseDomButtons'
 import { StartIntroScene } from './StartIntroScene'
 import { readSafeArea } from '../../ui/ResponsiveLayout'
+import { UI_COLORS, buildScreenHeader, ChunkyButton } from '../../ui/DesignSystem'
+import { CollectionBookView } from '../rendering/CollectionBookView'
 /**
  * Phase 2.14.0 (spec §2) — the START SCREEN.
  * Phase 2.15.0 (spec §2) — redesigned as a full cartoon game HOME SCREEN.
@@ -68,8 +68,6 @@ import { readSafeArea } from '../../ui/ResponsiveLayout'
 
 const CREAM = '#fff6e0'
 const YELLOW = '#ffeb3b'
-const DIM = '#8b90a3'
-
 type ScreenName = 'menu' | 'journal' | 'leaderboard' | 'settings' | 'collection'
 
 interface CastBall {
@@ -192,6 +190,7 @@ export class TitleScene extends Phaser.Scene {
         screen: () => this.screen,
         buttons: () => [...this.menuRects, ...this.panelRects].map((b) => ({ ...b })),
         start: () => this.pressStart(),
+        open: (name: ScreenName) => this.openScreen(name),
         // Phase 2.15.0 QA: dump the wordmark letter objects (text, layout,
         // canvas texture size) so visual oddities can be diagnosed from the
         // browser tests without a game instance handle.
@@ -876,17 +875,13 @@ export class TitleScene extends Phaser.Scene {
     // (1:1 CSS from the source), each showcasing a live ball character
     // (gaze/blink/egg expressions) drawn into a small canvas per frame.
     // The Phaser-side hit rects stay the authoritative input surface.
-    const specs: Array<{ x: number; y: number; w: number; h: number; label: string; tier: number; seed: number }> = [
-      { x: vw / 2, y: playY, w: playW, h: playH, label: 'PLAY', tier: 1, seed: 4242 },
-      { x: navPos[0]!.x, y: navPos[0]!.y, w: navW, h: navH, label: 'LEADERBOARD', tier: 2, seed: 4242 + 2 * 7 },
-      { x: navPos[1]!.x, y: navPos[1]!.y, w: navW, h: navH, label: 'JOURNAL', tier: 3, seed: 4242 + 3 * 7 },
-      { x: navPos[2]!.x, y: navPos[2]!.y, w: navW, h: navH, label: 'COLLECTION', tier: 4, seed: 4242 + 4 * 7 },
-      { x: navPos[3]!.x, y: navPos[3]!.y, w: navW, h: navH, label: 'SETTINGS', tier: 6, seed: 4242 + 6 * 7 },
+    const specs: Array<{ x: number; y: number; w: number; h: number; label: string; tier: number; seed: number; screen: ScreenName }> = [
+      { x: vw / 2, y: playY, w: playW, h: playH, label: 'PLAY', tier: 1, seed: 4242, screen: 'menu' },
+      { x: navPos[0]!.x, y: navPos[0]!.y, w: navW, h: navH, label: 'LEADERBOARD', tier: 2, seed: 4242 + 2 * 7, screen: 'leaderboard' },
+      { x: navPos[1]!.x, y: navPos[1]!.y, w: navW, h: navH, label: 'COLLECTION', tier: 3, seed: 4242 + 3 * 7, screen: 'collection' },
+      { x: navPos[2]!.x, y: navPos[2]!.y, w: navW, h: navH, label: 'SETTINGS', tier: 4, seed: 4242 + 4 * 7, screen: 'settings' },
+      { x: navPos[3]!.x, y: navPos[3]!.y, w: navW, h: navH, label: 'JOURNAL', tier: 6, seed: 4242 + 6 * 7, screen: 'collection' },
     ]
-    if (this.uiverseDom) {
-      this.uiverseDom.destroy()
-      this.uiverseDom = null
-    }
     this.uiverseDom = new UiverseDomButtons(this)
     this.uiverseDom.build(specs)
     this.uiverseDom.setVisible(!this.closed && this.screen === 'menu')
@@ -906,7 +901,7 @@ export class TitleScene extends Phaser.Scene {
       hit.on('pointerup', () => {
         this.uiverseDom?.setPressed(i, false)
         if (i === 0) this.pressStart()
-        else this.openScreen(specs[i]!.label.toLowerCase() as ScreenName)
+        else this.openScreen(specs[i]!.screen)
       })
       this.menuRects.push({
         label: s.label,
@@ -985,34 +980,8 @@ export class TitleScene extends Phaser.Scene {
 
   private buildPanelChrome(vw: number, vh: number): void {
     this.panelBackdrop.clear()
-    this.panelBackdrop.fillStyle(0x0b0c16, 0.88)
+    this.panelBackdrop.fillStyle(UI_COLORS.BACKDROP_DIM, UI_COLORS.BACKDROP_ALPHA)
     this.panelBackdrop.fillRect(0, 0, vw, vh)
-
-    // BACK is PERSISTENT panel chrome — it lives in panelLayer (not the
-    // content layer), so opening/reopening screens never destroys it.
-    const backX = Math.max(64, vw * 0.085)
-    const backY = Math.max(34, vh * 0.055)
-    const back = new CartoonButton(this, {
-      x: backX,
-      y: backY,
-      w: 118,
-      h: 40,
-      fill: 0x2563eb,
-      icon: Icons.back,
-      label: 'BACK',
-      labelSize: 14,
-      style: 'doodle',
-      onPress: () => this.openScreen('menu'),
-    })
-    if (back.containerObj) this.panelLayer.add(back.containerObj)
-    this.panelRects.push({
-      label: 'BACK',
-      x: backX - 59,
-      y: backY - 20,
-      w: 118,
-      h: 40,
-      screen: 'panel',
-    })
   }
 
   private openScreen(screen: ScreenName): void {
@@ -1032,242 +1001,168 @@ export class TitleScene extends Phaser.Scene {
     // the persistent BACK rect survives; screen-specific buttons (theme
     // pickers, reset) re-register as they are created.
     this.panelContent.removeAll(true)
-    this.panelRects.length = 1
+    this.panelRects.length = 0
     // HiDPI: CSS-px layout, matching buildAll (camera frames the CSS region).
     const z = this.game.scale.displayScale.x || 1
     const vw = this.scale.width / z
     const vh = this.scale.height / z
-    const headSize = Math.max(24, Math.min(44, vw * 0.045))
-    const head = hudText(this, 0, 0, this.screen.toUpperCase(), 1, {
-      color: YELLOW,
-      size: headSize,
-      stroke: 5,
-      origin: [0.5, 0],
-    })
-    head.setPosition(vw / 2, vh * 0.045)
-    this.panelContent.add(head)
-    // Phase 2.15.0: a one-line purpose statement under each header, so
-    // Journal (discovery log) and Collection (collected balls + the rare
-    // variant hunt) read as distinct screens at a glance. (The menu screen
-    // has no header — applyScreenVisibility returns early for it.)
+
     const subs: Partial<Record<ScreenName, string>> = {
-      journal: 'every ball look you have discovered — variants included',
-      leaderboard: 'your ten best runs',
-      settings: 'theme, progress and data',
-      collection: 'your collected balls — hunt the rare tier 9 variants',
+      journal: 'COLLECTION ALBUM & DISCOVERY LOG',
+      collection: 'COLLECTION ALBUM & DISCOVERY LOG',
+      leaderboard: 'YOUR TEN BEST RUNS & ACHIEVEMENTS',
+      settings: 'THEME, SOUND & SYSTEM PREFERENCES',
     }
-    const sub = hudText(this, 0, 0, subs[this.screen] ?? '', 1, {
-      color: '#aeb4c9',
-      size: Math.max(11, Math.min(16, vw * 0.019)),
-      stroke: 0,
-      origin: [0.5, 0],
-      shadow: false,
+
+    const titles: Partial<Record<ScreenName, string>> = {
+      journal: 'COLLECTION BOOK',
+      collection: 'COLLECTION BOOK',
+      leaderboard: 'LEADERBOARD',
+      settings: 'SETTINGS',
+    }
+
+    const { contentTopY } = buildScreenHeader(this, this.panelContent, {
+      vw,
+      vh,
+      title: titles[this.screen] ?? this.screen.toUpperCase(),
+      subtitle: subs[this.screen],
+      onBack: () => this.openScreen('menu'),
+      rectsCollector: this.panelRects,
     })
-    sub.setAlpha(0.9)
-    sub.setPosition(vw / 2, vh * 0.045 + headSize + 6)
-    this.panelContent.add(sub)
+
     switch (this.screen) {
       case 'journal':
-        this.buildJournal(vw, vh)
+      case 'collection':
+        this.buildCollection(vw, vh, contentTopY)
         break
       case 'leaderboard':
-        this.buildLeaderboard(vw, vh)
+        this.buildLeaderboard(vw, vh, contentTopY)
         break
       case 'settings':
-        this.buildSettings(vw, vh)
-        break
-      case 'collection':
-        this.buildCollection(vw, vh)
+        this.buildSettings(vw, vh, contentTopY)
         break
     }
   }
 
-  private buildJournal(vw: number, vh: number): void {
-    const save = loadSave()
-    const TOTAL_TIERS = BALL_TIERS.length
-    const wide = vw >= 700
-    const cols = wide ? 2 : 1
-    const perCol = Math.ceil(TOTAL_TIERS / cols)
-    const rowH = Math.min(92, (vh * 0.8) / (perCol + 0.5))
-    const colW = Math.min(430, (vw * 0.86) / cols)
-    const startX = vw / 2 - (cols * colW + (cols - 1) * 24) / 2 + colW / 2
-    const topY = vh * 0.165
+// Removed buildJournal: integrated into CollectionBookView.
 
-    for (let tier = 1; tier <= TOTAL_TIERS; tier++) {
-      const col = Math.floor((tier - 1) / perCol)
-      const row = (tier - 1) % perCol
-      const cx = startX + col * (colW + 24)
-      const cy = topY + row * rowH + rowH / 2
-      const discovered = save.discovered[String(tier)] != null
-      const locked = tier >= 10
-      const g = this.add.graphics()
-      this.panelContent.add(g)
-
-      // Card
-      g.fillStyle(0x161b2e, discovered ? 0.95 : 0.7)
-      g.fillRoundedRect(cx - colW / 2 + 6, cy - rowH / 2 + 6, colW - 12, rowH - 12, 12)
-      g.lineStyle(2.5, 0x2b3555, 1)
-      g.strokeRoundedRect(cx - colW / 2 + 6, cy - rowH / 2 + 6, colW - 12, rowH - 12, 12)
-
-      const iconR = Math.min(30, rowH * 0.33)
-      drawBallIcon(this, g, tier, cx - colW / 2 + 6 + iconR + 14, cy, iconR, {
-        silhouette: !discovered || locked,
-        variant: discovered && !locked ? runVariantFor(tier) : null,
-        seed: tier * 7717,
-        layer: this.panelContent,
-      })
-
-      const label = hudText(this, 0, 0, `TIER ${tier}`, 1, {
-        color: discovered ? CREAM : DIM,
-        size: Math.max(13, Math.min(19, colW * 0.05)),
-        stroke: 3,
-        origin: [0, 0.5],
-        shadow: false,
-      })
-      label.setPosition(cx - colW / 2 + 6 + iconR * 2 + 26, cy - rowH * 0.22)
-      this.panelContent.add(label)
-
-      let status: string
-      if (locked)
-        status = tier === TOTAL_TIERS ? 'LOCKED — the final secret' : 'reserved — not yet made'
-      else if (!discovered) status = 'not yet discovered'
-      else status = `discovered ${fmtDate(save.discovered[String(tier)]!)}`
-      const st = hudText(this, 0, 0, status, 1, {
-        color: discovered && !locked ? '#aeb4c9' : DIM,
-        size: Math.max(11, Math.min(15, colW * 0.038)),
-        stroke: 2,
-        origin: [0, 0.5],
-        shadow: false,
-      })
-      st.setPosition(cx - colW / 2 + 6 + iconR * 2 + 26, cy + rowH * 0.18)
-      this.panelContent.add(st)
-
-      // TIER 9: the collected per-run VARIANTS row. Tier 8 is the
-      // cycling RGB ball — it has no per-run variant, so it must not
-      // show an (empty) variant chip row.
-      if (tier === 9) {
-        const chips: number[] = []
-        for (let v = 0; v < VARIANT_COUNT; v++) {
-          if (save.variants[`${tier}:${v}`] != null) chips.push(v)
-        }
-        const chipG = this.add.graphics()
-        this.panelContent.add(chipG)
-        const chipR = Math.max(9, rowH * 0.1)
-        const chipY = cy + rowH * 0.26
-        let hx = cx + colW / 2 - 14 - (VARIANT_COUNT * (chipR * 2 + 5) - 5)
-        for (let v = 0; v < VARIANT_COUNT; v++) {
-          const got = chips.includes(v)
-          if (got) {
-            drawBallIcon(this, chipG, tier, hx, chipY, chipR, {
-              variant: v,
-              seed: tier * 7717 + v,
-              layer: this.panelContent,
-            })
-          } else {
-            chipG.lineStyle(2, 0x2b3555, 1)
-            chipG.strokeCircle(hx, chipY, chipR)
-            const q = hudText(this, 0, 0, '?', 1, {
-              color: '#3a3d55',
-              size: chipR * 1.5,
-              stroke: 0,
-              origin: [0.5, 0.5],
-              shadow: false,
-            })
-            q.setPosition(hx, chipY + 1)
-            this.panelContent.add(q)
-          }
-          hx += chipR * 2 + 5
-        }
-      }
-    }
-  }
-
-  private buildLeaderboard(vw: number, vh: number): void {
+  private buildLeaderboard(vw: number, vh: number, topY: number): void {
     const save = loadSave()
     const rows = save.leaderboard.slice(0, 10)
-    const w = Math.min(560, vw * 0.9)
-    const topY = vh * 0.165
-    const rowH = Math.min(58, (vh * 0.72) / Math.max(rows.length, 5))
+    const cardW = Math.min(480, vw * 0.92)
+    const cardX = vw / 2 - cardW / 2
 
     if (rows.length === 0) {
-      const empty = hudText(this, 0, 0, 'No runs yet — go make a mess!', 1, {
-        color: '#aeb4c9',
-        size: Math.max(15, Math.min(24, vw * 0.03)),
+      const emptyCard = this.add.graphics()
+      this.panelContent.add(emptyCard)
+      const emptyH = 120
+      const emptyY = topY + 40
+      emptyCard.fillStyle(UI_COLORS.CARD_BG, 1)
+      emptyCard.fillRoundedRect(cardX, emptyY, cardW, emptyH, 14)
+      emptyCard.lineStyle(2, UI_COLORS.CARD_BORDER, 1)
+      emptyCard.strokeRoundedRect(cardX, emptyY, cardW, emptyH, 14)
+
+      const empty = hudText(this, vw / 2, emptyY + 44, 'NO RUNS RECORDED YET', 1, {
+        color: UI_COLORS.TEXT_GOLD,
+        size: 16,
         stroke: 3,
         origin: [0.5, 0.5],
-        shadow: false,
       })
-      empty.setPosition(vw / 2, vh * 0.42)
       this.panelContent.add(empty)
-      return
-    }
 
-    rows.forEach((e, i) => {
-      const y = topY + rowH * 0.4 + i * rowH
-      const g = this.add.graphics()
-      this.panelContent.add(g)
-      const rank = i + 1
-      const medal = rank === 1 ? 0xffd93b : rank === 2 ? 0xc9d1e3 : rank === 3 ? 0xd08a4e : 0x272a40
-      g.fillStyle(medal, 1)
-      g.fillRoundedRect(vw / 2 - w / 2, y - rowH / 2 + 5, w, rowH - 10, 10)
-      g.lineStyle(2, rank <= 3 ? INK : 0x2b3555, 1)
-      g.strokeRoundedRect(vw / 2 - w / 2, y - rowH / 2 + 5, w, rowH - 10, 10)
-
-      const rankT = hudText(this, 0, 0, `#${rank}`, 1, {
-        color: rank <= 3 ? '#1a1a1a' : '#aeb4c9',
-        size: rowH * 0.42,
+      const emptySub = hudText(this, vw / 2, emptyY + 74, 'Play a game and merge balls to place on the leaderboard!', 1, {
+        color: UI_COLORS.TEXT_MUTED,
+        size: 12,
         stroke: 0,
         origin: [0.5, 0.5],
         shadow: false,
       })
-      rankT.setPosition(vw / 2 - w / 2 + 34, y)
+      this.panelContent.add(emptySub)
+      return
+    }
+
+    const availableH = vh - topY - 24
+    const rowH = Math.min(56, Math.max(42, availableH / Math.max(rows.length, 6)))
+    const g = this.add.graphics()
+    this.panelContent.add(g)
+
+    rows.forEach((e, i) => {
+      const y = topY + 10 + i * (rowH + 6)
+      const rank = i + 1
+
+      // Rank colors & medals
+      const isTop3 = rank <= 3
+      const rankBg = rank === 1 ? 0xffd93b : rank === 2 ? 0xc9d1e3 : rank === 3 ? 0xd08a4e : UI_COLORS.CARD_BG
+      const rankBorder = isTop3 ? UI_COLORS.INK : UI_COLORS.CARD_BORDER
+
+      // Row background
+      g.fillStyle(rankBg, isTop3 ? 1 : 0.9)
+      g.fillRoundedRect(cardX, y, cardW, rowH, 10)
+      g.lineStyle(2, rankBorder, 1)
+      g.strokeRoundedRect(cardX, y, cardW, rowH, 10)
+
+      // Rank text
+      const rankT = hudText(this, cardX + 32, y + rowH / 2, `#${rank}`, 1, {
+        color: isTop3 ? '#1a1a1a' : '#aeb4c9',
+        size: Math.round(rowH * 0.44),
+        stroke: isTop3 ? 0 : 2,
+        origin: [0.5, 0.5],
+        shadow: false,
+      })
       this.panelContent.add(rankT)
 
-      // Best tier badge — the run's signature ball.
-      const badgeR = Math.min(17, rowH * 0.3)
-      drawBallIcon(this, g, Math.max(1, Math.min(12, e.bestTier)), vw / 2 - w / 2 + 78, y, badgeR, {
+      // Signature Ball
+      const ballR = Math.min(18, rowH * 0.32)
+      drawBallIcon(this, g, Math.max(1, Math.min(12, e.bestTier)), cardX + 76, y + rowH / 2, ballR, {
         seed: e.bestTier * 991,
         layer: this.panelContent,
       })
 
-      const scoreT = hudText(this, 0, 0, `${e.score}`, 1, {
-        color: '#ffffff',
-        size: rowH * 0.44,
-        stroke: 3,
+      // Score
+      const scoreT = hudText(this, cardX + 104, y + rowH / 2 - (rowH > 48 ? 6 : 0), `${e.score.toLocaleString()}`, 1, {
+        color: isTop3 ? '#1a1a1a' : '#ffffff',
+        size: Math.round(rowH * 0.44),
+        stroke: isTop3 ? 0 : 3,
         origin: [0, 0.5],
-        shadow: false,
       })
-      scoreT.setPosition(vw / 2 - w / 2 + 106, y - rowH * 0.1)
       this.panelContent.add(scoreT)
 
-      const when = hudText(this, 0, 0, fmtDate(e.at), 1, {
-        color: rank <= 3 ? '#3a2f16' : '#aeb4c9',
-        size: Math.max(11, rowH * 0.2),
+      // Date / Timestamp
+      const whenStr = fmtDate(e.at)
+      const whenT = hudText(this, cardX + cardW - 16, y + rowH / 2, whenStr, 1, {
+        color: isTop3 ? '#2c2514' : '#8e9bb5',
+        size: 11,
         stroke: 0,
         origin: [1, 0.5],
         shadow: false,
       })
-      when.setPosition(vw / 2 + w / 2 - 16, y + rowH * 0.18)
-      this.panelContent.add(when)
+      this.panelContent.add(whenT)
     })
   }
 
-  private buildSettings(vw: number, vh: number): void {
+  private buildSettings(vw: number, _vh: number, topY: number): void {
     const save = loadSave()
-    const w = Math.min(560, vw * 0.9)
-    const x = vw / 2
-    let y = vh * 0.2
+    const cardW = Math.min(480, vw * 0.92)
+    const cardX = vw / 2 - cardW / 2
+    let curY = topY + 10
 
-    const themeHead = hudText(this, 0, 0, 'BACKGROUND THEME', 1, {
-      color: CREAM,
-      size: Math.max(14, Math.min(20, vw * 0.026)),
+    const g = this.add.graphics()
+    this.panelContent.add(g)
+
+    // 1. Theme Selection Card
+    const themeCardH = 148
+    g.fillStyle(UI_COLORS.CARD_BG, 1)
+    g.fillRoundedRect(cardX, curY, cardW, themeCardH, 12)
+    g.lineStyle(2, UI_COLORS.CARD_BORDER, 1)
+    g.strokeRoundedRect(cardX, curY, cardW, themeCardH, 12)
+
+    const themeHead = hudText(this, vw / 2, curY + 22, 'BACKGROUND THEME', 1, {
+      color: UI_COLORS.TEXT_GOLD,
+      size: 15,
       stroke: 3,
       origin: [0.5, 0.5],
-      shadow: false,
     })
-    themeHead.setPosition(x, y)
     this.panelContent.add(themeHead)
-    y += 46
 
     const themes: Array<{ key: 'auto' | ThemeName; label: string }> = [
       { key: 'auto', label: 'AUTO' },
@@ -1276,20 +1171,28 @@ export class TitleScene extends Phaser.Scene {
       { key: 'jungle', label: 'JUNGLE' },
       { key: 'fantasy', label: 'FANTASY' },
     ]
-    const bw = Math.min(112, (w - 4 * 10) / 5)
+
+    const btnSpacing = 8
+    const totalBtnW = cardW - 24
+    const bw = Math.floor((totalBtnW - (themes.length - 1) * btnSpacing) / themes.length)
+    const btnStartX = cardX + 12 + bw / 2
+    const btnY = curY + 68
+
     themes.forEach((t, ti) => {
       const selected = save.settings.theme === t.key
-      const bx = x - (5 * bw + 4 * 10) / 2 + bw / 2 + ti * (bw + 10)
-      const btn = new CartoonButton(this, {
+      const bx = btnStartX + ti * (bw + btnSpacing)
+
+      const btn = new ChunkyButton({
+        scene: this,
         x: bx,
-        y,
+        y: btnY,
         w: bw,
-        h: 46,
-        fill: selected ? 0x2563eb : 0x1d4ed8,
+        h: 40,
+        fill: selected ? UI_COLORS.BTN_BLUE : UI_COLORS.CARD_BG,
+        shadowColor: selected ? UI_COLORS.BTN_BLUE_SHADOW : 0x0f1422,
         label: t.label,
-        labelSize: Math.max(10, bw * 0.19),
-        style: 'doodle',
-        onPress: () => {
+        fontSize: Math.max(10, Math.min(13, bw * 0.28)),
+        onClick: () => {
           setThemeSetting(t.key)
           const bg = this.scene.get('BackgroundScene') as BackgroundScene | undefined
           if (bg) {
@@ -1299,57 +1202,85 @@ export class TitleScene extends Phaser.Scene {
           this.applyScreenVisibility()
         },
       })
-      if (btn.containerObj) this.panelContent.add(btn.containerObj)
+      this.panelContent.add(btn.container)
+
       this.panelRects.push({
         label: `THEME_${t.key.toUpperCase()}`,
         x: bx - bw / 2,
-        y: y - 23,
+        y: btnY - 20,
         w: bw,
-        h: 46,
+        h: 40,
         screen: 'settings',
       })
     })
-    const note = hudText(this, 0, 0, 'AUTO follows the run progression', 1, {
-      color: '#8b90a3',
-      size: Math.max(11, Math.min(15, vw * 0.02)),
+
+    const note = hudText(this, vw / 2, curY + 118, 'AUTO changes theme automatically as you reach higher tiers', 1, {
+      color: UI_COLORS.TEXT_MUTED,
+      size: 11,
       stroke: 0,
-      origin: [0.5, 0],
+      origin: [0.5, 0.5],
       shadow: false,
     })
-    note.setPosition(x, y + 30)
     this.panelContent.add(note)
-    y += 96
+    curY += themeCardH + 16
+
+    // 2. Lifetime Stats Card
+    const statsCardH = 100
+    g.fillStyle(UI_COLORS.CARD_BG, 1)
+    g.fillRoundedRect(cardX, curY, cardW, statsCardH, 12)
+    g.lineStyle(2, UI_COLORS.CARD_BORDER, 1)
+    g.strokeRoundedRect(cardX, curY, cardW, statsCardH, 12)
+
+    const statsHead = hudText(this, vw / 2, curY + 22, 'CAREER HIGHLIGHTS', 1, {
+      color: UI_COLORS.TEXT_GOLD,
+      size: 15,
+      stroke: 3,
+      origin: [0.5, 0.5],
+    })
+    this.panelContent.add(statsHead)
 
     const stats = save.stats
-    const statLine = hudText(
-      this,
-      0,
-      0,
-      `${stats.runs} runs   ·   ${stats.merges} merges   ·   best tier T${stats.bestTier || 1}`,
-      1,
-      {
-        color: '#aeb4c9',
-        size: Math.max(12, Math.min(18, vw * 0.024)),
+    const statCols = [
+      { label: 'TOTAL RUNS', val: `${stats.runs}` },
+      { label: 'TOTAL MERGES', val: `${stats.merges}` },
+      { label: 'BEST TIER', val: `T${stats.bestTier || 1}` },
+    ]
+    const colW = cardW / 3
+    statCols.forEach((col, ci) => {
+      const cx = cardX + colW * (ci + 0.5)
+      const valT = hudText(this, cx, curY + 54, col.val, 1, {
+        color: UI_COLORS.TEXT_WHITE,
+        size: 18,
+        stroke: 3,
+        origin: [0.5, 0.5],
+      })
+      this.panelContent.add(valT)
+
+      const lblT = hudText(this, cx, curY + 76, col.label, 1, {
+        color: UI_COLORS.TEXT_MUTED,
+        size: 10,
         stroke: 0,
         origin: [0.5, 0.5],
         shadow: false,
-      },
-    )
-    statLine.setPosition(x, y)
-    this.panelContent.add(statLine)
-    y += 58
+      })
+      this.panelContent.add(lblT)
+    })
+    curY += statsCardH + 18
 
-    // Reset progress — press once to arm (warning), twice to wipe.
-    const resetBtn = new CartoonButton(this, {
-      x,
-      y,
-      w: Math.min(300, w),
-      h: 48,
-      fill: this.resetArmed > 0 ? 0xe5484d : 0x2563eb,
-      label: this.resetArmed > 0 ? 'TAP AGAIN TO WIPE' : 'RESET PROGRESS',
-      labelSize: 14,
-      style: 'doodle',
-      onPress: () => {
+    // 3. Danger Zone / Reset
+    const resetBtnW = Math.min(280, cardW - 32)
+    const resetBtnH = 46
+    const resetBtn = new ChunkyButton({
+      scene: this,
+      x: vw / 2,
+      y: curY + resetBtnH / 2,
+      w: resetBtnW,
+      h: resetBtnH,
+      fill: this.resetArmed > 0 ? UI_COLORS.BTN_RED : UI_COLORS.CARD_BG,
+      shadowColor: this.resetArmed > 0 ? UI_COLORS.BTN_RED_SHADOW : 0x0f1422,
+      label: this.resetArmed > 0 ? 'TAP AGAIN TO CONFIRM' : 'RESET PROGRESS',
+      fontSize: 13,
+      onClick: () => {
         const now = Date.now()
         if (this.resetArmed > 0 && now - this.resetArmed < 4000) {
           resetSave()
@@ -1363,207 +1294,36 @@ export class TitleScene extends Phaser.Scene {
         }
       },
     })
-    if (resetBtn.containerObj) this.panelContent.add(resetBtn.containerObj)
+    this.panelContent.add(resetBtn.container)
+
     this.panelRects.push({
       label: 'RESET',
-      x: x - Math.min(300, w) / 2,
-      y: y - 24,
-      w: Math.min(300, w),
-      h: 48,
+      x: vw / 2 - resetBtnW / 2,
+      y: curY,
+      w: resetBtnW,
+      h: resetBtnH,
       screen: 'settings',
     })
+
     const wipe = hudText(
       this,
-      0,
-      0,
-      'Clears best score, journal, leaderboard and stats (this browser).',
+      vw / 2,
+      curY + resetBtnH + 16,
+      'Clears best score, collection, leaderboard and stats.',
       1,
       {
-        color: '#8b90a3',
-        size: Math.max(10, Math.min(14, vw * 0.019)),
+        color: '#6b7896',
+        size: 11,
         stroke: 0,
-        origin: [0.5, 0],
+        origin: [0.5, 0.5],
         shadow: false,
       },
     )
-    wipe.setPosition(x, y + 30)
     this.panelContent.add(wipe)
   }
 
-  private buildCollection(vw: number, vh: number): void {
-    const save = loadSave()
-    const discovered = new Set(Object.keys(save.discovered).map(Number))
-    const total = BALL_TIERS.length
-    const got = [...discovered].filter((t) => t >= 1 && t <= total).length
-
-    const progress = hudText(this, 0, 0, `${got} / ${total} DISCOVERED`, 1, {
-      color: CREAM,
-      size: Math.max(15, Math.min(24, vw * 0.03)),
-      stroke: 4,
-      origin: [0.5, 0],
-    })
-    progress.setPosition(vw / 2, vh * 0.135)
-    this.panelContent.add(progress)
-
-    // Progress bar.
-    const barW = Math.min(460, vw * 0.76)
-    const bar = this.add.graphics()
-    this.panelContent.add(bar)
-    bar.fillStyle(0x272a40, 1)
-    bar.fillRoundedRect(vw / 2 - barW / 2, vh * 0.135 + 34, barW, 14, 7)
-    if (got > 0) {
-      bar.fillStyle(0x43d64f, 1)
-      bar.fillRoundedRect(
-        vw / 2 - barW / 2,
-        vh * 0.135 + 34,
-        Math.max(14, (barW * got) / total),
-        14,
-        7,
-      )
-    }
-
-    const cols = vw >= 760 ? 5 : vw >= 480 ? 4 : 3
-    const cardW = Math.min(140, (vw * 0.88) / cols)
-    const rows = Math.ceil(total / cols)
-    // Phase 2.15.0: the grid shares the panel with the tier 9 variant
-    // showcase below it, so it gets a bounded share of the height.
-    const cardH = Math.min(150, (vh * 0.42) / rows)
-    const topY = vh * 0.205
-
-    for (let tier = 1; tier <= total; tier++) {
-      const i = tier - 1
-      const col = i % cols
-      const row = Math.floor(i / cols)
-      const cx = vw / 2 + (col - (cols - 1) / 2) * (cardW + 12)
-      const cy = topY + row * (cardH + 12) + cardH / 2
-      const t = getTier(tier)!
-      const has = discovered.has(tier)
-      const locked = tier >= 10
-      const g = this.add.graphics()
-      this.panelContent.add(g)
-      g.fillStyle(has && !locked ? 0x181a28 : 0x141622, has ? 0.95 : 0.75)
-      g.fillRoundedRect(cx - cardW / 2 + 4, cy - cardH / 2 + 4, cardW - 8, cardH - 8, 12)
-      g.lineStyle(
-        2.5,
-        has && !locked ? (tier === 9 ? t.color : 0x2a2d42) : 0x23252f,
-        1,
-      )
-      g.strokeRoundedRect(cx - cardW / 2 + 4, cy - cardH / 2 + 4, cardW - 8, cardH - 8, 12)
-
-      const iconR = Math.min(cardH * 0.34, cardW * 0.3)
-      drawBallIcon(this, g, tier, cx, cy - cardH * 0.06, iconR, {
-        silhouette: !has || locked,
-        variant: has && !locked ? runVariantFor(tier) : null,
-        seed: tier * 7717,
-        layer: this.panelContent,
-      })
-
-      const name = hudText(this, 0, 0, `T${tier}`, 1, {
-        color: has ? CREAM : DIM,
-        size: Math.max(12, Math.min(18, cardW * 0.13)),
-        stroke: 3,
-        origin: [0.5, 0],
-        shadow: false,
-      })
-      name.setPosition(cx, cy + cardH * 0.2)
-      this.panelContent.add(name)
-
-      const status = hudText(
-        this,
-        0,
-        0,
-        locked ? (tier === total ? '???' : 'RESERVED') : has ? 'FOUND' : '?',
-        1,
-        {
-          color: has && !locked ? '#7ddf8a' : DIM,
-          size: Math.max(10, Math.min(14, cardW * 0.1)),
-          stroke: 0,
-          origin: [0.5, 0],
-          shadow: false,
-        },
-      )
-      status.setPosition(cx, cy + cardH * 0.2 + Math.max(16, cardW * 0.16))
-      this.panelContent.add(status)
-    }
-
-    this.buildVariantShowcase(vw, vh, topY + rows * (cardH + 12) - 12)
-  }
-
-  /**
-   * Phase 2.15.0: the heart of COLLECTION — the rare randomized tier 9
-   * variants. Every run rolls a fresh look for tier 9 (8 variants); the
-   * ones the player has COLLECTED render in full color, the rest stay
-   * mystery chips. Tier 8 (the cycling RGB ball) has no per-run variant,
-   * and tiers 10–12 stay reserved (12 is the final secret).
-   */
-  private buildVariantShowcase(vw: number, vh: number, gridBottom: number): void {
-    const save = loadSave()
-    const g = this.add.graphics()
-    this.panelContent.add(g)
-    const topY = gridBottom + 14
-    const headH = Math.max(18, vh * 0.026)
-    const capH = Math.max(13, vh * 0.021)
-    const avail = vh - topY - 12
-    const chipR = Math.max(8, Math.min(22, (avail - headH - capH - 24) / 4.2))
-    const rowH = chipR * 2 + 10
-    const spacing = chipR * 2 + 8
-
-    const head = hudText(this, 0, 0, 'TIER 8–9 VARIANTS — a new look every run', 1, {
-      color: CREAM,
-      size: headH * 0.78,
-      stroke: 3,
-      origin: [0.5, 0],
-      shadow: false,
-    })
-    head.setPosition(vw / 2, topY)
-    this.panelContent.add(head)
-
-    // TIER 9 ONLY: tier 8 is the cycling RGB ball and has no per-run
-    // variant, so it has no variant chips to show.
-    const tiers: Array<[number, string]> = [[9, 'T9']]
-    tiers.forEach(([tier, tag], r) => {
-      const cy = topY + headH + rowH / 2 + r * rowH
-      const totalW = VARIANT_COUNT * spacing - 8
-      const startX = vw / 2 - totalW / 2 + chipR
-      const tagT = hudText(this, 0, 0, tag, 1, {
-        color: YELLOW,
-        size: Math.max(11, chipR * 1.1),
-        stroke: 2,
-        origin: [1, 0.5],
-        shadow: false,
-      })
-      tagT.setPosition(startX - chipR - 8, cy)
-      this.panelContent.add(tagT)
-      for (let v = 0; v < VARIANT_COUNT; v++) {
-        const hx = startX + v * spacing
-        const got = save.variants[`${tier}:${v}`] != null
-        if (got) {
-          drawBallIcon(this, g, tier, hx, cy, chipR, { variant: v, seed: tier * 7717 + v })
-        } else {
-          g.lineStyle(2, 0x3a3d55, 1)
-          g.strokeCircle(hx, cy, chipR)
-          const q = hudText(this, 0, 0, '?', 1, {
-            color: '#3a3d55',
-            size: chipR * 1.4,
-            stroke: 0,
-            origin: [0.5, 0.5],
-            shadow: false,
-          })
-          q.setPosition(hx, cy + 1)
-          this.panelContent.add(q)
-        }
-      }
-    })
-
-    const cap = hudText(this, 0, 0, 'Tiers 10–11 are reserved — tier 12 is the final secret', 1, {
-      color: DIM,
-      size: capH * 0.82,
-      stroke: 0,
-      origin: [0.5, 0],
-      shadow: false,
-    })
-    cap.setPosition(vw / 2, topY + headH + 2 * rowH + 10)
-    this.panelContent.add(cap)
+  private buildCollection(vw: number, vh: number, topY: number): void {
+    new CollectionBookView(this, this.panelContent, vw, vh, topY)
   }
 
   // -------------------------------------------------------------------------
@@ -1734,7 +1494,7 @@ function starPath(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: numb
  * (dark body + '?'); `variant` overrides the per-run variant for journal
  * chips (tiers 8–9); `blink` draws the eyes closed (the showcase star).
  */
-function drawBallIcon(
+export function drawBallIcon(
   scene: Phaser.Scene,
   g: Phaser.GameObjects.Graphics,
   tier: number,
@@ -1794,19 +1554,3 @@ function drawBallIcon(
   }
 }
 
-/** Menu icon painters (white, same style language as the HUD Icons) — only
- * the flat panel buttons still use icons. */
-const Icons = {
-  /** BACK (Lucide `arrow-left`). */
-  back(g: Phaser.GameObjects.Graphics, cx: number, cy: number, s: number): void {
-    drawLucide(g, 'arrow-left', cx, cy, s * 0.92)
-  },
-  /** Theme picker (Lucide `paintbrush`). */
-  palette(g: Phaser.GameObjects.Graphics, cx: number, cy: number, s: number): void {
-    drawLucide(g, 'paintbrush', cx, cy, s * 0.92)
-  },
-  /** Reset progress (Lucide `trash`). */
-  trash(g: Phaser.GameObjects.Graphics, cx: number, cy: number, s: number): void {
-    drawLucide(g, 'trash', cx, cy, s * 0.92)
-  },
-}
