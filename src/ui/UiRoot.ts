@@ -1,11 +1,13 @@
 import Phaser from 'phaser'
-import { resolveLayout, readSafeArea } from './ResponsiveLayout'
+import { resolveLayout, readSafeArea, WORLD_GEOM } from './ResponsiveLayout'
 import type { UiLayout } from './ResponsiveLayout'
 import { ScoreDisplay } from './ScoreDisplay'
 import { NextBall } from './NextBall'
 import { TierProgression } from './TierProgression'
 import { AbilityBar } from './AbilityBar'
 import type { AbilityHandlers } from './AbilityBar'
+import { ChunkyButton, UI_COLORS } from './DesignSystem'
+import { drawLucide } from './LucideIcon'
 
 /**
  * Phase 2.11.0 — UI root (spec §2, §14): owns every HUD component, applies
@@ -17,7 +19,9 @@ import type { AbilityHandlers } from './AbilityBar'
  * (Used inside UIScene, which owns the UI camera — world gameplay lives in
  * PlaygroundScene with its own camera.)
  */
-export type UiHandlers = AbilityHandlers
+export interface UiHandlers extends AbilityHandlers {
+  onPause: () => void
+}
 
 export class UiRoot {
   private readonly scene: Phaser.Scene
@@ -25,6 +29,8 @@ export class UiRoot {
   private readonly nextBall: NextBall
   private readonly tiers: TierProgression
   private readonly abilities: AbilityBar
+  private readonly pauseButton: ChunkyButton
+  private hudVisible = true
   private l: UiLayout | null = null
 
   constructor(scene: Phaser.Scene, handlers: UiHandlers) {
@@ -33,6 +39,16 @@ export class UiRoot {
     this.nextBall = new NextBall(scene)
     this.tiers = new TierProgression(scene)
     this.abilities = new AbilityBar(scene, handlers)
+    this.pauseButton = new ChunkyButton({
+      scene, x: 0, y: 0, w: 48, h: 48, pill: true,
+      fill: UI_COLORS.BTN_BLUE,
+      shadowColor: UI_COLORS.BTN_BLUE_SHADOW,
+      highlightColor: UI_COLORS.BTN_BLUE_HIGHLIGHT,
+      icon: (g, x, y, size) => drawLucide(g, 'pause', x, y, size, 0xffffff, 2.5),
+      iconSize: 24,
+      onClick: handlers.onPause,
+    })
+    this.pauseButton.container.setName('hud-pause').setDepth(30)
     this.layout()
     scene.scale.on(Phaser.Scale.Events.RESIZE, this.layout, this)
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -53,10 +69,12 @@ export class UiRoot {
    * reliable).
    */
   setHudVisible(visible: boolean): void {
+    this.hudVisible = visible
     this.scores.setVisible(visible)
     this.nextBall.setVisible(visible)
     this.tiers.setVisible(visible)
     this.abilities.setVisible(visible)
+    this.pauseButton.container.setVisible(visible)
   }
 
   layout(): void {
@@ -69,6 +87,13 @@ export class UiRoot {
     this.nextBall.layout(this.l)
     this.tiers.layout(this.l)
     this.abilities.layout(this.l)
+    const safe = readSafeArea()
+    const scoreCenterY = this.l.score.y + Math.round(this.l.scoreSize * this.l.fontScale) * WORLD_GEOM.SCORE_LINE / 2
+    this.pauseButton.container.setPosition(
+      this.l.vw - Math.max(12, safe.right + 8) - 24,
+      Math.max(safe.top + 26, scoreCenterY),
+    )
+    this.setHudVisible(this.hudVisible)
     this.refreshHitRects()
   }
 
@@ -78,10 +103,9 @@ export class UiRoot {
     for (const c of this.abilities.centers()) {
       this.hitRects.push({ x: c.x - this.l!.abilities.size / 2, y: c.y - this.l!.abilities.size / 2, w: this.l!.abilities.size, h: this.l!.abilities.size })
     }
-    // Portrait: the top HUD block (score/Best/Global/Next Ball) also gates
-    // pointer drops — a tap on the compact top stack must never drop a ball
-    // into it (desktop keeps the original ability-only gating: its HUD sits
-    // in screen corners over dead sky).
+    const pause = this.pauseButton.container
+    this.hitRects.push({ x: pause.x - 24, y: pause.y - 24, w: 48, h: 48 })
+    // Portrait: the top HUD block also gates pointer drops.
     if (this.l!.composition === 'portrait') {
       this.hitRects.push({ x: 0, y: 0, w: this.l!.vw, h: this.l!.stack.hudBottom })
     }
@@ -124,6 +148,7 @@ export class UiRoot {
 
   setAbilitiesEnabled(enabled: boolean): void {
     this.abilities.setAbilitiesEnabled(enabled)
+    this.pauseButton.setDisabled(!enabled)
   }
 
   resetForNewRun(): void {

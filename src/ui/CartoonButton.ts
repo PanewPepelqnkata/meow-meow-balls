@@ -1,6 +1,7 @@
 import Phaser from 'phaser'
 import { drawLucide } from './LucideIcon'
 import { hudText } from './Typography'
+import { UI_COLORS } from './DesignSystem'
 import { pressFx } from './PressFx'
 
 /**
@@ -144,80 +145,66 @@ export class CartoonButton {
   private build(): void {
     const { scene } = this
     const { x, y, w, h } = this.opts
-    const r = Math.min(20, h * 0.22)
-    const cx = x
-    const cy = y
-    const c = this.scene.add.container(cx, cy)
+    const r = Math.min(16, h * 0.32)
+    const c = scene.add.container(x, y)
     this.container = c
     this.objs.push(c)
 
     const depth = 44
-    const fill = this.opts.disabled ? (this.opts.disabledFill ?? 0x8a8f96) : this.opts.fill
+    const fill = this.opts.disabled ? (this.opts.disabledFill ?? UI_COLORS.BTN_GRAY) : this.opts.fill
+    const highlightColor = this.opts.disabled ? UI_COLORS.BTN_GRAY_HIGHLIGHT : UI_COLORS.BTN_BLUE_HIGHLIGHT
     const doodle = this.opts.style === 'doodle'
     let iconY: number
     let iconS: number
 
     if (doodle) {
-      // DOODLE PLATE (menu): wobbly silhouette, fat ink outline, solid
-      // color extrusion + soft drop shadow, top-left glint — the same
-      // cartoon language as the balls, still crisp and finished.
       const seed = hashSeed(this.opts.label ?? 'btn', w, h)
       const amp = Math.min(4.2, Math.max(2, h * 0.055))
       const pts = doodleSilhouette(w, h, r, seed, amp).map((p) => new Phaser.Math.Vector2(p.x, p.y))
       const drop = Math.max(5, h * 0.08)
       const extrude = Math.max(3, h * 0.05)
       const inkW = Math.max(3.5, Math.min(7, w * 0.05))
-      const v = (dy: number): Phaser.Math.Vector2[] => pts.map((p) => new Phaser.Math.Vector2(p.x, p.y + dy))
+      const offsetPoints = (dy: number): Phaser.Math.Vector2[] => pts.map((p) => new Phaser.Math.Vector2(p.x, p.y + dy))
 
       const shadow = scene.add.graphics()
       shadow.fillStyle(0x000000, 0.28)
-      shadow.fillPoints(v(drop + 3), true)
-      // Extrusion slab: darker body color, offset down — the button's "side".
+      shadow.fillPoints(offsetPoints(drop + 3), true)
       const side = scene.add.graphics()
       side.fillStyle(darkenFill(fill, 0.62), 1)
-      side.fillPoints(v(extrude), true)
-      side.lineStyle(inkW, 0x111111, 1)
-      side.strokePoints(v(extrude), true, true)
+      side.fillPoints(offsetPoints(extrude), true)
+      side.lineStyle(inkW, UI_COLORS.INK, 1)
+      side.strokePoints(offsetPoints(extrude), true, true)
       const body = scene.add.graphics()
       body.fillStyle(fill, 1)
       body.fillPoints(pts, true)
-      body.lineStyle(inkW, 0x111111, 1)
+      body.lineStyle(inkW, UI_COLORS.INK, 1)
       body.strokePoints(pts, true, true)
-      // Glint: white oval on the top-left of the head (ball-shine language).
       body.fillStyle(0xffffff, 0.3)
       body.fillEllipse(-w * 0.26, -h * 0.28, w * 0.32, h * 0.2)
       c.add([shadow, side, body])
       c.setDepth(depth)
-
-      // Text-only: no icon, no dot — the label centers on the bar.
       iconY = this.opts.label ? -h * 0.18 : 0
       iconS = Math.min(w, h) * 0.66
     } else {
-      // FLAT PLATE (HUD): crisp rounded rect + darker offset slab.
       const shadow = scene.add.graphics()
       shadow.fillStyle(0x000000, 0.35)
       shadow.fillRoundedRect(-w / 2, -h / 2 + Math.max(3, h * 0.07), w, h, r)
-      // Solid extrusion slab (the button's "side") — same chunky depth as
-      // the doodle plate, so HUD buttons don't read flat next to the menu.
       const side = scene.add.graphics()
       side.fillStyle(darkenFill(fill, 0.62), 1)
       side.fillRoundedRect(-w / 2, -h / 2 + 2.5, w, h, r)
       const body = scene.add.graphics()
       body.fillStyle(fill, 1)
       body.fillRoundedRect(-w / 2, -h / 2, w, h, r)
-      // Crisp vector ink outline (clean cartoon stroke — all RoughJS was
-      // removed; the whole game is clean vector now).
       const strokeWidth = Math.max(3, w * 0.045)
-      body.lineStyle(strokeWidth, 0x111111, 1)
+      body.lineStyle(strokeWidth, UI_COLORS.INK, 1)
       body.strokeRoundedRect(-w / 2, -h / 2, w, h, r)
-      // Top sheen strip for cartoon gloss
-      body.fillStyle(0xffffff, 0.22)
-      body.fillRoundedRect(-w / 2 + 6, -h / 2 + 5, w - 12, h * 0.22, r * 0.6)
+      if (!this.opts.disabled) {
+        body.fillStyle(highlightColor, 0.4)
+        body.fillRoundedRect(-w / 2 + 6, -h / 2 + 5, w - 12, h * 0.22, r * 0.6)
+      }
       c.add([shadow, side, body])
       c.setDepth(depth)
       iconY = this.opts.label ? -h * 0.08 : 0
-      // Lucide painters treat `s` as the icon box edge and draw ~92% of it;
-      // half the button height keeps the glyph clear of the label row.
       iconS = Math.min(w, h) * 0.5
     }
 
@@ -226,14 +213,9 @@ export class CartoonButton {
       this.opts.icon(iconG, 0, iconY, iconS)
       c.add(iconG)
     }
-
     if (this.opts.quantity) {
       const q = hudText(scene, 0, 0, this.opts.quantity, 1, {
-        color: '#ffffff',
-        size: Math.max(13, w * 0.2),
-        stroke: 3,
-        origin: [1, 1],
-        shadow: false,
+        color: '#ffffff', size: Math.max(13, w * 0.2), stroke: 3, origin: [1, 1], shadow: false,
       })
       q.setPosition(w / 2 - 6, h / 2 - 4)
       c.add(q)
@@ -243,46 +225,31 @@ export class CartoonButton {
       const bs = Math.max(16, w * 0.24)
       badge.fillStyle(0xffffff, 1)
       badge.fillCircle(-w / 2 + 4 + bs / 2, -h / 2 + 4 + bs / 2, bs / 2)
-      badge.lineStyle(2.5, 0x111111, 1)
+      badge.lineStyle(2.5, UI_COLORS.INK, 1)
       badge.strokeCircle(-w / 2 + 4 + bs / 2, -h / 2 + 4 + bs / 2, bs / 2)
       c.add(badge)
       const k = hudText(scene, 0, 0, this.opts.hotkey, 1, {
-        color: '#111111',
-        size: bs * 0.72,
-        stroke: 0,
-        origin: [0.5, 0.5],
-        shadow: false,
+        color: UI_COLORS.INK_HEX, size: bs * 0.72, stroke: 0, origin: [0.5, 0.5], shadow: false,
       })
       k.setPosition(-w / 2 + 4 + bs / 2, -h / 2 + 4 + bs / 2 + 1)
       c.add(k)
     }
     if (this.opts.label) {
-      const l = hudText(scene, 0, 0, this.opts.label, 1, {
-        color: '#ffffff',
-        size: this.opts.labelSize ?? Math.max(12, h * 0.2),
-        stroke: 3,
-        origin: [0.5, 0.5],
-        shadow: false,
+      const label = hudText(scene, 0, 0, this.opts.label, 1, {
+        color: '#ffffff', size: this.opts.labelSize ?? Math.max(12, h * 0.2), stroke: 3, origin: [0.5, 0.5], shadow: false,
       })
-      l.setPosition(0, doodle ? 0 : h * 0.3)
-      c.add(l)
+      label.setPosition(0, doodle ? 0 : h * 0.3)
+      c.add(label)
     }
-    if (this.opts.disabled) {
-      // Grayscale the icon but keep the outline look (honest SOON state).
-      c.setAlpha(0.75)
-    }
+    if (this.opts.disabled) c.setAlpha(0.75)
 
-    const hit = scene.add
-      .rectangle(0, 0, w, h, 0xffffff, 0.001)
-      .setInteractive({ useHandCursor: !this.opts.disabled })
+    const hit = scene.add.rectangle(0, 0, w, h, 0xffffff, 0.001).setInteractive({ useHandCursor: !this.opts.disabled })
     c.add(hit)
     if (!this.opts.disabled) {
       hit.on('pointerdown', () => {
         scene.tweens.add({ targets: c, scale: 0.95, duration: 80, yoyo: true, ease: 'Quad.easeOut' })
       })
-      hit.on('pointerup', () => {
-        pressFx(scene, c, this.opts.onPress)
-      })
+      hit.on('pointerup', () => pressFx(scene, c, this.opts.onPress))
     }
   }
 
@@ -296,19 +263,19 @@ export class CartoonButton {
 export const Icons = {
   /** Raise Walls (Lucide `brick-wall`): the wall the ability builds. */
   raise(g: Phaser.GameObjects.Graphics, cx: number, cy: number, s: number): void {
-    drawLucide(g, 'brick-wall', cx, cy, s * 0.92)
+    drawLucide(g, 'brick-wall', cx, cy, s * 0.92, 0xffffff, 2.5)
   },
   /** Swap (Lucide `arrow-right-left`): two balls trading places. */
   swap(g: Phaser.GameObjects.Graphics, cx: number, cy: number, s: number): void {
-    drawLucide(g, 'arrow-right-left', cx, cy, s * 0.92)
+    drawLucide(g, 'arrow-right-left', cx, cy, s * 0.92, 0xffffff, 2.5)
   },
   /** Shake (Lucide `vibrate`): the phone-shake motion. */
   shake(g: Phaser.GameObjects.Graphics, cx: number, cy: number, s: number): void {
-    drawLucide(g, 'vibrate', cx, cy, s * 0.92)
+    drawLucide(g, 'vibrate', cx, cy, s * 0.92, 0xffffff, 2.5)
   },
   /** Locked slot (Lucide `circle-question-mark`). */
   soon(g: Phaser.GameObjects.Graphics, cx: number, cy: number, s: number): void {
-    drawLucide(g, 'circle-question-mark', cx, cy, s * 0.92)
+    drawLucide(g, 'circle-question-mark', cx, cy, s * 0.92, 0xffffff, 2.5)
   },
   /** Replay (Lucide `rotate-ccw`): PLAY AGAIN. */
   replay(g: Phaser.GameObjects.Graphics, cx: number, cy: number, s: number): void {

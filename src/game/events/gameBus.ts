@@ -34,6 +34,10 @@ export interface GameEventMap {
   'ui:swap': Record<string, never>
   'ui:raise': Record<string, never>
   'ui:restart': Record<string, never>
+  /** Pause menu opened; the world must ignore all pointer releases. */
+  'ui:pause': Record<string, never>
+  /** Pause menu → world: swallow the Resume release before enabling gameplay. */
+  'ui:resume': Record<string, never>
   /** Phase 2.14.0: UI → game. The player pressed START on the title
    * screen — gameplay input unlocks, the start scene is fading out. */
   'ui:start': Record<string, never>

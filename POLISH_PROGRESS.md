@@ -117,3 +117,20 @@
 - Leaderboard displays the saved local top ten, with two five-row columns in short landscape and a bounded empty state. Settings persists background choices, displays lifetime statistics, and resets saved progress only after a second distinct tap within four seconds. Navigation and timeout cancel reset confirmation; reset refreshes home and HUD best scores.
 - Browser smoke covered 320×568, 390×844, 844×390, and 1280×800: all four chapters, forward/backward turns, Prev/Next, swipe, populated/empty leaderboard, persisted theme choice, reset expiry/confirmation, and Back/resize during an active turn.
 
+
+## 6. In-Game Pause Menu — 2026-10-28
+
+- A 48px blue pause control sits at the HUD's safe right edge, vertically centered on the score row on desktop and portrait phones. Its top outline stays below the safe-area boundary. It is hidden with discovery-card HUD chrome and disabled when game over owns the run.
+- `PauseScene` stays active over scene-paused `playground` and `UIScene`. Physics, world/HUD timer events, abilities, held-ball cooldown, and wall countdown do not advance behind the card. Resume preserves score, balls, queue, and consumed charges; its release cannot drop a ball.
+- `PauseMenuView` uses the game's cream card, thick ink outline, blue mascot, Lucide icons, and blue/red tactile buttons. Portrait stacks Resume, Restart, Settings, and Main Menu; landscape uses a two-column action grid. The dim backdrop consumes outside taps rather than dismissing the menu.
+- Restart uses the existing full run reset and restores the ball queue and one-use abilities. Main Menu resets the abandoned run and uses the same navigation route as Game Over; PLAY can start again normally.
+- Settings opens TitleScene's existing Settings screen in one-shot `returnToPause` mode. Theme changes persist normally, but Back restores the paused card without resuming or resetting the run. No duplicate settings implementation or audio controls are introduced.
+- Gameplay deadlines and input cooldown use one active-time clock rather than wall time. UI hit testing converts buffer-pixel pointers through the HUD camera; control taps never consume a drop or its cooldown. Input regression tests cover UI releases, paused cooldown boundaries, and restart while input is disabled.
+- Browser smoke covered 320×568, 390×844, 844×390, and 1280×800, including live falling balls, a scored merge, wall countdown, shortcuts, all pause actions, paused settings return, and orientation changes.
+
+
+### Pause-card spacing polish — 2026-10-28
+
+- Rebalanced `PauseMenuView` around rendered title/score heights instead of nominal font blocks. Portrait action gaps are now 18px on compact phones and 20px on standard phones; landscape row gaps are 16px with a 10px column gap. These account for the ChunkyButton extrusion so visible button edges no longer touch or overlap.
+- Added responsive card insets and a 9px bottom-slab allowance. Verified card/button containment and minimum 44px touch heights at 320×568, 390×844, 844×390, and 1280×800; visible row clearances are 7.75–9.75px portrait and 5.75px landscape.
+

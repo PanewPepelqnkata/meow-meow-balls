@@ -129,6 +129,8 @@ export class PlaygroundScene extends Phaser.Scene {
   private bestTierRun = 1
   /** Drops are ignored until this scene-time (restart click suppression). */
   private dropSuppressUntil = 0
+  /** Simulation timeline; Phaser time.now follows wall time across scene pauses. */
+  private activeTimeMs = 0
   /** Cached layout for pointer→stage mapping and camera framing. */
   private layoutCache: UiLayout | null = null
   /** UIScene reference (lazily resolved — for pointer-over-UI gating). */
@@ -143,6 +145,7 @@ export class PlaygroundScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.activeTimeMs = 0
     // Phase 2.12.1: the full-screen background lives in the dedicated
     // BackgroundScene (registered BELOW this scene) — see GameRoot. This
     // scene's camera stays transparent so the themed background shows through.
@@ -171,7 +174,7 @@ export class PlaygroundScene extends Phaser.Scene {
       this.physicsWorld.addBody(body)
     }
     this.walls = new WallAnimator()
-    this.walls.setClock(() => this.time.now)
+    this.walls.setClock(() => this.activeTimeMs)
 
     this.balls = new SoftBallManager(this.physicsWorld.world)
     this.balls.setPhysics(this.physicsWorld)
@@ -305,6 +308,7 @@ export class PlaygroundScene extends Phaser.Scene {
       cooldownMs: SPAWN.cooldownMs,
       toStage: (pointer) => this.viewportToStage(pointer),
       onDrop: (target) => this.dropBall(target.x),
+      now: () => this.activeTimeMs,
     })
     this.inputController.attach(this)
     // Phase 2.14.0: while the start screen is up, gameplay input is gated
@@ -370,7 +374,20 @@ export class PlaygroundScene extends Phaser.Scene {
     )
     this.events.once(
       Phaser.Scenes.Events.SHUTDOWN,
+      gameBus.on('ui:pause', () => {
+        this.inputController.setEnabled(false)
+      }),
+    )
+    this.events.once(
+      Phaser.Scenes.Events.SHUTDOWN,
       gameBus.on('ui:restart', () => this.restartRun()),
+    )
+    this.events.once(
+      Phaser.Scenes.Events.SHUTDOWN,
+      gameBus.on('ui:resume', () => {
+        if (!this.gameOver && !session.menuActive) this.inputController.setEnabled(true)
+        this.dropSuppressUntil = this.activeTimeMs + 200
+      }),
     )
     // Baked rendering: drop all baked textures + quads with the scene.
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -386,7 +403,7 @@ export class PlaygroundScene extends Phaser.Scene {
         session.menuActive = false
         if (!this.gameOver) {
           this.inputController.setEnabled(true)
-          this.dropSuppressUntil = this.time.now + 400
+          this.dropSuppressUntil = this.activeTimeMs + 400
         }
       }),
     )
@@ -719,6 +736,7 @@ export class PlaygroundScene extends Phaser.Scene {
     // Phase 2.13.0: the discovery presentation pauses physics the same way —
     // `step` is skipped entirely so no sim time accumulates invisibly.
     if (!this.gameOver && !this.discoveryBlocking()) {
+      this.activeTimeMs += delta
       // Side-wall containment exists only below the CURRENT wall tops
       // (Phase 2.10.1): feed the live animated height to the boundary
       // backstop so balls can genuinely overflow through the open top.
@@ -766,11 +784,11 @@ export class PlaygroundScene extends Phaser.Scene {
       this.syncRegistration()
 
       this.checkGameOver(delta)
-      this.walls.update(this.time.now)
+      this.walls.update(this.activeTimeMs)
       this.updateClaw()
       // Drop-cooldown gate → claw/preview visibility. Emitted on FLIP only
       // (mirrors the walls:countdown discipline — no per-frame bus spam).
-      const holding = this.inputController.cooldownRemainingMs(this.time.now) <= 0
+      const holding = this.inputController.cooldownRemainingMs() <= 0
       if (holding !== this.lastDropHolding) {
         this.lastDropHolding = holding
         gameBus.emit('state:dropHolding', { holding })
@@ -846,6 +864,7 @@ export class PlaygroundScene extends Phaser.Scene {
    * the rect check is the cross-scene gate).
    */
   private viewportToStage(pointer: Phaser.Input.Pointer): { x: number; y: number } | null {
+    if (this.activeTimeMs < this.dropSuppressUntil) return null
     if (this.ui()?.isPointerOverUi(pointer.x, pointer.y)) return null
     const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y)
     return { x: world.x, y: world.y }
@@ -930,7 +949,7 @@ export class PlaygroundScene extends Phaser.Scene {
     // Guard against the restart click double-acting: the PLAY AGAIN button
     // handler enables input, and the same pointerup then reaches the canvas
     // drop path — suppress drops for a short window after a restart.
-    if (this.time.now < this.dropSuppressUntil) return
+    if (this.activeTimeMs < this.dropSuppressUntil) return
     const tier = getTier(this.currentBall.tier)
     if (!tier) return
     // Spawn ABOVE the fully raised wall tops (Phase 2.10.1, config/spawn.ts):
@@ -1081,6 +1100,7 @@ export class PlaygroundScene extends Phaser.Scene {
     // Full reset (Phase 2.10.0): gameplay state, game-over state, overlay,
     // HUD ability state, walls, physics and rendering all start clean.
     this.gameOver = false
+    this.activeTimeMs = 0
     this.overWatch.reset()
     this.inputController.setEnabled(false)
     this.swapUsed = false
@@ -1122,8 +1142,11 @@ export class PlaygroundScene extends Phaser.Scene {
     if (themeSetting() === 'auto') this.backgroundScene?.resetTheme()
     gameBus.emit('state:best', { best: this.best() })
     gameBus.emit('ability:enabled', { enabled: true })
-    this.inputController.setEnabled(true)
-    this.dropSuppressUntil = this.time.now + 350
+    this.inputController.reset()
+    this.lastDropHolding = true
+    gameBus.emit('state:dropHolding', { holding: true })
+    this.inputController.setEnabled(!session.menuActive)
+    this.dropSuppressUntil = this.activeTimeMs + 350
     gameBus.emit('run:started', { at: Date.now() })
   }
 

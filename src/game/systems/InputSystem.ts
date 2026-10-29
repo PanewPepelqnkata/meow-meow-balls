@@ -23,6 +23,8 @@ export interface InputControllerOptions {
    * (worldCam.getWorldPoint) instead of the old FIT-canvas rect math. */
   toStage: (pointer: Phaser.Input.Pointer) => { x: number; y: number } | null
   onDrop: (target: DropTarget) => void
+  /** Active gameplay time; it must not advance while the run is paused. */
+  now: () => number
 }
 
 /**
@@ -51,19 +53,21 @@ export class InputController {
 
   private readonly handlePointerUp = (pointer: Phaser.Input.Pointer): void => {
     if (!this.enabled) return
-    this.updateAim(pointer)
-    this.tryDrop(performance.now())
+    if (!this.updateAim(pointer)) return
+    this.tryDrop()
   }
 
-  private updateAim(pointer: Phaser.Input.Pointer): void {
+  private updateAim(pointer: Phaser.Input.Pointer): boolean {
     const stage = this.opts.toStage(pointer)
-    if (!stage) return
+    if (stage === null) return false
     this.aimX = clampDropX(stage.x, this.opts.maxRadius, this.opts.interior)
+    return true
   }
 
   /** Returns the drop target if the cooldown allowed a drop, else null. */
-  tryDrop(nowMs: number): DropTarget | null {
+  tryDrop(): DropTarget | null {
     if (!this.enabled) return null
+    const nowMs = this.opts.now()
     if (!canDrop(this.lastDropAtMs, nowMs, this.opts.cooldownMs)) return null
     this.lastDropAtMs = nowMs
     const x = clampDropX(this.aimX, this.opts.maxRadius, this.opts.interior)
@@ -75,10 +79,15 @@ export class InputController {
     return target
   }
 
-  /** Milliseconds left in the drop cooldown (0 = ready), from `nowMs`. */
-  cooldownRemainingMs(nowMs: number): number {
-    const left = this.opts.cooldownMs - (nowMs - this.lastDropAtMs)
+  /** Milliseconds left in the drop cooldown, on the same active timeline as drops. */
+  cooldownRemainingMs(): number {
+    const left = this.opts.cooldownMs - (this.opts.now() - this.lastDropAtMs)
     return Math.max(0, left)
+  }
+
+  reset(): void {
+    this.lastDropAtMs = -Infinity
+    this.aimX = this.opts.interior.x + this.opts.interior.width / 2
   }
 
   setEnabled(enabled: boolean): void {

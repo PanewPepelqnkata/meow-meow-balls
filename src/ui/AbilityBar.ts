@@ -1,6 +1,7 @@
 import Phaser from 'phaser'
 import type { UiLayout } from './ResponsiveLayout'
 import { CartoonButton, Icons } from './CartoonButton'
+import { UI_COLORS } from './DesignSystem'
 import { hudText } from './Typography'
 
 /**
@@ -47,7 +48,7 @@ export class AbilityBar {
     const startX = l.abilities.centerX ? (l.vw - rowW) / 2 : l.abilities.startX
     const defs: Array<{ fill: number; icon: typeof Icons.raise; hotkey?: string; qty?: string; disabled?: boolean; label?: string; press?: () => void }> = [
       {
-        fill: 0x2d74c9,
+        fill: UI_COLORS.BTN_BLUE,
         icon: Icons.swap,
         hotkey: 'Q',
         qty: '1',
@@ -56,9 +57,9 @@ export class AbilityBar {
         press: () => this.handlers.onSwap(),
       },
       // No hotkey badge — 'W' is not a real binding (honest SOON state).
-      { fill: 0x2d74c9, icon: Icons.shake, disabled: true, label: 'SOON' },
+      { fill: UI_COLORS.BTN_BLUE, icon: Icons.shake, disabled: true, label: 'SOON' },
       {
-        fill: 0x2d74c9,
+        fill: UI_COLORS.BTN_BLUE,
         icon: Icons.raise,
         hotkey: 'E',
         // Phase 2.13.1: one-use — the button flips to USED/disabled the
@@ -68,7 +69,7 @@ export class AbilityBar {
         label: this.raiseUsed ? 'USED' : 'RAISE',
         press: () => this.handlers.onRaise(),
       },
-      { fill: 0x2d74c9, icon: Icons.soon, disabled: true, label: 'SOON' },
+      { fill: UI_COLORS.BTN_BLUE, icon: Icons.soon, disabled: true, label: 'SOON' },
     ]
     defs.forEach((d, i) => {
       this.buttons.push(

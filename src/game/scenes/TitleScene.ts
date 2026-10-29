@@ -58,8 +58,8 @@ import { CollectionBookView } from '../rendering/CollectionBookView'
  * LEADERBOARD -> lifetime top runs (persisted save).
  * COLLECTION -> physical book album with core tiers, variants, stamps & dates.
  * SETTINGS -> theme (auto/fixed) + reset progress.
- * Restarts never re-show the menu: this scene launches once per game boot
- * and stops itself for good when PLAY is pressed.
+ * Restarts do not re-show home. Pause can launch Settings directly, keeping
+ * the current run paused until BACK returns to PauseScene.
  * `?fastboot=1` (dev-only) never launches this scene.
  */
 
@@ -122,6 +122,7 @@ export class TitleScene extends Phaser.Scene {
     screen: 'menu' | 'panel' | 'settings'
   }> = []
   private screen: ScreenName = 'menu'
+  private returnToPause = false
   private closed = false
   private resetArmed = 0
   private resetArmTimer: number | null = null
@@ -146,9 +147,12 @@ export class TitleScene extends Phaser.Scene {
     this.buildAll()
   }
 
-  create(): void {
+  create(data: { returnToPause?: boolean } = {}): void {
     this.closed = false
-    this.screen = 'menu'
+    this.returnToPause = data.returnToPause === true
+    // Phaser retains launch data when a later launch omits it; consume this one-shot mode.
+    this.sys.settings.data = {}
+    this.screen = this.returnToPause ? 'settings' : 'menu'
     // HiDPI camera setup; reapplied on resize (buildAll relayouts in CSS
     // coordinates — the camera handles the buffer scaling).
     this.applyDprCamera()
@@ -157,8 +161,8 @@ export class TitleScene extends Phaser.Scene {
     this.scene.bringToTop()
     // Phase 2.16.0: the menu owns the screen — the gameplay scenes are
     // COMPLETELY HIDDEN (not merely dimmed), so no second container / HUD
-    // can ever show through. They keep running (input-gated), and are
-    // revealed again under the fade-out when PLAY is pressed.
+    // can ever show through. Home leaves them running (input-gated);
+    // Settings from PauseScene leaves their existing paused state untouched.
     // (PlaygroundScene registers under the key 'playground'.)
     this.scene.setVisible(false, 'playground')
     this.scene.setVisible(false, 'UIScene')
@@ -180,6 +184,7 @@ export class TitleScene extends Phaser.Scene {
     this.game.events.on('br:dpr', this.onViewportResize, this)
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.closed = true
+      this.returnToPause = false
       this.destroyCollectionBook()
       this.disarmReset()
       this.game.events.off('br:dpr', this.onViewportResize, this)
@@ -187,9 +192,8 @@ export class TitleScene extends Phaser.Scene {
       this.offs.length = 0
       this.uiverseDom?.destroy()
       this.uiverseDom = null
-      // NOTE: the DEV __brMenu hook deliberately SURVIVES the scene stop
-      // (visible() reports false via `closed`) so QA can assert the menu
-      // never returns; a reload re-registers it anyway.
+      // The DEV hook survives scene stops (visible() reports false via
+      // `closed`); a later launch replaces it with the new menu state.
     })
 
     if (import.meta.env.DEV) {
@@ -203,7 +207,7 @@ export class TitleScene extends Phaser.Scene {
         // canvas texture size) so visual oddities can be diagnosed from the
         // browser tests without a game instance handle.
         letters: () =>
-          (this.logoC.list as Array<Phaser.GameObjects.Text & Phaser.GameObjects.Image>).map(
+          ((this.logoC?.list ?? []) as Array<Phaser.GameObjects.Text & Phaser.GameObjects.Image>).map(
             (t) => ({
               text: t.text ?? t.texture?.key,
               x: Math.round(t.x),
@@ -234,7 +238,7 @@ export class TitleScene extends Phaser.Scene {
   }
 
   override update(time: number): void {
-    if (this.closed) return
+    if (this.closed || this.returnToPause) return
     const t = time / 1000
     // The machine breathes as one piece — a heavy vending machine sway.
     if (this.machineC) {
@@ -307,8 +311,10 @@ export class TitleScene extends Phaser.Scene {
     this.panelLayer.removeAll(true)
     this.panelLayer.add(this.panelBackdrop)
     this.panelLayer.add(this.panelContent)
-    this.backdropImg = this.buildBackdrop(vw, vh)
-    this.menuLayer.addAt(this.backdropImg, 0)
+    if (!this.returnToPause) {
+      this.backdropImg = this.buildBackdrop(vw, vh)
+      this.menuLayer.addAt(this.backdropImg, 0)
+    }
     this.cast.length = 0
     this.menuRects.length = 0
     this.panelRects.length = 0
@@ -317,7 +323,7 @@ export class TitleScene extends Phaser.Scene {
     this.logoImg = null
     this.chipRect = null
 
-    this.buildHome(vw, vh)
+    if (!this.returnToPause) this.buildHome(vw, vh)
     this.buildPanelChrome(vw, vh)
     this.applyScreenVisibility()
   }
@@ -1002,9 +1008,25 @@ export class TitleScene extends Phaser.Scene {
 
   private openScreen(screen: ScreenName): void {
     if (this.closed) return
+    if (this.returnToPause) {
+      if (screen === 'menu') this.returnToPausedGame()
+      return
+    }
     if (screen !== this.screen) this.disarmReset()
     this.screen = screen
     this.applyScreenVisibility()
+  }
+  private returnToPausedGame(): void {
+    this.closed = true
+    this.disarmReset()
+    this.input.enabled = false
+    // Visibility only: PauseScene remains active and owns resuming the run.
+    this.scene.setVisible(true, 'playground')
+    this.scene.setVisible(true, 'UIScene')
+    this.scene.get('PauseScene').input.enabled = true
+    this.scene.setVisible(true, 'PauseScene')
+    this.scene.bringToTop('PauseScene')
+    this.scene.stop()
   }
 
   private applyScreenVisibility(): void {
@@ -1454,7 +1476,7 @@ export class TitleScene extends Phaser.Scene {
   }
 
   private pressStart(): void {
-    if (this.closed) return
+    if (this.closed || this.returnToPause) return
     this.closed = true
     this.destroyCollectionBook()
     this.disarmReset()

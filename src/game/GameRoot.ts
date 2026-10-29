@@ -7,6 +7,7 @@ import { PlaygroundScene } from './scenes/PlaygroundScene'
 import { UIScene } from './scenes/UIScene'
 import { SoftBallScene } from './scenes/SoftBallScene'
 import { TitleScene } from './scenes/TitleScene'
+import { PauseScene } from './scenes/PauseScene'
 import { installDiag } from './diag'
 import { installFaultContainment } from './FaultContainment'
 
@@ -67,7 +68,7 @@ export function createGame(parent: HTMLElement): Phaser.Game {
     // everything. It is only STARTED on demand (PlaygroundScene launches it
     // at boot unless dev-fastboot skipped it); being in the list just
     // registers its key.
-    scene: [BackgroundScene, PlaygroundScene, UIScene, TitleScene, StartIntroScene],
+    scene: [BackgroundScene, PlaygroundScene, UIScene, TitleScene, StartIntroScene, PauseScene],
   })
   const cssSize = (): { w: number; h: number } => ({
     w: parent.clientWidth || window.innerWidth,

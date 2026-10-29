@@ -28,6 +28,8 @@ export class UIScene extends Phaser.Scene {
   private lastBest = 0
   private lastScore = 0
   private offs: Array<() => void> = []
+  private pauseAllowed = true
+  private readonly pointerWorld = new Phaser.Math.Vector2()
 
   constructor() {
     super('UIScene')
@@ -36,22 +38,7 @@ export class UIScene extends Phaser.Scene {
     this.gameOverlay = new GameOverView(
       this,
       () => gameBus.emit('ui:restart', {}),
-      () => {
-        const pg = this.scene.get('playground') as unknown as {
-          scene: Phaser.Scenes.ScenePlugin
-          ballRenderer?: { clear(): void; emotion: { clear(): void } }
-          balls?: { clearBalls(): void }
-        }
-        // Reset gameplay to boot state, then hand control back to the menu.
-        gameBus.emit('ui:restart', {})
-        session.menuActive = true
-        pg.scene.setVisible(false)
-        this.scene.setVisible(false)
-        const title = this.scene.get('TitleScene') as unknown as {
-          scene: Phaser.Scenes.ScenePlugin
-        }
-        title.scene.start('TitleScene')
-      },
+      () => this.returnToMenu(),
     )
   }
 
@@ -69,13 +56,15 @@ export class UIScene extends Phaser.Scene {
   create(): void {
     // HiDPI camera setup; reapplied on resize.
     this.applyDprCamera()
-    this.scale.on(Phaser.Scale.Events.RESIZE, this.applyDprCamera, this)
+    this.pauseAllowed = true
+    this.game.events.on('br:dpr', this.applyDprCamera, this)
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      this.scale.off(Phaser.Scale.Events.RESIZE, this.applyDprCamera, this)
+      this.game.events.off('br:dpr', this.applyDprCamera, this)
     })
     this.uiRoot = new UiRoot(this, {
       onSwap: () => gameBus.emit('ui:swap', {}),
       onRaise: () => gameBus.emit('ui:raise', {}),
+      onPause: () => this.pauseRun(),
     })
     // Phase 2.19: the discovery modal centers in the GAMEPLAY SLOT on
     // portrait (below the HUD block, above the controls) — never inside
@@ -118,7 +107,10 @@ export class UIScene extends Phaser.Scene {
       gameBus.on('walls:countdown', ({ remainingMs }) => this.uiRoot.updateRaiseCountdown(remainingMs)),
       gameBus.on('ability:swapUsed', () => this.uiRoot.markSwapUsed()),
       gameBus.on('ability:raiseUsed', () => this.uiRoot.markRaiseUsed()),
-      gameBus.on('ability:enabled', ({ enabled }) => this.uiRoot.setAbilitiesEnabled(enabled)),
+      gameBus.on('ability:enabled', ({ enabled }) => {
+        this.pauseAllowed = enabled
+        this.uiRoot.setAbilitiesEnabled(enabled)
+      }),
       gameBus.on('run:gameover', ({ score, best }) => {
         this.lastBest = best
         this.uiRoot.setScore(score, best)
@@ -147,6 +139,29 @@ export class UIScene extends Phaser.Scene {
     })
   }
 
+  private pauseRun(): void {
+    if (session.menuActive || !this.pauseAllowed || !this.sys.isVisible() ||
+        this.gameOverlay.visible || this.discoveryOverlay.isShowing() ||
+        this.scene.isActive('StartIntroScene') || this.scene.isActive('TitleScene')) return
+    gameBus.emit('ui:pause', {})
+    this.scene.pause('playground')
+    this.scene.pause()
+    this.scene.launch('PauseScene', { score: this.lastScore })
+  }
+
+  /** Game over and pause use the same clean route back to the title screen. */
+  returnToMenu(): void {
+    session.menuActive = true
+    gameBus.emit('ui:restart', {})
+    this.scene.setVisible(false, 'playground')
+    this.scene.setVisible(false)
+    this.scene.get('playground').tweens.getDelta(true)
+    this.tweens.getDelta(true)
+    this.scene.resume('playground')
+    this.scene.resume()
+    this.scene.launch('TitleScene', {})
+  }
+
   /** Phase 2.13.0: per-frame discovery burst animation (speed lines, flash).
    * Phase 2.15.0: while the start screen is up, the HUD recedes deep behind
    * the menu veil — gameplay state/physics stay fully alive, only the HUD's
@@ -163,7 +178,8 @@ export class UIScene extends Phaser.Scene {
   isPointerOverUi(x: number, y: number): boolean {
     if (this.discoveryOverlay.isShowing()) return true
     if (this.gameOverlay.visible) return true
-    return this.uiRoot?.isPointerOverUi(x, y) ?? false
+    this.cameras.main.getWorldPoint(x, y, this.pointerWorld)
+    return this.uiRoot?.isPointerOverUi(this.pointerWorld.x, this.pointerWorld.y) ?? false
   }
 
   /** QA hook (Phase 2.12.2): live discovery-modal state. */
