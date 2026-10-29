@@ -63,6 +63,7 @@ export class UIScene extends Phaser.Scene {
     })
     this.uiRoot = new UiRoot(this, {
       onSwap: () => gameBus.emit('ui:swap', {}),
+      onShake: () => gameBus.emit('ui:shake', {}),
       onRaise: () => gameBus.emit('ui:raise', {}),
       onPause: () => this.pauseRun(),
     })
@@ -105,6 +106,8 @@ export class UIScene extends Phaser.Scene {
       // Phase 2.13.0: real discovery state drives the progression path.
       gameBus.on('state:discovered', ({ tier }) => this.uiRoot.unlockTier(tier)),
       gameBus.on('walls:countdown', ({ remainingMs }) => this.uiRoot.updateRaiseCountdown(remainingMs)),
+      gameBus.on('shake:countdown', ({ remainingMs }) => this.uiRoot.updateShakeCountdown(remainingMs)),
+      gameBus.on('ability:shakeUsed', () => this.uiRoot.markShakeUsed()),
       gameBus.on('ability:swapUsed', () => this.uiRoot.markSwapUsed()),
       gameBus.on('ability:raiseUsed', () => this.uiRoot.markRaiseUsed()),
       gameBus.on('ability:enabled', ({ enabled }) => {

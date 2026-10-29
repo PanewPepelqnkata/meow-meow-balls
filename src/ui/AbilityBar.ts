@@ -16,13 +16,16 @@ import { hudText } from './Typography'
  */
 export interface AbilityHandlers {
   onSwap: () => void
+  onShake: () => void
   onRaise: () => void
 }
 
 export class AbilityBar {
   private buttons: CartoonButton[] = []
   private countdownText: Phaser.GameObjects.Text | null = null
+  private shakeCountdownText: Phaser.GameObjects.Text | null = null
   private swapUsed = false
+  private shakeUsed = false
   private raiseUsed = false
   private abilitiesEnabled = true
   private readonly scene: Phaser.Scene
@@ -56,8 +59,15 @@ export class AbilityBar {
         label: this.swapUsed ? 'USED' : 'SWAP',
         press: () => this.handlers.onSwap(),
       },
-      // No hotkey badge — 'W' is not a real binding (honest SOON state).
-      { fill: UI_COLORS.BTN_BLUE, icon: Icons.shake, disabled: true, label: 'SOON' },
+      {
+        fill: UI_COLORS.BTN_BLUE,
+        icon: Icons.shake,
+        hotkey: 'W',
+        qty: this.shakeUsed ? undefined : '1',
+        disabled: this.shakeUsed || !this.abilitiesEnabled,
+        label: this.shakeUsed ? 'USED' : 'SHAKE',
+        press: () => this.handlers.onShake(),
+      },
       {
         fill: UI_COLORS.BTN_BLUE,
         icon: Icons.raise,
@@ -89,10 +99,14 @@ export class AbilityBar {
         }),
       )
     })
-    // Keep an existing countdown label anchored to the (possibly moved) raise button.
+    // Keep existing countdown labels anchored to the buttons.
     if (this.countdownText) {
       const c = this.raiseCenter()
       this.countdownText.setPosition(c.x, c.y - l.abilities.size * 0.75)
+    }
+    if (this.shakeCountdownText) {
+      const c = this.shakeCenter()
+      this.shakeCountdownText.setPosition(c.x, c.y - l.abilities.size * 0.75)
     }
   }
 
@@ -100,6 +114,39 @@ export class AbilityBar {
   private raiseCenter(): { x: number; y: number } {
     const b = this.buttons[2]
     return b?.center ?? { x: 0, y: 0 }
+  }
+  /** Center of the Shake button (countdown anchor). */
+  private shakeCenter(): { x: number; y: number } {
+    const b = this.buttons[1]
+    return b?.center ?? { x: 0, y: 0 }
+  }
+
+  updateShakeCountdown(remainingMs: number): void {
+    if (remainingMs <= 0) {
+      this.shakeCountdownText?.setText('')
+      return
+    }
+    if (!this.shakeCountdownText) {
+      const c = this.shakeCenter()
+      this.shakeCountdownText = hudText(this.scene, c.x, c.y - (this.l?.abilities.size ?? 60) * 0.75, '', 1, {
+        color: '#ffffff',
+        size: Math.max(12, (this.l?.abilities.size ?? 60) * 0.18),
+        stroke: 3,
+        origin: [0.5, 0.5],
+        shadow: false,
+      })
+      this.shakeCountdownText.setDepth(60)
+    }
+    this.shakeCountdownText.setText(`SHAKE ${Math.ceil(remainingMs / 1000)}s`)
+  }
+
+  markShakeUsed(): void {
+    this.shakeUsed = true
+    this.layout(this.l!)
+  }
+
+  get shakeUsedState(): boolean {
+    return this.shakeUsed
   }
 
   /** Centers of the four buttons (pointer gating + QA). */
@@ -157,10 +204,13 @@ export class AbilityBar {
 
   resetForNewRun(): void {
     this.swapUsed = false
+    this.shakeUsed = false
     this.raiseUsed = false
     this.abilitiesEnabled = true
     this.countdownText?.destroy()
     this.countdownText = null
+    this.shakeCountdownText?.destroy()
+    this.shakeCountdownText = null
     if (this.l) this.layout(this.l)
   }
 }

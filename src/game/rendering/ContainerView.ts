@@ -101,6 +101,18 @@ export class ContainerView {
   private glowPath: Pt[] = []
   private glowLen = 0
 
+  private shakeOffsetX = 0
+  private shakeOffsetY = 0
+
+  setShakeOffset(dx: number, dy: number): void {
+    this.shakeOffsetX = dx
+    this.shakeOffsetY = dy
+    this.frameImage.setPosition(dx, dy)
+    this.sleeveG.setPosition(dx, dy)
+    this.glowG.setPosition(dx, dy)
+    this.redrawWalls(this.lastHeight)
+  }
+
   setOpacity(alpha: number): void {
     this.frameImage.setAlpha(alpha)
     for (const sleeve of this.sleeves) sleeve.image.setAlpha(alpha)
@@ -128,13 +140,13 @@ export class ContainerView {
   redrawWalls(height: number): void {
     const extension = Math.max(0, Math.min(CONTAINER.raisedHeight - CONTAINER.height, height - CONTAINER.height))
     const resolvedHeight = CONTAINER.height + extension
-    if (resolvedHeight === this.lastHeight) return
     this.lastHeight = resolvedHeight
     for (let i = 0; i < this.sleeves.length; i++) {
       const sleeve = this.sleeves[i]!
-      const dx = sleeve.side * this.slope * extension
-      sleeve.image.setPosition(sleeve.homeX + dx, sleeve.homeY - extension)
-      this.caps[i]!.setPosition(dx, -extension)
+      const dx = sleeve.side * this.slope * extension + this.shakeOffsetX
+      const dy = -extension + this.shakeOffsetY
+      sleeve.image.setPosition(sleeve.homeX + dx, sleeve.homeY + dy)
+      this.caps[i]!.setPosition(dx, dy)
     }
     this.corners[0]!.x = this.normalCorners[0]!.x - this.slope * extension
     this.corners[1]!.x = this.normalCorners[1]!.x + this.slope * extension

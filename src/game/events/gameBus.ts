@@ -23,6 +23,10 @@ export interface GameEventMap {
   'state:best': { best: number }
   /** Raise Walls countdown tick (per frame; 0 = inactive). */
   'walls:countdown': { remainingMs: number }
+  /** Shake ability countdown tick (per frame; 0 = inactive). */
+  'shake:countdown': { remainingMs: number }
+  /** Shake ability consumed this run. */
+  'ability:shakeUsed': Record<string, never>
   /** The swap power-up was consumed this run. */
   'ability:swapUsed': Record<string, never>
   /** Phase 2.13.1: the one-use Raise Walls power-up was consumed this run —
@@ -33,6 +37,7 @@ export interface GameEventMap {
   /** UI → game: player pressed an ability / restart in the UIScene. */
   'ui:swap': Record<string, never>
   'ui:raise': Record<string, never>
+  'ui:shake': Record<string, never>
   'ui:restart': Record<string, never>
   /** Pause menu opened; the world must ignore all pointer releases. */
   'ui:pause': Record<string, never>

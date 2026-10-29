@@ -18,6 +18,7 @@ import { ScoreSystem } from '../systems/ScoreSystem'
 import { ContainerView } from '../rendering/ContainerView'
 import { SoftBallRenderer } from '../rendering/SoftBallRenderer'
 import { BackgroundScene } from './BackgroundScene'
+import { ShakeManager } from '../systems/ShakeManager'
 import { ScoreFeedback } from '../rendering/ScoreFeedback'
 import { gameBus } from '../events/gameBus'
 import { DebugOverlay } from '../debug/DebugOverlay'
@@ -65,6 +66,7 @@ export class PlaygroundScene extends Phaser.Scene {
   private backgroundScene: BackgroundScene | undefined
   private scoreFeedback!: ScoreFeedback
   private walls!: WallAnimator
+  private shake!: ShakeManager
   private containerView!: ContainerView
   private claw!: DropClaw
   private debug: DebugOverlay | null = null
@@ -186,6 +188,11 @@ export class PlaygroundScene extends Phaser.Scene {
       this.containerView.redrawWalls(h)
       this.balls.invalidateWallGeo()
     }, this.balls, tipBodies)
+    this.shake = new ShakeManager()
+    this.shake.bind({
+      addBody: (b) => Matter.Composite.add(this.physicsWorld.world, b),
+      removeBody: (b) => Matter.Composite.remove(this.physicsWorld.world, b),
+    }, this.balls)
     this.ballRenderer = new SoftBallRenderer(this)
     // Baked-rendering invalidation (settled-state kill): EVERY genuine wake
     // funnels through SoftBallManager.wakeBall (auditStuckBalls, partial
@@ -363,6 +370,10 @@ export class PlaygroundScene extends Phaser.Scene {
       if (session.menuActive) return
       this.doRaise()
     })
+    this.input.keyboard?.on('keydown-W', () => {
+      if (session.menuActive) return
+      this.doShake()
+    })
     // UIScene → world commands (buttons live in UIScene; behavior here).
     this.events.once(
       Phaser.Scenes.Events.SHUTDOWN,
@@ -371,6 +382,10 @@ export class PlaygroundScene extends Phaser.Scene {
     this.events.once(
       Phaser.Scenes.Events.SHUTDOWN,
       gameBus.on('ui:raise', () => this.doRaise()),
+    )
+    this.events.once(
+      Phaser.Scenes.Events.SHUTDOWN,
+      gameBus.on('ui:shake', () => this.doShake()),
     )
     this.events.once(
       Phaser.Scenes.Events.SHUTDOWN,
@@ -489,6 +504,7 @@ export class PlaygroundScene extends Phaser.Scene {
           next: { ...this.nextBallState },
           swapUsed: this.swapUsed,
           raiseUsed: this.raiseUsed,
+          shakeUsed: this.shakeUsed,
         }),
         /** DEV-ONLY QA hook (Phase 2.13.0, MUTATING — QA only): force the
          * queue contents for deterministic preview/crane regression tests. */
@@ -785,6 +801,15 @@ export class PlaygroundScene extends Phaser.Scene {
 
       this.checkGameOver(delta)
       this.walls.update(this.activeTimeMs)
+      const shakeEffect = this.shake.update(this.activeTimeMs)
+      this.balls.shakeActive = shakeEffect.active
+      if (shakeEffect.active) {
+        this.containerView.setShakeOffset(shakeEffect.dx, shakeEffect.dy)
+        this.cameras.main.setScroll(-shakeEffect.dx * 0.4, -shakeEffect.dy * 0.4)
+      } else {
+        this.containerView.setShakeOffset(0, 0)
+        this.cameras.main.setScroll(0, 0)
+      }
       this.updateClaw()
       // Drop-cooldown gate → claw/preview visibility. Emitted on FLIP only
       // (mirrors the walls:countdown discipline — no per-frame bus spam).
@@ -799,6 +824,10 @@ export class PlaygroundScene extends Phaser.Scene {
     if (this.walls.remainingMs !== this.lastWallsMs) {
       this.lastWallsMs = this.walls.remainingMs
       gameBus.emit('walls:countdown', { remainingMs: this.walls.remainingMs })
+    }
+    if (this.shake.remainingMs !== this.lastShakeMs) {
+      this.lastShakeMs = this.shake.remainingMs
+      gameBus.emit('shake:countdown', { remainingMs: this.shake.remainingMs })
     }
     const renderStart = performance.now()
     this.ballRenderer.update(delta)
@@ -942,6 +971,19 @@ export class PlaygroundScene extends Phaser.Scene {
     gameBus.emit('ability:raiseUsed', {})
   }
 
+  private doShake(): void {
+    if (this.gameOver || session.menuActive || this.shakeUsed || this.discoveryBlocking()) return
+    if (!this.shake.activate(this.walls.height)) return
+    this.ballRenderer.suspendBaking()
+    this.time.delayedCall(10_000 + 50, () => {
+      this.ballRenderer.resumeBaking()
+    })
+    this.shakeUsed = true
+    gameBus.emit('ability:shakeUsed', {})
+  }
+
+  private shakeUsed = false
+  private lastShakeMs = 0
   private raiseUsed = false
 
   private dropBall(x: number): void {
@@ -1058,7 +1100,7 @@ export class PlaygroundScene extends Phaser.Scene {
   private readonly overWatch = new GameOverWatch()
 
   private checkGameOver(deltaMs: number): void {
-    if (this.gameOver) return
+    if (this.gameOver || this.shake.isActive) return
     const height = this.walls.height
     const outside: number[] = []
     for (const ball of this.balls.getBalls()) {
@@ -1107,6 +1149,12 @@ export class PlaygroundScene extends Phaser.Scene {
     // Phase 2.13.1: the one-use Raise Walls charge is restored only on a
     // genuinely new run (restart button / 'R').
     this.raiseUsed = false
+    this.shakeUsed = false
+    this.lastShakeMs = 0
+    this.shake.reset()
+    this.balls.shakeActive = false
+    this.containerView.setShakeOffset(0, 0)
+    this.cameras.main.setScroll(0, 0)
     this.balls.clearBalls()
     this.ballRenderer.clear()
     this.ballRenderer.emotion.clear()

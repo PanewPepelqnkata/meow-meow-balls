@@ -141,6 +141,14 @@ export class UiRoot {
   markRaiseUsed(): void {
     this.abilities.markRaiseUsed()
   }
+  markShakeUsed(): void {
+    this.abilities.markShakeUsed()
+  }
+
+  updateShakeCountdown(remainingMs: number): void {
+    this.abilities.updateShakeCountdown(remainingMs)
+  }
+
 
   updateRaiseCountdown(remainingMs: number): void {
     this.abilities.updateRaiseCountdown(remainingMs)

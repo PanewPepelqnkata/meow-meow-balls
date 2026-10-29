@@ -110,6 +110,8 @@ export class SoftBallManager {
    * clampToContainer applies only BELOW this line — above it is open sky.
    * `null` (headless rigs) = extrapolated funnel clamp at every height. */
   wallTopY: number | null = null
+  /** When true (Shake ability active), escape is fully disabled: balls cannot fall out. */
+  shakeActive = false
 
   private physics: { registerComposite(c: Matter.Composite): void; unregisterComposite(c: Matter.Composite): void } | null = null
 
@@ -1031,13 +1033,17 @@ export class SoftBallManager {
       const past = Math.max(distOutsideLeft, distOutsideRight)
       const aboveTops = bc.y <= sideClampFromY
       const beyondBand = past > CONTAINER.frameThickness + GAME_OVER.outsideMargin
-      const clampExempt = aboveTops || beyondBand
+      const clampExempt = !this.shakeActive && (aboveTops || beyondBand)
       for (const p of ball.soft.particles) {
         let nx = 0
         let ny = 0
         // floor: center below the floor line = tunneled
         if (p.position.y > b.floorY - pad) ny -= p.position.y - (b.floorY - pad)
-        if (!clampExempt && p.position.y > sideClampFromY) {
+        if (!clampExempt && (this.shakeActive || p.position.y > sideClampFromY)) {
+          // When shake is active, also clamp top ceiling so balls cannot jump out
+          if (this.shakeActive && p.position.y < sideClampFromY + pad) {
+            ny += (sideClampFromY + pad) - p.position.y
+          }
           // left wall: center left of the wall line = tunneled
           const dL = (p.position.x - slopeL * p.position.y - cL) / Math.hypot(1, slopeL)
           if (dL < pad) {
