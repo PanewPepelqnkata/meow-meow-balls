@@ -38,9 +38,8 @@ describe('Phase 2.10.1: raised-wall-anchored spawn geometry', () => {
   it('the raised-wall anchor is used, not the normal rim', () => {
     const normalTopY = wallTopYAt(CONTAINER.height)
     const r1 = getTier(1)!.radius
-    // tier-1 spawn center: raisedTop(425) − 38 − 50 = 337 — far above the
-    // normal rim (685), far below where the old rim-anchored spawn sat
-    // relative to the raised walls.
+    // The spawn remains anchored to the resolved raised rim, not the
+    // normal rim, even when the wall extension is shortened.
     expect(spawnY(r1)).toBe(raisedTopY - r1 - SPAWN.clearanceAboveRaisedWall)
     expect(raisedTopY).toBeLessThan(normalTopY)
   })

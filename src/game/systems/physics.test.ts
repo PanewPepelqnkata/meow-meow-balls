@@ -55,25 +55,23 @@ describe('PhysicsWorld: container collisions', () => {
   })
 
 describe('PhysicsWorld: container collisions', () => {
-  it('a ball hitting a wall tip is deflected by the cap instead of passing through (tip collision)', () => {
+  it('a ball dropped on a wall tip is stopped by its cap instead of passing through (tip collision)', () => {
     const pw = makeWorld()
     const c = interiorCorners()
-    const Rc = CONTAINER.visual.bandThickness / 2
-    // Drop a rigid ball centered exactly on the LEFT dome apex (x = dome
-    // center, y = wall-top − Rc). Without tip colliders it falls straight
-    // through the flat-topped wall parallelogram and out of the world
-    // (verified: final y > 4000). With the cap it is deflected and stays
-    // in the container region. Soft-body manager is overkill here; use a
-    // plain Matter circle against the same static bodies.
-    const ball = Matter.Bodies.circle(c.topLeft.x - Rc, c.topLeft.y - Rc, R0 + 4)
+    const T = CONTAINER.visual.bandThickness
+    const capHeight = T * 0.22
+    const radius = R0 + 4
+    // Drop a rigid ball onto the LEFT cap's flat top. Without the cap it
+    // falls through the decorative width outside the narrower wall slab.
+    // Use a plain Matter circle against the same static container bodies.
+    const ball = Matter.Bodies.circle(c.topLeft.x - T / 2, c.topLeft.y - capHeight - radius - 20, radius)
     pw.addBody(ball)
     let escaped = false
     for (let i = 0; i < 240; i++) {
       pw.step(PHYSICS.stepMs)
       const p = ball.position
-      // A deflected ball may bounce around and land inside; it must never
-      // escape past the container's outer bounds (x far left of the wall,
-      // or below the floor — the through-the-cap signature).
+      // The cap must stop the ball before it can fall through the visible
+      // tip and escape past the container's outer bounds or below the floor.
       if (p.x < c.topLeft.x - CONTAINER.visual.bandThickness - R0 - 60 || p.y > floorY + 100) {
         escaped = true
         break
@@ -87,22 +85,22 @@ describe('PhysicsWorld: container collisions', () => {
   })
 
   it('tip caps ride Raise Walls: colliders stay aligned with the moving tips', () => {
-    const Rc = CONTAINER.visual.bandThickness / 2
-    // At any height the tip fan's topmost point matches the visual dome
-    // apex (wall-top y − Rc) — the cap geometry tracks the wall-top line
-    // exactly as the visuals do (same interiorCorners(h) source).
-    for (const h of [CONTAINER.height, 500, 560, 620, CONTAINER.raisedHeight]) {
+    const T = CONTAINER.visual.bandThickness
+    const capHeight = T * 0.22
+    // Collision and rendering share the flat top and the horizontal rim
+    // underside throughout the actual raise/lower range.
+    for (const fraction of [0, 0.25, 0.5, 0.75, 1]) {
+      const h = CONTAINER.height + (CONTAINER.raisedHeight - CONTAINER.height) * fraction
       const c = interiorCorners(h)
       const tips = tipCollidersAt(h)
       expect(tips).toHaveLength(2)
       for (const tip of tips) {
         const minY = Math.min(...tip.vertices.map((v) => v.y))
-        expect(minY).toBeCloseTo(c.topLeft.y - Rc, 6)
-        // Every arc vertex is exactly Rc from the fan center.
-        const [center, ...rest] = tip.vertices
-        for (const v of rest!) {
-          expect(Math.hypot(v.x - center!.x, v.y - center!.y)).toBeCloseTo(Rc, 6)
-        }
+        expect(minY).toBeCloseTo(c.topLeft.y - capHeight, 6)
+        expect(Math.max(...tip.vertices.map((v) => v.y))).toBeCloseTo(c.topLeft.y, 6)
+        const topEdge = tip.vertices.filter((v) => Math.abs(v.y - minY) < 1e-6)
+        expect(topEdge).toHaveLength(2)
+        expect(Math.abs(topEdge[1]!.x - topEdge[0]!.x)).toBeCloseTo(T * 0.84, 6)
       }
     }
   })

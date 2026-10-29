@@ -44,8 +44,8 @@ Rules:
 | Element            | Color |
 |--------------------|-------|
 | Page/background    | Off-white `#F4F4F2` with light gray grid lines `#E0E0DE` |
-| Container stripes  | Pure black `#1A1A1A` / white `#FFFFFF` diagonal barber stripes |
-| Container glass    | Clear panels, subtle white sheen, 15–20% tint only |
+| Container stripes  | Charcoal `#11131B` / cream `#FFF0C5`, broad diagonal bands |
+| Container frame    | Glossy royal blue, navy bevels, bright cyan inner lip; transparent interior |
 | Danger line        | Warm red `#E5484D`, dashed, pulses when balls approach |
 | UI primary         | Ink black `#1A1A1A` on cream `#FFF8E7`, accent yellow `#FFD93B` |
 | Score popups       | White with black outline, tier-colored accents |
@@ -84,10 +84,11 @@ the body. Blink = scaleY 0 on eyes for 100 ms.
 
 ## 4. Container & Environment
 
-- **Container**: a bold arcade machine vibe — black-and-white diagonal striped
-  outer frame on side walls; play area enclosed by *clear* panels (bottom and side
-  walls visible as glass with a white sheen line and subtle corner screws/rivets).
-  Top is open (that's where balls escape — glass rim visually emphasizes the rim).
+- **Container**: a glossy blue open-top U with navy outlines/bevels, a cyan
+  inner lip, and broad cream/charcoal stripes inset into both walls and floor.
+  Keep the current desktop and portrait-phone playable proportions, fixed floor,
+  and transparent interior. Both wall ends use matching flat chamfered caps
+  derived from the collision polygons; stripes stop below the cap faces.
 - **Backdrop**: light gray fine grid (like graph paper), very low contrast; may
   scroll subtly or stay static — static for v1.
 - **Danger line**: dashed warm-red line near the top of the container interior,
@@ -95,9 +96,11 @@ the body. Blink = scaleY 0 on eyes for 100 ms.
   Pulses only when a ball is above it.
 - **Drop zone indicator**: subtle vertical guide line / ghost ball showing where
   the upcoming ball will fall.
-- **Extend Walls power-up visual**: the striped walls visibly slide upward with a
-  ratchet sound and a "clunk" at full extension; they retract with a countdown
-  shimmer before they lower.
+- **Raise Walls visual**: one narrower sleeve slides out of each fixed lower
+  wall through a visible collar. Sleeve stripes and shading move with the beam,
+  without stretching. The floor and lower U never move. Extra lift is 255 stage
+  units on desktop (320→575) and 120 on portrait phones (400→520), 25% less than
+  the previous extension. Timing remains 900 ms up, 25 s held, 900 ms down.
 
 ## 5. Animation Principles
 

@@ -1,38 +1,13 @@
 import Phaser from 'phaser'
-import { CONTAINER, interiorPolygon, type Vec2 } from '../../config/container'
+import { CONTAINER, interiorPolygon, tipCollidersAt, type Vec2 } from '../../config/container'
+import { bakeCanvas } from './RoughArt'
 
 /**
- * Premium glossy blue arcade frame — ONE continuous U-shaped beam per
- * layer. Every visual layer is a stroke of the same U centerline path
- * (offset outward by its own depth, stroke width = its band width):
- *
- *   ink outline   depth T/2,   width T + 12   (outer silhouette, round cap)
- *   royal body    depth T/2,   width T        (inner edge = physics surface)
- *   cyan strip    depth 7.5%,  width 11%      (inner-edge highlight)
- *   stripe panel  depth 44%,   width 36%      (cream backing, stripes masked)
- *   navy bevel    depth 88.5%, width 17%      (outer-edge shade)
- *
- * TOP ENDS: the ink and body strokes use ROUND caps — each wall terminates
- * in a smooth blue dome (radius T/2) wrapped by the ink outline, i.e. the
- * beam's rounded end, tangent to both straight edges. The cyan highlight
- * and navy bevel TIP-WRAP into the dome: their centerlines arc over the
- * dome's shoulder, tangent to the wall and concentric with the dome, so
- * they follow the tip's curvature and end inside the solid-blue dome
- * (peeled down-wall, no abrupt endings, clean blue margin around each
- * end). The stripe panel uses a BUTT cap trimmed back along the
- * wall, so stripes terminate in a clean line perpendicular to the wall
- * below the dome — stripes never enter the cap, and the dome above
- * is solid blue. Both walls use the identical construction (the container
- * U is symmetric; offsets are computed from the shared geometry).
- *
- * Everything renders into a cached 720×1280 canvas texture, repainted only
- * when the wall height changes (Raise Walls). Collision geometry, floor
- * position and Raise Walls behavior are untouched — the inner edge of the
- * body stroke IS the physics surface.
- *
- * The COMBO GLOW (light sheet sweeping left → right) is clipped against
- * the band quads — walls and bottom only, never the interior. Chain ≥ 2
- * sweeps in container blue; chain ≥ 4 in rainbow RGB.
+ * Glossy blue open-top arcade frame with one telescoping joint per wall.
+ * The lower U and two narrow sleeves are baked at native texture resolution.
+ * Raise Walls only translates sleeves behind the lower frame and moves the
+ * flat caps from the shared collision polygons. No painting/uploads in motion.
+ * The playable inner wall lines and floor stay invariant through the cycle.
  */
 
 type Pt = Vec2
@@ -71,13 +46,6 @@ function offsetSegs(inner: Pt[], dist: number): Array<{ a: Pt; b: Pt }> {
   })
 }
 
-/** Outward unit normal of segment a→b (away from the polygon interior). */
-function segNormal(a: Pt, b: Pt): Pt {
-  const dx = b.x - a.x
-  const dy = b.y - a.y
-  const len = Math.hypot(dx, dy) || 1
-  return { x: -dy / len, y: dx / len }
-}
 
 /** Unit vector of (x, y). */
 function unitV(x: number, y: number): Pt {
@@ -85,36 +53,8 @@ function unitV(x: number, y: number): Pt {
   return { x: x / len, y: y / len }
 }
 
-/**
- * The stroked U centerline as ONE Path2D: rounded bottom corners (`arcTo`
- * fillets). Wall-top endpoints depend on the options:
- * - default: flush on the wall-top line (round cap = the dome).
- * - `trim`: pulled back DOWN along the wall (inset layers ending below
- *   the dome, butt-capped).
- * - `sweep`: the endpoint becomes a TIP ARC — tangent to the straight
- *   centerline and concentric with the body's dome (center = the wall-top
- *   corner pushed outward by T/2), wrapping `sweep` radians around the
- *   dome's shoulder so the layer follows the tip's curvature and ends
- *   inside the blue dome with a rounded cap. `peel` slides the arc center
- *   down-wall so the layer eases off the edge before the top, leaving
- *   solid blue between its end and the ink outline.
- * `dist` offsets the path outward from the physics polygon; `fillet`
- * scales with the offset so nested strokes stay concentric.
- */
-function uPath(
-  inner: Pt[],
-  dist: number,
-  fillet: number,
-  o: { trim?: number; peel?: number; sweep?: number } = {},
-): Path2D {
-  const T = CONTAINER.visual.bandThickness
-  const Rc = T / 2
-  const trim = o.trim ?? 0
-  const peel = o.peel ?? 0
-  const sweep = o.sweep ?? 0
-  // ALL three segments offset outward by `dist` — the whole centerline is
-  // parallel to the physics polygon, so strokes stay concentric and the
-  // floor band lands BELOW the floor line (never inside the interior).
+/** Concentric U stroke with rounded floor fillets and flat wall ends. */
+function uPath(inner: Pt[], dist: number, fillet: number, trim: number): Path2D {
   const [wall, floorSeg, wallR] = offsetSegs(inner, dist) as [
     { a: Pt; b: Pt },
     { a: Pt; b: Pt },
@@ -122,476 +62,276 @@ function uPath(
   ]
   const mBL = lineIntersect(wall, floorSeg)
   const mBR = lineIntersect(floorSeg, wallR)
-  const shift = (p: Pt, from: Pt, to: Pt, amt: number): Pt => {
-    if (amt === 0) return p
-    const ux = (to.x - from.x) / (Math.hypot(to.x - from.x, to.y - from.y) || 1)
-    const uy = (to.y - from.y) / (Math.hypot(to.x - from.x, to.y - from.y) || 1)
-    return { x: p.x + ux * amt, y: p.y + uy * amt }
+  const shift = (from: Pt, to: Pt): Pt => {
+    const len = Math.hypot(to.x - from.x, to.y - from.y) || 1
+    return { x: from.x + (to.x - from.x) * trim / len, y: from.y + (to.y - from.y) * trim / len }
   }
-  // Tip wrap for one wall (top corner, bottom corner, outward normal):
-  // returns the arc (center, radius, angles) tangent to the straight
-  // centerline at t0, swept toward the dome's up-wall side.
-  const wrap = (top: Pt, bottom: Pt, n: Pt) => {
-    const dx = top.x - bottom.x
-    const dy = top.y - bottom.y
-    const len = Math.hypot(dx, dy) || 1
-    const ux = dx / len
-    const uy = dy / len // up-wall unit
-    const c = { x: top.x + n.x * Rc - ux * peel, y: top.y + n.y * Rc - uy * peel }
-    const rho = Math.abs(Rc - dist)
-    const sgn = dist < Rc ? -1 : 1 // inner layers wrap from the inner pole
-    const vh = { x: n.x * sgn, y: n.y * sgn }
-    const s = vh.x * uy - vh.y * ux >= 0 ? 1 : -1
-    const a0 = Math.atan2(vh.y, vh.x)
-    const a1 = a0 + s * sweep
-    return {
-      c,
-      rho,
-      a0,
-      a1,
-      fwdCcw: s < 0,
-      t0: { x: c.x + n.x * (dist - Rc), y: c.y + n.y * (dist - Rc) },
-      end: { x: c.x + rho * Math.cos(a1), y: c.y + rho * Math.sin(a1) },
-    }
-  }
-  const nL = segNormal(inner[0]!, inner[3]!)
-  const nR = segNormal(inner[2]!, inner[1]!)
-  const p = new Path2D()
-  if (sweep > 0) {
-    // Left tip: start at the arc's rounded end, draw the arc BACK to its
-    // tangent point, then continue straight down the wall.
-    const l = wrap(inner[0]!, inner[3]!, nL)
-    p.moveTo(l.end.x, l.end.y)
-    p.arc(l.c.x, l.c.y, l.rho, l.a1, l.a0, !l.fwdCcw)
-  } else {
-    const start = shift(wall.a!, wall.a!, wall.b!, trim)
-    p.moveTo(start.x, start.y)
-  }
-  p.arcTo(mBL!.x, mBL!.y, floorSeg.b!.x, floorSeg.b!.y, fillet)
-  p.arcTo(mBR!.x, mBR!.y, wallR.b!.x, wallR.b!.y, fillet)
-  if (sweep > 0) {
-    const r = wrap(inner[1]!, inner[2]!, nR)
-    p.lineTo(r.t0.x, r.t0.y)
-    p.arc(r.c.x, r.c.y, r.rho, r.a0, r.a1, r.fwdCcw)
-  } else {
-    const end = shift(wallR.b!, wallR.b!, wallR.a!, trim)
-    p.lineTo(end.x, end.y)
-  }
-  return p
+  const start = shift(wall.a, wall.b)
+  const end = shift(wallR.b, wallR.a)
+  const path = new Path2D()
+  path.moveTo(start.x, start.y)
+  path.arcTo(mBL.x, mBL.y, floorSeg.b.x, floorSeg.b.y, fillet)
+  path.arcTo(mBR.x, mBR.y, wallR.b.x, wallR.b.y, fillet)
+  path.lineTo(end.x, end.y)
+  return path
 }
 
 export class ContainerView {
   private readonly frameImage: Phaser.GameObjects.Image
-  /**
-   * The 1x MID-ANIMATION frame texture.
-   *
-   * PERF (iOS): a SEPARATE, FIXED-SIZE canvas for the animation. The old
-   * code switched the single canvas between 1x (mid-animation) and 2x
-   * (endpoints), and a canvas resize reallocates the backing store and
-   * forces a full re-upload of the new buffer — measured 19.4 ms in a
-   * single frame at the endpoint. Two fixed-size canvases mean a repaint
-   * is a paint + an upload of the SAME buffer, never a realloc.
-   */
-  private readonly fastFrameImage: Phaser.GameObjects.Image
-  /**
-   * The hazard-stripe layer.
-   *
-   * PERF (iOS): the stripes are painted here and masked ONCE against the
-   * panel shape. The old code composited each of the ~107 stripes
-   * individually (`source-atop` per stripe) over the whole canvas — 107
-   * full-canvas composites per repaint, measured at 18 ms in one frame.
-   */
-  private readonly stripeCanvas: HTMLCanvasElement
-  /**
-   * PERF (iOS + PC): the shared 1x RENDER LAYER.
-   *
-   * The container frame's six gradient stroke layers are drawn HERE, at
-   * 1x, and then blitted into the target canvas (scaled up for the crisp
-   * texture). Drawing them straight onto the target made the repaint cost
-   * scale with the target's pixel count — ~4.2 ms on a 1x phone target and
-   * ~4x that on a 2x desktop target, which is why the wall raise lagged
-   * on the PC as well as the phone.
-   */
-  private readonly frameLayer: HTMLCanvasElement
+  private readonly sleeves: Array<{
+    image: Phaser.GameObjects.Image
+    homeX: number
+    homeY: number
+    side: -1 | 1
+  }>
+  private readonly caps: [Phaser.GameObjects.Graphics, Phaser.GameObjects.Graphics]
+  private readonly sleeveG: Phaser.GameObjects.Graphics
   private readonly glowG: Phaser.GameObjects.Graphics
+  private readonly normalCorners = interiorPolygon() as Pt[]
+  private readonly slope = (this.normalCorners[3]!.x - this.normalCorners[0]!.x) / CONTAINER.height
+  private readonly textureScale = window.devicePixelRatio > 1.5 ? 2 : 1
+  private readonly hazardPattern: CanvasPattern
   private lastHeight = -1
-  /**
-   * PERF (iOS): the DEFERRED CRISP REBAKE.
-   *
-   * The crisp (2x) repaint costs ~16 ms of paint plus a ~10 ms texture
-   * upload of a 1440×2560 buffer — 26 ms in ONE frame. The old code paid
-   * that at the wall-raise ENDPOINTS, i.e. the exact frame the animation
-   * reaches its rest height.
-   *
-   * Now the animation runs entirely on the 1x canvas, and the crisp bake
-   * is scheduled a moment LATER, when the frame is idle. The walls do not
-   * move during that window, so the crisp rebake produces exactly the
-   * same image — it just does not land on a frame the player is watching
-   * move.
-   *
-   * `pendingCrispHeight` is the height to rebake crisply; -1 = nothing
-   * pending. `crispTimer` is the scene timer that fires it.
-   */
-  /**
-   * PERF (iOS): the PRE-BAKED CRISP FRAMES.
-   *
-   * The walls only ever rest at TWO heights — CONTAINER.height (normal)
-   * and CONTAINER.raisedHeight (raised). Both are constants, so BOTH
-   * crisp frames can be baked at BOOT, off the gameplay frame, and then
-   * simply SWAPPED IN when the animation ends — a texture swap costs
-   * nothing, while a rebake costs ~16 ms of paint plus a ~10 ms upload.
-   *
-   * This is the difference between the wall raise costing a 26 ms hitch
-   * and costing nothing at all.
-   */
-  private readonly raisedFrameImage: Phaser.GameObjects.Image
-  /** Persistent offscreen for fast-mode repaints (no per-redraw alloc). */
-  private offCanvas: HTMLCanvasElement | null = null
-  /** Interior corners at the current height: [tl, tr, br, bl]. */
-  private corners: Pt[] | null = null
+  private readonly corners = this.normalCorners.map((p) => ({ ...p }))
+  private glowPathDirty = true
   /** Combo glow sweep: elapsed ms, < 0 = inactive. */
   private glowT = -1
   private readonly glowDuration = 750
-  /** Chain depth of the running glow (scales intensity/width/bloom). */
   private glowDepth = 1
-  /** Arc-length rail for the traveling glow (mid-band U centerline). */
   private glowPath: Pt[] = []
   private glowLen = 0
 
-  /** Fade the whole container (frame + mid-anim frame + glow) — used by
-   * the intro to fade the container in AFTER the iris passes, so its
-   * rounded ink corner never reads as a 'second iris' mid-reveal. */
   setOpacity(alpha: number): void {
     this.frameImage.setAlpha(alpha)
-    this.fastFrameImage.setAlpha(alpha)
+    for (const sleeve of this.sleeves) sleeve.image.setAlpha(alpha)
+    for (const cap of this.caps) cap.setAlpha(alpha)
+    this.sleeveG.setAlpha(alpha)
     this.glowG.setAlpha(alpha)
   }
 
   constructor(scene: Phaser.Scene) {
-    // Canvas texture: 720x1280 stage units, 1:1 — crisp at any zoom, and
-    // repainted only when the wall height changes (never per frame).
-    if (!scene.textures.exists('container-frame')) {
-      scene.textures.addCanvas('container-frame', document.createElement('canvas'))
-    }
-    this.frameImage = scene.add
-      .image(0, 0, 'container-frame')
-      .setOrigin(0, 0)
-      .setDisplaySize(720, 1280)
-      .setDepth(20)
-    // PERF (iOS): the MID-ANIMATION canvas — a 1x texture used while the
-    // walls are moving. The old code switched the ONE canvas between 1x
-    // (mid-animation) and 2x (at the endpoints), and every switch RESIZED
-    // it — a canvas resize reallocates the backing store and forces a full
-    // re-upload of the new (larger) buffer. Measured: the endpoint repaint
-    // cost 19.4 ms in a single frame, and the raise had 14 repaints
-    // totalling 80 ms.
-    //
-    // Two FIXED-SIZE canvases remove the resize entirely: the 1x canvas
-    // is painted during the animation, the 2x canvas at the endpoints.
-    // Each keeps its size for its whole life, so a repaint is a paint +
-    // an upload of the SAME buffer — no realloc.
-    if (!scene.textures.exists('container-frame-fast')) {
-      scene.textures.addCanvas('container-frame-fast', document.createElement('canvas'))
-    }
-    this.fastFrameImage = scene.add
-      .image(0, 0, 'container-frame-fast')
-      .setOrigin(0, 0)
-      .setDisplaySize(720, 1280)
-      .setDepth(20)
-      .setVisible(false)
-    // Additive light sheet — above the frame, below the balls' scene.
-    this.glowG = scene.add.graphics().setDepth(21).setBlendMode(Phaser.BlendModes.ADD)
-    // The stripe layer — sized ONCE, here, and never resized (a resize
-    // reallocates the backing store).
-    this.stripeCanvas = document.createElement('canvas')
-    this.stripeCanvas.width = 720
-    this.stripeCanvas.height = 1280
-    // The shared 1x render layer — sized ONCE, never resized.
-    this.frameLayer = document.createElement('canvas')
-    this.frameLayer.width = 720
-    this.frameLayer.height = 1280
-    // The RAISED crisp frame — baked HERE, at boot, off the gameplay
-    // frame. The walls rest at exactly two heights, so both crisp frames
-    // can be prepared in advance and swapped in when the animation ends.
-    if (!scene.textures.exists('container-frame-raised')) {
-      scene.textures.addCanvas('container-frame-raised', document.createElement('canvas'))
-    }
-    this.raisedFrameImage = scene.add
-      .image(0, 0, 'container-frame-raised')
-      .setOrigin(0, 0)
-      .setDisplaySize(720, 1280)
-      .setDepth(20)
-      .setVisible(false)
-    this.redrawWalls(CONTAINER.height, true)
-    // Pre-bake the RAISED crisp frame now (the boot frame is sharp
-    // immediately, and the raise never has to bake anything).
-    this.paintFrame(this.raisedFrameImage, CONTAINER.raisedHeight, this.crispScale())
+    this.hazardPattern = this.createHazardPattern()
+    const key = `container-frame:${CONTAINER.topWidth}:${CONTAINER.height}`
+    bakeCanvas(scene, key, 720, 1280, (ctx) => this.paintFrame(ctx), this.textureScale)
+    this.frameImage = scene.add.image(0, 0, key)
+      .setOrigin(0, 0).setDisplaySize(720, 1280).setDepth(20)
+    this.sleeves = [this.createSleeve(scene, -1), this.createSleeve(scene, 1)]
+    this.sleeveG = scene.add.graphics().setDepth(22)
+    this.caps = [scene.add.graphics().setDepth(23), scene.add.graphics().setDepth(23)]
+    this.glowG = scene.add.graphics().setDepth(24).setBlendMode(Phaser.BlendModes.ADD)
+    this.drawSleeveJoint()
+    this.drawCaps(CONTAINER.height)
+    this.redrawWalls(CONTAINER.height)
   }
 
-  /** The crisp texture scale for this device (2 where the device renders
-   * more than one device pixel per stage unit, else 1). */
-  private crispScale(): number {
-    return window.devicePixelRatio > 1.5 ? 2 : 1
+  /** Sleeves slide behind the fixed lower U; no crop, stretch, or texture upload. */
+  redrawWalls(height: number): void {
+    const extension = Math.max(0, Math.min(CONTAINER.raisedHeight - CONTAINER.height, height - CONTAINER.height))
+    const resolvedHeight = CONTAINER.height + extension
+    if (resolvedHeight === this.lastHeight) return
+    this.lastHeight = resolvedHeight
+    for (let i = 0; i < this.sleeves.length; i++) {
+      const sleeve = this.sleeves[i]!
+      const dx = sleeve.side * this.slope * extension
+      sleeve.image.setPosition(sleeve.homeX + dx, sleeve.homeY - extension)
+      this.caps[i]!.setPosition(dx, -extension)
+    }
+    this.corners[0]!.x = this.normalCorners[0]!.x - this.slope * extension
+    this.corners[1]!.x = this.normalCorners[1]!.x + this.slope * extension
+    this.corners[0]!.y = this.corners[1]!.y = CONTAINER.topY - extension
+    this.glowPathDirty = true
   }
 
-  /** Redraw the whole frame texture at the given wall height (Raise Walls
-   * keeps colliders and visuals in lockstep — only wall tops move).
-   *
-   * `immediate` paints the CRISP canvas straight away (used at BOOT, where
-   * there is no animation to protect and the first frame must be sharp).
-   * Otherwise the cheap 1x canvas is painted now and the crisp bake is
-   * DEFERRED (see scheduleCrispBake).
-   */
-  redrawWalls(height: number, immediate = false): void {
-    if (height === this.lastHeight) return
-    this.lastHeight = height
-    const inner = interiorPolygon(height) as Pt[]
-    this.corners = inner
-    this.buildGlowPath(inner)
-    // Phase 2.20: bake at devicePixelRatio resolution — the texture is
-    // displayed at 720×1280 stage units but renders at zoom×dpr screen
-    // pixels (up to ~1.6× texture px on a DPR-3 phone), so a 1× bake
-    // softened the ink edges. The paint math is unchanged: scale the
-    // context once, draw in stage units as before.
-    //
-    // PERF (iOS): the wall-raise lag had two causes, both fixed here.
-    //
-    // (a) The 1x/2x SWITCH resized the canvas, which reallocates the
-    //     backing store and forces a full re-upload of the new buffer.
-    //     Two fixed-size canvases mean a repaint is a paint + an upload of
-    //     the SAME buffer, never a realloc.
-    //
-    // (b) The CRISP (2x) repaint costs ~16 ms of paint plus a ~10 ms
-    //     upload — 26 ms in one frame — and the old code paid it AT THE
-    //     ENDPOINTS, the exact frame the animation reaches its rest
-    //     height. Now the whole animation runs on the 1x canvas and the
-    //     crisp bake is DEFERRED to an idle moment. The walls do not move
-    //     in that window, so the image is identical — it just does not
-    //     land on a frame the player is watching move.
-    const midAnimation = height !== CONTAINER.height && height !== CONTAINER.raisedHeight
-    // The IMMEDIATE paint is always the cheap 1x canvas — including at a
-    // rest height. At a REST height the PRE-BAKED crisp frame is simply
-    // SWAPPED IN (a texture swap costs nothing).
-    if (immediate) {
-      // BOOT: no animation to protect — paint the crisp canvas right away
-      // so the very first frame is sharp.
-      this.paintFrame(this.frameImage, height, this.crispScale())
-      this.frameImage.setVisible(true)
-      this.fastFrameImage.setVisible(false)
-      this.raisedFrameImage.setVisible(false)
-      return
-    }
-    if (!midAnimation) {
-      // A REST height: the crisp frame for it was baked at BOOT — show it.
-      const prebaked = height === CONTAINER.raisedHeight ? this.raisedFrameImage : this.frameImage
-      prebaked.setVisible(true)
-      this.fastFrameImage.setVisible(false)
-      if (prebaked !== this.frameImage) this.frameImage.setVisible(false)
-      this.raisedFrameImage.setVisible(prebaked === this.raisedFrameImage)
-      return
-    }
-    // MID-ANIMATION: the cheap 1x canvas, painted now.
-    this.frameImage.setVisible(false)
-    this.raisedFrameImage.setVisible(false)
-    this.fastFrameImage.setVisible(true)
-    this.paintFrame(this.fastFrameImage, height, 1)
+  private createSleeve(scene: Phaser.Scene, side: -1 | 1) {
+    // A narrower sliding beam nests inside the fixed 74-unit lower frame.
+    // Its hidden tail stops before the lower frame's floor fillet at rest.
+    const length = CONTAINER.raisedHeight - CONTAINER.height + 12
+    const width = CONTAINER.visual.bandThickness * 0.88 * Math.hypot(1, this.slope)
+    const x0 = side * 0
+    const x1 = side * width
+    const x2 = side * (width - this.slope * length)
+    const x3 = side * (-this.slope * length)
+    const minX = Math.min(x0, x1, x2, x3) - 4
+    const maxX = Math.max(x0, x1, x2, x3) + 4
+    const w = Math.ceil(maxX - minX)
+    const h = Math.ceil(length + 4)
+    const key = `container-sleeve:${side}:${CONTAINER.height}:${CONTAINER.raisedHeight}`
+    bakeCanvas(scene, key, w, h, (ctx) => {
+      ctx.translate(-minX, 0)
+      const strip = (inner: number, outer: number): Path2D => {
+        const path = new Path2D()
+        path.moveTo(side * inner, 0)
+        path.lineTo(side * outer, 0)
+        path.lineTo(side * (outer - this.slope * length), length)
+        path.lineTo(side * (inner - this.slope * length), length)
+        path.closePath()
+        return path
+      }
+      const body = strip(0, width)
+      const shade = ctx.createLinearGradient(0, 0, side * width, 0)
+      shade.addColorStop(0, '#36c9ff')
+      shade.addColorStop(0.2, '#118cfb')
+      shade.addColorStop(0.72, '#0764d7')
+      shade.addColorStop(1, '#04367c')
+      ctx.fillStyle = shade
+      ctx.fill(body)
+      ctx.lineWidth = 4
+      ctx.strokeStyle = '#071a35'
+      ctx.stroke(body)
+      const panel = strip(width * 0.24, width * 0.7)
+      ctx.fillStyle = this.hazardPattern
+      ctx.fill(panel)
+      ctx.lineWidth = 2
+      ctx.strokeStyle = '#071c38'
+      ctx.stroke(panel)
+      ctx.fillStyle = '#5ce4ff'
+      ctx.fill(strip(width * 0.04, width * 0.12))
+      ctx.fillStyle = '#d3fbff'
+      ctx.fill(strip(width * 0.04, width * 0.065))
+      ctx.fillStyle = '#062959'
+      ctx.fill(strip(width * 0.87, width * 0.98))
+    }, this.textureScale)
+    const top = this.normalCorners[side === -1 ? 0 : 1]!
+    const homeX = top.x + minX
+    const homeY = top.y
+    const image = scene.add.image(homeX, homeY, key)
+      .setOrigin(0, 0).setDisplaySize(w, h).setDepth(19)
+    return { image, homeX, homeY, side }
   }
 
-  /**
-   * Paint the container frame into `target` at the given scale.
-   *
-   * PERF (iOS + PC): the frame is ALWAYS rendered at 1x into a shared
-   * layer, and that layer is then SCALED into the target. The six
-   * gradient stroke layers of the U-path are the expensive part, and they
-   * were drawn directly on the target canvas — so the cost scaled with
-   * the target's pixel count: a 1x phone target cost ~4.2 ms per repaint
-   * and a 2x desktop target cost ~4x that (4x the pixels to rasterize).
-   *
-   * Rendering once at 1x makes the repaint cost IDENTICAL on every
-   * device. The crisp 2x texture is then a single scaled blit of the
-   * 1x render — a bilinear upscale, which is exactly what a 2x texture of
-   * vector art looks like anyway.
-   */
-  private paintFrame(
-    target: Phaser.GameObjects.Image,
-    height: number,
-    texScale: number,
-  ): void {
+  /** Bake the stationary U once; only its two sleeves move during the ability. */
+  private paintFrame(ctx: CanvasRenderingContext2D): void {
     const T = CONTAINER.visual.bandThickness
-    const inner = interiorPolygon(height) as Pt[]
-    const canvas = (target.texture.getSourceImage() as HTMLCanvasElement) ?? null
-    if (!canvas) return
-    if (canvas.width !== 720 * texScale || canvas.height !== 1280 * texScale) {
-      // Sized ONCE per canvas (its texScale never changes) — after this
-      // the canvas is only ever painted, never resized.
-      canvas.width = 720 * texScale
-      canvas.height = 1280 * texScale
-    }
-    const ctx = canvas.getContext('2d')!
-    ctx.setTransform(1, 0, 0, 1, 0, 0)
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-    // The strokes are drawn into the shared 1x layer, then blitted here
-    // (scaled up for the crisp texture). So the stroke cost never scales
-    // with the target's size.
-    const layer = this.frameLayer
-    const lctx = layer.getContext('2d')!
-    lctx.setTransform(1, 0, 0, 1, 0, 0)
-    lctx.globalCompositeOperation = 'source-over'
-    lctx.clearRect(0, 0, 720, 1280)
-
-
-    // Stroke layers on the concentric U paths (see uPath). Ink and body
-    // use ROUND caps (the wall's rounded blue dome end). The cyan strip
-    // and navy bevel TIP-WRAP: their centerlines arc over the dome's
-    // shoulder, tangent to the wall, concentric with the dome — the layer
-    // follows the tip's curvature and its round cap ends inside the blue
-    // dome. Peel slides each arc's center down-wall so the layer eases
-    // off the edge below the top; solid blue stays between the ends and
-    // the ink outline (cyan peels further to clear the margin).
+    const inner = this.normalCorners
     const R = T * 0.7
-    // Short tip wrap: a compact shoulder that follows the dome's contour
-    // without curling past it (long sweeps read as loops at the tips).
-    const sweep = 0.72
-    // Gentle vertical body gradient — lighter where light falls (top),
-    // deeper toward the floor. Canvas-space, so walls and floor share it.
-    const bodyGrad = lctx.createLinearGradient(0, inner[0]!.y - T, 0, inner[3]!.y + T)
-    bodyGrad.addColorStop(0, '#4b98f4')
-    bodyGrad.addColorStop(0.55, '#3b8df2')
-    bodyGrad.addColorStop(1, '#2f7de0')
-    const strokeU = (
-      dist: number,
-      width: number,
-      color: string | CanvasGradient,
-      opts: { trim?: number; peel?: number; sweep?: number } = {},
-    ): void => {
-      lctx.strokeStyle = color
-      lctx.lineWidth = width
-      lctx.lineJoin = 'round'
-      lctx.lineCap = 'round'
-      lctx.stroke(uPath(inner, dist, R - T / 2 + dist, opts))
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(0, CONTAINER.topY, 720, 1280 - CONTAINER.topY)
+    ctx.clip()
+    const body = ctx.createLinearGradient(0, CONTAINER.topY - T, 0, inner[3]!.y + T)
+    body.addColorStop(0, '#36adff')
+    body.addColorStop(0.3, '#087cf7')
+    body.addColorStop(0.72, '#075bd6')
+    body.addColorStop(1, '#00358f')
+    const strokeU = (dist: number, width: number, color: string | CanvasGradient | CanvasPattern, trim = -T * 0.2): void => {
+      ctx.strokeStyle = color
+      ctx.lineWidth = width
+      ctx.lineJoin = 'round'
+      ctx.lineCap = 'butt'
+      ctx.stroke(uPath(inner, dist, R - T / 2 + dist, trim))
     }
-
-    // 1. Bold black outline: ink stroke 6px wider than the body — its
-    //    round cap wraps the whole rounded tip (one continuous silhouette).
-    strokeU(T / 2, T + 12, '#111111')
-    // 2. Royal-blue body — inner edge lands exactly on the physics polygon;
-    //    its round cap is the visible blue rounded end. Gentle gradient.
-    strokeU(T / 2, T, bodyGrad)
-    // 3. Bright cyan strip along the inner (physics) edge: depths 2–13%,
-    //    easing over the dome's inner shoulder with a compact, contour-
-    //    following wrap; solid blue margin around its rounded end.
-    strokeU(T * 0.075, T * 0.11, '#7ee5ff', { peel: T * 0.13, sweep })
-    // 4. Inset hazard-stripe panel: depths 26–62%, drawn on an offscreen
-    //    canvas (cream stroke + stripes masked with source-atop), then
-    //    blitted. The panel is trimmed back by its cap radius, so stripes
-    //    stop in a clean perpendicular line before the dome; the blue dome
-    //    above closes the end.
-    //
-    //    PERF (iOS): the stripes are composited ONCE, not once per stripe.
-    //    The old code set `source-atop` and then filled 107 full-stage
-    //    diagonal stripes — so the composite ran 107 times over the whole
-    //    canvas per repaint. Measured: 18 ms in a single frame at the
-    //    wall-raise endpoint. Now the stripes are drawn on their own
-    //    layer, the layer is masked ONCE against the panel shape, and the
-    //    result is blitted — the same pixels, one composite.
-    const PANEL_D = T * 0.44
-    const PANEL_W = T * 0.36
-    strokeU(PANEL_D, PANEL_W, '#f4ead0', { trim: PANEL_W / 2 })
-    let off = this.offCanvas
-    if (!off) {
-      off = document.createElement('canvas')
-      off.width = 720
-      off.height = 1280
-      this.offCanvas = off
-    } else {
-      // Reuse: clearRect on resize would realloc the backing store
-      // (the allocation spike this reuse exists to avoid) — clear the
-      // drawn region and reset composite state instead.
-      const octx0 = off.getContext('2d')!
-      octx0.setTransform(1, 0, 0, 1, 0, 0)
-      octx0.globalCompositeOperation = 'source-over'
-      octx0.clearRect(0, 0, 720, 1280)
-    }
-    const octx = off.getContext('2d')!
-    octx.setTransform(1, 0, 0, 1, 0, 0)
-    octx.globalCompositeOperation = 'source-over'
-    octx.strokeStyle = '#f4ead0'
-    octx.lineWidth = PANEL_W
-    octx.lineJoin = 'round'
-    octx.lineCap = 'butt'
-    octx.stroke(uPath(inner, PANEL_D, R - T / 2 + PANEL_D, { trim: PANEL_W / 2 }))
-    // The stripes go on their OWN layer, and that layer is masked ONCE
-    // against the panel shape drawn above.
-    const stripes = this.stripeCanvas
-    const sctx = stripes.getContext('2d')!
-    sctx.setTransform(1, 0, 0, 1, 0, 0)
-    sctx.globalCompositeOperation = 'source-over'
-    sctx.clearRect(0, 0, 720, 1280)
-    this.paintStripes(sctx)
-    // Mask the stripe layer against the panel: ONE composite, not 107.
-    octx.globalCompositeOperation = 'source-in'
-    octx.drawImage(stripes, 0, 0)
-    octx.globalCompositeOperation = 'source-over'
-    lctx.drawImage(off, 0, 0)
-    // 5. Restrained dark shaded edge along the outer boundary: 80–97%,
-    //    wrapping over the dome's outer shoulder (mirrors the cyan).
-    strokeU(T * 0.885, T * 0.17, '#1e4fa8', { peel: T * 0.07, sweep })
-    // 6. Glossy reflections on the wall bodies.
-    this.paintGloss(lctx)
-    // The single scaled blit: the 1x layer -> the target. This is the
-    // only step whose cost scales with the target's size, and it is one
-    // image copy rather than six gradient strokes.
-    ctx.setTransform(1, 0, 0, 1, 0, 0)
-    ctx.imageSmoothingEnabled = true
-    ctx.imageSmoothingQuality = 'high'
-    ctx.drawImage(layer, 0, 0, 720 * texScale, 1280 * texScale)
-    // Upload the canvas that was ACTUALLY painted (the 1x one during the
-    // animation, the 2x one at the endpoints).
-    ;(target.texture as Phaser.Textures.CanvasTexture).update()
+    strokeU(T / 2, T + 10, '#071a35')
+    strokeU(T / 2, T, body)
+    strokeU(T * 0.075, T * 0.12, '#28d9ff')
+    strokeU(T * 0.055, T * 0.035, '#c7fbff')
+    const panelDepth = T * 0.44
+    const panelWidth = T * 0.42
+    strokeU(panelDepth, panelWidth + 3, '#071c38', panelWidth / 2)
+    strokeU(panelDepth, panelWidth, this.hazardPattern, panelWidth / 2)
+    strokeU(T * 0.9, T * 0.15, '#04285f')
+    strokeU(T * 0.78, T * 0.05, '#328fff')
+    this.paintGloss(ctx, inner)
+    ctx.restore()
   }
 
-  /**
-   * World-space diagonal hazard stripes (45° in stage coordinates), drawn
-   * full-canvas and masked by the caller (source-atop on the panel stroke).
-   * One treatment across walls and floor. Stripe edges carry a subtle
-   * deterministic micro-jitter (hand-drawn, not shaky).
-   */
-  private paintStripes(ctx: CanvasRenderingContext2D): void {
-    const dx = Math.SQRT1_2
-    const dy = Math.SQRT1_2
-    const nx = Math.SQRT1_2
-    const ny = -Math.SQRT1_2
-    const spacing = 26
-    const minP = -720 - spacing
-    const maxP = 2000 + spacing
-    const big = 720 + 1280 // any stripe fully crosses the stage
-    let i = 0
-    for (let p0 = minP; p0 < maxP; p0 += spacing, i++) {
-      const isBlack = i % 2 === 0
-      const half = spacing / 2 - 1 // 2px cream gap between stripe bodies
-      const j = Math.sin(p0 * 0.83) * 0.6 // deterministic edge micro-jitter
-      const cx = nx * p0
-      const cy = ny * p0
-      const stripe: Pt[] = [
-        { x: cx - dx * big - nx * (half + j), y: cy - dy * big - ny * (half + j) },
-        { x: cx + dx * big - nx * (half - j), y: cy + dy * big - ny * (half - j) },
-        { x: cx + dx * big + nx * (half + j), y: cy + dy * big + ny * (half + j) },
-        { x: cx - dx * big + nx * (half - j), y: cy - dy * big + ny * (half - j) },
+
+  private drawSleeveJoint(): void {
+    const normal = interiorPolygon(CONTAINER.height) as Pt[]
+    const T = CONTAINER.visual.bandThickness
+    for (const [corner, side] of [[normal[0]!, -1], [normal[1]!, 1]] as const) {
+      const dir = side as -1 | 1
+      const points = [
+        new Phaser.Math.Vector2(corner.x, corner.y - 4),
+        new Phaser.Math.Vector2(corner.x + dir * T, corner.y - 4),
+        new Phaser.Math.Vector2(corner.x + dir * T, corner.y + 9),
+        new Phaser.Math.Vector2(corner.x, corner.y + 9),
       ]
-      ctx.fillStyle = isBlack ? '#161616' : '#fcf4d5'
-      const path = new Path2D()
-      path.moveTo(stripe[0]!.x, stripe[0]!.y)
-      for (let k = 1; k < 4; k++) path.lineTo(stripe[k]!.x, stripe[k]!.y)
-      path.closePath()
-      ctx.fill(path)
+      this.sleeveG.fillGradientStyle(0x2b9cff, 0x0474e9, 0x0750bd, 0x06357e, 1)
+      this.sleeveG.fillPoints(points, true)
+      this.sleeveG.lineStyle(3, 0x061a3a, 1)
+      this.sleeveG.strokePoints(points, true, true)
+      this.sleeveG.lineStyle(1.5, 0x8aeaff, 0.95)
+      this.sleeveG.lineBetween(corner.x + dir * 8, corner.y - 1, corner.x + dir * (T - 8), corner.y - 1)
+      this.sleeveG.lineStyle(2, 0x00346f, 1)
+      this.sleeveG.lineBetween(corner.x + dir * 3, corner.y + 6, corner.x + dir * (T - 3), corner.y + 6)
     }
+  }
+
+  private drawCaps(height: number): void {
+    const caps = tipCollidersAt(height)
+    for (const [index, cap] of caps.entries()) {
+      const g = this.caps[index]!
+      const points = cap.vertices
+      g.fillStyle(0x003f9f, 1)
+      g.beginPath()
+      g.moveTo(points[0]!.x, points[0]!.y)
+      for (let i = 1; i < points.length; i++) g.lineTo(points[i]!.x, points[i]!.y)
+      g.closePath()
+      g.fillPath()
+
+      // All bevel facets remain inside the shared physical cap polygon.
+      g.fillStyle(0x32a7ff, 1)
+      g.beginPath()
+      g.moveTo(points[1]!.x, points[1]!.y)
+      g.lineTo(points[2]!.x, points[2]!.y)
+      g.lineTo(points[3]!.x, points[3]!.y)
+      g.lineTo(points[3]!.x, points[3]!.y + 2)
+      g.lineTo(points[2]!.x, points[2]!.y + 2)
+      g.lineTo(points[1]!.x, points[1]!.y + 5)
+      g.closePath()
+      g.fillPath()
+      g.fillStyle(0x69dfff, 0.96)
+      g.fillTriangle(
+        points[1]!.x + (index === 0 ? -1 : 1) * 1.5, points[1]!.y + 2,
+        points[2]!.x + (index === 0 ? -1 : 1) * 1.5, points[2]!.y + 1,
+        points[2]!.x, points[2]!.y + 5,
+      )
+      g.fillStyle(0x042e72, 0.95)
+      g.fillTriangle(
+        points[3]!.x, points[3]!.y + 3,
+        points[4]!.x, points[4]!.y + 2,
+        points[3]!.x, points[3]!.y + 8,
+      )
+      g.lineStyle(3, 0x06162f, 1)
+      g.beginPath()
+      g.moveTo(points[0]!.x, points[0]!.y)
+      for (let i = 1; i < points.length; i++) g.lineTo(points[i]!.x, points[i]!.y)
+      g.strokePath()
+      g.lineStyle(1.5, 0xc9f8ff, 0.92)
+      g.lineBetween(
+        points[2]!.x + (index === 0 ? -1 : 1) * 2, points[2]!.y + 1.2,
+        points[3]!.x + (index === 0 ? 1 : -1) * 2, points[3]!.y + 1.2,
+      )
+    }
+  }
+
+  /** One crisp diagonal tile, shared by the fixed frame and sliding sleeves. */
+  private createHazardPattern(): CanvasPattern {
+    const canvas = document.createElement('canvas')
+    const period = 84
+    canvas.width = canvas.height = period * this.textureScale
+    const ctx = canvas.getContext('2d')!
+    ctx.scale(this.textureScale, this.textureScale)
+    ctx.fillStyle = '#fff0c5'
+    ctx.fillRect(0, 0, period, period)
+    ctx.fillStyle = '#11131b'
+    for (let x = -period; x <= period; x += period) {
+      ctx.beginPath()
+      ctx.moveTo(x, 0)
+      ctx.lineTo(x + period / 2, 0)
+      ctx.lineTo(x + period * 1.5, period)
+      ctx.lineTo(x + period, period)
+      ctx.closePath()
+      ctx.fill()
+    }
+    const pattern = ctx.createPattern(canvas, 'repeat')!
+    pattern.setTransform(new DOMMatrix().scale(1 / this.textureScale))
+    return pattern
   }
 
   /** Restrained glossy reflections on the wall bodies: two soft white
    * streaks per wall, anchored to the wall TOP regardless of run direction. */
-  private paintGloss(ctx: CanvasRenderingContext2D): void {
-    const inner = this.corners
-    if (!inner) return
+  private paintGloss(ctx: CanvasRenderingContext2D, inner: Pt[]): void {
     const walls: Array<{ top: Pt; bottom: Pt }> = [
       { top: inner[0]!, bottom: inner[3]! }, // left wall
       { top: inner[1]!, bottom: inner[2]! }, // right wall
@@ -667,8 +407,11 @@ export class ContainerView {
       this.glowT = -1
       return
     }
-    const inner = this.corners
-    if (!inner || this.glowPath.length < 2) return
+    if (this.glowPathDirty) {
+      this.buildGlowPath(this.corners)
+      this.glowPathDirty = false
+    }
+    if (this.glowPath.length < 2) return
     const T = CONTAINER.visual.bandThickness
     const ease = t < 0.12 ? t / 0.12 : t > 0.85 ? (1 - t) / 0.15 : 1
     const depth = this.glowDepth

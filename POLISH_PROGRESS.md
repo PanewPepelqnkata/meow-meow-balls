@@ -134,3 +134,10 @@
 - Rebalanced `PauseMenuView` around rendered title/score heights instead of nominal font blocks. Portrait action gaps are now 18px on compact phones and 20px on standard phones; landscape row gaps are 16px with a 10px column gap. These account for the ChunkyButton extrusion so visible button edges no longer touch or overlap.
 - Added responsive card insets and a 9px bottom-slab allowance. Verified card/button containment and minimum 44px touch heights at 320×568, 390×844, 844×390, and 1280×800; visible row clearances are 7.75–9.75px portrait and 5.75px landscape.
 
+## 7. Glossy Telescoping Container — 2026-10-29
+
+- Preserved normal desktop/portrait playable proportions, invariant sloped wall lines, fixed floor, and transparent interior. Raise Walls now adds 255 stage units on desktop (320→575) and 120 on portrait phones (400→520), 25% less extra lift; the 900 ms raise/lower, 25 s hold, and one-use behavior are unchanged.
+- `ContainerView` caches the glossy royal-blue lower U and two narrow sliding sleeves at native texture resolution. Broad charcoal/cream stripes, navy bevels, and a cyan inner lip share the same artwork pipeline. Each sleeve slides behind the stationary lower frame through one fixed collar; no frame repaint, crop, stretch, or canvas upload occurs during movement.
+- Flat chamfered caps use `tipCollidersAt()` vertices for both rendering and Matter collision. Cached cap graphics and sleeves translate with every live animator update instead of trailing the old 24-unit repaint quantization. Combo glow rebuilds its geometry only while active after the wall height changes.
+- Browser smoke completed raise→hold→lower on 1280×800 desktop and 390×844 DPR-3 emulation. Floor drift was zero; rendered cap vertices agreed with live Matter vertices within floating-point tolerance; sleeve dimensions stayed fixed; container texture update/refresh calls remained zero. Physical-iPhone smoothness is not claimed from emulation.
+

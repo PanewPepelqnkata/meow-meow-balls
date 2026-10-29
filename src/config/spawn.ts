@@ -11,10 +11,10 @@ import { CONTAINER, containerBounds, wallTopYAt } from './container'
  *   spawnCenterY = raisedWallTopY − currentBallRadius − clearanceAboveRaisedWall
  *
  * so the BOTTOM of every spawned ball starts `clearanceAboveRaisedWall`
- * above the raised wall tops (y = 1085 − 660 = 425) — clearly above the
- * walls even while Raise Walls has them extended. The per-tier radius comes
- * from the tier config (single source of truth, spec §5), so all tiers
- * spawn fully above the walls. The horizontal range is computed from the
+ * above the resolved raised rim (desktop y=510, portrait phone y=565).
+ * Every drop stays above the walls and caps; per-tier radii come from the tier
+ * config (single source of truth, spec §5), so all tiers spawn fully above them.
+ * The horizontal range is computed from the
  * extrapolated slanted wall lines at the actual spawn height (the wall
  * lines extend above any wall top by construction), and the aim clamp,
  * ghost preview and actual spawn all use the same helpers — the preview
@@ -23,11 +23,11 @@ import { CONTAINER, containerBounds, wallTopYAt } from './container'
 export const SPAWN = {
   /**
    * Vertical clearance (design px) between the spawned ball's BOTTOM edge
-   * and the top of the FULLY RAISED walls. 50 keeps even a tier-7 ball
-   * (r=164 → center y=211, top y=47) fully on screen while a tier-1 spawns
-   * at y=337 — visually high above the lowered walls, below the center-top
-   * sky band (the score/NEXT HUD blocks sit at the left/right corners, so
-   * there is no overlap at the drop x-range).
+   * and the top of the FULLY RAISED walls. `spawnY()` applies this clearance
+   * to the resolved raised rim on desktop and portrait phone, keeping every
+   * tier above the caps throughout the ability cycle.
+   * The score/NEXT HUD blocks sit at the left/right corners, outside the drop
+   * x-range.
    */
   clearanceAboveRaisedWall: 50,
   /**

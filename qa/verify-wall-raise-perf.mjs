@@ -3,26 +3,13 @@ import { bootGame, report } from './lib-game.mjs'
 /**
  * Guards the WALL RAISE's frame cost.
  *
- * The raise is one of the two moments the player noticed as laggy. Three
- * costs were measured in it and fixed:
+ * The base frame and two narrow telescoping sleeves are cached at boot.
+ * Animation only translates the sleeves and shared-geometry caps; there are
+ * no moving-frame canvas repaints, backing-store resizes, or texture uploads.
  *
- *  1. The 1x/2x canvas SWITCH resized the canvas — a resize reallocates
- *     the backing store and forces a full re-upload (measured 19.4 ms).
- *  2. The hazard STRIPES were composited 107 times per repaint (once per
- *     stripe, `source-atop` over the whole canvas) — measured 18 ms.
- *  3. The CRISP (2x) repaint cost ~16 ms of paint + a ~10 ms upload of a
- *     1440x2560 buffer, and it landed on the frame the animation reached
- *     its rest height. Both rest heights are now PRE-BAKED at boot and
- *     swapped in (a texture swap costs nothing).
- *
- * The guard is SELF-CALIBRATING: it measures the session's own IDLE
- * baseline first, then asserts the raise's frames stay close to it. A
- * fixed millisecond threshold would flag the harness's own noise (this
- * browser renders through SwiftShader — software GL — so its canvas
- * stroking is far slower than a phone's) instead of a game regression.
- *
- * The raise must add no more than ONE repaint's cost (measured ~4.2 ms
- * here) to the idle baseline, and must never spike far beyond it.
+ * The guard is SELF-CALIBRATING: it compares the session's IDLE baseline to
+ * animation frames. Headless software GL is not a physical-phone FPS proof;
+ * this catches sustained frame-cost regressions in the local runtime.
  */
 const failures = []
 const { browser, page, errors } = await bootGame()

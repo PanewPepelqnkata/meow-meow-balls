@@ -164,7 +164,7 @@ export class PlaygroundScene extends Phaser.Scene {
 
     this.physicsWorld = new PhysicsWorld()
     // Floor is fixed; walls are separate bodies so Raise Walls can animate them.
-    // Tip caps are static bodies aligned with the visible rounded wall tips.
+    // Tip caps share the visible flat-chamfer polygons and move with the rim.
     const wallBodies = wallCollidersAt().map((spec: { vertices: { x: number; y: number }[]; label: string }) => createWallBody(spec))
     const tipBodies = tipCollidersAt().map((spec) => createWallBody(spec))
     const floorBody = createWallBody(floorCollider())

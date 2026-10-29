@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { GAME_OVER, isOutsideContainer } from '../../config/gameOver'
-import { containerBounds } from '../../config/container'
+import { CONTAINER, containerBounds } from '../../config/container'
 import { GameOverWatch } from './GameOverWatch'
 
 /**
@@ -12,7 +12,7 @@ import { GameOverWatch } from './GameOverWatch'
  * (GameOverWatch) are tested separately.
  */
 
-const h = 400 // normal wall height
+const h = CONTAINER.height
 const b = () => containerBounds()
 
 describe('isOutsideContainer: overflow geometry', () => {
@@ -43,10 +43,10 @@ describe('isOutsideContainer: overflow geometry', () => {
   })
 
   it('uses the CURRENT wall height (raised walls raise the overflow boundary)', () => {
-    const y = b().floorY - 500 // below the raised tops (1085-660=425 < 585), above normal tops
+    const y = b().floorY - (CONTAINER.height + CONTAINER.raisedHeight) / 2 // between normal and raised rims
     const xRight = b().innerRightAt(y) + GAME_OVER.outsideMargin + 1
-    expect(isOutsideContainer({ x: xRight, y }, 400)).toBe(false) // above normal tops: not overflow yet
-    expect(isOutsideContainer({ x: xRight, y }, 660)).toBe(true) // below raised tops: genuine overflow
+    expect(isOutsideContainer({ x: xRight, y }, CONTAINER.height)).toBe(false) // above normal tops: not overflow yet
+    expect(isOutsideContainer({ x: xRight, y }, CONTAINER.raisedHeight)).toBe(true) // below raised tops: genuine overflow
   })
 
   it('a ball below the floor line outside the funnel is outside (spilled)', () => {

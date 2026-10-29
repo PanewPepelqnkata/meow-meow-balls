@@ -33,10 +33,9 @@ export const CONTAINER = {
    * is PRESERVED exactly (0.142105 px/y — Phase 2.10.1 invariant): topWidth
    * = 405 + 2·0.142105·320 = 495.905, so the WALL LINES and footpoints
    * (±202.5 at the floor) are unchanged — only the wall TOPS moved down
-   * along the same lines. Raised top width (592.6) is likewise unchanged
-   * (extrapolated from the slope). Raise Walls animates height back to
-   * RAISED_HEIGHT (660) for 25s. The floor stays at y=1085; the RIM moves
-   * down to y=765.
+   * along the same lines. Raise Walls adds 255 to the desktop height,
+   * reaching 575 for 25s. The floor stays at y=1085; the normal rim is
+   * y=765 and the raised rim is y=510.
    * - mouth 495.9 at the normal rim, bottom 405: tier-6 diameter 212 = 52%
    *   of floor width, still well inside
    *
@@ -49,8 +48,8 @@ export const CONTAINER = {
   height: 320,
   /** Interior top edge y in stage units (container horizontally centered at 360). */
   topY: 765,
-  /** Raised wall height used by the Raise Walls ability (pre-2.9.6 height). */
-  raisedHeight: 660,
+  /** Raised wall height: normal 320 plus a 255-unit extension. */
+  raisedHeight: 575,
   /**
    * Perpendicular thickness of the striped frame band — the COLLIDER outer
    * edge (physics). Interior surfaces are unchanged by construction; never
@@ -70,9 +69,9 @@ export const CONTAINER = {
     /**
      * The VISIBLE band is a chunky arcade frame (74): bold ink outlines on
      * BOTH edges, bright inner highlight, blue body, dark outer bevel, and
-     * an inset black/cream hazard-stripe panel. The interior edge and every
-     * collider are untouched (the collider band stays at `frameThickness`
-     * 22); the extra band is purely decorative.
+     * an inset black/cream hazard-stripe panel. Side/floor colliders retain
+     * `frameThickness` 22; the wall-end caps alone share the full visual
+     * width so their rendered and collision silhouettes agree.
      */
     bandThickness: 74,
   },
@@ -98,8 +97,7 @@ export const DESKTOP_CONTAINER: Readonly<typeof CONTAINER> = { ...CONTAINER }
  *    depth in the lower-middle of the portrait screen; top width derived
  *    from the SAME 0.142105 slope → 340 + 2·0.142105·400 = 453.7
  *  - the floor stays at stage 1085; the rim moves UP to 1085 − 400 = 685.
- *    Raise Walls must still extend above the phone rim, so raisedHeight
- *    grows: raised rim = 685 − 160 = 525 (raisedHeight 560).
+ *    Raise Walls adds 120: raised rim = 685 − 120 = 565 (raisedHeight 520).
  */
 export function resolveViewportContainer(vw: number, vh: number): void {
   // Any portrait viewport is the mobile composition (space theme, phone
@@ -116,7 +114,7 @@ export function resolveViewportContainer(vw: number, vh: number): void {
   CONTAINER.bottomWidth = bottomWidth
   CONTAINER.height = height
   CONTAINER.topY = DESKTOP_CONTAINER.topY + DESKTOP_CONTAINER.height - height
-  CONTAINER.raisedHeight = height + 160
+  CONTAINER.raisedHeight = height + 120
 }
 
 export interface Vec2 {
@@ -365,71 +363,32 @@ export function floorCollider(): ColliderSpec {
 }
 
 /**
- * Collision geometry for the two ROUNDED WALL TIPS. The visible tips are
- * half-disc caps (radius = half the VISUAL band, centered on the wall-top
- * line at depth band/2 — see ContainerView's dome). The flat-topped wall
- * parallelograms stop at the wall-top line, so balls could pass through
- * the caps. Each tip is a chord fan: the dome center plus the arc from the
- * INNER wall-top corner to the OUTER wall-top corner (diametrically
- * opposite through the center — exactly a 180° half-disc). The fan is
- * convex and shares corner points with the wall colliders (the inner
- * corner IS the wall's inner-top vertex; the outer corner lies on the
- * wall's outer-top edge), so wall and cap collide surfaces are seamless.
- * Raise Walls moves the cap by rebuilding from wallCollidersAt-style
- * geometry at each height (see WallAnimator.applyHeight).
+ * Flat-ended chamfer caps shared by collision and rendering. Each underside
+ * lies on the live horizontal rim, spanning from the inner wall-top corner
+ * outward by the visual band width T. The convex cap rises 0.22T, with short
+ * 0.08T bevels at its top corners; no vertex extends inward of the wall top.
+ * Rebuilding at an animated height translates the whole cap with the rim
+ * while preserving the normal wall lines and fixed floor geometry.
  */
-const TIP_SEGMENTS = 8
-
 export function tipCollidersAt(heightOverride?: number): ColliderSpec[] {
   const c = interiorCorners(heightOverride)
   const T = CONTAINER.visual.bandThickness
-  const Rc = T / 2
-  const make = (innerCorner: Vec2, outward: Vec2, label: string): ColliderSpec => {
-    // Dome center: midway between the diametrically opposite corners. The
-    // outer corner is the inner corner pushed outward by exactly T along
-    // the wall-top edge (the mitered framePolygon corner is 0.3px wider on
-    // a sloped wall — the cap must match the VISUAL dome, not the miter).
-    const ex = outward.x - innerCorner.x
-    const ey = outward.y - innerCorner.y
-    const elen = Math.hypot(ex, ey) || 1
-    const outerCorner: Vec2 = {
-      x: innerCorner.x + (ex / elen) * T,
-      y: innerCorner.y + (ey / elen) * T,
-    }
-    const cxp = (innerCorner.x + outerCorner.x) / 2
-    const cyp = (innerCorner.y + outerCorner.y) / 2
-    const a0 = Math.atan2(innerCorner.y - cyp, innerCorner.x - cxp)
-    const a1 = Math.atan2(outerCorner.y - cyp, outerCorner.x - cxp)
-    let da = a1 - a0
-    while (da > Math.PI) da -= 2 * Math.PI
-    while (da < -Math.PI) da += 2 * Math.PI
-    // Sweep the OUTWARD half (away from the interior center) of the circle.
-    const mid = a0 + da / 2
-    const mx = cxp + Math.cos(mid) * Rc
-    const my = cyp + Math.sin(mid) * Rc
-    const centroidPt = centroid([c.topLeft, c.topRight, c.bottomRight, c.bottomLeft])
-    if ((mx - centroidPt.x) ** 2 + (my - centroidPt.y) ** 2 <
-        (2 * cxp - mx - centroidPt.x) ** 2 + (2 * cyp - my - centroidPt.y) ** 2) {
-      // Midpoint landed toward the interior — flip sweep direction.
-      da = -da
-    }
-    // Fan: center → inner corner → arc → outer corner. Convex half-disc.
-    const segs: Vec2[] = [{ x: cxp, y: cyp }, { ...innerCorner }]
-    for (let i = 1; i < TIP_SEGMENTS; i++) {
-      const a = a0 + (da * i) / TIP_SEGMENTS
-      segs.push({ x: cxp + Math.cos(a) * Rc, y: cyp + Math.sin(a) * Rc })
-    }
-    segs.push({ ...outerCorner })
-    return { label, vertices: segs }
-  }
-  // Left tip: inner corner = wall inner top; the outer dome pole is the
-  // inner corner pushed horizontally outward by exactly T (the visual dome
-  // spans [inner, inner − T] on the wall-top line).
-  const outwardL = { x: c.topLeft.x - 1, y: c.topLeft.y }
-  const outwardR = { x: c.topRight.x + 1, y: c.topRight.y }
+  const height = T * 0.22
+  const chamfer = T * 0.08
+  const make = (inner: Vec2, direction: number, label: string): ColliderSpec => ({
+    label,
+    vertices: [
+      { x: inner.x, y: inner.y },
+      { x: inner.x, y: inner.y - height + chamfer },
+      { x: inner.x + direction * chamfer, y: inner.y - height },
+      { x: inner.x + direction * (T - chamfer), y: inner.y - height },
+      { x: inner.x + direction * T, y: inner.y - height + chamfer },
+      { x: inner.x + direction * T, y: inner.y },
+    ],
+  })
   return [
-    make(c.topLeft, outwardL, 'tip-left'),
-    make(c.topRight, outwardR, 'tip-right'),
+    make(c.topLeft, -1, 'tip-left'),
+    make(c.topRight, 1, 'tip-right'),
   ]
 }
 

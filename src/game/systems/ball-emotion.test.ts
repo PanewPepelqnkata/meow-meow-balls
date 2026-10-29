@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { BALL_EMOTION, emotionLevelFor } from '../../config/ballEmotion'
+import { CONTAINER } from '../../config/container'
 import { BallEmotionSystem } from './BallEmotion'
 import type { SoftBallEntity } from './SoftBallManager'
 import type { SoftBall } from './SoftBall'
@@ -84,7 +85,7 @@ function rig() {
   }
 }
 
-const TOP = 765 // normal wall-top y (config geometry)
+const TOP = CONTAINER.topY
 const SPAN = BALL_EMOTION.aboveRimPx
 
 /**
@@ -271,9 +272,9 @@ describe('ball emotion: merges and Raise Walls', () => {
     balls.push(ball)
     fastForward(60, 50)
     expect(sys.levelOf(1)).toBe('panic')
-    // Raise Walls (320 → 660): the rim moves UP past the ball — it is now
-    // safely inside the container and must calm down.
-    sys.wallTopY = TOP - (660 - 320)
+    // Raise Walls moves the rim UP past the ball — it is now safely inside
+    // the container and must calm down.
+    sys.wallTopY = TOP - (CONTAINER.raisedHeight - CONTAINER.height)
     fastForward(60, 50)
     expect(sys.levelOf(1)).toBe('normal')
     // Walls lower back → the ball is above the rim again → panic returns.

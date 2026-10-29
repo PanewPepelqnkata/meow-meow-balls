@@ -17,8 +17,8 @@ interface BakeSpec {
   canvas: HTMLCanvasElement
 }
 
-/** Texture key → last baked size (module-level: textures live on the game). */
-const baked = new Map<string, BakeSpec>()
+/** Each Phaser game owns its canvas cache, including teardown of backing stores. */
+const baked = new WeakMap<Phaser.Game, Map<string, BakeSpec>>()
 
 /** Stable 32-bit seed derived from a texture key. */
 function seedFor(key: string): number {
@@ -48,6 +48,19 @@ function releaseCanvas(c: HTMLCanvasElement): void {
   c.height = 1
 }
 
+function bakesFor(game: Phaser.Game): Map<string, BakeSpec> {
+  const existing = baked.get(game)
+  if (existing) return existing
+  const cache = new Map<string, BakeSpec>()
+  baked.set(game, cache)
+  game.events.once(Phaser.Core.Events.DESTROY, () => {
+    for (const spec of cache.values()) releaseCanvas(spec.canvas)
+    cache.clear()
+    baked.delete(game)
+  })
+  return cache
+}
+
 export function bakeCanvas(
   scene: Phaser.Scene,
   key: string,
@@ -57,7 +70,8 @@ export function bakeCanvas(
   dpr = 1,
 ): HTMLCanvasElement {
   const capped = Math.min(dpr, BAKE_DPR_CAP)
-  const prev = baked.get(key)
+  const cache = bakesFor(scene.sys.game)
+  const prev = cache.get(key)
   if (prev && prev.w === w * capped && prev.h === h * capped && scene.textures.exists(key)) return prev.canvas
 
   const canvas = document.createElement('canvas')
@@ -79,7 +93,7 @@ export function bakeCanvas(
   // Safari hoards removed-canvas backing stores — shrink the old one.
   if (oldCanvas && oldCanvas !== canvas) releaseCanvas(oldCanvas)
   if (prev && prev.canvas !== canvas) releaseCanvas(prev.canvas)
-  baked.set(key, { w, h, canvas })
+  cache.set(key, { w: w * capped, h: h * capped, canvas })
   return canvas
 }
 

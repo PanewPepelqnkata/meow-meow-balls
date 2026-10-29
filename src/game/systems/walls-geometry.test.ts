@@ -95,7 +95,7 @@ describe('Phase 2.9.9: Raise Walls world-space geometry', () => {
     expect(rig.walls.phaseNow).toBe('raised')
     const raisedCorners = interiorCorners(rig.walls.height)
     expect(rig.walls.height).toBeCloseTo(CONTAINER.raisedHeight, 3)
-    expect(raisedCorners.topLeft.y).toBeCloseTo(FLOOR_Y - CONTAINER.raisedHeight, 3) // ≈ 425
+    expect(raisedCorners.topLeft.y).toBeCloseTo(FLOOR_Y - CONTAINER.raisedHeight, 3) // desktop y=510
     expect(CONTAINER.raisedHeight).toBeGreaterThan(CONTAINER.height) // raised > normal
     expect(raisedCorners.bottomLeft.y).toBeCloseTo(FLOOR_Y, 6)
     // raised tops strictly above normal tops
@@ -115,7 +115,8 @@ describe('Phase 2.9.9: Raise Walls world-space geometry', () => {
   }, 30000)
 
   it('wall colliders at every height share footpoints, angles, and the fixed floor line', () => {
-    for (const h of [CONTAINER.height, 500, 560, 620, CONTAINER.raisedHeight]) {
+    for (const fraction of [0, 0.25, 0.5, 0.75, 1]) {
+      const h = CONTAINER.height + (CONTAINER.raisedHeight - CONTAINER.height) * fraction
       const specs = wallCollidersAt(h)
       expect(specs).toHaveLength(2)
       const c = interiorCorners(h)

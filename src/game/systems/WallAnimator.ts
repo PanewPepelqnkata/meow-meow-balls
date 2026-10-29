@@ -11,10 +11,8 @@ const HOLD_MS = 25_000
  * Phase 2.9.6 Raise Walls ability: animates both side walls between the
  * normal (short) height and the raised height, symmetrically. The Matter
  * wall bodies are updated via setVertices + setPosition each frame (static
- * bodies, no velocity injection), and the scene re-renders the striped bands
- * from the same geometry. Balls in contact are pushed by Matter's contact
- * solver against the moving vertices — and the contact-separation pass
- * cleans any transient overlap, so nothing tunnels or gets launched.
+ * bodies, no velocity injection). The renderer translates cached sleeves and
+ * caps from the same live height, keeping the lower frame and floor fixed.
  */
 export class WallAnimator {
   private phase: WallPhase = 'normal'
@@ -87,11 +85,7 @@ export class WallAnimator {
     this.applyHeight(CONTAINER.height)
   }
 
-  private lastRedrawH = -1
-
-  /** True while a raise/lower animation is in flight (between the
-   * phase endpoints) — ContainerView uses it to switch to fast-mode
-   * repaints (texScale 1). */
+  /** True while a raise/lower animation is in flight. */
   get animating(): boolean {
     return this.phase === 'raising' || this.phase === 'lowering'
   }
@@ -120,8 +114,7 @@ export class WallAnimator {
         Matter.Body.translate(body, { x: dx, y: dy })
       }
     }
-    // Tip caps ride the wall-top line: rebuild their fan at the new height
-    // with the same exact-placement procedure as the walls.
+    // Chamfer caps ride the live rim using the same exact-placement procedure.
     const tipSpecs = tipCollidersAt(h)
     for (let i = 0; i < this.tipBodies.length && i < tipSpecs.length; i++) {
       const body = this.tipBodies[i]!
@@ -137,35 +130,12 @@ export class WallAnimator {
         Matter.Body.translate(body, { x: dx, y: dy })
       }
     }
-    // Moving wall vertices never wake sleeping soft balls (static/sleeping
-    // pairs are skipped by Matter's wake logic), so wake everything while the
-    // rim is in motion — a settled pile must re-settle against the new rim.
-    // PERF: wake only balls in the rim's swept band — the moving wall
-    // tops can only touch balls between the normal rim and the raised
-    // rim (+ ball radius margin). wakeAll() re-simulated the whole
-    // pile (floor-resting balls included) for the full 1.8s.
+    // Static/sleeping pairs are skipped by Matter's wake logic. Wake only
+    // balls in the rim's swept band; the floor/lower walls do not move.
     this.manager?.wakeNearRimBand(h)
-    // PERF: the container-frame canvas is 1440×2560 — a full repaint +
-    // 14.7MB upload PER FRAME during the 1.8s animation ≈ 0.8-1.5GB of
-    // uploads (measured: continuous dropped frames on iPhone 14 Pro).
-    // Quantize the REDRAW to 24px height steps (~7 repaints per phase):
-    // the physics geometry stays per-frame exact; the VISUAL frame trails
-    // the physics by ≤24px during the 900ms motion — imperceptible at
-    // animation speed (the wall is travelling 160px in 900ms, so the
-    // frame moves ~4px per repaint).
-    //
-    // The step was 12px (~14 repaints); each repaint costs ~4.2 ms of
-    // paint (six gradient stroke layers of the U-path + one stripe
-    // composite + one upload), so the finer step cost ~60 ms of the
-    // animation. At 24px it costs ~30 ms, and the wall's motion is
-    // unchanged.
-    // The phase endpoints always redraw exactly (raised/lowered rest
-    // heights are constants).
-    const q = Math.round(h / 24) * 24
-    if (q !== this.lastRedrawH || h === CONTAINER.raisedHeight || h === CONTAINER.height) {
-      this.lastRedrawH = q
-      this.onGeometryChange?.(h)
-    }
+    // Rendering only translates cached sleeves/caps, so it can track every
+    // collision update without the old 24-unit canvas repaint quantization.
+    this.onGeometryChange?.(h)
   }
 
   private easeInOut(t: number): number {
@@ -198,15 +168,9 @@ export class WallAnimator {
       }
     }
 
-    // Phase 2.9.9: no positional sweep here. With floor-anchored wall geometry
-    // the rim (wall TOP) descends from y=425 to y=610 through open sky only —
-    // balls never rest above the mouth. A falling ball the slab touches is
-    // resolved by Matter's contact solver (the slab moves ≤ ~4px/frame) and,
-    // if a particle CENTER crosses the wall line, by the manager's
-    // clampToContainer backstop (velocity-preserving, wall-line aware — the
-    // raised and normal walls share the same lines by construction). The
-    // previous sweep (teleport to `rimY + 6`) was written against the old
-    // inverted geometry where `topY + height` was the moving FLOOR line: it
-    // yanked every particle toward/below the floor during lowering.
+    // No positional sweep: the floor is pinned and the shorter raised rim
+    // moves upward through open sky (desktop 765→510; phone 685→565). A
+    // falling ball is resolved by Matter's moving wall and the manager's
+    // wall-line backstop; this path never teleports particles toward the rim.
   }
 }
