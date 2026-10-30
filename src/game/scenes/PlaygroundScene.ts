@@ -131,6 +131,7 @@ export class PlaygroundScene extends Phaser.Scene {
   private bestTierRun = 1
   /** Drops are ignored until this scene-time (restart click suppression). */
   private dropSuppressUntil = 0
+  private shakeFxG!: Phaser.GameObjects.Graphics
   /** Simulation timeline; Phaser time.now follows wall time across scene pauses. */
   private activeTimeMs = 0
   /** Cached layout for pointer→stage mapping and camera framing. */
@@ -295,6 +296,7 @@ export class PlaygroundScene extends Phaser.Scene {
     })
 
     this.containerView = new ContainerView(this)
+    this.shakeFxG = this.add.graphics().setDepth(22)
     this.claw = new DropClaw(this)
     this.claw.setMobile(this.layoutCache?.composition === 'portrait')
 
@@ -801,14 +803,20 @@ export class PlaygroundScene extends Phaser.Scene {
 
       this.checkGameOver(delta)
       this.walls.update(this.activeTimeMs)
-      const shakeEffect = this.shake.update(this.activeTimeMs)
+      const shakeEffect = this.shake.update(this.activeTimeMs, delta)
       this.balls.shakeActive = shakeEffect.active
       if (shakeEffect.active) {
-        this.containerView.setShakeOffset(shakeEffect.dx, shakeEffect.dy)
-        this.cameras.main.setScroll(-shakeEffect.dx * 0.4, -shakeEffect.dy * 0.4)
+        const cx = this.layoutCache ? this.layoutCache.world.centerX : 360
+        const cy = this.layoutCache ? this.layoutCache.world.centerY : 640
+        this.cameras.main.centerOn(cx + shakeEffect.cameraDx, cy + shakeEffect.cameraDy)
+        this.cameras.main.setRotation(shakeEffect.cameraRotation)
+        this.renderEarthquakeFx()
       } else {
-        this.containerView.setShakeOffset(0, 0)
-        this.cameras.main.setScroll(0, 0)
+        this.cameras.main.setRotation(0)
+        if (this.layoutCache) {
+          this.cameras.main.centerOn(this.layoutCache.world.centerX, this.layoutCache.world.centerY)
+        }
+        this.shakeFxG?.clear()
       }
       this.updateClaw()
       // Drop-cooldown gate → claw/preview visibility. Emitted on FLIP only
@@ -1153,8 +1161,11 @@ export class PlaygroundScene extends Phaser.Scene {
     this.lastShakeMs = 0
     this.shake.reset()
     this.balls.shakeActive = false
-    this.containerView.setShakeOffset(0, 0)
-    this.cameras.main.setScroll(0, 0)
+    if (this.layoutCache) {
+      this.cameras.main.centerOn(this.layoutCache.world.centerX, this.layoutCache.world.centerY)
+    }
+    this.cameras.main.setAngle(0)
+    this.shakeFxG?.clear()
     this.balls.clearBalls()
     this.ballRenderer.clear()
     this.ballRenderer.emotion.clear()
@@ -1196,6 +1207,40 @@ export class PlaygroundScene extends Phaser.Scene {
     this.inputController.setEnabled(!session.menuActive)
     this.dropSuppressUntil = this.activeTimeMs + 350
     gameBus.emit('run:started', { at: Date.now() })
+  }
+  private renderEarthquakeFx(): void {
+    this.shakeFxG.clear()
+    // Falling rubble / debris
+    for (const d of this.shake.getDebris()) {
+      if (!d.active) continue
+      this.shakeFxG.fillStyle(d.color, d.alpha)
+      this.shakeFxG.lineStyle(1.5, 0x1a1a1a, d.alpha)
+      this.shakeFxG.beginPath()
+      const r = d.size
+      const cos = Math.cos(d.rotation)
+      const sin = Math.sin(d.rotation)
+      const pts = [
+        { x: d.x + (-r * 0.8) * cos - (-r * 0.6) * sin, y: d.y + (-r * 0.8) * sin + (-r * 0.6) * cos },
+        { x: d.x + (r * 0.9) * cos - (-r * 0.8) * sin, y: d.y + (r * 0.9) * sin + (-r * 0.8) * cos },
+        { x: d.x + (r * 0.7) * cos - (r * 0.7) * sin, y: d.y + (r * 0.7) * sin + (r * 0.7) * cos },
+        { x: d.x + (-r * 0.7) * cos - (r * 0.9) * sin, y: d.y + (-r * 0.7) * sin + (r * 0.9) * cos },
+      ]
+      this.shakeFxG.moveTo(pts[0]!.x, pts[0]!.y)
+      for (let i = 1; i < pts.length; i++) {
+        this.shakeFxG.lineTo(pts[i]!.x, pts[i]!.y)
+      }
+      this.shakeFxG.closePath()
+      this.shakeFxG.fillPath()
+      this.shakeFxG.strokePath()
+    }
+    // Cartoon dust / smoke puffs
+    for (const p of this.shake.getDustPuffs()) {
+      if (!p.active) continue
+      this.shakeFxG.fillStyle(0xd5cec5, Math.min(1, p.alpha * 0.9))
+      this.shakeFxG.fillCircle(p.x, p.y, p.radius)
+      this.shakeFxG.lineStyle(1.5, 0x1a1a1a, Math.min(1, p.alpha * 0.8))
+      this.shakeFxG.strokeCircle(p.x, p.y, p.radius)
+    }
   }
 
   /** DEV-ONLY (P key / ?arrangement=1): a plausible mid-game pile. */

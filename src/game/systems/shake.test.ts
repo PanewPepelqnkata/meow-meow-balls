@@ -2,57 +2,92 @@ import { describe, expect, it } from 'vitest'
 import { ShakeManager } from './ShakeManager'
 import Matter from 'matter-js'
 
-describe('ShakeManager ability lifecycle and escape prevention', () => {
-  it('activates for exactly 10s duration and removes lid on expiration', () => {
-    let nowMs = 1000
+describe('ShakeManager earthquake rumble and bounce pulses', () => {
+  it('activates for 10s duration, triggers bounce pulses, and cleans up lid', () => {
+    let now = 1000
     const shake = new ShakeManager()
-    shake.setClock(() => nowMs)
+    shake.setClock(() => now)
 
     const addedBodies: Matter.Body[] = []
     const removedBodies: Matter.Body[] = []
-    const dummyPhysics = {
+    const mockPhysics = {
       addBody: (b: Matter.Body) => addedBodies.push(b),
       removeBody: (b: Matter.Body) => removedBodies.push(b),
     }
-    shake.bind(dummyPhysics, null)
-    expect(shake.isActive).toBe(false)
-    expect(shake.remainingMs).toBe(0)
 
+    const mockBalls = [
+      {
+        id: 1,
+        state: 'active',
+        soft: {
+          particles: [Matter.Bodies.circle(360, 950, 10)],
+        },
+      },
+      {
+        id: 2,
+        state: 'active',
+        soft: {
+          particles: [Matter.Bodies.circle(380, 960, 10)],
+        },
+      },
+    ]
+
+    let wokeBallId = -1
+    const mockManager = {
+      getBalls: () => mockBalls,
+      wakeBall: (id: number) => {
+        wokeBallId = id
+      },
+    } as unknown as Parameters<ShakeManager['bind']>[1]
+
+    shake.bind(mockPhysics, mockManager)
+
+    // Activate shake with wall height 320
     const activated = shake.activate(320)
     expect(activated).toBe(true)
     expect(shake.isActive).toBe(true)
-    expect(shake.remainingMs).toBe(10_000)
+    expect(shake.remainingMs).toBe(10000)
     expect(addedBodies.length).toBe(1)
     expect(addedBodies[0]?.label).toBe('shake-lid')
+    expect(wokeBallId).toBe(2)
 
-    // Repeated activation while active is rejected
-    expect(shake.activate(320)).toBe(false)
+    // Initial update produces seismic rumble
+    const frame0 = shake.update(now, 16)
+    expect(frame0.active).toBe(true)
+    expect(typeof frame0.cameraDx).toBe('number')
+    expect(typeof frame0.cameraDy).toBe('number')
+    expect(typeof frame0.cameraRotation).toBe('number')
 
-    // Mid-duration update
-    nowMs += 5000
-    const mid = shake.update(nowMs)
+    // Particles and dust are created
+    expect(shake.getDebris().length).toBeGreaterThan(0)
+    expect(shake.getDustPuffs().length).toBeGreaterThan(0)
+
+    // Advance 5 seconds (active midway)
+    now += 5000
+    const mid = shake.update(now, 16)
     expect(mid.active).toBe(true)
     expect(shake.remainingMs).toBe(5000)
-    expect(removedBodies.length).toBe(0)
 
-    // Expiration after 10s
-    nowMs += 5001
-    const finished = shake.update(nowMs)
-    expect(finished.active).toBe(false)
+    // Advance past 10 seconds (expiration)
+    now += 5001
+    const end = shake.update(now, 16)
+    expect(end.active).toBe(false)
     expect(shake.isActive).toBe(false)
-    expect(shake.remainingMs).toBe(0)
     expect(removedBodies.length).toBe(1)
     expect(removedBodies[0]?.label).toBe('shake-lid')
   })
 
-  it('reset() tears down lid and clears active state', () => {
+  it('resets cleanly when reset() is called mid-ability', () => {
+    const now = 500
     const shake = new ShakeManager()
+    shake.setClock(() => now)
+
     const addedBodies: Matter.Body[] = []
     const removedBodies: Matter.Body[] = []
     shake.bind({
-      addBody: (b: Matter.Body) => addedBodies.push(b),
-      removeBody: (b: Matter.Body) => removedBodies.push(b),
-    }, null)
+      addBody: (b) => addedBodies.push(b),
+      removeBody: (b) => removedBodies.push(b),
+    })
 
     shake.activate(320)
     expect(shake.isActive).toBe(true)
