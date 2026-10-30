@@ -169,12 +169,27 @@ export class ShakeManager {
     const p = this.debrisPool.find((d) => !d.active)
     if (!p) return
 
-    // Debris falls across the WHOLE screen (stage width), not just above the container
-    p.active = true
-    p.x = Math.random() * STAGE.width
-    p.y = -20 - Math.random() * 60
-    p.vx = (Math.random() - 0.5) * 2.5
-    p.vy = 2.0 + Math.random() * 3.5
+    // Debris spawns from all edges (top/left/right) so the quake covers the whole screen
+    const side = Math.random()
+    if (side < 0.5) {
+      // Top edge: ceiling rocks falling straight down across the full width
+      p.x = Math.random() * STAGE.width
+      p.y = -20 - Math.random() * 60
+      p.vx = (Math.random() - 0.5) * 2.5
+      p.vy = 2.0 + Math.random() * 3.5
+    } else if (side < 0.75) {
+      // Left edge: wall chunks crumbling inward from the upper 60% of the screen
+      p.x = -20 - Math.random() * 60
+      p.y = Math.random() * STAGE.height * 0.6
+      p.vx = 1.5 + Math.random() * 2.5
+      p.vy = 1.0 + Math.random() * 2.0
+    } else {
+      // Right edge: wall chunks crumbling inward from the upper 60% of the screen
+      p.x = STAGE.width + 20 + Math.random() * 60
+      p.y = Math.random() * STAGE.height * 0.6
+      p.vx = -(1.5 + Math.random() * 2.5)
+      p.vy = 1.0 + Math.random() * 2.0
+    }
     p.size = 4 + Math.random() * 7
     p.rotation = Math.random() * Math.PI * 2
     p.vRot = (Math.random() - 0.5) * 0.15

@@ -25,7 +25,7 @@ export const SHAKE_ABILITY = {
   /** Camera rotational rumble amplitude (~0.5 degrees in radians). */
   rumbleRotation: 0.009,
   /** Maximum active debris particles falling during the earthquake. */
-  maxDebrisParticles: 24,
+  maxDebrisParticles: 32,
   /** Maximum active smoke / dust puffs along boundaries. */
   maxDustPuffs: 16,
 } as const

@@ -1039,11 +1039,7 @@ export class SoftBallManager {
         let ny = 0
         // floor: center below the floor line = tunneled
         if (p.position.y > b.floorY - pad) ny -= p.position.y - (b.floorY - pad)
-        if (!clampExempt && (this.shakeActive || p.position.y > sideClampFromY)) {
-          // When shake is active, also clamp top ceiling so balls cannot jump out
-          if (this.shakeActive && p.position.y < sideClampFromY + pad) {
-            ny += (sideClampFromY + pad) - p.position.y
-          }
+        if (!clampExempt && p.position.y > sideClampFromY) {
           // left wall: center left of the wall line = tunneled
           const dL = (p.position.x - slopeL * p.position.y - cL) / Math.hypot(1, slopeL)
           if (dL < pad) {
