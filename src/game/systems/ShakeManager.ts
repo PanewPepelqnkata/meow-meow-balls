@@ -1,6 +1,5 @@
 import Matter from 'matter-js'
 import { SHAKE_ABILITY } from '../../config/shakeAbility'
-import { interiorCorners } from '../../config/container'
 import type { SoftBallManager } from './SoftBallManager'
 
 export interface DebrisParticle {
@@ -40,18 +39,16 @@ export interface ShakeFrameState {
  * - 10-second active earthquake experience.
  * - Gentle continuous seismic screen rumble (x/y translations + slight angular tilt).
  * - Periodic bounce pulses that nudge balls into contacts and merges.
- * - Falling rubble / ceiling rock debris and cartoon dust puffs along walls.
- * - Side-only invisible retention walls so balls cannot escape left/right.
- *   The top stays open so dropping balls during the ability does not glitch.
+ * - Falling rubble / ceiling rock debris across the WHOLE screen.
+ * - NO physical lid or side walls — the top stays completely open so dropping
+ *   balls during the ability does not glitch or teleport.
  */
 export class ShakeManager {
   private active = false
   private startTime = 0
   private readonly durationMs = SHAKE_ABILITY.durationMs
   private clock: (() => number) | null = null
-  private physicsWorld: { addBody: (b: Matter.Body) => void; removeBody: (b: Matter.Body) => void } | null = null
   private manager: SoftBallManager | null = null
-  private sideWalls: Matter.Body[] = []
   private lastRoundIndex = -1
 
   // Pooled particle systems for earthquake visual effects
@@ -99,10 +96,9 @@ export class ShakeManager {
   }
 
   bind(
-    physicsWorld: { addBody: (b: Matter.Body) => void; removeBody: (b: Matter.Body) => void },
+    _physicsWorld: { addBody: (b: Matter.Body) => void; removeBody: (b: Matter.Body) => void },
     manager: SoftBallManager | null = null,
   ): void {
-    this.physicsWorld = physicsWorld
     this.manager = manager
   }
 
@@ -125,10 +121,10 @@ export class ShakeManager {
 
   /**
    * Activate the earthquake shake ability for 10 seconds.
-   * Installs side-only retention walls so balls cannot escape left/right.
-   * The top stays open so dropping balls during the ability does not glitch.
+   * No physical lid or side walls — the top stays completely open so dropping
+   * balls during the ability does not glitch or teleport.
    */
-  activate(currentWallHeight: number): boolean {
+  activate(): boolean {
     if (this.active) return false
     this.active = true
     this.startTime = this.now()
@@ -140,42 +136,11 @@ export class ShakeManager {
     for (let i = 0; i < 6; i++) this.spawnDebris()
     for (let i = 0; i < 5; i++) this.spawnDust()
 
-    this.installSideWalls(currentWallHeight)
     this.triggerBounceRound(0)
 
     return true
   }
 
-  private installSideWalls(currentWallHeight: number): void {
-    if (this.sideWalls.length > 0 || !this.physicsWorld) return
-    const corners = interiorCorners(currentWallHeight)
-    const thickness = 60
-    const height = corners.bottomLeft.y - corners.topLeft.y + 200
-
-    const leftWall = Matter.Bodies.rectangle(
-      corners.topLeft.x - thickness / 2,
-      (corners.topLeft.y + corners.bottomLeft.y) / 2,
-      thickness,
-      height,
-      { isStatic: true, label: 'shake-side-wall', friction: 0.1, restitution: 0.3 },
-    )
-    const rightWall = Matter.Bodies.rectangle(
-      corners.topRight.x + thickness / 2,
-      (corners.topRight.y + corners.bottomRight.y) / 2,
-      thickness,
-      height,
-      { isStatic: true, label: 'shake-side-wall', friction: 0.1, restitution: 0.3 },
-    )
-
-    this.sideWalls = [leftWall, rightWall]
-    for (const wall of this.sideWalls) this.physicsWorld.addBody(wall)
-  }
-
-  private removeSideWalls(): void {
-    if (this.sideWalls.length === 0 || !this.physicsWorld) return
-    for (const wall of this.sideWalls) this.physicsWorld.removeBody(wall)
-    this.sideWalls = []
-  }
 
   private triggerBounceRound(roundIndex: number): void {
     this.lastRoundIndex = roundIndex
@@ -203,14 +168,10 @@ export class ShakeManager {
     const p = this.debrisPool.find((d) => !d.active)
     if (!p) return
 
-    const corners = interiorCorners()
-    const minX = corners.topLeft.x - 30
-    const maxX = corners.topRight.x + 30
-    const startY = corners.topLeft.y - 100 - Math.random() * 80
-
+    // Debris falls across the WHOLE screen, not just above the container
     p.active = true
-    p.x = minX + Math.random() * (maxX - minX)
-    p.y = startY
+    p.x = Math.random() * 720
+    p.y = -20 - Math.random() * 60
     p.vx = (Math.random() - 0.5) * 2.5
     p.vy = 2.0 + Math.random() * 3.5
     p.size = 4 + Math.random() * 7
@@ -226,23 +187,27 @@ export class ShakeManager {
     const d = this.dustPool.find((p) => !p.active)
     if (!d) return
 
-    const corners = interiorCorners()
-    // Spawn along left wall, right wall, or floor
+    // Dust puffs spawn across the whole screen edges and floor area
     const side = Math.random()
-    if (side < 0.45) {
-      // Left side
-      d.x = corners.topLeft.x + Math.random() * 20
-      d.y = corners.topLeft.y + Math.random() * (corners.bottomLeft.y - corners.topLeft.y)
+    if (side < 0.3) {
+      // Left edge of screen
+      d.x = Math.random() * 80
+      d.y = 200 + Math.random() * 800
       d.vx = 0.5 + Math.random() * 1.0
-    } else if (side < 0.9) {
-      // Right side
-      d.x = corners.topRight.x - Math.random() * 20
-      d.y = corners.topRight.y + Math.random() * (corners.bottomRight.y - corners.topRight.y)
+    } else if (side < 0.6) {
+      // Right edge of screen
+      d.x = 640 + Math.random() * 80
+      d.y = 200 + Math.random() * 800
       d.vx = -(0.5 + Math.random() * 1.0)
+    } else if (side < 0.8) {
+      // Top edge
+      d.x = Math.random() * 720
+      d.y = 100 + Math.random() * 100
+      d.vx = (Math.random() - 0.5) * 1.5
     } else {
-      // Floor
-      d.x = corners.bottomLeft.x + Math.random() * (corners.bottomRight.x - corners.bottomLeft.x)
-      d.y = corners.bottomLeft.y - Math.random() * 10
+      // Floor area
+      d.x = Math.random() * 720
+      d.y = 1000 + Math.random() * 100
       d.vx = (Math.random() - 0.5) * 1.5
     }
 
@@ -255,16 +220,14 @@ export class ShakeManager {
   }
 
   private updateParticles(deltaMs: number): void {
-    const corners = interiorCorners()
-    const floorY = corners.bottomLeft.y + 40
-
+    // Debris falls until it goes below the screen
     for (const d of this.debrisPool) {
       if (!d.active) continue
       d.x += d.vx
       d.y += d.vy
       d.vy += 0.15 // Gravity on debris
       d.rotation += d.vRot
-      if (d.y > floorY) {
+      if (d.y > 1300) {
         d.active = false
       }
     }
@@ -339,7 +302,6 @@ export class ShakeManager {
     this.active = false
     this.startTime = 0
     this.lastRoundIndex = -1
-    this.removeSideWalls()
     for (const d of this.debrisPool) d.active = false
     for (const p of this.dustPool) p.active = false
   }

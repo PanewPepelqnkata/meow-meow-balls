@@ -3,7 +3,7 @@ import { ShakeManager } from './ShakeManager'
 import Matter from 'matter-js'
 
 describe('ShakeManager earthquake rumble and bounce pulses', () => {
-  it('activates for 10s duration, triggers bounce pulses, and cleans up side walls', () => {
+  it('activates for 10s duration, triggers bounce pulses, and uses no physical walls', () => {
     let now = 1000
     const shake = new ShakeManager()
     shake.setClock(() => now)
@@ -39,14 +39,12 @@ describe('ShakeManager earthquake rumble and bounce pulses', () => {
     shake.bind(mockPhysics, mockManager)
 
     // Activate shake with wall height 320
-    const activated = shake.activate(320)
+    const activated = shake.activate()
     expect(activated).toBe(true)
     expect(shake.isActive).toBe(true)
     expect(shake.remainingMs).toBe(10000)
-    // Two side walls installed (no top lid)
-    expect(addedBodies.length).toBe(2)
-    expect(addedBodies[0]?.label).toBe('shake-side-wall')
-    expect(addedBodies[1]?.label).toBe('shake-side-wall')
+    // No physical bodies added (no lid, no side walls)
+    expect(addedBodies.length).toBe(0)
     expect(wokeBallId).toBe(2)
 
     // Initial update produces seismic rumble
@@ -71,10 +69,8 @@ describe('ShakeManager earthquake rumble and bounce pulses', () => {
     const end = shake.update(now, 16)
     expect(end.active).toBe(false)
     expect(shake.isActive).toBe(false)
-    // Both side walls removed
-    expect(removedBodies.length).toBe(2)
-    expect(removedBodies[0]?.label).toBe('shake-side-wall')
-    expect(removedBodies[1]?.label).toBe('shake-side-wall')
+    // No physical bodies removed
+    expect(removedBodies.length).toBe(0)
   })
 
   it('resets cleanly when reset() is called mid-ability', () => {
@@ -89,12 +85,12 @@ describe('ShakeManager earthquake rumble and bounce pulses', () => {
       removeBody: (b) => removedBodies.push(b),
     })
 
-    shake.activate(320)
+    shake.activate()
     expect(shake.isActive).toBe(true)
-    expect(addedBodies.length).toBe(2)
+    expect(addedBodies.length).toBe(0)
 
     shake.reset()
     expect(shake.isActive).toBe(false)
-    expect(removedBodies.length).toBe(2)
+    expect(removedBodies.length).toBe(0)
   })
 })

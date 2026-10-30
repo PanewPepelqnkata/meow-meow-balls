@@ -981,7 +981,7 @@ export class PlaygroundScene extends Phaser.Scene {
 
   private doShake(): void {
     if (this.gameOver || session.menuActive || this.shakeUsed || this.discoveryBlocking()) return
-    if (!this.shake.activate(this.walls.height)) return
+    if (!this.shake.activate()) return
     this.ballRenderer.suspendBaking()
     this.time.delayedCall(10_000 + 50, () => {
       this.ballRenderer.resumeBaking()
