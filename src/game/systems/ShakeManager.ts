@@ -1,5 +1,6 @@
 import Matter from 'matter-js'
 import { SHAKE_ABILITY } from '../../config/shakeAbility'
+import { STAGE } from '../../config/stage'
 import type { SoftBallManager } from './SoftBallManager'
 
 export interface DebrisParticle {
@@ -39,7 +40,7 @@ export interface ShakeFrameState {
  * - 10-second active earthquake experience.
  * - Gentle continuous seismic screen rumble (x/y translations + slight angular tilt).
  * - Periodic bounce pulses that nudge balls into contacts and merges.
- * - Falling rubble / ceiling rock debris across the WHOLE screen.
+ * - Falling rubble / ceiling rock debris across the WHOLE screen (stage width).
  * - NO physical lid or side walls — the top stays completely open so dropping
  *   balls during the ability does not glitch or teleport.
  */
@@ -168,9 +169,9 @@ export class ShakeManager {
     const p = this.debrisPool.find((d) => !d.active)
     if (!p) return
 
-    // Debris falls across the WHOLE screen, not just above the container
+    // Debris falls across the WHOLE screen (stage width), not just above the container
     p.active = true
-    p.x = Math.random() * 720
+    p.x = Math.random() * STAGE.width
     p.y = -20 - Math.random() * 60
     p.vx = (Math.random() - 0.5) * 2.5
     p.vy = 2.0 + Math.random() * 3.5
@@ -196,17 +197,17 @@ export class ShakeManager {
       d.vx = 0.5 + Math.random() * 1.0
     } else if (side < 0.6) {
       // Right edge of screen
-      d.x = 640 + Math.random() * 80
+      d.x = STAGE.width - 80 + Math.random() * 80
       d.y = 200 + Math.random() * 800
       d.vx = -(0.5 + Math.random() * 1.0)
     } else if (side < 0.8) {
       // Top edge
-      d.x = Math.random() * 720
+      d.x = Math.random() * STAGE.width
       d.y = 100 + Math.random() * 100
       d.vx = (Math.random() - 0.5) * 1.5
     } else {
       // Floor area
-      d.x = Math.random() * 720
+      d.x = Math.random() * STAGE.width
       d.y = 1000 + Math.random() * 100
       d.vx = (Math.random() - 0.5) * 1.5
     }
@@ -227,7 +228,7 @@ export class ShakeManager {
       d.y += d.vy
       d.vy += 0.15 // Gravity on debris
       d.rotation += d.vRot
-      if (d.y > 1300) {
+      if (d.y > STAGE.height + 20) {
         d.active = false
       }
     }
