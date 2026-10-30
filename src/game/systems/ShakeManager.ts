@@ -38,10 +38,11 @@ export interface ShakeFrameState {
 /**
  * Shake ability manager:
  * - 10-second active earthquake experience.
- * - Continuous chaotic seismic screen rumble (x/y translations + angular tilt).
- * - Frequent explosive bounce pulses that launch and agitate balls into merges.
+ * - Gentle continuous seismic screen rumble (x/y translations + slight angular tilt).
+ * - Periodic bounce pulses that nudge balls into contacts and merges.
  * - Falling rubble / ceiling rock debris and cartoon dust puffs along walls.
- * - Top physical retention barrier so no balls can escape into the void.
+ * - Side-only invisible retention walls so balls cannot escape left/right.
+ *   The top stays open so dropping balls during the ability does not glitch.
  */
 export class ShakeManager {
   private active = false
@@ -50,7 +51,7 @@ export class ShakeManager {
   private clock: (() => number) | null = null
   private physicsWorld: { addBody: (b: Matter.Body) => void; removeBody: (b: Matter.Body) => void } | null = null
   private manager: SoftBallManager | null = null
-  private lidBody: Matter.Body | null = null
+  private sideWalls: Matter.Body[] = []
   private lastRoundIndex = -1
 
   // Pooled particle systems for earthquake visual effects
@@ -124,7 +125,8 @@ export class ShakeManager {
 
   /**
    * Activate the earthquake shake ability for 10 seconds.
-   * Installs the top retention lid so balls cannot escape.
+   * Installs side-only retention walls so balls cannot escape left/right.
+   * The top stays open so dropping balls during the ability does not glitch.
    */
   activate(currentWallHeight: number): boolean {
     if (this.active) return false
@@ -138,33 +140,41 @@ export class ShakeManager {
     for (let i = 0; i < 6; i++) this.spawnDebris()
     for (let i = 0; i < 5; i++) this.spawnDust()
 
-    this.installLid(currentWallHeight)
+    this.installSideWalls(currentWallHeight)
     this.triggerBounceRound(0)
 
     return true
   }
 
-  private installLid(currentWallHeight: number): void {
-    if (this.lidBody || !this.physicsWorld) return
+  private installSideWalls(currentWallHeight: number): void {
+    if (this.sideWalls.length > 0 || !this.physicsWorld) return
     const corners = interiorCorners(currentWallHeight)
-    const topY = corners.topLeft.y
-    const width = (corners.topRight.x - corners.topLeft.x) + 80
-    const centerX = (corners.topLeft.x + corners.topRight.x) / 2
-    const thickness = 40
-    this.lidBody = Matter.Bodies.rectangle(centerX, topY - thickness / 2, width, thickness, {
-      isStatic: true,
-      label: 'shake-lid',
-      friction: 0.1,
-      restitution: 0.3,
-    })
+    const thickness = 60
+    const height = corners.bottomLeft.y - corners.topLeft.y + 200
 
-    this.physicsWorld.addBody(this.lidBody)
+    const leftWall = Matter.Bodies.rectangle(
+      corners.topLeft.x - thickness / 2,
+      (corners.topLeft.y + corners.bottomLeft.y) / 2,
+      thickness,
+      height,
+      { isStatic: true, label: 'shake-side-wall', friction: 0.1, restitution: 0.3 },
+    )
+    const rightWall = Matter.Bodies.rectangle(
+      corners.topRight.x + thickness / 2,
+      (corners.topRight.y + corners.bottomRight.y) / 2,
+      thickness,
+      height,
+      { isStatic: true, label: 'shake-side-wall', friction: 0.1, restitution: 0.3 },
+    )
+
+    this.sideWalls = [leftWall, rightWall]
+    for (const wall of this.sideWalls) this.physicsWorld.addBody(wall)
   }
 
-  private removeLid(): void {
-    if (!this.lidBody || !this.physicsWorld) return
-    this.physicsWorld.removeBody(this.lidBody)
-    this.lidBody = null
+  private removeSideWalls(): void {
+    if (this.sideWalls.length === 0 || !this.physicsWorld) return
+    for (const wall of this.sideWalls) this.physicsWorld.removeBody(wall)
+    this.sideWalls = []
   }
 
   private triggerBounceRound(roundIndex: number): void {
@@ -273,7 +283,7 @@ export class ShakeManager {
 
   /**
    * Per-frame update during gameplay loop.
-   * Computes chaotic earthquake camera rumble and updates particles.
+   * Computes gentle seismic camera rumble and updates particles.
    */
   update(nowMs?: number, deltaMs = 16.6): ShakeFrameState {
     if (!this.active) {
@@ -296,18 +306,17 @@ export class ShakeManager {
       this.triggerBounceRound(roundIndex)
     }
 
-    // High frequency seismic rumble (fast pseudo-noise multi-sine)
-    const decay = Math.min(1, Math.max(0.65, (this.durationMs - elapsed) / 1000))
-    const s1 = Math.sin(elapsed * 0.045)
-    const s2 = Math.cos(elapsed * 0.082)
-    const s3 = Math.sin(elapsed * 0.133)
-    const s4 = Math.cos(elapsed * 0.191)
+    // Gentle seismic rumble (slow pseudo-noise multi-sine)
+    const decay = Math.min(1, Math.max(0.7, (this.durationMs - elapsed) / 1000))
+    const s1 = Math.sin(elapsed * 0.028)
+    const s2 = Math.cos(elapsed * 0.051)
+    const s3 = Math.sin(elapsed * 0.083)
+    const s4 = Math.cos(elapsed * 0.119)
 
     const cameraDx = (s1 * 0.6 + s3 * 0.4) * SHAKE_ABILITY.rumbleIntensity * decay
     const cameraDy = (s2 * 0.5 + s4 * 0.5) * SHAKE_ABILITY.rumbleIntensity * decay
-    const cameraRotation = Math.sin(elapsed * 0.057) * SHAKE_ABILITY.rumbleRotation * decay
+    const cameraRotation = Math.sin(elapsed * 0.035) * SHAKE_ABILITY.rumbleRotation * decay
 
-    // Spawn falling debris and cartoon dust puffs
     // Spawn falling debris and cartoon dust puffs frequently
     if (elapsed > this.nextDebrisSpawnMs) {
       this.spawnDebris()
@@ -330,7 +339,7 @@ export class ShakeManager {
     this.active = false
     this.startTime = 0
     this.lastRoundIndex = -1
-    this.removeLid()
+    this.removeSideWalls()
     for (const d of this.debrisPool) d.active = false
     for (const p of this.dustPool) p.active = false
   }

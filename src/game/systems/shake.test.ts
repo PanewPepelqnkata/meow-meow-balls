@@ -3,7 +3,7 @@ import { ShakeManager } from './ShakeManager'
 import Matter from 'matter-js'
 
 describe('ShakeManager earthquake rumble and bounce pulses', () => {
-  it('activates for 10s duration, triggers bounce pulses, and cleans up lid', () => {
+  it('activates for 10s duration, triggers bounce pulses, and cleans up side walls', () => {
     let now = 1000
     const shake = new ShakeManager()
     shake.setClock(() => now)
@@ -17,17 +17,13 @@ describe('ShakeManager earthquake rumble and bounce pulses', () => {
 
     const mockBalls = [
       {
-        id: 1,
-        state: 'active',
-        soft: {
-          particles: [Matter.Bodies.circle(360, 950, 10)],
-        },
-      },
-      {
         id: 2,
-        state: 'active',
+        state: 'settled',
         soft: {
-          particles: [Matter.Bodies.circle(380, 960, 10)],
+          particles: [
+            Matter.Bodies.circle(0, 0, 10),
+            Matter.Bodies.circle(0, 0, 10),
+          ],
         },
       },
     ]
@@ -47,8 +43,10 @@ describe('ShakeManager earthquake rumble and bounce pulses', () => {
     expect(activated).toBe(true)
     expect(shake.isActive).toBe(true)
     expect(shake.remainingMs).toBe(10000)
-    expect(addedBodies.length).toBe(1)
-    expect(addedBodies[0]?.label).toBe('shake-lid')
+    // Two side walls installed (no top lid)
+    expect(addedBodies.length).toBe(2)
+    expect(addedBodies[0]?.label).toBe('shake-side-wall')
+    expect(addedBodies[1]?.label).toBe('shake-side-wall')
     expect(wokeBallId).toBe(2)
 
     // Initial update produces seismic rumble
@@ -73,8 +71,10 @@ describe('ShakeManager earthquake rumble and bounce pulses', () => {
     const end = shake.update(now, 16)
     expect(end.active).toBe(false)
     expect(shake.isActive).toBe(false)
-    expect(removedBodies.length).toBe(1)
-    expect(removedBodies[0]?.label).toBe('shake-lid')
+    // Both side walls removed
+    expect(removedBodies.length).toBe(2)
+    expect(removedBodies[0]?.label).toBe('shake-side-wall')
+    expect(removedBodies[1]?.label).toBe('shake-side-wall')
   })
 
   it('resets cleanly when reset() is called mid-ability', () => {
@@ -91,10 +91,10 @@ describe('ShakeManager earthquake rumble and bounce pulses', () => {
 
     shake.activate(320)
     expect(shake.isActive).toBe(true)
-    expect(addedBodies.length).toBe(1)
+    expect(addedBodies.length).toBe(2)
 
     shake.reset()
     expect(shake.isActive).toBe(false)
-    expect(removedBodies.length).toBe(1)
+    expect(removedBodies.length).toBe(2)
   })
 })
