@@ -168,6 +168,7 @@ export class ShakeManager {
   private spawnDebris(): void {
     const p = this.debrisPool.find((d) => !d.active)
     if (!p) return
+    p.active = true
 
     // Debris spawns from all edges (top/left/right) so the quake covers the whole screen
     const side = Math.random()

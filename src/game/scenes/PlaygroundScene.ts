@@ -194,6 +194,7 @@ export class PlaygroundScene extends Phaser.Scene {
       addBody: (b) => Matter.Composite.add(this.physicsWorld.world, b),
       removeBody: (b) => Matter.Composite.remove(this.physicsWorld.world, b),
     }, this.balls)
+    this.shake.setClock(() => this.activeTimeMs)
     this.ballRenderer = new SoftBallRenderer(this)
     // Baked-rendering invalidation (settled-state kill): EVERY genuine wake
     // funnels through SoftBallManager.wakeBall (auditStuckBalls, partial
