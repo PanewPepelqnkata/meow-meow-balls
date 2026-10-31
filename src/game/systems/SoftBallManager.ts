@@ -1039,16 +1039,16 @@ export class SoftBallManager {
         let ny = 0
         // floor: center below the floor line = tunneled
         if (p.position.y > b.floorY - pad) ny -= p.position.y - (b.floorY - pad)
-        if (!clampExempt && p.position.y > sideClampFromY) {
-          // During shake: bounce off the invisible rim at the wall tops
-          // so balls are pushed back toward the center instead of escaping
-          if (this.shakeActive && p.position.y < sideClampFromY + pad) {
-            ny += (sideClampFromY + pad) - p.position.y
-            // Reverse upward velocity so the ball bounces back down
-            if (p.velocity.y < 0) {
-              Matter.Body.setVelocity(p, { x: p.velocity.x, y: -p.velocity.y * 0.6 })
-            }
+        // During shake: bounce off the invisible rim at the wall tops
+        // so balls are pushed back toward the center instead of escaping
+        if (this.shakeActive && p.position.y < sideClampFromY + pad) {
+          ny += (sideClampFromY + pad) - p.position.y
+          // Reverse upward velocity so the ball bounces back down
+          if (p.velocity.y < 0) {
+            Matter.Body.setVelocity(p, { x: p.velocity.x, y: -p.velocity.y * 0.6 })
           }
+        }
+        if (!clampExempt && p.position.y > sideClampFromY) {
           // left wall: center left of the wall line = tunneled
           const dL = (p.position.x - slopeL * p.position.y - cL) / Math.hypot(1, slopeL)
           if (dL < pad) {
