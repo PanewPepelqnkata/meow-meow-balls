@@ -21,6 +21,8 @@ export interface GameEventMap {
   /** The upcoming ball changed (tier + the appearance seed the preview,
    * crane and the eventual spawn all share). */
   'state:next': { tier: number; seed: number }
+  /** Persisted save state replaced (login, logout, cloud sync, reset). */
+  'state:save': { best: number }
   /** Best score changed (run end or sync). */
   'state:best': { best: number }
   /** Raise Walls countdown tick (per frame; 0 = inactive). */

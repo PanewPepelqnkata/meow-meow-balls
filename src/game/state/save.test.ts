@@ -6,7 +6,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // units under test never use it.
 vi.mock('phaser', () => ({ default: {} }))
 
-import { hasDiscoveredTier, recordDiscovery, resetSave } from './save'
+import {
+  getSaveOwnerId,
+  hasDiscoveredTier,
+  loadSave,
+  normalizeSave,
+  recordDiscovery,
+  recordMerge,
+  recordRunEnd,
+  resetSave,
+  savedBest,
+  writeSave,
+} from './save'
 
 describe('hasDiscoveredTier (the repeat-discovery gate)', () => {
   let store: Record<string, string>
@@ -49,5 +60,53 @@ describe('hasDiscoveredTier (the repeat-discovery gate)', () => {
     recordDiscovery(7, null)
     expect(hasDiscoveredTier(7)).toBe(true)
     expect(hasDiscoveredTier(8)).toBe(false)
+  })
+
+  it('isolates account progression on logout and restores account save on login', () => {
+    // 1. Guest earns progression and binds it to Account A on signup
+    expect(getSaveOwnerId()).toBeNull()
+    recordDiscovery(6, null)
+    recordMerge(6)
+    recordRunEnd(20512, 9)
+    writeSave(loadSave(), { syncCloud: false, ownerId: 'account-a' })
+
+    expect(getSaveOwnerId()).toBe('account-a')
+    expect(savedBest()).toBe(20512)
+    expect(hasDiscoveredTier(9)).toBe(true)
+
+    // 2. Logging out wipes local save to 0 and clears account owner
+    const ref = loadSave()
+    resetSave({ syncCloud: false, clearOwner: true })
+    expect(getSaveOwnerId()).toBeNull()
+    expect(savedBest()).toBe(0)
+    expect(ref.best).toBe(0)
+    expect(ref.stats).toEqual({ runs: 0, merges: 0, bestTier: 0 })
+    expect(hasDiscoveredTier(4)).toBe(false)
+    expect(hasDiscoveredTier(9)).toBe(false)
+
+    // 3. Logging into Account B with 0 progression keeps progression at 0
+    writeSave(normalizeSave(null), { syncCloud: false, ownerId: 'account-b' })
+    expect(getSaveOwnerId()).toBe('account-b')
+    expect(savedBest()).toBe(0)
+    expect(hasDiscoveredTier(4)).toBe(false)
+
+    // 4. Logging back into Account A restores Account A's full progression
+    writeSave(
+      {
+        version: 1,
+        best: 20512,
+        discovered: { 1: 100, 2: 100, 3: 100, 9: 200 },
+        variants: { '9:1': 200 },
+        stats: { runs: 2, merges: 481, bestTier: 9 },
+      },
+      { syncCloud: false, ownerId: 'account-a' },
+    )
+    expect(getSaveOwnerId()).toBe('account-a')
+    expect(savedBest()).toBe(20512)
+    expect(ref.best).toBe(20512)
+    expect(ref.stats).toEqual({ runs: 2, merges: 481, bestTier: 9 })
+    expect(hasDiscoveredTier(8)).toBe(true)
+    expect(hasDiscoveredTier(9)).toBe(true)
+    expect(ref.variants['9:1']).toBe(200)
   })
 })

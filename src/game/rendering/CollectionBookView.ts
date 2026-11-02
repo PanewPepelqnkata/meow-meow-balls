@@ -38,7 +38,9 @@ export class CollectionBookView {
   private readonly leafShadeG: Phaser.GameObjects.Graphics
   private readonly spineG: Phaser.GameObjects.Graphics
   private readonly navContainer: Phaser.GameObjects.Container
-  private readonly save = loadSave()
+  private get save() {
+    return loadSave()
+  }
   private readonly bookX: number
   private readonly bookTopY: number
   private readonly bookW: number

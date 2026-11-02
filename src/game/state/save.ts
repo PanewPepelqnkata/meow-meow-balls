@@ -22,9 +22,13 @@
  * missing save. The cache is write-through; failures degrade to in-memory.
  */
 
+import { gameBus } from '../events/gameBus'
+
 const KEY = 'ballrush.save.v1'
+const OWNER_KEY = 'ballrush.save.owner'
 const MAX_LEADERBOARD = 10
 
+const VALID_THEMES = new Set<ThemeSetting>(['auto', 'light', 'space', 'jungle', 'fantasy'])
 export type ThemeSetting = 'auto' | 'light' | 'space' | 'jungle' | 'fantasy'
 
 export interface LeaderboardEntry {
@@ -45,7 +49,8 @@ export interface SaveDataV1 {
   stats: { runs: number; merges: number; bestTier: number }
 }
 
-function freshSave(): SaveDataV1 {
+export function freshSave(): SaveDataV1 {
+  const now = Date.now()
   return {
     version: 1,
     best: 0,
@@ -53,15 +58,121 @@ function freshSave(): SaveDataV1 {
     // Tiers 1–3 are known from the first run — pre-seeded as discovered.
     // Tier 4+ unlock PROGRESSIVELY (each fires its discovery: the card
     // the first time, the wind banner afterwards).
-    discovered: { 1: Date.now(), 2: Date.now(), 3: Date.now() },
+    discovered: { 1: now, 2: now, 3: now },
     variants: {},
     settings: { theme: 'auto' },
     stats: { runs: 0, merges: 0, bestTier: 0 },
   }
 }
 
-let cache: SaveDataV1 | null = null
+export function normalizeSave(raw: Partial<SaveDataV1> | null | undefined): SaveDataV1 {
+  const base = freshSave()
+  if (!raw || typeof raw !== 'object') return base
 
+  const now = Date.now()
+  const discovered: Record<string, number> = { 1: now, 2: now, 3: now }
+  let maxDiscoveredTier = 0
+  if (raw.discovered && typeof raw.discovered === 'object') {
+    for (const [k, v] of Object.entries(raw.discovered)) {
+      const tier = Number(k)
+      if (Number.isInteger(tier) && tier >= 1 && tier <= 12 && typeof v === 'number' && Number.isFinite(v) && v > 0) {
+        discovered[String(tier)] = v
+        if (tier > 3 && tier > maxDiscoveredTier) maxDiscoveredTier = tier
+      }
+    }
+  }
+
+  const variants: Record<string, number> = {}
+  if (raw.variants && typeof raw.variants === 'object') {
+    for (const [k, v] of Object.entries(raw.variants)) {
+      if (typeof v === 'number' && Number.isFinite(v) && v > 0) {
+        variants[k] = v
+      }
+    }
+  }
+
+  const leaderboard: LeaderboardEntry[] = []
+  if (Array.isArray(raw.leaderboard)) {
+    for (const entry of raw.leaderboard) {
+      if (
+        entry &&
+        typeof entry.score === 'number' &&
+        Number.isFinite(entry.score) &&
+        entry.score >= 0 &&
+        typeof entry.bestTier === 'number' &&
+        Number.isFinite(entry.bestTier)
+      ) {
+        leaderboard.push({
+          score: Math.floor(entry.score),
+          bestTier: Math.max(1, Math.min(12, Math.floor(entry.bestTier))),
+          at: typeof entry.at === 'number' && Number.isFinite(entry.at) && entry.at > 0 ? entry.at : now,
+        })
+      }
+    }
+    leaderboard.sort((a, b) => b.score - a.score || b.at - a.at)
+  }
+
+  const rawBest = typeof raw.best === 'number' && Number.isFinite(raw.best) && raw.best >= 0 ? Math.floor(raw.best) : 0
+  const topLbScore = leaderboard[0]?.score ?? 0
+  const best = Math.max(rawBest, topLbScore)
+
+  const rawStats = raw.stats && typeof raw.stats === 'object' ? raw.stats : { runs: 0, merges: 0, bestTier: 0 }
+  const runs =
+    typeof rawStats.runs === 'number' && Number.isFinite(rawStats.runs) && rawStats.runs >= 0
+      ? Math.floor(rawStats.runs)
+      : 0
+  const merges =
+    typeof rawStats.merges === 'number' && Number.isFinite(rawStats.merges) && rawStats.merges >= 0
+      ? Math.floor(rawStats.merges)
+      : 0
+  const rawBestTier =
+    typeof rawStats.bestTier === 'number' && Number.isFinite(rawStats.bestTier) && rawStats.bestTier >= 0
+      ? Math.floor(rawStats.bestTier)
+      : 0
+  const topLbTier = leaderboard.reduce((m, e) => Math.max(m, e.bestTier), 0)
+  const bestTier = Math.max(rawBestTier, maxDiscoveredTier, topLbTier)
+
+  for (let t = 1; t <= Math.min(12, bestTier); t++) {
+    if (discovered[String(t)] == null) discovered[String(t)] = now
+  }
+
+  const rawTheme = raw.settings?.theme
+  const theme: ThemeSetting = rawTheme && VALID_THEMES.has(rawTheme) ? rawTheme : 'auto'
+
+  return {
+    version: 1,
+    best,
+    leaderboard: leaderboard.slice(0, MAX_LEADERBOARD),
+    discovered,
+    variants,
+    settings: { theme },
+    stats: {
+      runs: Math.max(runs, leaderboard.length),
+      merges,
+      bestTier,
+    },
+  }
+}
+
+export function cloneSave(save: SaveDataV1 = loadSave()): SaveDataV1 {
+  return normalizeSave({
+    version: 1,
+    best: save.best,
+    leaderboard: save.leaderboard.map((e) => ({ ...e })),
+    discovered: { ...save.discovered },
+    variants: { ...save.variants },
+    settings: { ...save.settings },
+    stats: { ...save.stats },
+  })
+}
+
+let cache: SaveDataV1 | null = null
+let ownerCache: string | null | undefined = undefined
+let cloudSyncHandler: ((save: SaveDataV1, immediate: boolean) => void) | null = null
+
+export function setCloudSyncHandler(handler: ((save: SaveDataV1, immediate: boolean) => void) | null): void {
+  cloudSyncHandler = handler
+}
 function storage(): Storage | null {
   try {
     if (typeof localStorage === 'undefined') return null
@@ -75,6 +186,38 @@ function storage(): Storage | null {
   }
 }
 
+export function getSaveOwnerId(): string | null {
+  if (ownerCache !== undefined) return ownerCache
+  const s = storage()
+  if (!s) {
+    ownerCache = null
+    return null
+  }
+  try {
+    const val = s.getItem(OWNER_KEY)
+    ownerCache = val && val.trim().length > 0 ? val.trim() : null
+    return ownerCache
+  } catch {
+    ownerCache = null
+    return null
+  }
+}
+
+export function setSaveOwnerId(userId: string | null): void {
+  ownerCache = userId && userId.trim().length > 0 ? userId.trim() : null
+  const s = storage()
+  if (!s) return
+  try {
+    if (ownerCache) {
+      s.setItem(OWNER_KEY, ownerCache)
+    } else {
+      s.removeItem(OWNER_KEY)
+    }
+  } catch {
+    // Blocked storage — in-memory ownerCache still tracks ownership.
+  }
+}
+
 function write(): void {
   const s = storage()
   if (!s || !cache) return
@@ -82,6 +225,17 @@ function write(): void {
     s.setItem(KEY, JSON.stringify(cache))
   } catch {
     // Quota exceeded / blocked — in-memory save continues to work.
+  }
+}
+
+function cancelScheduledWrites(): void {
+  if (writeTimer) {
+    clearTimeout(writeTimer)
+    writeTimer = null
+  }
+  if (idleHandle !== null && typeof window !== 'undefined' && window.cancelIdleCallback) {
+    window.cancelIdleCallback(idleHandle)
+    idleHandle = null
   }
 }
 
@@ -108,6 +262,7 @@ function writeSoon(): void {
     idleHandle = null
     writeTimer = null
     write()
+    if (cache) cloudSyncHandler?.(cloneSave(cache), false)
   }
   if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
     idleHandle = window.requestIdleCallback(flushSoon, { timeout: 1000 })
@@ -116,21 +271,15 @@ function writeSoon(): void {
     writeTimer = setTimeout(flushSoon, 1000)
   }
 }
-function writeNow(): void {
-  if (writeTimer) {
-    clearTimeout(writeTimer)
-    writeTimer = null
-  }
-  // A pending idle write must be cancelled too, or it would fire a
-  // SECOND write right after this one (the idle callback would still run).
-  if (idleHandle !== null && typeof window !== 'undefined' && window.cancelIdleCallback) {
-    window.cancelIdleCallback(idleHandle)
-    idleHandle = null
-  }
+function writeNow(syncCloud = true): void {
+  cancelScheduledWrites()
   write()
+  if (syncCloud && cache) cloudSyncHandler?.(cloneSave(cache), true)
 }
 if (typeof window !== 'undefined') {
-  const flush = (): void => writeNow()
+  const flush = (): void => {
+    if (writeTimer || idleHandle !== null) writeNow(true)
+  }
   window.addEventListener('visibilitychange', flush)
   window.addEventListener('pagehide', flush)
 }
@@ -144,8 +293,7 @@ export function loadSave(): SaveDataV1 {
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<SaveDataV1>
         if (parsed && parsed.version === 1) {
-          cache = { ...freshSave(), ...parsed } as SaveDataV1
-          cache.settings = { theme: 'auto', ...parsed.settings }
+          cache = normalizeSave(parsed)
           return cache
         }
       }
@@ -157,12 +305,37 @@ export function loadSave(): SaveDataV1 {
   return cache
 }
 
-/** Test/QA hook: wipe the save completely (Settings → Reset progress). */
-export function resetSave(): void {
-  cache = freshSave()
-  if (writeTimer) {
-    clearTimeout(writeTimer)
-    writeTimer = null
+function assignCache(next: SaveDataV1): SaveDataV1 {
+  if (cache) {
+    Object.assign(cache, next)
+    return cache
+  }
+  cache = next
+  return cache
+}
+
+/** Write a complete save object (used for cloud progress restoration). */
+export function writeSave(
+  save: Partial<SaveDataV1>,
+  options?: { syncCloud?: boolean; ownerId?: string | null },
+): SaveDataV1 {
+  const normalized = normalizeSave(save)
+  const current = assignCache(normalized)
+  if (options && 'ownerId' in options) {
+    setSaveOwnerId(options.ownerId ?? null)
+  }
+  writeNow(options?.syncCloud ?? false)
+  gameBus.emit('state:best', { best: current.best })
+  gameBus.emit('state:save', { best: current.best })
+  return current
+}
+
+/** Test/QA hook & logout reset: wipe the save completely (Settings → Reset progress or logout). */
+export function resetSave(options?: { syncCloud?: boolean; clearOwner?: boolean }): SaveDataV1 {
+  cancelScheduledWrites()
+  const current = assignCache(freshSave())
+  if (options?.clearOwner !== false) {
+    setSaveOwnerId(null)
   }
   const s = storage()
   if (s) {
@@ -172,6 +345,12 @@ export function resetSave(): void {
       /* blocked — fresh in-memory save still returned */
     }
   }
+  if (options?.syncCloud === true) {
+    cloudSyncHandler?.(cloneSave(current), true)
+  }
+  gameBus.emit('state:best', { best: 0 })
+  gameBus.emit('state:save', { best: 0 })
+  return current
 }
 
 /** Lifetime discovery record (JOURNAL + COLLECTION). Returns the variant id. */
@@ -205,12 +384,17 @@ export function recordMerge(tier: number): void {
 /** A run ended (game over): leaderboard entry + best-score bookkeeping. */
 export function recordRunEnd(score: number, bestTier: number): number {
   const save = loadSave()
+  const now = Date.now()
   save.stats.runs++
   if (score > save.best) save.best = score
-  save.leaderboard.push({ score, bestTier, at: Date.now() })
-  save.leaderboard.sort((a, b) => b.score - a.score || a.at - b.at)
+  if (bestTier > save.stats.bestTier) save.stats.bestTier = bestTier
+  for (let t = 1; t <= Math.min(12, bestTier); t++) {
+    if (save.discovered[String(t)] == null) save.discovered[String(t)] = now
+  }
+  save.leaderboard.push({ score, bestTier, at: now })
+  save.leaderboard.sort((a, b) => b.score - a.score || b.at - a.at)
   save.leaderboard = save.leaderboard.slice(0, MAX_LEADERBOARD)
-  writeNow()
+  writeNow(true)
   return save.best
 }
 

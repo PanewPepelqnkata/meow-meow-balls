@@ -41,11 +41,11 @@ export class AuthModal {
 
   private container: HTMLElement
   private els: AuthModalElements | null = null
-  private successCb: (() => void) | null = null
+  private successCb: ((mode: 'login' | 'signup') => void) | null = null
   private cancelCb: (() => void) | null = null
   private isOpen = false
   private isLoading = false
-
+  private completedAuthMode: 'login' | 'signup' | null = null
   constructor(container: HTMLElement) {
     // Close any existing modal before creating a new one
     if (AuthModal.activeInstance) {
@@ -63,18 +63,26 @@ export class AuthModal {
     this.els!.usernameInput.focus()
   }
 
-  close(): void {
+  close(skipCallbacks = false): void {
     if (!this.isOpen || !this.els) return
     this.isOpen = false
     this.els.backdrop.remove()
     this.els = null
-    this.cancelCb?.()
+    if (!skipCallbacks) {
+      if (this.completedAuthMode) {
+        const mode = this.completedAuthMode
+        this.completedAuthMode = null
+        this.successCb?.(mode)
+      } else {
+        this.cancelCb?.()
+      }
+    }
     if (AuthModal.activeInstance === this) {
       AuthModal.activeInstance = null
     }
   }
 
-  onSuccess(cb: () => void): void {
+  onSuccess(cb: (mode: 'login' | 'signup') => void): void {
     this.successCb = cb
   }
 
@@ -361,11 +369,13 @@ export class AuthModal {
       this.setLoading(false)
 
       if (els.mode === 'signup') {
+        this.completedAuthMode = 'signup'
         // Show nickname selection screen
         this.showNicknameScreen()
       } else {
-        this.successCb?.()
-        this.close()
+        this.completedAuthMode = null
+        this.successCb?.('login')
+        this.close(true)
       }
     } catch (err) {
       this.showError(err instanceof Error ? err.message : 'An unexpected error occurred')
@@ -442,8 +452,10 @@ export class AuthModal {
 
       // Success
       this.setLoading(false)
-      this.successCb?.()
-      this.close()
+      const mode = this.completedAuthMode ?? 'signup'
+      this.completedAuthMode = null
+      this.successCb?.(mode)
+      this.close(true)
     } catch (err) {
       this.showError(err instanceof Error ? err.message : 'An unexpected error occurred')
       this.setLoading(false)

@@ -198,8 +198,13 @@ export class UIScene extends Phaser.Scene {
     const stats = this.lastRunStats
     if (!stats) return
     const modal = new AuthModal(document.body)
-    modal.onSuccess(() => {
-      // The modal closes itself after the success callback.
+    modal.onSuccess((mode) => {
+      // Guest progression only transfers when creating a new account (signup).
+      // Logging into an existing account uses that account's own progression.
+      if (mode !== 'signup') {
+        this.lastRunStats = null
+        return
+      }
       void scoreService
         .submitScore(stats.score, stats.tierReached, stats.ballsMerged, stats.durationMs)
         .then(({ error }) => {

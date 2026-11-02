@@ -186,10 +186,17 @@ export class TitleScene extends Phaser.Scene {
     this.game.events.on('br:dpr', this.onViewportResize, this)
     // Rebuild leaderboard when auth state changes (login/logout)
     this.unsubscribeAuth = authService.onAuthStateChange(() => {
-      if (this.screen === 'leaderboard' && !this.closed) {
-        this.applyScreenVisibility()
+      if (!this.closed) {
+        this.buildAll()
       }
     })
+    this.offs.push(
+      gameBus.on('state:save', () => {
+        if (!this.closed) {
+          this.buildAll()
+        }
+      }),
+    )
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.closed = true
       this.returnToPause = false
@@ -1556,7 +1563,7 @@ export class TitleScene extends Phaser.Scene {
       onClick: () => {
         if (this.resetArmed > Date.now()) {
           this.disarmReset()
-          resetSave()
+          resetSave({ syncCloud: true, clearOwner: false })
           this.registry.set('best', 0)
           gameBus.emit('state:best', { best: 0 })
           const bg = this.scene.get('BackgroundScene') as BackgroundScene | undefined

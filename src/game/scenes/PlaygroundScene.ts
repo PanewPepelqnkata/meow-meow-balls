@@ -405,6 +405,12 @@ export class PlaygroundScene extends Phaser.Scene {
     )
     this.events.once(
       Phaser.Scenes.Events.SHUTDOWN,
+      gameBus.on('state:save', ({ best }) => {
+        this.registry.set('best', best)
+      }),
+    )
+    this.events.once(
+      Phaser.Scenes.Events.SHUTDOWN,
       gameBus.on('ui:resume', () => {
         if (!this.gameOver && !session.menuActive) this.inputController.setEnabled(true)
         this.dropSuppressUntil = this.activeTimeMs + 200
@@ -441,7 +447,7 @@ export class PlaygroundScene extends Phaser.Scene {
     // create(); see initQueue(). Phase 2.14.0: the persisted all-time best
     // seeds the registry (localStorage save), not the session default 0.
     this.registry.set('next', { ...this.nextBallState })
-    this.registry.set('best', Math.max(savedBest(), this.best()))
+    this.registry.set('best', savedBest())
 
     // The UI scene renders on top of this one (Phaser auto-starts only the
     // first config scene); launch AFTER the registry above is populated so
