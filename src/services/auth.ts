@@ -79,34 +79,22 @@ export class AuthService {
 
   /**
    * Sign in with username + password. Looks up the user's email from their
-   * profile, then delegates to Supabase email auth.
+   * profile (populated by the handle_new_user trigger), then delegates to
+   * Supabase email auth.
    */
   async signInWithUsername(username: string, password: string): Promise<{ error: Error | null }> {
-    // Look up email by username from profiles table — maybeSingle returns
-    // null data (not an error) when no row matches.
+    // maybeSingle returns null data (not an error) when no row matches.
     const { data: profile, error: lookupError } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('username', username)
-      .maybeSingle()
-
-    if (lookupError || !profile) {
-      return { error: new Error('Invalid username or password') }
-    }
-
-    // Get the user's email from auth.users via admin API isn't possible client-side.
-    // Instead, we store the email in the profile during signup.
-    const { data: profileWithEmail, error: emailError } = await supabase
       .from('profiles')
       .select('email')
       .eq('username', username)
       .maybeSingle()
 
-    if (emailError || !profileWithEmail?.email) {
+    if (lookupError || !profile?.email) {
       return { error: new Error('Invalid username or password') }
     }
 
-    return this.signInWithEmail(profileWithEmail.email, password)
+    return this.signInWithEmail(profile.email, password)
   }
 
   /**
@@ -133,7 +121,7 @@ export class AuthService {
     // Use provided email or generate a placeholder
     const authEmail = email || `${username.toLowerCase().replace(/[^a-z0-9]/g, '')}@ballrush.local`
 
-    const { data, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email: authEmail,
       password,
       options: {
@@ -157,20 +145,8 @@ export class AuthService {
       return { error: signInError }
     }
 
-    // Store email in profile for username-based login lookup. The
-    // handle_new_user() trigger creates the profile row asynchronously, so
-    // the update can race it — retry a few times with a short delay.
-    if (data.user) {
-      for (let i = 0; i < 3; i++) {
-        const { error: updateError } = await supabase
-          .from('profiles')
-          .update({ email: authEmail })
-          .eq('id', data.user.id)
-
-        if (!updateError) break
-        await new Promise(r => setTimeout(r, 500))
-      }
-    }
+    // The handle_new_user trigger copies auth.users.email into the profile
+    // atomically at signup, so no client-side email update is needed here.
 
     return { error: null }
   }

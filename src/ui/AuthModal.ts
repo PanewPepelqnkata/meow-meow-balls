@@ -37,6 +37,8 @@ interface AuthModalElements {
 }
 
 export class AuthModal {
+  private static activeInstance: AuthModal | null = null
+
   private container: HTMLElement
   private els: AuthModalElements | null = null
   private successCb: (() => void) | null = null
@@ -45,6 +47,11 @@ export class AuthModal {
   private isLoading = false
 
   constructor(container: HTMLElement) {
+    // Close any existing modal before creating a new one
+    if (AuthModal.activeInstance) {
+      AuthModal.activeInstance.close()
+    }
+    AuthModal.activeInstance = this
     this.container = container
   }
 
@@ -62,6 +69,9 @@ export class AuthModal {
     this.els.backdrop.remove()
     this.els = null
     this.cancelCb?.()
+    if (AuthModal.activeInstance === this) {
+      AuthModal.activeInstance = null
+    }
   }
 
   onSuccess(cb: () => void): void {

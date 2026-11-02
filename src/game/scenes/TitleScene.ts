@@ -1477,7 +1477,7 @@ export class TitleScene extends Phaser.Scene {
     const profile = authService.getProfile()
     const displayName = resolveDisplayName(profile)
 
-    const cardH = isAuthed ? 160 : 100
+    const cardH = isAuthed ? 160 : 120
     const cardY = topY + 6
 
     g.fillStyle(UI_COLORS.CARD_BG, 1)
@@ -1537,7 +1537,7 @@ export class TitleScene extends Phaser.Scene {
         screen: 'settings',
       })
     } else {
-      const info = hudText(this, centerX, cardY + 48, 'Not logged in', 1, {
+      const info = hudText(this, centerX, cardY + 50, 'Not logged in', 1, {
         color: UI_COLORS.TEXT_MUTED,
         size: 12,
         stroke: 0,
@@ -1549,7 +1549,7 @@ export class TitleScene extends Phaser.Scene {
 
       const btnW = Math.min(200, cardW - 48)
       const btnH = 40
-      const btnY = cardY + cardH - btnH / 2 - 12
+      const btnY = cardY + cardH - btnH / 2 - 20
       const loginBtn = new ChunkyButton({
         scene: this,
         x: centerX,
