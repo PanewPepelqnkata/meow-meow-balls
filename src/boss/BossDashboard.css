@@ -1,0 +1,697 @@
+.boss-shell {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: radial-gradient(circle at 50% 0%, #162040 0%, #0b0f1d 65%, #070a14 100%);
+  color: #eef2ff;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  user-select: text;
+  -webkit-user-select: text;
+  touch-action: pan-y;
+}
+
+.boss-display-font {
+  font-family: 'Lilita One', system-ui, sans-serif;
+  letter-spacing: 0.03em;
+}
+
+/* ---- Login Gate ---- */
+.boss-auth-wrap {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.boss-auth-card {
+  width: 100%;
+  max-width: 430px;
+  background: #13192e;
+  border: 2px solid #2b365a;
+  border-radius: 20px;
+  padding: 32px 28px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+}
+
+.boss-auth-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(79, 195, 247, 0.14);
+  color: #4fc3f7;
+  border: 1px solid rgba(79, 195, 247, 0.35);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 14px;
+}
+
+.boss-auth-title {
+  margin: 0 0 8px;
+  font-size: 30px;
+  color: #ffffff;
+  font-family: 'Lilita One', system-ui, sans-serif;
+  letter-spacing: 0.03em;
+}
+
+.boss-auth-sub {
+  margin: 0 0 20px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #94a3b8;
+}
+
+.boss-auth-notice {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #fcd34d;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  margin-bottom: 18px;
+}
+
+.boss-auth-error {
+  background: rgba(244, 67, 54, 0.14);
+  border: 1px solid rgba(244, 67, 54, 0.45);
+  color: #fca5a5;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+
+.boss-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.boss-field label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.boss-input,
+.boss-select {
+  background: #0c1020;
+  border: 1.5px solid #2b365a;
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: #f8fafc;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.boss-input:focus,
+.boss-select:focus {
+  border-color: #4fc3f7;
+  box-shadow: 0 0 0 3px rgba(79, 195, 247, 0.18);
+}
+
+.boss-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-radius: 10px;
+  padding: 9px 15px;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  transition: transform 0.1s ease, filter 0.15s ease, background 0.15s ease;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.boss-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.boss-btn:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+.boss-btn-primary {
+  background: #4fc3f7;
+  color: #081226;
+  border-color: #81d4fa;
+}
+
+.boss-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.boss-btn-secondary {
+  background: #1b233d;
+  color: #e2e8f0;
+  border-color: #313f6b;
+}
+
+.boss-btn-secondary:hover:not(:disabled) {
+  background: #232e4f;
+}
+
+.boss-btn-danger {
+  background: rgba(244, 67, 54, 0.16);
+  color: #fca5a5;
+  border-color: rgba(244, 67, 54, 0.45);
+}
+
+.boss-btn-danger:hover:not(:disabled) {
+  background: rgba(244, 67, 54, 0.28);
+}
+
+.boss-btn-warning {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fcd34d;
+  border-color: rgba(245, 158, 11, 0.45);
+}
+
+.boss-btn-warning:hover:not(:disabled) {
+  background: rgba(245, 158, 11, 0.28);
+}
+
+.boss-btn-sm {
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 8px;
+}
+
+/* ---- Main Dashboard Container ---- */
+.boss-container {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 20px 24px 64px;
+  box-sizing: border-box;
+}
+
+.boss-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 18px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #222c49;
+}
+
+.boss-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.boss-brand-title {
+  margin: 0;
+  font-size: 26px;
+  font-family: 'Lilita One', system-ui, sans-serif;
+  color: #ffffff;
+  letter-spacing: 0.03em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.boss-route-pill {
+  background: #4fc3f7;
+  color: #091326;
+  font-family: monospace;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.boss-brand-meta {
+  font-size: 12.5px;
+  color: #94a3b8;
+  margin-top: 3px;
+}
+
+.boss-top-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.boss-user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #131b31;
+  border: 1px solid #2b365a;
+  font-size: 12.5px;
+  color: #cbd5e1;
+}
+
+.boss-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 8px rgba(52, 211, 153, 0.7);
+}
+
+/* ---- Navigation Tabs ---- */
+.boss-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.boss-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  background: #101629;
+  padding: 5px;
+  border-radius: 12px;
+  border: 1px solid #232d4b;
+}
+
+.boss-tab {
+  background: transparent;
+  color: #94a3b8;
+  border: none;
+  padding: 9px 16px;
+  border-radius: 9px;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.boss-tab:hover {
+  color: #e2e8f0;
+}
+
+.boss-tab.active {
+  background: #4fc3f7;
+  color: #081226;
+}
+
+.boss-tab-count {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.25);
+  font-weight: 800;
+}
+
+/* ---- Banners ---- */
+.boss-banner {
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-bottom: 18px;
+  font-size: 13.5px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.boss-banner-success {
+  background: rgba(52, 211, 153, 0.14);
+  border: 1px solid rgba(52, 211, 153, 0.4);
+  color: #6ee7b7;
+}
+
+.boss-banner-error {
+  background: rgba(244, 67, 54, 0.15);
+  border: 1px solid rgba(244, 67, 54, 0.45);
+  color: #fca5a5;
+}
+
+/* ---- KPI Grid ---- */
+.boss-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.boss-kpi-card {
+  background: #13192e;
+  border: 1.5px solid #232d4b;
+  border-radius: 14px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.boss-kpi-label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+}
+
+.boss-kpi-value {
+  font-size: 28px;
+  font-weight: 800;
+  color: #ffffff;
+  font-family: 'Lilita One', system-ui, sans-serif;
+  letter-spacing: 0.02em;
+}
+
+.boss-kpi-sub {
+  font-size: 12px;
+  color: #94a3b8;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.boss-kpi-highlight {
+  color: #4fc3f7;
+  font-weight: 700;
+}
+
+/* ---- Analytics Sections & Panels ---- */
+.boss-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 18px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 900px) {
+  .boss-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.boss-card {
+  background: #13192e;
+  border: 1.5px solid #232d4b;
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.boss-card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.boss-card-title {
+  margin: 0;
+  font-size: 16.5px;
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.boss-card-subtitle {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: #94a3b8;
+}
+
+/* ---- Daily Bar Chart ---- */
+.boss-chart-bars {
+  display: grid;
+  grid-template-columns: repeat(14, minmax(0, 1fr));
+  gap: 8px;
+  align-items: end;
+  height: 185px;
+  padding-top: 24px;
+  border-bottom: 1px solid #232d4b;
+}
+
+.boss-chart-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  gap: 6px;
+}
+
+.boss-chart-val {
+  font-size: 10.5px;
+  color: #cbd5e1;
+  font-weight: 700;
+}
+
+.boss-chart-bar {
+  width: 100%;
+  max-width: 34px;
+  border-radius: 6px 6px 2px 2px;
+  background: linear-gradient(180deg, #4fc3f7 0%, #0288d1 100%);
+  min-height: 4px;
+  transition: height 0.2s ease;
+}
+
+.boss-chart-bar.empty {
+  background: #1e293b;
+}
+
+.boss-chart-date {
+  font-size: 10px;
+  color: #94a3b8;
+  margin-top: 6px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* ---- Tier Funnel & Progress Bars ---- */
+.boss-tier-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.boss-tier-row {
+  display: grid;
+  grid-template-columns: 135px 1fr 150px;
+  align-items: center;
+  gap: 12px;
+  font-size: 12.5px;
+}
+
+@media (max-width: 640px) {
+  .boss-tier-row {
+    grid-template-columns: 110px 1fr 110px;
+  }
+}
+
+.boss-tier-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: #1b2440;
+  border: 1px solid #2e3b63;
+  color: #f8fafc;
+}
+
+.boss-tier-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.boss-progress-track {
+  height: 10px;
+  background: #0c1020;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid #222c49;
+}
+
+.boss-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+
+/* ---- Filters & Tables ---- */
+.boss-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.boss-toolbar .boss-input {
+  min-width: 220px;
+  flex: 1;
+}
+
+.boss-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 1px solid #232d4b;
+}
+
+.boss-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: left;
+}
+
+.boss-table th {
+  background: #0e1425;
+  color: #94a3b8;
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 11px 14px;
+  border-bottom: 1px solid #232d4b;
+  white-space: nowrap;
+}
+
+.boss-table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid #1b233d;
+  color: #e2e8f0;
+  vertical-align: middle;
+}
+
+.boss-table tr:last-child td {
+  border-bottom: none;
+}
+
+.boss-table tbody tr:hover td {
+  background: rgba(79, 195, 247, 0.04);
+}
+
+.boss-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
+.boss-muted {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.boss-actions-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.boss-tier-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.boss-tier-mini {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  background: #1b2440;
+  color: #cbd5e1;
+  border: 1px solid #2e3b63;
+}
+
+.boss-tier-mini.unlocked {
+  background: rgba(79, 195, 247, 0.18);
+  color: #4fc3f7;
+  border-color: rgba(79, 195, 247, 0.45);
+}
+
+/* ---- Modal ---- */
+.boss-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 8, 17, 0.78);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 200;
+}
+
+.boss-modal {
+  width: 100%;
+  max-width: 520px;
+  max-height: 90dvh;
+  overflow-y: auto;
+  background: #13192e;
+  border: 2px solid #2b365a;
+  border-radius: 18px;
+  padding: 24px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);
+}
+
+.boss-modal-title {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.boss-modal-sub {
+  margin: 0 0 18px;
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+.boss-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 520px) {
+  .boss-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.boss-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #232d4b;
+}
