@@ -22,9 +22,9 @@
   background: #161b2e;
   border: 2px solid #2b3555;
   border-radius: 16px;
-  padding: 24px;
+  padding: 28px;
   width: 100%;
-  max-width: 400px;
+  max-width: 420px;
   position: relative;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(79, 195, 247, 0.1);
   animation: auth-slide-up 250ms cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -43,8 +43,8 @@
 
 .auth-modal-close {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: 16px;
+  right: 16px;
   width: 36px;
   height: 36px;
   border-radius: 8px;
@@ -57,6 +57,7 @@
   justify-content: center;
   transition: all 150ms ease;
   padding: 0;
+  z-index: 10;
 }
 
 .auth-modal-close:hover {
@@ -73,7 +74,7 @@
 .auth-modal-tabs {
   display: flex;
   gap: 8px;
-  margin-bottom: 24px;
+  margin-bottom: 28px;
   background: #1d2233;
   border-radius: 12px;
   padding: 4px;
@@ -110,13 +111,13 @@
 .auth-modal-form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
 }
 
 .auth-input-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .auth-input-label {
@@ -182,6 +183,7 @@
   font-family: 'Lilita One', 'Arial Black', sans-serif;
   font-size: 14px;
   animation: auth-shake 300ms ease-in-out;
+  margin-top: -4px;
 }
 
 .auth-error--info {
@@ -216,7 +218,8 @@
   letter-spacing: 0.5px;
   position: relative;
   box-shadow: 0 4px 0 #1d4ed8, 0 6px 12px rgba(0, 0, 0, 0.3);
-  margin-top: 8px;
+  margin-top: 4px;
+  width: 100%;
 }
 
 .auth-submit:hover:not(:disabled) {
@@ -260,11 +263,12 @@
   cursor: pointer;
   text-align: center;
   padding: 8px;
-  margin-top: 8px;
+  margin-top: 4px;
   opacity: 0.8;
   transition: opacity 150ms ease;
   text-decoration: underline;
   text-underline-offset: 4px;
+  width: 100%;
 }
 
 .auth-forgot-link:hover {
@@ -334,13 +338,21 @@
 /* Mobile adjustments */
 @media (max-width: 480px) {
   .auth-modal-card {
-    padding: 20px;
+    padding: 24px 20px;
     max-width: 100%;
+  }
+
+  .auth-modal-tabs {
+    margin-bottom: 24px;
   }
 
   .auth-modal-tab {
     font-size: 14px;
-    padding: 8px 12px;
+    padding: 10px 12px;
+  }
+
+  .auth-modal-form {
+    gap: 18px;
   }
 
   .auth-input {

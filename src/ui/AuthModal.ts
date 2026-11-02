@@ -82,8 +82,8 @@ export class AuthModal {
         </button>
 
         <div class="auth-modal-tabs">
-          <button class="auth-modal-tab ${mode === 'login' ? 'active' : ''}" data-mode="login">Login</button>
-          <button class="auth-modal-tab ${mode === 'signup' ? 'active' : ''}" data-mode="signup">Sign Up</button>
+          <button type="button" class="auth-modal-tab ${mode === 'login' ? 'active' : ''}" data-mode="login">Login</button>
+          <button type="button" class="auth-modal-tab ${mode === 'signup' ? 'active' : ''}" data-mode="signup">Sign Up</button>
         </div>
 
         <form class="auth-modal-form" novalidate>
@@ -238,6 +238,15 @@ export class AuthModal {
 
     els.tabLogin.addEventListener('click', () => this.switchMode('login'))
     els.tabSignup.addEventListener('click', () => this.switchMode('signup'))
+
+    // Prevent email input clicks from bubbling to tab buttons
+    els.emailInput.addEventListener('click', (e) => {
+      e.stopPropagation()
+    })
+
+    els.emailInput.addEventListener('focus', (e) => {
+      e.stopPropagation()
+    })
 
     els.form.addEventListener('submit', (e) => {
       e.preventDefault()
