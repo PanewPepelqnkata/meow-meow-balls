@@ -293,6 +293,7 @@ export class ScoreService {
   }
 
   async getLeaderboard(limit = 100): Promise<Score[]> {
+    // Fetch all scores, then dedupe to keep only each user's highest score
     const { data, error } = await supabase
       .from('scores')
       .select(`
@@ -305,14 +306,24 @@ export class ScoreService {
         )
       `)
       .order('score', { ascending: false })
-      .limit(limit)
 
     if (error) {
       console.error('Error fetching leaderboard:', error)
       return []
     }
 
-    return data as Score[]
+    // Keep only the highest score per user
+    const seenUsers = new Set<string>()
+    const uniqueScores: Score[] = []
+    for (const score of data as Score[]) {
+      if (!seenUsers.has(score.user_id)) {
+        seenUsers.add(score.user_id)
+        uniqueScores.push(score)
+        if (uniqueScores.length >= limit) break
+      }
+    }
+
+    return uniqueScores
   }
 
   async getUserBestScore(): Promise<Score | null> {
