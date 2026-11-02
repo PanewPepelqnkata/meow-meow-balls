@@ -2,7 +2,17 @@ import { useEffect, useState } from 'react'
 import { GameCanvas } from './react/GameCanvas'
 import { gameBus } from './game/events/gameBus'
 import { authService } from './services/auth'
+import { BossDashboard } from './boss/BossDashboard'
 
+function isBossRoute(): boolean {
+  if (typeof window === 'undefined') return false
+  const path = window.location.pathname.replace(/\/+$/, '')
+  if (path === '/boss' || path.endsWith('/boss')) return true
+  const params = new URLSearchParams(window.location.search)
+  if (params.get('boss') === '1' || params.has('boss')) return true
+  const hash = window.location.hash.replace(/^#\/?/, '').replace(/\/+$/, '')
+  return hash === 'boss'
+}
 export default function App() {
   const [sceneReady, setSceneReady] = useState(false)
 
@@ -18,6 +28,10 @@ export default function App() {
   // subscription for dev tooling but render pure game UI (Phase 2.11.1: the
   // status paragraph overlapped the Check Out button in every screenshot).
   void sceneReady
+
+  if (isBossRoute()) {
+    return <BossDashboard />
+  }
 
   return (
     <main className="app">
