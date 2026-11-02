@@ -62,15 +62,21 @@ export class AuthService {
     }
 
     supabase.auth.onAuthStateChange(async (event, session) => {
+      const previousUserId = this.user?.id
       this.session = session
       this.user = session?.user ?? null
 
       if (event === 'SIGNED_IN' && this.user) {
         await this.fetchProfile()
-        // Sync local progress to cloud on login
-        void syncLocalProgressToCloud()
+        // Only sync local progress if this is a different user than before
+        // (prevents re-syncing the same local progress to multiple accounts)
+        if (previousUserId !== this.user.id) {
+          void syncLocalProgressToCloud()
+        }
       } else if (event === 'SIGNED_OUT') {
         this.profile = null
+        // Clear local progress on logout so the next account starts fresh
+        void clearLocalProgressOnLogout()
       }
       this.notifyAuthStateChange()
     })
@@ -380,7 +386,7 @@ export async function syncLocalProgressToCloud(): Promise<void> {
 
   try {
     // Get local best score
-    const { loadSave } = await import('../game/state/save')
+    const { loadSave, resetSave } = await import('../game/state/save')
     const localBest = loadSave().best
     if (localBest <= 0) return
 
@@ -401,10 +407,28 @@ export async function syncLocalProgressToCloud(): Promise<void> {
       )
       console.log('Synced local best score to cloud:', localBest)
     }
+
+    // Clear local progress after sync so it can't be synced to another account
+    resetSave()
+    console.log('Local progress cleared after sync')
   } catch (err) {
     console.error('Failed to sync local progress:', err)
   }
- }
+}
+
+/**
+ * Clear local progress when logging out.
+ * This prevents progress from being transferred to a different account.
+ */
+async function clearLocalProgressOnLogout(): Promise<void> {
+  try {
+    const { resetSave } = await import('../game/state/save')
+    resetSave()
+    console.log('Local progress cleared on logout')
+  } catch (err) {
+    console.error('Failed to clear local progress:', err)
+  }
+}
 
 export const authService = AuthService.getInstance()
 export const scoreService = ScoreService.getInstance()
