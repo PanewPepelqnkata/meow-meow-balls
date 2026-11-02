@@ -325,7 +325,14 @@ export class TitleScene extends Phaser.Scene {
     this.logoImg = null
     this.chipRect = null
 
-    if (!this.returnToPause) this.buildHome(vw, vh)
+    if (!this.returnToPause) {
+      const isDesktop = vw >= 768 && vw > vh
+      if (isDesktop) {
+        this.buildDesktopLayout(vw, vh)
+      } else {
+        this.buildMobileLayout(vw, vh)
+      }
+    }
     this.buildPanelChrome(vw, vh)
     this.applyScreenVisibility()
   }
@@ -381,21 +388,102 @@ export class TitleScene extends Phaser.Scene {
   // nav → stats chip. One intentional composition per orientation.
   // -------------------------------------------------------------------------
 
-  private buildHome(vw: number, vh: number): void {
+  private buildLogo(
+    x: number,
+    topInset: number,
+    vw: number,
+    vh: number,
+  ): { logoCY: number; logoH: number } {
+    this.logoC = this.add.container(0, 0)
+    this.menuLayer.add(this.logoC)
+    const logoH = this.buildLogoInto(vw, vh)
+    const logoCY = topInset + 8 + logoH / 2
+    this.logoC.setPosition(x, logoCY)
+    this.logoBaseY = logoCY
+    return { logoCY, logoH }
+  }
+
+  private buildButtons(
+    buttonX: number,
+    buttonStartY: number,
+    buttonSpacing: number,
+    vw: number,
+    playW: number,
+    playH: number,
+    navW: number,
+    navH: number,
+  ): void {
+    const firstNavY = buttonStartY + playH / 2 + buttonSpacing + navH / 2
+    const step = navH + buttonSpacing
+    this.buildPlayAndNav(
+      vw,
+      buttonStartY,
+      playW,
+      playH,
+      navW,
+      navH,
+      [
+        { x: buttonX, y: firstNavY },
+        { x: buttonX, y: firstNavY + step },
+        { x: buttonX, y: firstNavY + 2 * step },
+      ],
+      buttonX,
+    )
+  }
+
+  private buildDesktopLayout(vw: number, vh: number): void {
+    const safe = readSafeArea()
+    const m = Math.round(Math.max(12, Math.min(22, Math.min(vw, vh) * 0.025)))
+    const topInset = Math.max(m, safe.top)
+    const bottomInset = Math.max(m, safe.bottom)
+
+    // Logo at top center
+    const { logoCY, logoH } = this.buildLogo(vw / 2, topInset, vw, vh)
+
+    const chipH = Math.round(Math.max(30, Math.min(44, vh * 0.052)))
+    const chipW = Math.round(Math.max(170, Math.min(310, Math.min(vw * 0.86, chipH * 7.2))))
+    const chipY = logoCY + logoH / 2 + 8 + chipH / 2
+
+    // Buttons on left side (25% from left edge), arranged vertically
+    const buttonX = vw * 0.25
+    const playH = Math.round(Math.max(48, Math.min(76, vh * 0.085)))
+    const playW = Math.round(Math.max(220, Math.min(360, vw * 0.28)))
+    const navH = Math.round(Math.max(38, Math.min(58, vh * 0.062)))
+    const navW = Math.round(Math.max(200, Math.min(320, playW * 0.9)))
+    const bandTop = Math.max(logoCY + logoH / 2 + 14, chipY + chipH / 2 + 10)
+    const bandBottom = vh - bottomInset - m
+    const availH = Math.max(1, bandBottom - bandTop - playH - 3 * navH)
+    const buttonSpacing = Math.round(Math.max(8, Math.min(20, availH / 3)))
+    const stackH = playH + 3 * navH + 3 * buttonSpacing
+    const minStartY = bandTop + playH / 2
+    const maxStartY = Math.max(minStartY, bandBottom - stackH + playH / 2)
+    const buttonStartY = Math.round(Math.max(minStartY, Math.min(maxStartY, vh * 0.38)))
+    this.buildButtons(buttonX, buttonStartY, buttonSpacing, vw, playW, playH, navW, navH)
+
+    // Vending machine on right side (75% from left edge), centered vertically
+    const machineX = vw * 0.75
+    const machineTop = Math.max(logoCY + logoH / 2 + 16, vh * 0.18)
+    const machineBottom = vh - bottomInset - m
+    const machineY = (machineTop + machineBottom) / 2
+    this.buildMachine(
+      machineX,
+      machineY,
+      machineBottom - machineTop,
+      Math.min(vw * 0.38, 420),
+    )
+
+    this.buildStatsChip(vw / 2, chipY, chipW, chipH)
+    this.buildLoginButton(vw, topInset)
+  }
+
+  private buildMobileLayout(vw: number, vh: number): void {
     const safe = readSafeArea()
     const portrait = vh >= vw || vw < 700
     const m = Math.round(Math.max(12, Math.min(22, Math.min(vw, vh) * 0.025)))
     const topInset = Math.max(m, safe.top)
     const bottomInset = Math.max(m, safe.bottom)
 
-    // --- the wordmark (its own container, bobbed in update) ---
-    this.logoC = this.add.container(0, 0)
-    this.menuLayer.add(this.logoC)
-    const logoH = this.buildLogoInto(vw, vh)
-    const logoCY = topInset + 8 + logoH / 2
-    this.logoC.setPosition(vw / 2, logoCY)
-    this.logoBaseY = logoCY
-    // --- measured element sizes ---
+    const { logoCY, logoH } = this.buildLogo(vw / 2, topInset, vw, vh)
     const chipH = Math.round(Math.max(30, Math.min(44, vh * 0.052)))
     const chipW = Math.round(Math.max(170, Math.min(310, Math.min(vw * 0.86, chipH * 7.2))))
     const playH = Math.round(Math.max(52, Math.min(76, vh * 0.085)))
@@ -431,8 +519,7 @@ export class TitleScene extends Phaser.Scene {
       this.buildStatsChip(vw / 2, chipY, chipW, chipH)
       this.buildLoginButton(vw, topInset)
     } else {
-      // Landscape: the wordmark leads, the chip nests under it, the
-      // machine fills the middle, PLAY sits above the bottom nav row.
+      // Compact landscape layout for narrow (< 768px) viewports.
       const navY = vh - m - navH / 2
       const playY = navY - navH / 2 - 14 - playH / 2
       const chipY = logoCY + logoH / 2 + 8 + chipH / 2
@@ -889,13 +976,14 @@ export class TitleScene extends Phaser.Scene {
     navW: number,
     navH: number,
     navPos: Array<{ x: number; y: number }>,
+    playX = vw / 2,
   ): void {
     // ---- PLAY + nav: uiverse big-moose-69 buttons as a DOM layer
     // (1:1 CSS from the source), each showcasing a live ball character
     // (gaze/blink/egg expressions) drawn into a small canvas per frame.
     // The Phaser-side hit rects stay the authoritative input surface.
     const specs: Array<{ x: number; y: number; w: number; h: number; label: string; tier: number; seed: number; screen: ScreenName }> = [
-      { x: vw / 2, y: playY, w: playW, h: playH, label: 'PLAY', tier: 1, seed: 4242, screen: 'menu' },
+      { x: playX, y: playY, w: playW, h: playH, label: 'PLAY', tier: 1, seed: 4242, screen: 'menu' },
       { x: navPos[0]!.x, y: navPos[0]!.y, w: navW, h: navH, label: 'LEADERBOARD', tier: 2, seed: 4242 + 2 * 7, screen: 'leaderboard' },
       { x: navPos[1]!.x, y: navPos[1]!.y, w: navW, h: navH, label: 'COLLECTION', tier: 3, seed: 4242 + 3 * 7, screen: 'collection' },
       { x: navPos[2]!.x, y: navPos[2]!.y, w: navW, h: navH, label: 'SETTINGS', tier: 4, seed: 4242 + 4 * 7, screen: 'settings' },
