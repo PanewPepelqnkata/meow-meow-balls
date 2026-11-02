@@ -4,6 +4,7 @@ import type { User, Session } from '@supabase/supabase-js'
 export interface Profile {
   id: string
   username: string | null
+  display_name: string | null
   avatar_url: string | null
   email?: string
   created_at: string
@@ -19,6 +20,11 @@ export interface Score {
   duration_ms: number
   created_at: string
   profiles?: Profile
+}
+
+/** Resolve a profile's display name: prefer display_name, fall back to username, then 'Anonymous'. */
+export function resolveDisplayName(profile: Profile | null | undefined): string {
+  return profile?.display_name || profile?.username || 'Anonymous'
 }
 
 export class AuthService {
@@ -229,6 +235,24 @@ export class AuthService {
     return { error }
   }
 
+  /**
+   * Update the user's display name (nickname shown on leaderboard).
+   */
+  async updateDisplayName(displayName: string): Promise<{ error: Error | null }> {
+    if (!this.user) return { error: new Error('Not authenticated') }
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({ display_name: displayName, updated_at: new Date().toISOString() })
+      .eq('id', this.user.id)
+
+    if (!error) {
+      await this.fetchProfile()
+    }
+
+    return { error }
+  }
+
   getUser(): User | null {
     return this.user
   }
@@ -285,6 +309,7 @@ export class ScoreService {
         profiles:user_id (
           id,
           username,
+          display_name,
           avatar_url
         )
       `)

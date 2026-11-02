@@ -287,6 +287,25 @@
   line-height: 1.4;
 }
 
+.auth-nickname-box {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.auth-nickname-desc {
+  color: #8e9bb5;
+  font-family: 'Lilita One', 'Arial Black', sans-serif;
+  font-size: 14px;
+  text-align: center;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.auth-nickname-submit {
+  margin-top: 8px;
+}
+
 .auth-forgot-actions {
   display: flex;
   flex-direction: column;

@@ -23,7 +23,7 @@ import { readSafeArea } from '../../ui/ResponsiveLayout'
 import { UI_COLORS, buildScreenHeader, ChunkyButton } from '../../ui/DesignSystem'
 import { CollectionBookView } from '../rendering/CollectionBookView'
 import { AuthModal } from '../../ui/AuthModal'
-import { authService } from '../../services/auth'
+import { authService, resolveDisplayName } from '../../services/auth'
 /**
  * Phase 2.14.0 (spec §2) — the START SCREEN.
  * Phase 2.15.0 (spec §2) — redesigned as a full cartoon game HOME SCREEN.
@@ -1455,6 +1455,131 @@ export class TitleScene extends Phaser.Scene {
       })
     wipe.setWordWrapWidth(cardW - 24, true).setAlign('center')
     this.panelContent.add(wipe)
+
+    // Account section below the reset card
+    const accountTopY = resetY + resetBtnH + 48
+    this.buildAccountSection(vw, vh, accountTopY)
+  }
+
+  private buildAccountSection(vw: number, vh: number, topY: number): void {
+    const safe = readSafeArea()
+    const left = Math.max(12, safe.left + 8)
+    const right = Math.max(12, safe.right + 8)
+    const sideBySide = vw >= 700 && vh < 500
+    const contentW = Math.min(sideBySide ? 880 : 480, vw - left - right)
+    const contentX = left + (vw - left - right - contentW) / 2
+    const cardW = sideBySide ? (contentW - 16) / 2 : contentW
+    const centerX = contentX + cardW / 2
+    const g = this.add.graphics()
+    this.panelContent.add(g)
+
+    const isAuthed = authService.isAuthenticated()
+    const profile = authService.getProfile()
+    const displayName = resolveDisplayName(profile)
+
+    const cardH = isAuthed ? 120 : 100
+    const cardY = topY + 6
+
+    g.fillStyle(UI_COLORS.CARD_BG, 1)
+    g.fillRoundedRect(contentX, cardY, cardW, cardH, 12)
+    g.lineStyle(2, UI_COLORS.CARD_BORDER, 1)
+    g.strokeRoundedRect(contentX, cardY, cardW, cardH, 12)
+
+    const head = hudText(this, centerX, cardY + 22, 'ACCOUNT', 1, {
+      color: UI_COLORS.TEXT_GOLD,
+      size: 15,
+      stroke: 3,
+      origin: [0.5, 0.5],
+    })
+    head.setScale(Math.min(1, (cardW - 24) / Math.max(1, head.width)))
+    this.panelContent.add(head)
+
+    if (isAuthed) {
+      const info = hudText(this, centerX, cardY + 52, `Logged in as ${displayName}`, 1, {
+        color: UI_COLORS.TEXT_MUTED,
+        size: 12,
+        stroke: 0,
+        origin: [0.5, 0.5],
+        shadow: false,
+      })
+      info.setScale(Math.min(1, (cardW - 24) / Math.max(1, info.width)))
+      this.panelContent.add(info)
+
+      const btnW = Math.min(200, cardW - 48)
+      const btnH = 40
+      const btnY = cardY + cardH - btnH / 2 - 12
+      const logoutBtn = new ChunkyButton({
+        scene: this,
+        x: centerX,
+        y: btnY,
+        w: btnW,
+        h: btnH,
+        pill: true,
+        fill: UI_COLORS.BTN_RED,
+        shadowColor: UI_COLORS.BTN_RED_SHADOW,
+        highlightColor: UI_COLORS.BTN_RED_HIGHLIGHT,
+        label: 'LOGOUT',
+        fontSize: 13,
+        onClick: () => {
+          if (!window.confirm('Are you sure you want to log out?')) return
+          void authService.signOut().then(() => {
+            this.buildAll()
+          })
+        },
+      })
+      this.panelContent.add(logoutBtn.container)
+      this.panelRects.push({
+        label: 'LOGOUT',
+        x: centerX - btnW / 2,
+        y: btnY - btnH / 2,
+        w: btnW,
+        h: btnH,
+        screen: 'settings',
+      })
+    } else {
+      const info = hudText(this, centerX, cardY + 48, 'Not logged in', 1, {
+        color: UI_COLORS.TEXT_MUTED,
+        size: 12,
+        stroke: 0,
+        origin: [0.5, 0.5],
+        shadow: false,
+      })
+      info.setScale(Math.min(1, (cardW - 24) / Math.max(1, info.width)))
+      this.panelContent.add(info)
+
+      const btnW = Math.min(200, cardW - 48)
+      const btnH = 40
+      const btnY = cardY + cardH - btnH / 2 - 12
+      const loginBtn = new ChunkyButton({
+        scene: this,
+        x: centerX,
+        y: btnY,
+        w: btnW,
+        h: btnH,
+        pill: true,
+        fill: UI_COLORS.BTN_BLUE,
+        shadowColor: UI_COLORS.BTN_BLUE_SHADOW,
+        highlightColor: UI_COLORS.BTN_BLUE_HIGHLIGHT,
+        label: 'LOGIN',
+        fontSize: 13,
+        onClick: () => {
+          const modal = new AuthModal(document.body)
+          modal.onSuccess(() => {
+            this.buildAll()
+          })
+          modal.open('login')
+        },
+      })
+      this.panelContent.add(loginBtn.container)
+      this.panelRects.push({
+        label: 'LOGIN',
+        x: centerX - btnW / 2,
+        y: btnY - btnH / 2,
+        w: btnW,
+        h: btnH,
+        screen: 'settings',
+      })
+    }
   }
 
   private buildCollection(vw: number, vh: number, topY: number): void {

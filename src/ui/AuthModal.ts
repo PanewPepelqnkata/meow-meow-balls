@@ -10,7 +10,7 @@ import { authService } from '../services/auth'
  * username for login, and store username in profile metadata on signup.
  */
 
-export type AuthMode = 'login' | 'signup'
+export type AuthMode = 'login' | 'signup' | 'nickname'
 
 interface AuthModalElements {
   backdrop: HTMLDivElement
@@ -30,6 +30,9 @@ interface AuthModalElements {
   forgotEmailInput: HTMLInputElement
   forgotSubmitBtn: HTMLButtonElement
   forgotCancelBtn: HTMLButtonElement
+  nicknameBox: HTMLDivElement
+  nicknameInput: HTMLInputElement
+  nicknameSubmitBtn: HTMLButtonElement
   mode: AuthMode
 }
 
@@ -168,6 +171,32 @@ export class AuthModal {
             <button type="button" class="auth-forgot-cancel">Back to Login</button>
           </div>
         </div>
+
+        <div class="auth-nickname-box" style="display: none">
+          <p class="auth-nickname-desc">This is how you'll appear on the leaderboard</p>
+          <div class="auth-input-group">
+            <label class="auth-input-label" for="auth-nickname">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              Nickname
+            </label>
+            <input
+              id="auth-nickname"
+              type="text"
+              class="auth-input"
+              placeholder="Your display name"
+              autocomplete="off"
+              required
+              minlength="2"
+              maxlength="20"
+            />
+          </div>
+          <button type="button" class="auth-submit auth-nickname-submit">
+            <span class="auth-submit-text">Continue</span>
+            <span class="auth-submit-spinner" style="display: none">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="auth-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+            </span>
+          </button>
+        </div>
       </div>
     `
 
@@ -191,6 +220,9 @@ export class AuthModal {
       forgotEmailInput: backdrop.querySelector('#auth-forgot-email')!,
       forgotSubmitBtn: backdrop.querySelector('.auth-forgot-submit')!,
       forgotCancelBtn: backdrop.querySelector('.auth-forgot-cancel')!,
+      nicknameBox: backdrop.querySelector('.auth-nickname-box')!,
+      nicknameInput: backdrop.querySelector('#auth-nickname')!,
+      nicknameSubmitBtn: backdrop.querySelector('.auth-nickname-submit')!,
       mode,
     }
   }
@@ -231,6 +263,16 @@ export class AuthModal {
       if (e.key === 'Enter') {
         e.preventDefault()
         this.handleForgotPassword()
+      }
+    })
+
+    els.nicknameSubmitBtn.addEventListener('click', () => this.handleNicknameSubmit())
+
+    // Enter key in nickname field
+    els.nicknameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        this.handleNicknameSubmit()
       }
     })
   }
@@ -295,8 +337,14 @@ export class AuthModal {
 
       // Success
       this.setLoading(false)
-      this.successCb?.()
-      this.close()
+
+      if (els.mode === 'signup') {
+        // Show nickname selection screen
+        this.showNicknameScreen()
+      } else {
+        this.successCb?.()
+        this.close()
+      }
     } catch (err) {
       this.showError(err instanceof Error ? err.message : 'An unexpected error occurred')
       this.setLoading(false)
@@ -331,6 +379,55 @@ export class AuthModal {
     }
   }
 
+  private showNicknameScreen(): void {
+    if (!this.els) return
+    this.els.mode = 'nickname'
+    this.els.form.style.display = 'none'
+    this.els.nicknameBox.style.display = 'block'
+    this.els.tabLogin.style.display = 'none'
+    this.els.tabSignup.style.display = 'none'
+    this.hideError()
+    this.els.nicknameInput.focus()
+  }
+
+  private async handleNicknameSubmit(): Promise<void> {
+    const { els } = this
+    if (!els || this.isLoading) return
+
+    const nickname = els.nicknameInput.value.trim()
+
+    // Validation
+    if (!nickname || nickname.length < 2) {
+      this.showError('Nickname must be at least 2 characters')
+      return
+    }
+    if (nickname.length > 20) {
+      this.showError('Nickname must be 20 characters or less')
+      return
+    }
+
+    this.setLoading(true)
+    this.hideError()
+
+    try {
+      const { error } = await authService.updateDisplayName(nickname)
+
+      if (error) {
+        this.showError(error.message)
+        this.setLoading(false)
+        return
+      }
+
+      // Success
+      this.setLoading(false)
+      this.successCb?.()
+      this.close()
+    } catch (err) {
+      this.showError(err instanceof Error ? err.message : 'An unexpected error occurred')
+      this.setLoading(false)
+    }
+  }
+
   private showError(message: string, isError = true): void {
     if (!this.els) return
     this.els.errorBox.style.display = 'flex'
@@ -346,11 +443,20 @@ export class AuthModal {
   private setLoading(loading: boolean): void {
     if (!this.els) return
     this.isLoading = loading
+
+    // Handle main form submit button
     this.els.submitBtn.disabled = loading
     const textEl = this.els.submitBtn.querySelector('.auth-submit-text') as HTMLElement
     const spinnerEl = this.els.submitBtn.querySelector('.auth-submit-spinner') as HTMLElement
     textEl.style.display = loading ? 'none' : 'inline'
     spinnerEl.style.display = loading ? 'inline' : 'none'
+
+    // Handle nickname submit button
+    this.els.nicknameSubmitBtn.disabled = loading
+    const nicknameTextEl = this.els.nicknameSubmitBtn.querySelector('.auth-submit-text') as HTMLElement
+    const nicknameSpinnerEl = this.els.nicknameSubmitBtn.querySelector('.auth-submit-spinner') as HTMLElement
+    nicknameTextEl.style.display = loading ? 'none' : 'inline'
+    nicknameSpinnerEl.style.display = loading ? 'inline' : 'none'
   }
 
   private isValidEmail(email: string): boolean {
