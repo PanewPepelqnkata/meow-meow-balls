@@ -94,6 +94,7 @@ export class AuthModal {
             </label>
             <input
               id="auth-username"
+              name="username"
               type="text"
               class="auth-input"
               placeholder="Your username"
@@ -111,6 +112,7 @@ export class AuthModal {
             </label>
             <input
               id="auth-password"
+              name="password"
               type="password"
               class="auth-input"
               placeholder="••••••••"
@@ -127,6 +129,7 @@ export class AuthModal {
             </label>
             <input
               id="auth-email"
+              name="email"
               type="email"
               class="auth-input"
               placeholder="you@example.com"

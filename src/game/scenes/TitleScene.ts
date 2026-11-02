@@ -1477,7 +1477,7 @@ export class TitleScene extends Phaser.Scene {
     const profile = authService.getProfile()
     const displayName = resolveDisplayName(profile)
 
-    const cardH = isAuthed ? 140 : 100
+    const cardH = isAuthed ? 160 : 100
     const cardY = topY + 6
 
     g.fillStyle(UI_COLORS.CARD_BG, 1)
@@ -1507,7 +1507,7 @@ export class TitleScene extends Phaser.Scene {
 
       const btnW = Math.min(200, cardW - 48)
       const btnH = 40
-      const btnY = cardY + cardH - btnH / 2 - 16
+      const btnY = cardY + cardH - btnH / 2 - 20
       const logoutBtn = new ChunkyButton({
         scene: this,
         x: centerX,
