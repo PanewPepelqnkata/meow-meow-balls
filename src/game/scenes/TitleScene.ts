@@ -130,7 +130,7 @@ export class TitleScene extends Phaser.Scene {
   private resetArmTimer: number | null = null
   private readonly pointerWorld = new Phaser.Math.Vector2()
   private offs: Array<() => void> = []
-
+  private unsubscribeAuth: (() => void) | null = null
   constructor() {
     super('TitleScene')
   }
@@ -184,12 +184,20 @@ export class TitleScene extends Phaser.Scene {
 
     // Native RESIZE can pair the old buffer with new CSS bounds; GameRoot emits this after both settle.
     this.game.events.on('br:dpr', this.onViewportResize, this)
+    // Rebuild leaderboard when auth state changes (login/logout)
+    this.unsubscribeAuth = authService.onAuthStateChange(() => {
+      if (this.screen === 'leaderboard' && !this.closed) {
+        this.applyScreenVisibility()
+      }
+    })
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.closed = true
       this.returnToPause = false
       this.destroyCollectionBook()
       this.disarmReset()
       this.game.events.off('br:dpr', this.onViewportResize, this)
+      this.unsubscribeAuth?.()
+      this.unsubscribeAuth = null
       for (const off of this.offs) off()
       this.offs.length = 0
       this.uiverseDom?.destroy()
@@ -1181,7 +1189,7 @@ export class TitleScene extends Phaser.Scene {
         this.buildCollection(vw, vh, contentTopY)
         break
       case 'leaderboard':
-        this.buildLeaderboard(vw, vh, contentTopY)
+        void this.buildLeaderboard(vw, vh, contentTopY)
         break
       case 'settings':
         this.buildSettings(vw, vh, contentTopY)

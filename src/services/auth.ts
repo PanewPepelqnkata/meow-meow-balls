@@ -32,12 +32,24 @@ export class AuthService {
   private user: User | null = null
   private session: Session | null = null
   private profile: Profile | null = null
+  private authStateListeners: Set<(authenticated: boolean) => void> = new Set()
 
   static getInstance(): AuthService {
     if (!AuthService.instance) {
       AuthService.instance = new AuthService()
     }
     return AuthService.instance
+  }
+
+  /** Subscribe to auth state changes. Returns unsubscribe function. */
+  onAuthStateChange(callback: (authenticated: boolean) => void): () => void {
+    this.authStateListeners.add(callback)
+    return () => this.authStateListeners.delete(callback)
+  }
+
+  private notifyAuthStateChange(): void {
+    const authenticated = this.user !== null
+    this.authStateListeners.forEach(cb => cb(authenticated))
   }
 
   async initialize(): Promise<void> {
@@ -60,6 +72,7 @@ export class AuthService {
       } else if (event === 'SIGNED_OUT') {
         this.profile = null
       }
+      this.notifyAuthStateChange()
     })
   }
 
