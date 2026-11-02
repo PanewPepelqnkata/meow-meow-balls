@@ -415,6 +415,14 @@ export class TitleScene extends Phaser.Scene {
   ): void {
     const firstNavY = buttonStartY + playH / 2 + buttonSpacing + navH / 2
     const step = navH + buttonSpacing
+    const navPos = [
+      { x: buttonX, y: firstNavY },
+      { x: buttonX, y: firstNavY + step },
+      { x: buttonX, y: firstNavY + 2 * step },
+    ]
+    if (!authService.isAuthenticated()) {
+      navPos.push({ x: buttonX, y: firstNavY + 3 * step })
+    }
     this.buildPlayAndNav(
       vw,
       buttonStartY,
@@ -422,11 +430,7 @@ export class TitleScene extends Phaser.Scene {
       playH,
       navW,
       navH,
-      [
-        { x: buttonX, y: firstNavY },
-        { x: buttonX, y: firstNavY + step },
-        { x: buttonX, y: firstNavY + 2 * step },
-      ],
+      navPos,
       buttonX,
     )
   }
@@ -452,9 +456,10 @@ export class TitleScene extends Phaser.Scene {
     const navW = Math.round(Math.max(200, Math.min(320, playW * 0.9)))
     const bandTop = Math.max(logoCY + logoH / 2 + 14, chipY + chipH / 2 + 10)
     const bandBottom = vh - bottomInset - m
-    const availH = Math.max(1, bandBottom - bandTop - playH - 3 * navH)
-    const buttonSpacing = Math.round(Math.max(8, Math.min(20, availH / 3)))
-    const stackH = playH + 3 * navH + 3 * buttonSpacing
+    const navCount = authService.isAuthenticated() ? 3 : 4
+    const availH = Math.max(1, bandBottom - bandTop - playH - navCount * navH)
+    const buttonSpacing = Math.round(Math.max(8, Math.min(20, availH / navCount)))
+    const stackH = playH + navCount * navH + navCount * buttonSpacing
     const minStartY = bandTop + playH / 2
     const maxStartY = Math.max(minStartY, bandBottom - stackH + playH / 2)
     const buttonStartY = Math.round(Math.max(minStartY, Math.min(maxStartY, vh * 0.38)))
@@ -473,7 +478,6 @@ export class TitleScene extends Phaser.Scene {
     )
 
     this.buildStatsChip(vw / 2, chipY, chipW, chipH)
-    this.buildLoginButton(vw, topInset)
   }
 
   private buildMobileLayout(vw: number, vh: number): void {
@@ -511,13 +515,16 @@ export class TitleScene extends Phaser.Scene {
         bandBottom - bandTop,
         Math.min(vw * 0.6, 340),
       )
-      this.buildPlayAndNav(vw, playY, playW, playH, navW, navH, [
+      const navPos = [
         { x: vw / 2 - (navW + navGap), y: navY },
         { x: vw / 2, y: navY },
         { x: vw / 2 + (navW + navGap), y: navY },
-      ])
+      ]
+      if (!authService.isAuthenticated()) {
+        navPos.push({ x: vw / 2, y: navY - navH / 2 - 18 - navH / 2 })
+      }
+      this.buildPlayAndNav(vw, playY, playW, playH, navW, navH, navPos)
       this.buildStatsChip(vw / 2, chipY, chipW, chipH)
-      this.buildLoginButton(vw, topInset)
     } else {
       // Compact landscape layout for narrow (< 768px) viewports.
       const navY = vh - m - navH / 2
@@ -532,13 +539,16 @@ export class TitleScene extends Phaser.Scene {
         Math.min(vw * 0.45, 420),
       )
       const gap = 16
-      this.buildPlayAndNav(vw, playY, playW, playH, navW, navH, [
+      const navPos = [
         { x: vw / 2 - (navW + gap), y: navY },
         { x: vw / 2, y: navY },
         { x: vw / 2 + (navW + gap), y: navY },
-      ])
+      ]
+      if (!authService.isAuthenticated()) {
+        navPos.push({ x: vw / 2, y: navY - navH / 2 - 14 - navH / 2 })
+      }
+      this.buildPlayAndNav(vw, playY, playW, playH, navW, navH, navPos)
       this.buildStatsChip(vw / 2, chipY, chipW, chipH)
-      this.buildLoginButton(vw, topInset)
     }
   }
 
@@ -982,12 +992,15 @@ export class TitleScene extends Phaser.Scene {
     // (1:1 CSS from the source), each showcasing a live ball character
     // (gaze/blink/egg expressions) drawn into a small canvas per frame.
     // The Phaser-side hit rects stay the authoritative input surface.
-    const specs: Array<{ x: number; y: number; w: number; h: number; label: string; tier: number; seed: number; screen: ScreenName }> = [
+    const specs: Array<{ x: number; y: number; w: number; h: number; label: string; tier: number; seed: number; screen: ScreenName | 'login' }> = [
       { x: playX, y: playY, w: playW, h: playH, label: 'PLAY', tier: 1, seed: 4242, screen: 'menu' },
       { x: navPos[0]!.x, y: navPos[0]!.y, w: navW, h: navH, label: 'LEADERBOARD', tier: 2, seed: 4242 + 2 * 7, screen: 'leaderboard' },
       { x: navPos[1]!.x, y: navPos[1]!.y, w: navW, h: navH, label: 'COLLECTION', tier: 3, seed: 4242 + 3 * 7, screen: 'collection' },
       { x: navPos[2]!.x, y: navPos[2]!.y, w: navW, h: navH, label: 'SETTINGS', tier: 4, seed: 4242 + 4 * 7, screen: 'settings' },
     ]
+    if (!authService.isAuthenticated() && navPos[3]) {
+      specs.push({ x: navPos[3].x, y: navPos[3].y, w: navW, h: navH, label: 'LOGIN', tier: 5, seed: 4242 + 5 * 7, screen: 'login' })
+    }
     if (!this.uiverseDom) this.uiverseDom = new UiverseDomButtons(this)
     this.uiverseDom.build(specs)
     this.uiverseDom.setVisible(!this.closed && this.screen === 'menu')
@@ -1014,7 +1027,13 @@ export class TitleScene extends Phaser.Scene {
         this.uiverseDom?.setPressed(i, false)
         if (this.closed || this.screen !== 'menu') return
         if (i === 0) this.pressStart()
-        else this.openScreen(s.screen)
+        else if (s.screen === 'login') {
+          const modal = new AuthModal(document.body)
+          modal.onSuccess(() => {
+            this.buildAll()
+          })
+          modal.open('login')
+        } else this.openScreen(s.screen)
       })
       this.menuRects.push({
         label: s.label,
@@ -1088,66 +1107,7 @@ export class TitleScene extends Phaser.Scene {
     this.menuLayer.add(tiers)
   }
 
-  /** Small LOGIN pill in the top-right corner (only when not authenticated). */
-  private buildLoginButton(vw: number, topInset: number): void {
-    if (authService.isAuthenticated()) return
-    const label = 'LOGIN'
-    const fontSize = 13
-    const padX = 14
-    const padY = 8
-    const tmp = hudText(this, 0, 0, label, 1, {
-      color: '#ffffff',
-      size: fontSize,
-      stroke: 0,
-      origin: [0.5, 0.5],
-      shadow: false,
-    })
-    const tw = tmp.width
-    tmp.destroy()
-    const w = Math.ceil(tw + padX * 2)
-    const h = Math.ceil(fontSize + padY * 2)
-    const x = vw - 12 - w / 2
-    const y = topInset + h / 2
 
-    const container = this.add.container(x, y)
-    const g = this.add.graphics()
-    g.fillStyle(0x292524, 0.92)
-    g.fillRoundedRect(-w / 2, -h / 2, w, h, h / 2)
-    g.lineStyle(2, 0x4fc3f7, 1)
-    g.strokeRoundedRect(-w / 2, -h / 2, w, h, h / 2)
-    container.add(g)
-
-    const text = hudText(this, 0, 0, label, 1, {
-      color: '#4fc3f7',
-      size: fontSize,
-      stroke: 0,
-      origin: [0.5, 0.5],
-      shadow: false,
-    })
-    container.add(text)
-    this.menuLayer.add(container)
-
-    const hit = this.add.zone(x, y, w, h).setInteractive({ useHandCursor: true })
-    this.menuLayer.add(hit)
-    hit.on('pointerup', () => {
-      if (this.closed || this.screen !== 'menu') return
-      const modal = new AuthModal(document.body)
-      modal.onSuccess(() => {
-        this.buildAll()
-      })
-      modal.open('login')
-    })
-
-    this.menuRects.push({
-      label: 'LOGIN',
-      x: x - w / 2,
-      y: y - h / 2,
-      w,
-      h,
-      screen: 'menu',
-    })
-    // container is added to menuLayer, cleaned up on rebuild/shutdown.
-  }
 
   // -------------------------------------------------------------------------
   // Panels (Journal / Leaderboard / Settings / Collection)
