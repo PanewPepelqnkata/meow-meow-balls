@@ -94,12 +94,12 @@ describe('container geometry for desktop and portrait phone', () => {
     expectCapsAtHeights([CONTAINER.height, (CONTAINER.height + CONTAINER.raisedHeight) / 2, CONTAINER.raisedHeight])
   })
 
-  it('keeps portrait normal dimensions and slope while raising to exactly 520', () => {
+  it('keeps portrait normal dimensions and slope while raising by the same 255 extension as desktop (to 655)', () => {
     resolveViewportContainer(390, 844)
     const topWidth = 340 + 2 * SLOPE * 400
     expectNormalGeometry(340, 400, 685, topWidth)
-    expect(CONTAINER.raisedHeight).toBe(520)
-    expect(wallTopYAt(CONTAINER.raisedHeight)).toBe(565)
+    expect(CONTAINER.raisedHeight).toBe(655)
+    expect(wallTopYAt(CONTAINER.raisedHeight)).toBe(430)
     expectCapsAtHeights([CONTAINER.height, (CONTAINER.height + CONTAINER.raisedHeight) / 2, CONTAINER.raisedHeight])
   })
 })

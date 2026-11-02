@@ -495,12 +495,11 @@ const THEMES: Record<ThemeName, ThemeDef> = {
     // (canvas-baked multi-blob composites — zero hard edges). The static
     // draw keeps only pin-sharp elements: stars, planets, moon, horizon.
     draw: (g, w, h, rng) => {
-      // Deep navy → violet base: painted by the dedicated gradImage
-      // (canvas-baked texture rebuilt on resize — Graphics
-      // fillGradientStyle renders flat through the Flat render node on
-      // some DPR configs). This draw paints only the pin-sharp elements:
-      // stars, planets, moon, horizon.
-
+      // Deep navy → violet base painted directly into the baked canvas texture
+      // (same as light/jungle/fantasy) so 'br-art-space' is a complete opaque
+      // backdrop that crossfades cleanly as a single curtain with zero flashes.
+      g.fillGradientStyle(0x0a1628, 0x0a1628, 0x2a1a4e, 0x2a1a4e, 1)
+      g.fillRect(0, 0, w, h)
       // PORTRAIT ART SCALE (Phase 2.22): the static art was sized for the
       // desktop reference (min dim ~936). On a phone (min dim 390) the
       // planet/moon shrank to ~40% and vanished into the dark. Scale them
@@ -1261,16 +1260,28 @@ export class BackgroundTheme {
     // Star/grid layers follow the same once-per-change rule: initStars only
     // resets the data; with the 20 Hz re-bake gone, space-bound transitions
     // must bake the star texture here (pruneArtTextures may have dropped it).
-    if ((theme === 'space' || this.fromTheme === 'space') && (!this.starImage || !this.scene.textures.exists('br-stars'))) {
-      this.starAlpha = theme === 'space' ? 1 : 0
-      this.drawStars()
-    }
-    if ((theme === 'space' || this.fromTheme === 'space') && (!this.gridImage || !this.scene.textures.exists('br-grid'))) {
-      this.drawGrid()
+    if (theme === 'space' || this.fromTheme === 'space') {
+      if (!this.starImage || !this.scene.textures.exists('br-stars')) {
+        this.starAlpha = 1
+        this.drawStars()
+      }
+      if (!this.gridImage || !this.scene.textures.exists('br-grid')) {
+        this.drawGrid()
+      }
     }
 
     this.transitionTween?.stop()
-    this.gradImage?.setVisible(false)
+    // Synchronize all layer alphas immediately at frame 0 of the transition
+    // so newly baked layers never flash at full opacity for 1 frame before
+    // the tween's first update tick.
+    this.applyCloudAlphas()
+    if (this.gridImage && this.fromTheme && this.toTheme) {
+      const from = THEMES[this.fromTheme].gridAlpha
+      const to = THEMES[this.toTheme].gridAlpha
+      const portraitBoost = window.innerWidth < window.innerHeight ? 2.6 : 1
+      this.gridImage.setAlpha(Math.min(1, (from + (to - from) * this.transitionProgress) * portraitBoost))
+      this.gridImage.setVisible(true)
+    }
     // Simple crossfade: both partner arts are baked (above); the tween
     // only blends their alphas via applyCloudAlphas on each tick.
     this.transitionTween = this.scene.tweens.add({
@@ -1505,6 +1516,11 @@ export class BackgroundTheme {
         else a = 0
       } else {
         a = themeName === this.currentTheme ? 1 : 0
+      }
+      if (this.toTheme && themeName === this.toTheme) {
+        img.setDepth(-98.5)
+      } else {
+        img.setDepth(-99)
       }
       img.setAlpha(a)
       img.setVisible(a > 0.005)

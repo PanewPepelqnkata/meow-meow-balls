@@ -518,10 +518,13 @@ export class TitleScene extends Phaser.Scene {
       : Math.round(Math.max(130, Math.min(190, (vw - 2 * m - 2 * 16) / 3)))
     if (portrait) {
       // Centered flow, bottom-anchored so the stats chip always sits in the
-      // safe area: chip -> balanced 3 nav buttons row -> PLAY -> machine -> logo.
+      // safe area: chip -> balanced 3 nav buttons row -> optional LOGIN -> PLAY -> machine -> logo.
+      const isAuthed = authService.isAuthenticated()
+      const rowGap = isAuthed ? 18 : 12
       const chipY = vh - bottomInset - chipH / 2
-      const navY = chipY - chipH / 2 - 18 - navH / 2
-      const playY = navY - navH / 2 - 18 - playH / 2
+      const navY = chipY - chipH / 2 - rowGap - navH / 2
+      const loginY = isAuthed ? navY : navY - navH / 2 - rowGap - navH / 2
+      const playY = (isAuthed ? navY : loginY) - navH / 2 - rowGap - playH / 2
       const bandTop = logoCY + logoH / 2 + 10
       const bandBottom = playY - playH / 2 - 10
       this.buildMachine(
@@ -535,15 +538,18 @@ export class TitleScene extends Phaser.Scene {
         { x: vw / 2, y: navY },
         { x: vw / 2 + (navW + navGap), y: navY },
       ]
-      if (!authService.isAuthenticated()) {
-        navPos.push({ x: vw / 2, y: navY - navH / 2 - 18 - navH / 2 })
+      if (!isAuthed) {
+        navPos.push({ x: vw / 2, y: loginY })
       }
       this.buildPlayAndNav(vw, playY, playW, playH, navW, navH, navPos)
       this.buildStatsChip(vw / 2, chipY, chipW, chipH)
     } else {
       // Compact landscape layout for narrow (< 768px) viewports.
+      const isAuthed = authService.isAuthenticated()
+      const rowGap = isAuthed ? 14 : 10
       const navY = vh - m - navH / 2
-      const playY = navY - navH / 2 - 14 - playH / 2
+      const loginY = isAuthed ? navY : navY - navH / 2 - rowGap - navH / 2
+      const playY = (isAuthed ? navY : loginY) - navH / 2 - rowGap - playH / 2
       const chipY = logoCY + logoH / 2 + 8 + chipH / 2
       const bandTop = chipY + chipH / 2 + 10
       const bandBottom = playY - playH / 2 - 12
@@ -559,8 +565,8 @@ export class TitleScene extends Phaser.Scene {
         { x: vw / 2, y: navY },
         { x: vw / 2 + (navW + gap), y: navY },
       ]
-      if (!authService.isAuthenticated()) {
-        navPos.push({ x: vw / 2, y: navY - navH / 2 - 14 - navH / 2 })
+      if (!isAuthed) {
+        navPos.push({ x: vw / 2, y: loginY })
       }
       this.buildPlayAndNav(vw, playY, playW, playH, navW, navH, navPos)
       this.buildStatsChip(vw / 2, chipY, chipW, chipH)
@@ -1412,15 +1418,16 @@ export class TitleScene extends Phaser.Scene {
     const safe = readSafeArea()
     const left = Math.max(12, safe.left + 8)
     const right = Math.max(12, safe.right + 8)
-    const sideBySide = vw >= 700 && vh < 500
+    const sideBySide = vw >= 700 && vh < 550
+    const compact = !sideBySide && vh < 740
     const contentW = Math.min(sideBySide ? 880 : 480, vw - left - right)
     const contentX = left + (vw - left - right - contentW) / 2
     const cardW = sideBySide ? (contentW - 16) / 2 : contentW
     const themeX = contentX
-    const themeY = topY + 6
+    const themeY = topY + (compact ? 4 : 6)
     const themeCenterX = themeX + cardW / 2
     const twoThemeRows = cardW < 420
-    const themeCardH = twoThemeRows ? 194 : 142
+    const themeCardH = twoThemeRows ? (compact ? 158 : 194) : (compact ? 124 : 142)
     const g = this.add.graphics()
     this.panelContent.add(g)
 
@@ -1445,9 +1452,9 @@ export class TitleScene extends Phaser.Scene {
       { key: 'fantasy', label: 'FANTASY' },
     ]
     const columns = twoThemeRows ? 3 : themes.length
-    const btnGap = 8
+    const btnGap = compact ? 6 : 8
     const bw = Math.floor((cardW - 24 - (columns - 1) * btnGap) / columns)
-    const bh = 44
+    const bh = compact ? 36 : 44
 
     themes.forEach((theme, i) => {
       const row = twoThemeRows && i >= 3 ? 1 : 0
@@ -1455,7 +1462,7 @@ export class TitleScene extends Phaser.Scene {
       const rowCount = row === 1 ? 2 : columns
       const rowW = rowCount * bw + (rowCount - 1) * btnGap
       const bx = themeCenterX - rowW / 2 + bw / 2 + column * (bw + btnGap)
-      const by = themeY + 66 + row * 52
+      const by = themeY + (compact ? 54 : 66) + row * (compact ? 42 : 52)
       const selected = save.settings.theme === theme.key
       const btn = new ChunkyButton({
         scene: this,
@@ -1489,9 +1496,9 @@ export class TitleScene extends Phaser.Scene {
       })
     })
 
-    const note = hudText(this, themeCenterX, themeY + (twoThemeRows ? 156 : 104), 'AUTO follows discoveries during a run.\nFixed themes stay selected after reload.', 1, {
+    const note = hudText(this, themeCenterX, themeY + (twoThemeRows ? (compact ? 124 : 156) : (compact ? 88 : 104)), 'AUTO follows discoveries during a run.\nFixed themes stay selected after reload.', 1, {
       color: UI_COLORS.TEXT_MUTED,
-      size: 11,
+      size: compact ? 10 : 11,
       stroke: 0,
       origin: [0.5, 0],
       shadow: false,
@@ -1500,9 +1507,9 @@ export class TitleScene extends Phaser.Scene {
     this.panelContent.add(note)
 
     const statsX = sideBySide ? contentX + cardW + 16 : contentX
-    const statsY = sideBySide ? themeY : themeY + themeCardH + 14
+    const statsY = sideBySide ? themeY : themeY + themeCardH + (compact ? 8 : 14)
     const statsCenterX = statsX + cardW / 2
-    const statsCardH = 94
+    const statsCardH = compact ? 76 : 94
     g.fillStyle(UI_COLORS.CARD_BG, 1)
     g.fillRoundedRect(statsX, statsY, cardW, statsCardH, 12)
     g.lineStyle(2, UI_COLORS.CARD_BORDER, 1)
@@ -1525,15 +1532,15 @@ export class TitleScene extends Phaser.Scene {
     const colW = cardW / statCols.length
     statCols.forEach((col, i) => {
       const cx = statsX + colW * (i + 0.5)
-      const value = hudText(this, cx, statsY + 52, col.val, 1, {
+      const value = hudText(this, cx, statsY + (compact ? 44 : 52), col.val, 1, {
         color: UI_COLORS.TEXT_WHITE,
-        size: 18,
+        size: compact ? 16 : 18,
         stroke: 3,
         origin: [0.5, 0.5],
       })
       value.setScale(Math.min(1, (colW - 12) / Math.max(1, value.width)))
       this.panelContent.add(value)
-      const label = hudText(this, cx, statsY + 76, col.label, 1, {
+      const label = hudText(this, cx, statsY + (compact ? 64 : 76), col.label, 1, {
         color: UI_COLORS.TEXT_MUTED,
         size: 10,
         stroke: 0,
@@ -1544,9 +1551,9 @@ export class TitleScene extends Phaser.Scene {
       this.panelContent.add(label)
     })
 
-    const resetY = statsY + statsCardH + 18
+    const resetY = statsY + statsCardH + (compact ? 10 : 18)
     const resetBtnW = Math.min(280, cardW - 32)
-    const resetBtnH = 44
+    const resetBtnH = compact ? 38 : 44
     const armed = this.resetArmed > Date.now()
     const resetBtn = new ChunkyButton({
       scene: this,
@@ -1592,12 +1599,12 @@ export class TitleScene extends Phaser.Scene {
       screen: 'settings',
     })
 
-    const wipe = hudText(this, statsCenterX, resetY + resetBtnH + 16,
+    const wipe = hudText(this, statsCenterX, resetY + resetBtnH + (compact ? 8 : 12),
       armed
         ? 'Tap again within 4 seconds to erase progress.\nLeaving this screen cancels confirmation.'
         : 'Clears scores, collection, run history and stats.\nRestores AUTO theme. This cannot be undone.', 1, {
         color: UI_COLORS.TEXT_MUTED,
-        size: 11,
+        size: compact ? 10 : 11,
         stroke: 0,
         origin: [0.5, 0],
         shadow: false,
@@ -1605,8 +1612,8 @@ export class TitleScene extends Phaser.Scene {
     wipe.setWordWrapWidth(cardW - 24, true).setAlign('center')
     this.panelContent.add(wipe)
 
-    // Account section below the reset card
-    const accountTopY = resetY + resetBtnH + 48
+    // Account section below the wipe notice (use measured wipe height so it never overlaps)
+    const accountTopY = wipe.y + wipe.displayHeight + (compact ? 8 : 14)
     this.buildAccountSection(vw, vh, accountTopY)
   }
 
@@ -1614,7 +1621,8 @@ export class TitleScene extends Phaser.Scene {
     const safe = readSafeArea()
     const left = Math.max(12, safe.left + 8)
     const right = Math.max(12, safe.right + 8)
-    const sideBySide = vw >= 700 && vh < 500
+    const sideBySide = vw >= 700 && vh < 550
+    const compact = !sideBySide && vh < 740
     const contentW = Math.min(sideBySide ? 880 : 480, vw - left - right)
     const contentX = left + (vw - left - right - contentW) / 2
     const cardW = sideBySide ? (contentW - 16) / 2 : contentW
@@ -1626,17 +1634,16 @@ export class TitleScene extends Phaser.Scene {
     const profile = authService.getProfile()
     const displayName = resolveDisplayName(profile)
 
-    const cardH = isAuthed ? 160 : 120
-    const cardY = topY + 6
-
+    const cardH = compact ? 102 : 118
+    const cardY = topY + (compact ? 2 : 6)
     g.fillStyle(UI_COLORS.CARD_BG, 1)
     g.fillRoundedRect(contentX, cardY, cardW, cardH, 12)
     g.lineStyle(2, UI_COLORS.CARD_BORDER, 1)
     g.strokeRoundedRect(contentX, cardY, cardW, cardH, 12)
 
-    const head = hudText(this, centerX, cardY + 22, 'ACCOUNT', 1, {
+    const head = hudText(this, centerX, cardY + (compact ? 18 : 22), 'ACCOUNT', 1, {
       color: UI_COLORS.TEXT_GOLD,
-      size: 15,
+      size: compact ? 14 : 15,
       stroke: 3,
       origin: [0.5, 0.5],
     })
@@ -1644,9 +1651,9 @@ export class TitleScene extends Phaser.Scene {
     this.panelContent.add(head)
 
     if (isAuthed) {
-      const info = hudText(this, centerX, cardY + 50, `Logged in as ${displayName}`, 1, {
+      const info = hudText(this, centerX, cardY + (compact ? 40 : 48), `Logged in as ${displayName}`, 1, {
         color: UI_COLORS.TEXT_MUTED,
-        size: 12,
+        size: compact ? 11 : 12,
         stroke: 0,
         origin: [0.5, 0.5],
         shadow: false,
@@ -1655,8 +1662,8 @@ export class TitleScene extends Phaser.Scene {
       this.panelContent.add(info)
 
       const btnW = Math.min(200, cardW - 48)
-      const btnH = 40
-      const btnY = cardY + cardH - btnH / 2 - 20
+      const btnH = compact ? 36 : 40
+      const btnY = cardY + cardH - btnH / 2 - (compact ? 12 : 16)
       const logoutBtn = new ChunkyButton({
         scene: this,
         x: centerX,
@@ -1686,9 +1693,9 @@ export class TitleScene extends Phaser.Scene {
         screen: 'settings',
       })
     } else {
-      const info = hudText(this, centerX, cardY + 50, 'Not logged in', 1, {
+      const info = hudText(this, centerX, cardY + (compact ? 40 : 48), 'Not logged in', 1, {
         color: UI_COLORS.TEXT_MUTED,
-        size: 12,
+        size: compact ? 11 : 12,
         stroke: 0,
         origin: [0.5, 0.5],
         shadow: false,
@@ -1697,8 +1704,8 @@ export class TitleScene extends Phaser.Scene {
       this.panelContent.add(info)
 
       const btnW = Math.min(200, cardW - 48)
-      const btnH = 40
-      const btnY = cardY + cardH - btnH / 2 - 20
+      const btnH = compact ? 36 : 40
+      const btnY = cardY + cardH - btnH / 2 - (compact ? 12 : 16)
       const loginBtn = new ChunkyButton({
         scene: this,
         x: centerX,

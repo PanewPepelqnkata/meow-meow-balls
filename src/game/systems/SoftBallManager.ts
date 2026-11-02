@@ -1033,21 +1033,16 @@ export class SoftBallManager {
       const past = Math.max(distOutsideLeft, distOutsideRight)
       const aboveTops = bc.y <= sideClampFromY
       const beyondBand = past > CONTAINER.frameThickness + GAME_OVER.outsideMargin
-      const clampExempt = !this.shakeActive && (aboveTops || beyondBand)
+      // Never clamp balls above the wall tops (even during Shake): the top
+      // of the container is always open so balls never glitch against an
+      // invisible ceiling/lid. During Shake, only beyondBand is bypassed so
+      // balls inside the wall height cannot escape sideways.
+      const clampExempt = aboveTops || (!this.shakeActive && beyondBand)
       for (const p of ball.soft.particles) {
         let nx = 0
         let ny = 0
         // floor: center below the floor line = tunneled
         if (p.position.y > b.floorY - pad) ny -= p.position.y - (b.floorY - pad)
-        // During shake: bounce off the invisible rim at the wall tops
-        // so balls are pushed back toward the center instead of escaping
-        if (this.shakeActive && p.position.y < sideClampFromY + pad) {
-          ny += (sideClampFromY + pad) - p.position.y
-          // Reverse upward velocity so the ball bounces back down
-          if (p.velocity.y < 0) {
-            Matter.Body.setVelocity(p, { x: p.velocity.x, y: -p.velocity.y * 0.6 })
-          }
-        }
         if (!clampExempt && p.position.y > sideClampFromY) {
           // left wall: center left of the wall line = tunneled
           const dL = (p.position.x - slopeL * p.position.y - cL) / Math.hypot(1, slopeL)

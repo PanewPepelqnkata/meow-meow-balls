@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { ShakeManager } from './ShakeManager'
 import Matter from 'matter-js'
+import { CONTAINER } from '../../config/container'
+import { SoftBallManager } from './SoftBallManager'
+import { getTier } from '../../config/ballTiers'
 
 describe('ShakeManager earthquake rumble and bounce pulses', () => {
   it('activates for 10s duration, triggers bounce pulses, and uses no physical walls', () => {
@@ -92,5 +95,30 @@ describe('ShakeManager earthquake rumble and bounce pulses', () => {
     shake.reset()
     expect(shake.isActive).toBe(false)
     expect(removedBodies.length).toBe(0)
+  })
+
+  it('does not clamp or bounce balls vertically against an invisible top lid during Shake', () => {
+    const engine = Matter.Engine.create()
+    const manager = new SoftBallManager(engine.world)
+    manager.tierRadius = (t: number) => getTier(t)?.radius ?? 38
+    manager.shakeActive = true
+
+    // Spawn a ball above the container wall tops (sideClampFromY = CONTAINER.topY)
+    const aboveRimY = CONTAINER.topY - 40
+    const ball = manager.spawnBall(360, aboveRimY, 1)
+    for (const p of ball.soft.particles) {
+      Matter.Body.setVelocity(p, { x: 0, y: -4 })
+    }
+    const minParticleYBefore = Math.min(...ball.soft.particles.map((p) => p.position.y))
+    expect(minParticleYBefore).toBeLessThan(CONTAINER.topY)
+
+    manager.clampToContainer()
+
+    const minParticleYAfter = Math.min(...ball.soft.particles.map((p) => p.position.y))
+    // Particle y and upward velocity must be untouched (no invisible lid pushing down)
+    expect(minParticleYAfter).toBeCloseTo(minParticleYBefore, 5)
+    for (const p of ball.soft.particles) {
+      expect(p.velocity.y).toBeCloseTo(-4, 5)
+    }
   })
 })

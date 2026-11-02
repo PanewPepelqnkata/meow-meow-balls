@@ -97,7 +97,7 @@ export const DESKTOP_CONTAINER: Readonly<typeof CONTAINER> = { ...CONTAINER }
  *    depth in the lower-middle of the portrait screen; top width derived
  *    from the SAME 0.142105 slope → 340 + 2·0.142105·400 = 453.7
  *  - the floor stays at stage 1085; the rim moves UP to 1085 − 400 = 685.
- *    Raise Walls adds 120: raised rim = 685 − 120 = 565 (raisedHeight 520).
+ *    Raise Walls adds 255 (matching desktop): raised rim = 685 − 255 = 430 (raisedHeight 655).
  */
 export function resolveViewportContainer(vw: number, vh: number): void {
   // Any portrait viewport is the mobile composition (space theme, phone
@@ -114,7 +114,7 @@ export function resolveViewportContainer(vw: number, vh: number): void {
   CONTAINER.bottomWidth = bottomWidth
   CONTAINER.height = height
   CONTAINER.topY = DESKTOP_CONTAINER.topY + DESKTOP_CONTAINER.height - height
-  CONTAINER.raisedHeight = height + 120
+  CONTAINER.raisedHeight = height + (DESKTOP_CONTAINER.raisedHeight - DESKTOP_CONTAINER.height)
 }
 
 export interface Vec2 {
