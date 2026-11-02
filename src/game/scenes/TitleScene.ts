@@ -22,6 +22,8 @@ import { StartIntroScene } from './StartIntroScene'
 import { readSafeArea } from '../../ui/ResponsiveLayout'
 import { UI_COLORS, buildScreenHeader, ChunkyButton } from '../../ui/DesignSystem'
 import { CollectionBookView } from '../rendering/CollectionBookView'
+import { AuthModal } from '../../ui/AuthModal'
+import { authService } from '../../services/auth'
 /**
  * Phase 2.14.0 (spec §2) — the START SCREEN.
  * Phase 2.15.0 (spec §2) — redesigned as a full cartoon game HOME SCREEN.
@@ -427,6 +429,7 @@ export class TitleScene extends Phaser.Scene {
         { x: vw / 2 + (navW + navGap), y: navY },
       ])
       this.buildStatsChip(vw / 2, chipY, chipW, chipH)
+      this.buildLoginButton(vw, topInset)
     } else {
       // Landscape: the wordmark leads, the chip nests under it, the
       // machine fills the middle, PLAY sits above the bottom nav row.
@@ -448,6 +451,7 @@ export class TitleScene extends Phaser.Scene {
         { x: vw / 2 + (navW + gap), y: navY },
       ])
       this.buildStatsChip(vw / 2, chipY, chipW, chipH)
+      this.buildLoginButton(vw, topInset)
     }
   }
 
@@ -994,6 +998,67 @@ export class TitleScene extends Phaser.Scene {
     })
     tiers.setPosition(cx + w * 0.2, cy)
     this.menuLayer.add(tiers)
+  }
+
+  /** Small LOGIN pill in the top-right corner (only when not authenticated). */
+  private buildLoginButton(vw: number, topInset: number): void {
+    if (authService.isAuthenticated()) return
+    const label = 'LOGIN'
+    const fontSize = 13
+    const padX = 14
+    const padY = 8
+    const tmp = hudText(this, 0, 0, label, 1, {
+      color: '#ffffff',
+      size: fontSize,
+      stroke: 0,
+      origin: [0.5, 0.5],
+      shadow: false,
+    })
+    const tw = tmp.width
+    tmp.destroy()
+    const w = Math.ceil(tw + padX * 2)
+    const h = Math.ceil(fontSize + padY * 2)
+    const x = vw - 12 - w / 2
+    const y = topInset + h / 2
+
+    const container = this.add.container(x, y)
+    const g = this.add.graphics()
+    g.fillStyle(0x292524, 0.92)
+    g.fillRoundedRect(-w / 2, -h / 2, w, h, h / 2)
+    g.lineStyle(2, 0x4fc3f7, 1)
+    g.strokeRoundedRect(-w / 2, -h / 2, w, h, h / 2)
+    container.add(g)
+
+    const text = hudText(this, 0, 0, label, 1, {
+      color: '#4fc3f7',
+      size: fontSize,
+      stroke: 0,
+      origin: [0.5, 0.5],
+      shadow: false,
+    })
+    container.add(text)
+    this.menuLayer.add(container)
+
+    const hit = this.add.zone(x, y, w, h).setInteractive({ useHandCursor: true })
+    this.menuLayer.add(hit)
+    hit.on('pointerup', () => {
+      if (this.closed || this.screen !== 'menu') return
+      const modal = new AuthModal(document.body)
+      modal.onSuccess(() => {
+        this.buildAll()
+      })
+      modal.open('login')
+    })
+
+    this.menuRects.push({
+      label: 'LOGIN',
+      x: x - w / 2,
+      y: y - h / 2,
+      w,
+      h,
+      screen: 'menu',
+    })
+    // container is added to menuLayer, cleaned up on rebuild/shutdown.
   }
 
   // -------------------------------------------------------------------------

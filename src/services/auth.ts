@@ -76,12 +76,13 @@ export class AuthService {
    * profile, then delegates to Supabase email auth.
    */
   async signInWithUsername(username: string, password: string): Promise<{ error: Error | null }> {
-    // Look up email by username from profiles table
+    // Look up email by username from profiles table — maybeSingle returns
+    // null data (not an error) when no row matches.
     const { data: profile, error: lookupError } = await supabase
       .from('profiles')
       .select('id')
       .eq('username', username)
-      .single()
+      .maybeSingle()
 
     if (lookupError || !profile) {
       return { error: new Error('Invalid username or password') }
@@ -93,7 +94,7 @@ export class AuthService {
       .from('profiles')
       .select('email')
       .eq('username', username)
-      .single()
+      .maybeSingle()
 
     if (emailError || !profileWithEmail?.email) {
       return { error: new Error('Invalid username or password') }
@@ -107,12 +108,17 @@ export class AuthService {
    * If no email provided, generates a placeholder email for Supabase auth.
    */
   async signUpWithUsername(username: string, password: string, email?: string): Promise<{ error: Error | null }> {
-    // Check if username is already taken
-    const { data: existing } = await supabase
+    // Check if username is already taken — maybeSingle returns null data
+    // (not an error) when no row matches, unlike .single() which throws.
+    const { data: existing, error: lookupError } = await supabase
       .from('profiles')
       .select('id')
       .eq('username', username)
-      .single()
+      .maybeSingle()
+
+    if (lookupError) {
+      return { error: new Error('Failed to check username availability') }
+    }
 
     if (existing) {
       return { error: new Error('Username is already taken') }
@@ -133,12 +139,31 @@ export class AuthService {
       return { error }
     }
 
-    // Store email in profile for username-based login lookup
+    // Auto-login: Supabase signUp() creates the auth user but does NOT
+    // establish a session (email-confirm flows). Sign in explicitly so the
+    // user lands in an authenticated state right after registration.
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: authEmail,
+      password
+    })
+
+    if (signInError) {
+      return { error: signInError }
+    }
+
+    // Store email in profile for username-based login lookup. The
+    // handle_new_user() trigger creates the profile row asynchronously, so
+    // the update can race it — retry a few times with a short delay.
     if (data.user) {
-      await supabase
-        .from('profiles')
-        .update({ email: authEmail })
-        .eq('id', data.user.id)
+      for (let i = 0; i < 3; i++) {
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({ email: authEmail })
+          .eq('id', data.user.id)
+
+        if (!updateError) break
+        await new Promise(r => setTimeout(r, 500))
+      }
     }
 
     return { error: null }
