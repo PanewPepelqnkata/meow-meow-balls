@@ -23,7 +23,7 @@ import { readSafeArea } from '../../ui/ResponsiveLayout'
 import { UI_COLORS, buildScreenHeader, ChunkyButton } from '../../ui/DesignSystem'
 import { CollectionBookView } from '../rendering/CollectionBookView'
 import { AuthModal } from '../../ui/AuthModal'
-import { authService, resolveDisplayName } from '../../services/auth'
+import { authService, resolveDisplayName, scoreService, type Score } from '../../services/auth'
 /**
  * Phase 2.14.0 (spec §2) — the START SCREEN.
  * Phase 2.15.0 (spec §2) — redesigned as a full cartoon game HOME SCREEN.
@@ -1206,21 +1206,77 @@ export class TitleScene extends Phaser.Scene {
     this.resetArmTimer = null
   }
 
-  private buildLeaderboard(vw: number, vh: number, topY: number): void {
-    const rows = loadSave().leaderboard.slice(0, 10)
+  private async buildLeaderboard(vw: number, vh: number, topY: number): Promise<void> {
     const safe = readSafeArea()
     const left = Math.max(12, safe.left + 8)
     const right = Math.max(12, safe.right + 8)
     const centerX = (left + vw - right) / 2
     const bodyY = topY + 8
     const availableH = vh - Math.max(16, safe.bottom + 8) - bodyY
+    const g = this.add.graphics()
+    this.panelContent.add(g)
+
+    // Show loading state while fetching cloud leaderboard
+    const loadingT = hudText(this, centerX, bodyY + availableH / 2, 'LOADING...', 1, {
+      color: UI_COLORS.TEXT_MUTED,
+      size: 18,
+      stroke: 0,
+      origin: [0.5, 0.5],
+      shadow: false,
+    })
+    this.panelContent.add(loadingT)
+
+    interface LeaderboardRow {
+      rank: number
+      name: string
+      score: number
+      bestTier: number
+      at: number
+      isCurrentUser: boolean
+    }
+
+    let rows: LeaderboardRow[] = []
+    let usingCloud = false
+
+    if (authService.isAuthenticated()) {
+      try {
+        const cloudScores = await scoreService.getLeaderboard(50)
+        const userId = authService.getUser()?.id
+        rows = cloudScores.map((s: Score, i: number) => ({
+          rank: i + 1,
+          name: s.profiles?.display_name || s.profiles?.username || 'Anonymous',
+          score: s.score,
+          bestTier: s.tier_reached,
+          at: new Date(s.created_at).getTime(),
+          isCurrentUser: s.user_id === userId,
+        }))
+        usingCloud = true
+      } catch (err) {
+        console.error('Failed to fetch cloud leaderboard:', err)
+      }
+    }
+
+    // Fall back to local leaderboard if not authenticated or cloud failed
+    if (!usingCloud) {
+      const localRows = loadSave().leaderboard.slice(0, 10)
+      rows = localRows.map((entry, i) => ({
+        rank: i + 1,
+        name: 'You',
+        score: entry.score,
+        bestTier: entry.bestTier,
+        at: entry.at,
+        isCurrentUser: true,
+      }))
+    }
+
+    // Clear loading indicator
+    loadingT.destroy()
+
     const columns = vw >= 700 && vh < 500 && rows.length > 5 ? 2 : 1
     const listW = Math.min(columns === 2 ? 900 : 480, vw - left - right)
     const columnGap = 16
     const cardW = (listW - (columns - 1) * columnGap) / columns
     const listX = centerX - listW / 2
-    const g = this.add.graphics()
-    this.panelContent.add(g)
 
     if (rows.length === 0) {
       const emptyH = Math.min(144, availableH)
@@ -1230,7 +1286,7 @@ export class TitleScene extends Phaser.Scene {
       g.lineStyle(2, UI_COLORS.CARD_BORDER, 1)
       g.strokeRoundedRect(listX, emptyY, cardW, emptyH, 14)
 
-      const empty = hudText(this, centerX, emptyY + 36, 'NO RUNS RECORDED YET', 1, {
+      const empty = hudText(this, centerX, emptyY + 36, usingCloud ? 'NO SCORES YET' : 'NO RUNS RECORDED YET', 1, {
         color: UI_COLORS.TEXT_GOLD,
         size: 16,
         stroke: 3,
@@ -1239,7 +1295,7 @@ export class TitleScene extends Phaser.Scene {
       empty.setScale(Math.min(1, (cardW - 32) / Math.max(1, empty.width)))
       this.panelContent.add(empty)
 
-      const emptySub = hudText(this, centerX, emptyY + 64, 'Play a game and merge balls to place on the leaderboard!', 1, {
+      const emptySub = hudText(this, centerX, emptyY + 64, usingCloud ? 'Be the first to submit a score!' : 'Play a game and merge balls to place on the leaderboard!', 1, {
         color: UI_COLORS.TEXT_MUTED,
         size: 13,
         stroke: 0,
@@ -1253,19 +1309,19 @@ export class TitleScene extends Phaser.Scene {
 
     const rowsPerColumn = Math.ceil(rows.length / columns)
     const rowGap = availableH < 500 ? 4 : 6
-    // Include every inter-row gap in the height budget; ten rows must never push below the safe area.
     const rowH = Math.min(56, Math.floor((availableH - (rowsPerColumn - 1) * rowGap) / rowsPerColumn))
 
     rows.forEach((entry, i) => {
       const column = Math.floor(i / rowsPerColumn)
       const cardX = listX + column * (cardW + columnGap)
       const y = bodyY + (i % rowsPerColumn) * (rowH + rowGap)
-      const rank = i + 1
+      const rank = entry.rank
       const isTop3 = rank <= 3
-      const rankBg = rank === 1 ? 0xffd93b : rank === 2 ? 0xc9d1e3 : rank === 3 ? 0xd08a4e : UI_COLORS.CARD_BG
+      const isCurrentUser = entry.isCurrentUser
+      const rankBg = rank === 1 ? 0xffd93b : rank === 2 ? 0xc9d1e3 : rank === 3 ? 0xd08a4e : isCurrentUser ? 0x2b4a6f : UI_COLORS.CARD_BG
       g.fillStyle(rankBg, isTop3 ? 1 : 0.9)
       g.fillRoundedRect(cardX, y, cardW, rowH, 10)
-      g.lineStyle(2, isTop3 ? UI_COLORS.INK : UI_COLORS.CARD_BORDER, 1)
+      g.lineStyle(2, isTop3 ? UI_COLORS.INK : isCurrentUser ? 0x4fc3f7 : UI_COLORS.CARD_BORDER, 1)
       g.strokeRoundedRect(cardX, y, cardW, rowH, 10)
 
       const rankT = hudText(this, cardX + 26, y + rowH / 2, `#${rank}`, 1, {
@@ -1283,6 +1339,23 @@ export class TitleScene extends Phaser.Scene {
         layer: this.panelContent,
       })
 
+      const nameT = hudText(this, cardX + 94, y + rowH / 2 - 8, entry.name, 1, {
+        color: isTop3 ? UI_COLORS.TEXT_DARK : isCurrentUser ? '#4fc3f7' : UI_COLORS.TEXT_WHITE,
+        size: Math.min(16, Math.round(rowH * 0.32)),
+        stroke: isTop3 ? 0 : 2,
+        origin: [0, 0.5],
+        shadow: false,
+      })
+      this.panelContent.add(nameT)
+
+      const scoreT = hudText(this, cardX + 94, y + rowH / 2 + 10, entry.score.toLocaleString('en-US'), 1, {
+        color: isTop3 ? UI_COLORS.TEXT_DARK : UI_COLORS.TEXT_MUTED,
+        size: Math.min(18, Math.round(rowH * 0.36)),
+        stroke: isTop3 ? 0 : 2,
+        origin: [0, 0.5],
+      })
+      this.panelContent.add(scoreT)
+
       const whenT = hudText(this, cardX + cardW - 12, y + rowH / 2, fmtDate(entry.at), 1, {
         color: isTop3 ? '#2c2514' : UI_COLORS.TEXT_MUTED,
         size: 11,
@@ -1291,17 +1364,6 @@ export class TitleScene extends Phaser.Scene {
         shadow: false,
       })
       this.panelContent.add(whenT)
-
-      const scoreX = cardX + 94
-      const scoreT = hudText(this, scoreX, y + rowH / 2, entry.score.toLocaleString('en-US'), 1, {
-        color: isTop3 ? UI_COLORS.TEXT_DARK : UI_COLORS.TEXT_WHITE,
-        size: Math.min(24, Math.round(rowH * 0.44)),
-        stroke: isTop3 ? 0 : 3,
-        origin: [0, 0.5],
-      })
-      const scoreMaxW = whenT.x - whenT.width - 12 - scoreX
-      scoreT.setScale(Math.min(1, scoreMaxW / Math.max(1, scoreT.width)))
-      this.panelContent.add(scoreT)
     })
   }
 

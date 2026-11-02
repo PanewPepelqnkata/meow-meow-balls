@@ -55,6 +55,8 @@ export class AuthService {
 
       if (event === 'SIGNED_IN' && this.user) {
         await this.fetchProfile()
+        // Sync local progress to cloud on login
+        void syncLocalProgressToCloud()
       } else if (event === 'SIGNED_OUT') {
         this.profile = null
       }
@@ -342,6 +344,43 @@ export class ScoreService {
     return data
   }
 }
+
+/**
+ * Sync local best score to cloud if it's higher than the cloud best.
+ * Called after login to ensure progress transfers.
+ */
+export async function syncLocalProgressToCloud(): Promise<void> {
+  const auth = AuthService.getInstance()
+  const user = auth.getUser()
+  if (!user) return
+
+  try {
+    // Get local best score
+    const { loadSave } = await import('../game/state/save')
+    const localBest = loadSave().best
+    if (localBest <= 0) return
+
+    // Get cloud best score
+    const scoreSvc = ScoreService.getInstance()
+    const cloudBest = await scoreSvc.getUserBestScore()
+    const cloudBestScore = cloudBest?.score ?? 0
+
+    // If local best is higher, submit it to cloud
+    if (localBest > cloudBestScore) {
+      const save = loadSave()
+      const bestRun = save.leaderboard.find(e => e.score === localBest)
+      await scoreSvc.submitScore(
+        localBest,
+        bestRun?.bestTier ?? 1,
+        save.stats.merges,
+        0 // duration unknown for historical best
+      )
+      console.log('Synced local best score to cloud:', localBest)
+    }
+  } catch (err) {
+    console.error('Failed to sync local progress:', err)
+  }
+ }
 
 export const authService = AuthService.getInstance()
 export const scoreService = ScoreService.getInstance()
