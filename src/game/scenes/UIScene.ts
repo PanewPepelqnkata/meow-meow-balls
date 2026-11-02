@@ -3,6 +3,8 @@ import { UiRoot } from '../../ui/UiRoot'
 import { GameOverView } from '../rendering/GameOverView'
 import { DiscoveryOverlay } from '../rendering/DiscoveryOverlay'
 import { DiscoveryBanner } from '../rendering/DiscoveryBanner'
+import { AuthModal } from '../../ui/AuthModal'
+import { authService, scoreService } from '../../services/auth'
 import { gameBus } from '../events/gameBus'
 import { session } from '../state/session'
 
@@ -27,6 +29,9 @@ export class UIScene extends Phaser.Scene {
   private discoveryBanner!: DiscoveryBanner
   private lastBest = 0
   private lastScore = 0
+  /** Last completed run's leaderboard payload (for the post-login SAVE
+   * YOUR SCORE submission). Null once the score has been saved. */
+  private lastRunStats: { score: number; tierReached: number; ballsMerged: number; durationMs: number } | null = null
   private offs: Array<() => void> = []
   private pauseAllowed = true
   private readonly pointerWorld = new Phaser.Math.Vector2()
@@ -114,10 +119,17 @@ export class UIScene extends Phaser.Scene {
         this.pauseAllowed = enabled
         this.uiRoot.setAbilitiesEnabled(enabled)
       }),
-      gameBus.on('run:gameover', ({ score, best }) => {
+      gameBus.on('run:gameover', ({ score, best, tierReached, ballsMerged, durationMs }) => {
         this.lastBest = best
         this.uiRoot.setScore(score, best)
-        this.gameOverlay.show(score, best, score >= best && score > 0)
+        this.lastRunStats = { score, tierReached, ballsMerged, durationMs }
+        // SAVE YOUR SCORE rides the panel only for signed-out players with
+        // a score worth saving; post-login the modal submits lastRunStats.
+        const saveScore =
+          !authService.isAuthenticated() && score > 0
+            ? { onSave: () => this.openAuthForScoreSave() }
+            : undefined
+        this.gameOverlay.show(score, best, score >= best && score > 0, saveScore)
       }),
       gameBus.on('run:started', () => {
         this.gameOverlay.hide()
@@ -163,6 +175,29 @@ export class UIScene extends Phaser.Scene {
     this.scene.resume('playground')
     this.scene.resume()
     this.scene.launch('TitleScene', {})
+  }
+
+  /** SAVE YOUR SCORE flow: open the auth modal over the game-over panel;
+   * on successful login/signup submit the finished run to the leaderboard
+   * and swap the panel's CTA for the SCORE SAVED! confirmation. */
+  private openAuthForScoreSave(): void {
+    const stats = this.lastRunStats
+    if (!stats) return
+    const modal = new AuthModal(document.body)
+    modal.onSuccess(() => {
+      // The modal closes itself after the success callback.
+      void scoreService
+        .submitScore(stats.score, stats.tierReached, stats.ballsMerged, stats.durationMs)
+        .then(({ error }) => {
+          if (error) {
+            console.error('Score submission failed:', error)
+            return
+          }
+          this.lastRunStats = null
+          this.gameOverlay.markScoreSaved()
+        })
+    })
+    modal.open('signup')
   }
 
   /** Phase 2.13.0: per-frame discovery burst animation (speed lines, flash).

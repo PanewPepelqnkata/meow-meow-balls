@@ -129,6 +129,8 @@ export class PlaygroundScene extends Phaser.Scene {
   private gameOverSequence: GameOverSequence | null = null
   /** Phase 2.14.0: highest tier reached THIS run (leaderboard flavor). */
   private bestTierRun = 1
+  /** Merges this run (leaderboard flavor for the auth score submission). */
+  private mergesThisRun = 0
   /** Drops are ignored until this scene-time (restart click suppression). */
   private dropSuppressUntil = 0
   private shakeFxG!: Phaser.GameObjects.Graphics
@@ -284,6 +286,7 @@ export class PlaygroundScene extends Phaser.Scene {
         // variant (randomized every run — the collectible variants).
         if (firstTime) recordDiscovery(tier, runVariantFor(tier))
         recordMerge(tier)
+        this.mergesThisRun++
         if (tier > this.bestTierRun) this.bestTierRun = tier
 
         // Phase 2.13.0 (spec §6): background milestones — primary trigger is
@@ -1143,7 +1146,13 @@ export class PlaygroundScene extends Phaser.Scene {
     })
     this.ballRenderer.gameOverSequence = this.gameOverSequence
     this.gameOverSequence.start(doomed, () => {
-      gameBus.emit('run:gameover', { score: this.score.score, best: this.best() })
+      gameBus.emit('run:gameover', {
+        score: this.score.score,
+        best: this.best(),
+        tierReached: this.bestTierRun,
+        ballsMerged: this.mergesThisRun,
+        durationMs: Math.round(this.activeTimeMs),
+      })
     })
   }
 
@@ -1196,6 +1205,7 @@ export class PlaygroundScene extends Phaser.Scene {
     // leaderboard's best-tier tracker restarts from the spawnable base.
     rollNewRunSeed()
     this.bestTierRun = 1
+    this.mergesThisRun = 0
     this.initQueue()
     // Phase 2.13.0: background returns to the opening theme on restart
     // (Phase 2.14.0: unless the player pinned a fixed theme in SETTINGS).

@@ -1,0 +1,336 @@
+/* Ball Rush Auth Modal — matches game design language (navy/blue/red, Lilita One, doodle aesthetic) */
+
+.auth-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 21, 39, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+  box-sizing: border-box;
+  animation: auth-fade-in 200ms ease-out;
+}
+
+@keyframes auth-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.auth-modal-card {
+  background: #161b2e;
+  border: 2px solid #2b3555;
+  border-radius: 16px;
+  padding: 24px;
+  width: 100%;
+  max-width: 400px;
+  position: relative;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(79, 195, 247, 0.1);
+  animation: auth-slide-up 250ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes auth-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.auth-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 2px solid #2b3555;
+  background: #1d2233;
+  color: #8e9bb5;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 150ms ease;
+  padding: 0;
+}
+
+.auth-modal-close:hover {
+  border-color: #4fc3f7;
+  color: #4fc3f7;
+  background: #222a47;
+}
+
+.auth-modal-close:active {
+  transform: scale(0.95);
+}
+
+/* Tabs */
+.auth-modal-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  background: #1d2233;
+  border-radius: 12px;
+  padding: 4px;
+  border: 2px solid #2b3555;
+}
+
+.auth-modal-tab {
+  flex: 1;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: #8e9bb5;
+  font-family: 'Lilita One', 'Arial Black', sans-serif;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 150ms ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.auth-modal-tab:hover {
+  color: #ffffff;
+  background: rgba(79, 195, 247, 0.1);
+}
+
+.auth-modal-tab.active {
+  background: #4fc3f7;
+  color: #111527;
+  box-shadow: 0 2px 8px rgba(79, 195, 247, 0.3);
+}
+
+/* Form */
+.auth-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.auth-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.auth-input-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #8e9bb5;
+  font-family: 'Lilita One', 'Arial Black', sans-serif;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.auth-input-label svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.auth-optional {
+  font-size: 12px;
+  opacity: 0.6;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.auth-input {
+  background: #1d2233;
+  border: 2px solid #2b3555;
+  border-radius: 10px;
+  padding: 12px 14px;
+  color: #ffffff;
+  font-family: 'Lilita One', 'Arial Black', sans-serif;
+  font-size: 16px;
+  outline: none;
+  transition: all 150ms ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.auth-input::placeholder {
+  color: #4a5568;
+}
+
+.auth-input:focus {
+  border-color: #4fc3f7;
+  box-shadow: 0 0 0 3px rgba(79, 195, 247, 0.15);
+}
+
+.auth-input:hover:not(:focus) {
+  border-color: #3a4a6b;
+}
+
+/* Error display */
+.auth-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  background: rgba(217, 43, 43, 0.15);
+  border: 2px solid #d92b2b;
+  border-radius: 10px;
+  color: #ef4444;
+  font-family: 'Lilita One', 'Arial Black', sans-serif;
+  font-size: 14px;
+  animation: auth-shake 300ms ease-in-out;
+}
+
+.auth-error--info {
+  background: rgba(79, 195, 247, 0.15);
+  border-color: #4fc3f7;
+  color: #4fc3f7;
+}
+
+.auth-error svg {
+  flex-shrink: 0;
+}
+
+@keyframes auth-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+/* Submit button */
+.auth-submit {
+  background: #4fc3f7;
+  border: 2px solid #1a1a1a;
+  border-radius: 12px;
+  padding: 14px 24px;
+  color: #111527;
+  font-family: 'Lilita One', 'Arial Black', sans-serif;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 150ms ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  position: relative;
+  box-shadow: 0 4px 0 #1d4ed8, 0 6px 12px rgba(0, 0, 0, 0.3);
+  margin-top: 8px;
+}
+
+.auth-submit:hover:not(:disabled) {
+  background: #60a5fa;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 0 #1d4ed8, 0 8px 16px rgba(0, 0, 0, 0.3);
+}
+
+.auth-submit:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 #1d4ed8, 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.auth-submit:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.auth-submit-spinner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.auth-spin {
+  animation: auth-spin 1s linear infinite;
+}
+
+@keyframes auth-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Forgot password link */
+.auth-forgot-link {
+  background: none;
+  border: none;
+  color: #4fc3f7;
+  font-family: 'Lilita One', 'Arial Black', sans-serif;
+  font-size: 14px;
+  cursor: pointer;
+  text-align: center;
+  padding: 8px;
+  margin-top: 8px;
+  opacity: 0.8;
+  transition: opacity 150ms ease;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.auth-forgot-link:hover {
+  opacity: 1;
+}
+
+/* Forgot password box */
+.auth-forgot-box {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.auth-forgot-desc {
+  color: #8e9bb5;
+  font-family: 'Lilita One', 'Arial Black', sans-serif;
+  font-size: 14px;
+  text-align: center;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.auth-forgot-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.auth-forgot-submit {
+  margin-top: 0;
+}
+
+.auth-forgot-cancel {
+  background: none;
+  border: none;
+  color: #8e9bb5;
+  font-family: 'Lilita One', 'Arial Black', sans-serif;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 8px;
+  transition: color 150ms ease;
+}
+
+.auth-forgot-cancel:hover {
+  color: #ffffff;
+}
+
+/* Mobile adjustments */
+@media (max-width: 480px) {
+  .auth-modal-card {
+    padding: 20px;
+    max-width: 100%;
+  }
+
+  .auth-modal-tab {
+    font-size: 14px;
+    padding: 8px 12px;
+  }
+
+  .auth-input {
+    font-size: 16px; /* prevents iOS zoom */
+    padding: 14px 16px;
+  }
+
+  .auth-submit {
+    font-size: 16px;
+    padding: 16px 24px;
+  }
+}

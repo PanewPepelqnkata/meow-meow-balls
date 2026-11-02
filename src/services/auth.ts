@@ -5,6 +5,7 @@ export interface Profile {
   id: string
   username: string | null
   avatar_url: string | null
+  email?: string
   created_at: string
   updated_at: string
 }
@@ -66,6 +67,89 @@ export class AuthService {
       options: {
         data: { username }
       }
+    })
+    return { error }
+  }
+
+  /**
+   * Sign in with username + password. Looks up the user's email from their
+   * profile, then delegates to Supabase email auth.
+   */
+  async signInWithUsername(username: string, password: string): Promise<{ error: Error | null }> {
+    // Look up email by username from profiles table
+    const { data: profile, error: lookupError } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('username', username)
+      .single()
+
+    if (lookupError || !profile) {
+      return { error: new Error('Invalid username or password') }
+    }
+
+    // Get the user's email from auth.users via admin API isn't possible client-side.
+    // Instead, we store the email in the profile during signup.
+    const { data: profileWithEmail, error: emailError } = await supabase
+      .from('profiles')
+      .select('email')
+      .eq('username', username)
+      .single()
+
+    if (emailError || !profileWithEmail?.email) {
+      return { error: new Error('Invalid username or password') }
+    }
+
+    return this.signInWithEmail(profileWithEmail.email, password)
+  }
+
+  /**
+   * Sign up with username + password. Email is optional for password recovery.
+   * If no email provided, generates a placeholder email for Supabase auth.
+   */
+  async signUpWithUsername(username: string, password: string, email?: string): Promise<{ error: Error | null }> {
+    // Check if username is already taken
+    const { data: existing } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('username', username)
+      .single()
+
+    if (existing) {
+      return { error: new Error('Username is already taken') }
+    }
+
+    // Use provided email or generate a placeholder
+    const authEmail = email || `${username.toLowerCase().replace(/[^a-z0-9]/g, '')}@ballrush.local`
+
+    const { data, error } = await supabase.auth.signUp({
+      email: authEmail,
+      password,
+      options: {
+        data: { username }
+      }
+    })
+
+    if (error) {
+      return { error }
+    }
+
+    // Store email in profile for username-based login lookup
+    if (data.user) {
+      await supabase
+        .from('profiles')
+        .update({ email: authEmail })
+        .eq('id', data.user.id)
+    }
+
+    return { error: null }
+  }
+
+  /**
+   * Send password reset email.
+   */
+  async resetPassword(email: string): Promise<{ error: Error | null }> {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`
     })
     return { error }
   }

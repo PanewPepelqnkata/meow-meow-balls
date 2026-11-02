@@ -13,8 +13,10 @@ export interface GameEventMap {
   'run:started': { at: number }
   /** Merged pair produced `tier` (phase 2: tiers 2–7 only). */
   'fx:merge': { tier: number; x: number; y: number; chainDepth: number }
-  /** Game over triggered (Phase 2.10.0): score/best at the moment of overflow. */
-  'run:gameover': { score: number; best: number }
+  /** Game over triggered (Phase 2.10.0): score/best at the moment of overflow.
+   * Auth leaderboard: tier/balls/duration ride along so the UIScene's
+   * SAVE YOUR SCORE flow can submit the full run record post-login. */
+  'run:gameover': { score: number; best: number; tierReached: number; ballsMerged: number; durationMs: number }
   // ---- Phase 2.11.0: PlaygroundScene (world) ↔ UIScene (HUD) wiring ----
   /** The upcoming ball changed (tier + the appearance seed the preview,
    * crane and the eventual spawn all share). */

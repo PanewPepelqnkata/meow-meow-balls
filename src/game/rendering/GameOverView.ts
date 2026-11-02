@@ -43,6 +43,19 @@ export class GameOverView {
   private charTweens: Phaser.Tweens.Tween[] = []
   /** Viewport-space center of the GO AGAIN button (QA hook). */
   private lastButtonCenter = { x: 0, y: 0 }
+  /** SAVE YOUR SCORE row (auth CTA) — kept so markScoreSaved() can swap it
+   * for the confirmation without rebuilding the panel. */
+  private saveRow: {
+    container: Phaser.GameObjects.Container
+    body: Phaser.GameObjects.Graphics
+    iconG: Phaser.GameObjects.Graphics
+    labelT: Phaser.GameObjects.Text
+    subT: Phaser.GameObjects.Text
+    hit: Phaser.GameObjects.Rectangle
+    bw: number
+    bh: number
+    scale: number
+  } | null = null
   private readonly scene: Phaser.Scene
   private readonly onRestart: () => void
   private readonly onMenu: () => void
@@ -65,8 +78,11 @@ export class GameOverView {
   /**
    * Show the panel. `score` counts up; `isNewBest` switches on the
    * NEW BEST! celebration (banner + glow + confetti).
+   * `saveScore` (auth CTA): when present, a full-width SAVE YOUR SCORE
+   * doodle button sits between the BEST row and the GO AGAIN/MAIN MENU
+   * pair; `onSave` fires on press (the UIScene opens the auth modal).
    */
-  show(score: number, best: number, isNewBest: boolean): void {
+  show(score: number, best: number, isNewBest: boolean, saveScore?: { onSave: () => void }): void {
     this.hide()
     const scene = this.scene
     // HiDPI: the UIScene camera zooms by displayScale and frames the CSS-px
@@ -83,7 +99,11 @@ export class GameOverView {
     // tall inside a 520-tall card, so this still fits anything that passes
     // the fit check below).
     // Safe minimum scale 0.70 ensures touch buttons remain >= 42px on compact phones.
-    const scale = Math.max(0.7, Math.min(1.6, Math.min(vw / 620, (vh - 90) / 620)))
+    // The SAVE YOUR SCORE row (auth CTA) adds 84 units when present — the
+    // fit basis grows with it so the taller card still fits the viewport.
+    const saveRowH = saveScore ? 84 : 0
+    const fitBasis = 620 + saveRowH
+    const scale = Math.max(0.7, Math.min(1.6, Math.min(vw / fitBasis, (vh - 90) / fitBasis)))
     // Soft dim — gameplay stays visible behind it.
     const dim = scene.add.rectangle(cx, vh / 2, vw, vh, 0x1a1a2e, 0.55).setDepth(60)
     dim.setAlpha(0)
@@ -97,7 +117,7 @@ export class GameOverView {
     const panel = scene.add.container(cx, cy).setDepth(61)
     this.objs.push(panel)
     const pw = 470 * scale
-    const ph = 520 * scale
+    const ph = (520 + saveRowH) * scale
     const pr = 34 * scale
 
     // DOODLE PLATE (menu button recipe, scaled up to a card): wobbly
@@ -322,6 +342,111 @@ export class GameOverView {
       onUpdate: () => scoreText.setText(Math.round(counter.val).toLocaleString()),
     })
 
+    // ---- SAVE YOUR SCORE (auth CTA): a full-width blue doodle plate
+    // between the BEST row and the button pair — same doodle recipe as the
+    // other buttons, with a Lucide cloud-upload icon, a bold label and a
+    // smaller subtitle. Only mounted for signed-out players (the UIScene
+    // passes `saveScore` only then). markScoreSaved() swaps it for the
+    // SCORE SAVED! confirmation after the leaderboard insert lands.
+    let saveY = 0
+    if (saveScore) {
+      const sbh = 60 * scale
+      const sbw = 2 * SEQ.buttons.width * scale + SEQ.buttons.gap * scale
+      saveY = bestY + 52 * scale + sbh / 2
+      const c = scene.add.container(0, saveY)
+      panel.add(c)
+      const bSeed = 97
+      const bAmp = Math.min(4.2, Math.max(2, sbh * 0.055))
+      const bPts = doodleSilhouette(sbw, sbh, SEQ.buttons.radius * scale, bSeed, bAmp).map(
+        (p) => new Phaser.Math.Vector2(p.x, p.y),
+      )
+      const bDrop = Math.max(5, sbh * 0.08)
+      const bExtrude = Math.max(3, sbh * 0.05)
+      const bInk = Math.max(3.5, Math.min(7, sbw * 0.05))
+      const bv = (dy: number): Phaser.Math.Vector2[] => bPts.map((p) => new Phaser.Math.Vector2(p.x, p.y + dy))
+      const shadow = scene.add.graphics()
+      shadow.fillStyle(0x000000, 0.28)
+      shadow.fillPoints(bv(bDrop + 3), true)
+      c.add(shadow)
+      const side = scene.add.graphics()
+      side.fillStyle(darkenFill(0x2d74c9, 0.62), 1)
+      side.fillPoints(bv(bExtrude), true)
+      side.lineStyle(bInk, PANEL_INK, 1)
+      side.strokePoints(bv(bExtrude), true, true)
+      c.add(side)
+      const body = scene.add.graphics()
+      body.fillStyle(0x2d74c9, 1)
+      body.fillPoints(bPts, true)
+      body.lineStyle(bInk, PANEL_INK, 1)
+      body.strokePoints(bPts, true, true)
+      body.fillStyle(0xffffff, 0.3)
+      body.fillEllipse(-sbw * 0.26, -sbh * 0.28, sbw * 0.32, sbh * 0.2)
+      c.add(body)
+      // Icon + two-line label centered as ONE unit (icon left, text stack
+      // right): total = icon + gap + max(label, subtitle) width.
+      const iconS = 26 * scale
+      const iconG = scene.add.graphics()
+      drawLucide(iconG, 'cloud-upload', 0, 0, iconS, 0xffffff, 2.6)
+      c.add(iconG)
+      const labelT = scene.add
+        .text(0, 0, 'SAVE YOUR SCORE', {
+          fontFamily: FONT_FAMILY,
+          fontSize: `${Math.round(22 * scale)}px`,
+          color: '#ffffff',
+          stroke: '#111111',
+          strokeThickness: Math.round(4 * scale),
+          resolution: Math.min(window.devicePixelRatio || 1, 2),
+        })
+        .setOrigin(0, 0.5)
+      c.add(labelT)
+      const subT = scene.add
+        .text(0, 0, 'Login or create account', {
+          fontFamily: FONT_FAMILY,
+          fontSize: `${Math.round(14 * scale)}px`,
+          color: '#cfe8ff',
+          stroke: '#111111',
+          strokeThickness: Math.round(3 * scale),
+          resolution: Math.min(window.devicePixelRatio || 1, 2),
+        })
+        .setOrigin(0, 0.5)
+      c.add(subT)
+      const unitGap = 10 * scale
+      const textW = Math.max(labelT.width, subT.width)
+      const unitW = iconS + unitGap + textW
+      iconG.setPosition(-unitW / 2 + iconS / 2, 0)
+      const textX = -unitW / 2 + iconS + unitGap
+      labelT.setPosition(textX, -9 * scale)
+      subT.setPosition(textX, 12 * scale)
+      const hit = scene.add
+        .rectangle(0, 0, sbw, sbh, 0xffffff, 0.001)
+        .setInteractive({ useHandCursor: true })
+      c.add(hit)
+      hit.on('pointerover', () => {
+        scene.tweens.add({ targets: c, scale: 1.04, duration: 110, ease: 'Quad.easeOut' })
+      })
+      hit.on('pointerout', () => {
+        scene.tweens.add({ targets: c, scale: 1, duration: 110, ease: 'Quad.easeOut' })
+      })
+      hit.on('pointerdown', () => {
+        scene.tweens.add({ targets: c, scale: 0.96, duration: 80, yoyo: true, ease: 'Quad.easeOut' })
+      })
+      hit.on('pointerup', () => {
+        pressFx(scene, c, saveScore.onSave)
+      })
+      this.saveRow = { container: c, body, iconG, labelT, subT, hit, bw: sbw, bh: sbh, scale }
+      // Pop-in with the same stagger language as the button pair.
+      c.setScale(0)
+      this.charTweens.push(
+        scene.tweens.add({
+          targets: c,
+          scale: 1,
+          delay: SEQ.panelSpringMs * 0.6,
+          duration: 320,
+          ease: 'Back.easeOut',
+        }),
+      )
+    }
+
     // ---- Buttons: GO AGAIN + MAIN MENU — equal-size doodle plates drawn
     // in-panel, laid out as a SYMMETRIC SIDE-BY-SIDE PAIR: the pair's
     // total width is 2·bw + gap, so each button sits exactly
@@ -331,7 +456,7 @@ export class GameOverView {
     const bh = SEQ.buttons.height * scale
     const bw = SEQ.buttons.width * scale
     const btnGap = SEQ.buttons.gap * scale
-    const buttonsY = bestY + 58 * scale + bh / 2
+    const buttonsY = (saveScore ? saveY + 60 * scale / 2 + 14 * scale : bestY + 58 * scale) + bh / 2
     this.lastButtonCenter = { x: cx - (bw + btnGap) / 2, y: cy + buttonsY }
     const mkDoodleButton = (
       localX: number,
@@ -488,6 +613,48 @@ export class GameOverView {
     })
   }
 
+  /** Swap the SAVE YOUR SCORE button for the SCORE SAVED! confirmation
+   * (green plate, check icon, no interaction). Called by the UIScene once
+   * the leaderboard insert has landed post-login. No-op without the row. */
+  markScoreSaved(): void {
+    const row = this.saveRow
+    if (!row) return
+    const { container, body, iconG, labelT, subT, hit, bw, bh, scale } = row
+    hit.disableInteractive()
+    // Repaint the plate green (same silhouette — redrawn over the blue).
+    const bPts = doodleSilhouette(bw, bh, SEQ.buttons.radius * scale, 97, Math.min(4.2, Math.max(2, bh * 0.055))).map(
+      (p) => new Phaser.Math.Vector2(p.x, p.y),
+    )
+    body.clear()
+    body.fillStyle(0x43a047, 1)
+    body.fillPoints(bPts, true)
+    body.lineStyle(Math.max(3.5, Math.min(7, bw * 0.05)), PANEL_INK, 1)
+    body.strokePoints(bPts, true, true)
+    body.fillStyle(0xffffff, 0.3)
+    body.fillEllipse(-bw * 0.26, -bh * 0.28, bw * 0.32, bh * 0.2)
+    // Swap the icon + labels, re-centered as one unit.
+    iconG.clear()
+    drawLucide(iconG, 'check', 0, 0, 26 * scale, 0xffffff, 2.6)
+    labelT.setText('SCORE SAVED!')
+    labelT.setFontSize(Math.round(22 * scale))
+    subT.setText('See you on the leaderboard')
+    subT.setFontSize(Math.round(14 * scale))
+    const unitGap = 10 * scale
+    const textW = Math.max(labelT.width, subT.width)
+    const unitW = 26 * scale + unitGap + textW
+    iconG.setPosition(-unitW / 2 + (26 * scale) / 2, 0)
+    const textX = -unitW / 2 + 26 * scale + unitGap
+    labelT.setPosition(textX, -9 * scale)
+    subT.setPosition(textX, 12 * scale)
+    // Celebration pop.
+    this.scene.tweens.add({
+      targets: container,
+      scale: { from: 1.12, to: 1 },
+      duration: 300,
+      ease: 'Back.easeOut',
+    })
+  }
+
   /** Destroy every object this view created (restart/shutdown). */
   hide(): void {
     this.countTween?.stop()
@@ -496,5 +663,6 @@ export class GameOverView {
     this.charTweens = []
     for (const o of this.objs) o.destroy()
     this.objs = []
+    this.saveRow = null
   }
 }
