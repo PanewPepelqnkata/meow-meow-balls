@@ -25,7 +25,8 @@ import { DebugOverlay } from '../debug/DebugOverlay'
 import { PerfOverlay } from '../debug/PerfOverlay'
 import { session, fastbootRequested } from '../state/session'
 import { bannerForcedByVariant } from '../rendering/DiscoveryBanner'
-import { hasDiscoveredTier, recordDiscovery, recordMerge, recordRunEnd, savedBest, themeSetting } from '../state/save'
+import { hasDiscoveredTier, recordDiscovery, recordMerge, recordRunEnd, recordRunStart, savedBest, themeSetting } from '../state/save'
+import { scoreService } from '../../services/auth'
 import { rollNewRunSeed, runVariantFor } from '../state/runVariant'
 import {
   ballLookFor,
@@ -131,6 +132,10 @@ export class PlaygroundScene extends Phaser.Scene {
   private bestTierRun = 1
   /** Merges this run (leaderboard flavor for the auth score submission). */
   private mergesThisRun = 0
+  /** Whether the player has dropped at least one ball in the current run. */
+  private runStarted = false
+  /** Throttle timestamp for live run score syncing during gameplay. */
+  private lastLiveSyncAt = 0
   /** Drops are ignored until this scene-time (restart click suppression). */
   private dropSuppressUntil = 0
   private shakeFxG!: Phaser.GameObjects.Graphics
@@ -285,10 +290,10 @@ export class PlaygroundScene extends Phaser.Scene {
         // COLLECTION and stats screens. Tiers 8–9 record their PER-RUN
         // variant (randomized every run — the collectible variants).
         if (firstTime) recordDiscovery(tier, runVariantFor(tier))
-        recordMerge(tier)
+        recordMerge(tier, this.score.score)
         this.mergesThisRun++
         if (tier > this.bestTierRun) this.bestTierRun = tier
-
+        this.syncLiveRun(false)
         // Phase 2.13.0 (spec §6): background milestones — primary trigger is
         // a first-time significant tier, secondary is an exceptional combo.
         this.themeMilestone(tier, firstTime, chainDepth)
@@ -399,6 +404,13 @@ export class PlaygroundScene extends Phaser.Scene {
         this.inputController.setEnabled(false)
       }),
     )
+    const onPageHide = () => {
+      this.finalizeActiveRunIfIncomplete()
+    }
+    window.addEventListener('pagehide', onPageHide)
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      window.removeEventListener('pagehide', onPageHide)
+    })
     this.events.once(
       Phaser.Scenes.Events.SHUTDOWN,
       gameBus.on('ui:restart', () => this.restartRun()),
@@ -1024,7 +1036,12 @@ export class PlaygroundScene extends Phaser.Scene {
     const ball = this.balls.spawnBall(clampedX, y, this.currentBall.tier, false, this.currentBall.seed)
     this.ballRenderer.register(ball)
     this.registeredIds.add(ball.id)
-    // The cooldown starts NOW: claw + preview drop their balls the same
+    if (!this.runStarted) {
+      this.runStarted = true
+      scoreService.startNewRun()
+      recordRunStart()
+      this.syncLiveRun(true)
+    }
     // frame (the update-loop flip would otherwise lag one frame).
     this.lastDropHolding = false
     gameBus.emit('state:dropHolding', { holding: false })
@@ -1131,6 +1148,31 @@ export class PlaygroundScene extends Phaser.Scene {
     }
   }
 
+  private syncLiveRun(force = false): void {
+    if (!this.runStarted) return
+    const now = Date.now()
+    if (!force && now - this.lastLiveSyncAt < 2500) return
+    this.lastLiveSyncAt = now
+    void scoreService.syncActiveRun(
+      this.score.score,
+      this.bestTierRun,
+      this.mergesThisRun,
+      Math.round(this.activeTimeMs),
+    )
+  }
+
+  private finalizeActiveRunIfIncomplete(): void {
+    if (!this.runStarted || this.gameOver) return
+    this.registry.set('best', recordRunEnd(this.score.score, this.bestTierRun, true))
+    gameBus.emit('state:best', { best: this.best() })
+    void scoreService.submitScore(
+      this.score.score,
+      this.bestTierRun,
+      this.mergesThisRun,
+      Math.round(this.activeTimeMs),
+    )
+  }
+
   private triggerGameOver(): void {
     this.gameOver = true
     this.inputController.setEnabled(false)
@@ -1138,8 +1180,15 @@ export class PlaygroundScene extends Phaser.Scene {
     // Phase 2.14.0: lifetime records — leaderboard entry (score + best tier
     // reached) and the persisted best score. recordRunEnd returns the new
     // all-time best so the HUD 'BEST' reflects the save.
-    this.registry.set('best', recordRunEnd(this.score.score, this.bestTierRun))
+    this.registry.set('best', recordRunEnd(this.score.score, this.bestTierRun, this.runStarted))
     gameBus.emit('state:best', { best: this.best() })
+    // Submit immediately at Game Over trigger so the run is recorded even before the pop animation ends
+    void scoreService.submitScore(
+      this.score.score,
+      this.bestTierRun,
+      this.mergesThisRun,
+      Math.round(this.activeTimeMs),
+    )
     // GAME OVER SEQUENCE: balls realize they're doomed, panic, then pop in
     // a staggered chain. The panel springs in when the chain finishes
     // ('run:gameover' now fires from the sequence completion, not here).
@@ -1163,9 +1212,13 @@ export class PlaygroundScene extends Phaser.Scene {
   }
 
   private restartRun(): void {
+    // If the player restarts or leaves to menu mid-run before game over, finalize and record the run first.
+    this.finalizeActiveRunIfIncomplete()
     // Full reset (Phase 2.10.0): gameplay state, game-over state, overlay,
     // HUD ability state, walls, physics and rendering all start clean.
     this.gameOver = false
+    this.runStarted = false
+    this.lastLiveSyncAt = 0
     this.activeTimeMs = 0
     this.overWatch.reset()
     this.inputController.setEnabled(false)

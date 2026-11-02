@@ -124,19 +124,14 @@ export class UIScene extends Phaser.Scene {
         this.uiRoot.setScore(score, best)
         this.lastRunStats = { score, tierReached, ballsMerged, durationMs }
 
-        // Auto-submit score if user is already authenticated
-        if (authService.isAuthenticated() && score > 0) {
-          void scoreService
-            .submitScore(score, tierReached, ballsMerged, durationMs)
-            .then(({ error }) => {
-              if (error) {
-                console.error('Auto score submission failed:', error)
-              } else {
-                console.log('Score auto-submitted:', score)
-              }
-            })
-        }
-
+        // Auto-submit score for both authenticated players and anonymous guests
+        void scoreService
+          .submitScore(score, tierReached, ballsMerged, durationMs)
+          .then(({ error }) => {
+            if (error) {
+              console.error('Auto score submission failed:', error)
+            }
+          })
         // SAVE YOUR SCORE rides the panel only for signed-out players with
         // a score worth saving; post-login the modal submits lastRunStats.
         const saveScore =

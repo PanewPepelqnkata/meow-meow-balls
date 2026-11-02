@@ -26,6 +26,7 @@ import { gameBus } from '../events/gameBus'
 
 const KEY = 'ballrush.save.v1'
 const OWNER_KEY = 'ballrush.save.owner'
+const GUEST_ID_KEY = 'ballrush.guest.id'
 const MAX_LEADERBOARD = 10
 
 const VALID_THEMES = new Set<ThemeSetting>(['auto', 'light', 'space', 'jungle', 'fantasy'])
@@ -168,6 +169,7 @@ export function cloneSave(save: SaveDataV1 = loadSave()): SaveDataV1 {
 
 let cache: SaveDataV1 | null = null
 let ownerCache: string | null | undefined = undefined
+let guestIdCache: string | null = null
 let cloudSyncHandler: ((save: SaveDataV1, immediate: boolean) => void) | null = null
 
 export function setCloudSyncHandler(handler: ((save: SaveDataV1, immediate: boolean) => void) | null): void {
@@ -216,6 +218,59 @@ export function setSaveOwnerId(userId: string | null): void {
   } catch {
     // Blocked storage — in-memory ownerCache still tracks ownership.
   }
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function generateUuidV4(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
+
+export function getOrCreateGuestId(): string {
+  if (guestIdCache && UUID_RE.test(guestIdCache)) return guestIdCache
+  const s = storage()
+  if (s) {
+    try {
+      const existing = s.getItem(GUEST_ID_KEY)?.trim()
+      if (existing && UUID_RE.test(existing)) {
+        guestIdCache = existing
+        return existing
+      }
+    } catch {
+      // Ignore blocked storage
+    }
+  }
+  const next = generateUuidV4()
+  guestIdCache = next
+  if (s) {
+    try {
+      s.setItem(GUEST_ID_KEY, next)
+    } catch {
+      // Ignore blocked storage
+    }
+  }
+  return next
+}
+
+export function resetGuestId(): string {
+  const next = generateUuidV4()
+  guestIdCache = next
+  const s = storage()
+  if (s) {
+    try {
+      s.setItem(GUEST_ID_KEY, next)
+    } catch {
+      // Ignore blocked storage
+    }
+  }
+  return next
 }
 
 function write(): void {
@@ -373,27 +428,42 @@ export function hasDiscoveredTier(tier: number): boolean {
   return loadSave().discovered[String(tier)] != null
 }
 
+/** A run genuinely started (first ball dropped): increment lifetime runs count and flush immediately. */
+export function recordRunStart(): void {
+  const save = loadSave()
+  save.stats.runs++
+  if (save.stats.bestTier < 1) save.stats.bestTier = 1
+  writeNow(true)
+}
+
 /** One merge happened (lifetime stat). */
-export function recordMerge(tier: number): void {
+export function recordMerge(tier: number, currentRunScore = 0): void {
   const save = loadSave()
   save.stats.merges++
   if (tier > save.stats.bestTier) save.stats.bestTier = tier
+  if (currentRunScore > save.best) save.best = currentRunScore
   writeSoon()
 }
 
-/** A run ended (game over): leaderboard entry + best-score bookkeeping. */
-export function recordRunEnd(score: number, bestTier: number): number {
+/** A run ended (game over or restart/leave): leaderboard entry + best-score bookkeeping. */
+export function recordRunEnd(
+  score: number,
+  bestTier: number,
+  alreadyCountedRun = false,
+): number {
   const save = loadSave()
   const now = Date.now()
-  save.stats.runs++
+  if (!alreadyCountedRun) save.stats.runs++
   if (score > save.best) save.best = score
   if (bestTier > save.stats.bestTier) save.stats.bestTier = bestTier
   for (let t = 1; t <= Math.min(12, bestTier); t++) {
     if (save.discovered[String(t)] == null) save.discovered[String(t)] = now
   }
-  save.leaderboard.push({ score, bestTier, at: now })
-  save.leaderboard.sort((a, b) => b.score - a.score || b.at - a.at)
-  save.leaderboard = save.leaderboard.slice(0, MAX_LEADERBOARD)
+  if (score > 0 || save.leaderboard.length === 0) {
+    save.leaderboard.push({ score, bestTier, at: now })
+    save.leaderboard.sort((a, b) => b.score - a.score || b.at - a.at)
+    save.leaderboard = save.leaderboard.slice(0, MAX_LEADERBOARD)
+  }
   writeNow(true)
   return save.best
 }

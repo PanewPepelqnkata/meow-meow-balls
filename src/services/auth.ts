@@ -4,9 +4,11 @@ import type { User, Session } from '@supabase/supabase-js'
 import {
   cloneSave,
   freshSave,
+  getOrCreateGuestId,
   getSaveOwnerId,
   loadSave,
   normalizeSave,
+  resetGuestId,
   resetSave,
   setCloudSyncHandler,
   setSaveOwnerId,
@@ -195,8 +197,35 @@ export class AuthService {
   }
 
   private scheduleCloudSync(save: SaveDataV1, immediate: boolean): void {
+    if (this.authFlowInProgress === 'logout') return
     const user = this.user
-    if (!user || this.authFlowInProgress === 'logout') return
+
+    if (!user) {
+      if (getSaveOwnerId() !== null) return
+      this.pendingCloudSave = cloneSave(save)
+      if (immediate) {
+        if (this.cloudSyncTimer) {
+          clearTimeout(this.cloudSyncTimer)
+          this.cloudSyncTimer = null
+        }
+        const toFlush = this.pendingCloudSave
+        this.pendingCloudSave = null
+        void this.persistGuestSaveToCloud(toFlush)
+        return
+      }
+
+      if (this.cloudSyncTimer) return
+      this.cloudSyncTimer = setTimeout(() => {
+        this.cloudSyncTimer = null
+        const toFlush = this.pendingCloudSave
+        this.pendingCloudSave = null
+        if (toFlush && !this.user && getSaveOwnerId() === null) {
+          void this.persistGuestSaveToCloud(toFlush)
+        }
+      }, 1500)
+      return
+    }
+
     if (getSaveOwnerId() !== user.id) return
 
     this.pendingCloudSave = cloneSave(save)
@@ -240,9 +269,15 @@ export class AuthService {
       }
       await Promise.all([this.fetchProfile(), this.restoreAccountProgress(this.user)])
       this.notifyAuthStateChange()
-    } else if (getSaveOwnerId() !== null) {
-      // Booted signed-out, but localStorage still held a save from a previous account: clear it.
-      resetSave({ syncCloud: false, clearOwner: true })
+    } else {
+      if (getSaveOwnerId() !== null) {
+        // Booted signed-out, but localStorage still held a save from a previous account: clear it.
+        resetSave({ syncCloud: false, clearOwner: true })
+      }
+      // Sync existing local guest progress (if any) to Supabase guest telemetry
+      // Always register/sync the anonymous guest session on boot so /boss sees every visitor and any local runs
+      const guestSave = loadSave()
+      void this.persistGuestSaveToCloud(guestSave)
     }
 
     supabase.auth.onAuthStateChange(async (event, nextSession) => {
@@ -269,6 +304,7 @@ export class AuthService {
         this.cancelScheduledCloudSync()
         this.profile = null
         resetSave({ syncCloud: false, clearOwner: true })
+        resetGuestId()
         this.notifyAuthStateChange()
       }
     })
@@ -321,10 +357,15 @@ export class AuthService {
    * Supabase email auth.
    */
   async signInWithUsername(username: string, password: string): Promise<{ error: Error | null }> {
+    const trimmed = username.trim()
+    if (trimmed.includes('@')) {
+      return this.signInWithEmail(trimmed, password)
+    }
+
     const { data: profile, error: lookupError } = await supabase
       .from('profiles')
       .select('email')
-      .eq('username', username)
+      .ilike('username', trimmed)
       .maybeSingle()
 
     if (lookupError || !profile?.email) {
@@ -356,8 +397,8 @@ export class AuthService {
 
     // Capture genuine guest progress BEFORE signing up so we can transfer it to the new account.
     const hadGuestProgress = getSaveOwnerId() === null
+    const guestIdBeforeSignup = hadGuestProgress ? getOrCreateGuestId() : null
     const guestSave = hadGuestProgress ? cloneSave(loadSave()) : freshSave()
-
     const authEmail = email || `${username.toLowerCase().replace(/[^a-z0-9]/g, '')}@ballrush.local`
 
     this.cancelScheduledCloudSync()
@@ -396,6 +437,15 @@ export class AuthService {
         this.fetchProfile(),
         this.persistSaveToCloud(guestSave, signInData.user.id),
       ])
+
+      // Link anonymous guest profile & copy any prior guest runs into public.scores
+      if (hadGuestProgress && guestIdBeforeSignup) {
+        try {
+          await supabase.rpc('link_guest_to_user', { p_guest_id: guestIdBeforeSignup })
+        } catch {
+          // Ignore if RPC is unavailable
+        }
+      }
 
       // If the guest already had a best score, also record their top run in public.scores
       // so the global leaderboard reflects their transferred progression immediately.
@@ -449,8 +499,9 @@ export class AuthService {
       this.user = null
       this.session = null
       this.profile = null
-      // Once logged out of an account, local progression resets to 0.
+      // Once logged out of an account, local progression resets to 0 with a fresh guest ID.
       resetSave({ syncCloud: false, clearOwner: true })
+      resetGuestId()
       this.notifyAuthStateChange()
     } finally {
       this.authFlowInProgress = null
@@ -523,9 +574,15 @@ export class AuthService {
       : null
 
     let combined = freshSave()
-    if (tableSave) combined = mergeSavesForSameUser(combined, tableSave)
-    if (metaSave) combined = mergeSavesForSameUser(combined, metaSave)
-    if (localSameOwnerSave) combined = mergeSavesForSameUser(combined, localSameOwnerSave)
+    if (tableSave) {
+      // When public.user_progress exists, treat it as the authoritative cloud save
+      // so admin edits/resets in /boss take effect immediately even if local storage
+      // or older auth metadata had higher numbers.
+      combined = tableSave
+    } else {
+      if (metaSave) combined = mergeSavesForSameUser(combined, metaSave)
+      if (localSameOwnerSave) combined = mergeSavesForSameUser(combined, localSameOwnerSave)
+    }
 
     const userScores = Array.isArray(scoresRes.data) ? (scoresRes.data as Score[]) : []
     const { save: finalSave, changed: healedFromScores } = reconcileSaveWithUserScores(combined, userScores)
@@ -535,7 +592,7 @@ export class AuthService {
     writeSave(finalSave, { syncCloud: false, ownerId: userId })
 
     // If scores or same-owner local data healed missing cloud metadata, persist back to cloud.
-    const hadCloudRecord = Boolean(metaSave || tableSave)
+    const hadCloudRecord = Boolean(tableSave)
     const hasProgress =
       finalSave.best > 0 ||
       finalSave.stats.runs > 0 ||
@@ -618,6 +675,28 @@ export class AuthService {
       }
     }
   }
+
+  /**
+   * Persist anonymous guest progression to `public.guest_profiles` via RPC.
+   */
+  async persistGuestSaveToCloud(saveData?: Partial<SaveDataV1>): Promise<void> {
+    if (this.user || getSaveOwnerId() !== null) return
+    const guestId = getOrCreateGuestId()
+    const save = normalizeSave(saveData ?? loadSave())
+    try {
+      await supabase.rpc('upsert_guest_progress', {
+        p_guest_id: guestId,
+        p_best_score: save.best,
+        p_discovered: save.discovered,
+        p_variants: save.variants,
+        p_stats: save.stats,
+        p_leaderboard: save.leaderboard,
+        p_settings: save.settings,
+      })
+    } catch {
+      // Offline or unmigrated — local guest save continues to work.
+    }
+  }
   async fetchProfile(): Promise<Profile | null> {
     if (!this.user) return null
 
@@ -688,6 +767,9 @@ export class AuthService {
 
 export class ScoreService {
   private static instance: ScoreService
+  private activeRunKey: string | null = null
+  private activeScoreId: number | null = null
+  private activeRunCreatePromise: Promise<number | null> | null = null
   private lastSubmitted: {
     userId: string
     score: number
@@ -702,6 +784,95 @@ export class ScoreService {
     return ScoreService.instance
   }
 
+  /** Reset active run tracking when a fresh run begins. */
+  startNewRun(runKey?: string): void {
+    this.activeRunKey = runKey ?? `${Date.now()}-${Math.random()}`
+    this.activeScoreId = null
+    this.activeRunCreatePromise = null
+  }
+
+  /**
+   * Create or update the current run's row in `guest_scores` (anonymous) or `scores` (signed-in).
+   * Safe to call on first drop, during merges, on restart/menu leave, and at game over.
+   */
+  async syncActiveRun(
+    score: number,
+    tierReached: number,
+    ballsMerged: number,
+    durationMs: number,
+  ): Promise<{ scoreId: number | null; error: Error | null }> {
+    const auth = AuthService.getInstance()
+    const user = auth.getUser()
+    const cleanScore = Math.max(0, Math.round(score))
+    const cleanTier = Math.max(1, Math.min(12, Math.round(tierReached)))
+    const cleanMerges = Math.max(0, Math.round(ballsMerged))
+    const cleanDuration = Math.max(0, Math.round(durationMs))
+
+    if (!this.activeRunKey) {
+      this.startNewRun()
+    }
+    const runKeyAtCall = this.activeRunKey
+
+    // If a row creation is already in flight for this run, wait for it so we update instead of duplicating
+    if (this.activeScoreId === null && this.activeRunCreatePromise) {
+      try {
+        await this.activeRunCreatePromise
+      } catch {
+        // ignore
+      }
+    }
+
+    const performRpc = async (scoreIdToUpdate: number | null): Promise<number | null> => {
+      if (!user) {
+        const guestId = getOrCreateGuestId()
+        const { data, error } = await supabase.rpc('record_guest_score', {
+          p_guest_id: guestId,
+          p_score: cleanScore,
+          p_tier_reached: cleanTier,
+          p_balls_merged: cleanMerges,
+          p_duration_ms: cleanDuration,
+          p_score_id: scoreIdToUpdate,
+        })
+        if (error) throw new Error(error.message)
+        return typeof data === 'number' ? data : data != null ? Number(data) : scoreIdToUpdate
+      } else {
+        const { data, error } = await supabase.rpc('record_user_score', {
+          p_score: cleanScore,
+          p_tier_reached: cleanTier,
+          p_balls_merged: cleanMerges,
+          p_duration_ms: cleanDuration,
+          p_score_id: scoreIdToUpdate,
+        })
+        if (error) throw new Error(error.message)
+        return typeof data === 'number' ? data : data != null ? Number(data) : scoreIdToUpdate
+      }
+    }
+
+    try {
+      if (this.activeScoreId === null) {
+        this.activeRunCreatePromise = performRpc(null)
+        const createdId = await this.activeRunCreatePromise
+        if (this.activeRunKey === runKeyAtCall && createdId != null && Number.isFinite(createdId)) {
+          this.activeScoreId = createdId
+        }
+        this.activeRunCreatePromise = null
+        return { scoreId: this.activeScoreId, error: null }
+      } else {
+        const updatedId = await performRpc(this.activeScoreId)
+        if (this.activeRunKey === runKeyAtCall && updatedId != null && Number.isFinite(updatedId)) {
+          this.activeScoreId = updatedId
+        }
+        return { scoreId: this.activeScoreId, error: null }
+      }
+    } catch (err) {
+      this.activeRunCreatePromise = null
+      return {
+        scoreId: this.activeScoreId,
+        error: err instanceof Error ? err : new Error('Failed to sync run'),
+      }
+    }
+  }
+
   async submitScore(
     score: number,
     tierReached: number,
@@ -710,36 +881,31 @@ export class ScoreService {
   ): Promise<{ error: Error | null }> {
     const auth = AuthService.getInstance()
     const user = auth.getUser()
-
-    if (!user) {
-      return { error: new Error('Not authenticated') }
-    }
+    const actorId = user ? user.id : `guest:${getOrCreateGuestId()}`
 
     const now = Date.now()
     if (
       this.lastSubmitted &&
-      this.lastSubmitted.userId === user.id &&
+      this.lastSubmitted.userId === actorId &&
       this.lastSubmitted.score === score &&
       this.lastSubmitted.tierReached === tierReached &&
-      now - this.lastSubmitted.at < 30_000
+      now - this.lastSubmitted.at < 5_000 &&
+      this.activeScoreId !== null
     ) {
-      return { error: null }
+      const res = await this.syncActiveRun(score, tierReached, ballsMerged, durationMs)
+      return { error: res.error }
     }
-    this.lastSubmitted = { userId: user.id, score, tierReached, at: now }
+    this.lastSubmitted = { userId: actorId, score, tierReached, at: now }
 
-    const { error } = await supabase.from('scores').insert({
-      user_id: user.id,
-      score,
-      tier_reached: tierReached,
-      balls_merged: ballsMerged,
-      duration_ms: durationMs,
-    })
-
-    if (error) {
+    const res = await this.syncActiveRun(score, tierReached, ballsMerged, durationMs)
+    if (res.error) {
       this.lastSubmitted = null
+      return { error: res.error }
     }
-
-    return { error }
+    if (!user) {
+      void auth.persistGuestSaveToCloud()
+    }
+    return { error: null }
   }
 
   async getLeaderboard(limit = 100): Promise<Score[]> {
