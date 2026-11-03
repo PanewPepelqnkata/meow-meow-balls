@@ -16,6 +16,8 @@ import { loadSave, resetSave, setThemeSetting } from '../state/save'
 import { variantIdFor } from '../state/runVariant'
 import { session } from '../state/session'
 import { bakeCanvas, roundedRectPath } from '../rendering/RoughArt'
+import { drawOlympusHall, drawOlympusTablet } from '../rendering/OlympusHallArt'
+import { drawChampionPodium } from '../rendering/ChampionPodiumArt'
 import { cycleColor } from '../rendering/rgbCycle'
 import { UiverseDomButtons } from '../../ui/UiverseDomButtons'
 import { StartIntroScene } from './StartIntroScene'
@@ -1284,7 +1286,7 @@ export class TitleScene extends Phaser.Scene {
 
     const titles: Partial<Record<ScreenName, string>> = {
       collection: 'COLLECTION BOOK',
-      leaderboard: 'LEADERBOARD',
+      leaderboard: 'HALL OF GLORY',
       settings: 'SETTINGS',
     }
 
@@ -1410,143 +1412,9 @@ export class TitleScene extends Phaser.Scene {
     const bodyY = topY + 8
     const availableH = vh - Math.max(16, safe.bottom + 8) - bodyY
 
-    // Bake the Valhalla Hall of Glory background — marble pillars frame the entire scene
-    const bgKey = `br-lb-bg:${Math.ceil(vw)}x${Math.ceil(vh)}`
+    const bgKey = 'br-olympus-hall'
     bakeCanvas(this, bgKey, Math.ceil(vw), Math.ceil(vh), (ctx) => {
-      // Deep twilight sky with warm golden-hour glow
-      const skyGrad = ctx.createLinearGradient(0, 0, 0, vh)
-      skyGrad.addColorStop(0, '#0d1226')
-      skyGrad.addColorStop(0.35, '#1b2348')
-      skyGrad.addColorStop(0.7, '#2c3a6e')
-      skyGrad.addColorStop(1, '#1a1f3a')
-      ctx.fillStyle = skyGrad
-      ctx.fillRect(0, 0, vw, vh)
-
-      // Radiant golden glow emanating from the podium area (center-bottom)
-      const glowCX = vw / 2
-      const glowCY = vh * 0.75
-      const glowR = Math.max(vw, vh) * 0.65
-      const glow = ctx.createRadialGradient(glowCX, glowCY, glowR * 0.05, glowCX, glowCY, glowR)
-      glow.addColorStop(0, 'rgba(255, 217, 59, 0.28)')
-      glow.addColorStop(0.25, 'rgba(255, 200, 80, 0.15)')
-      glow.addColorStop(0.5, 'rgba(212, 175, 55, 0.08)')
-      glow.addColorStop(1, 'rgba(13, 18, 38, 0)')
-      ctx.fillStyle = glow
-      ctx.fillRect(0, 0, vw, vh)
-
-      // Marble floor with reflective sheen
-      const floorY = vh * 0.82
-      const floorGrad = ctx.createLinearGradient(0, floorY, 0, vh)
-      floorGrad.addColorStop(0, '#e8e2d6')
-      floorGrad.addColorStop(0.15, '#d4cec2')
-      floorGrad.addColorStop(0.5, '#c8c2b4')
-      floorGrad.addColorStop(1, '#a8a294')
-      ctx.fillStyle = floorGrad
-      ctx.fillRect(0, floorY, vw, vh - floorY)
-      // Floor edge highlight
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.35)'
-      ctx.fillRect(0, floorY, vw, 3)
-      // Subtle floor reflection of the glow
-      const reflectGrad = ctx.createLinearGradient(0, floorY, 0, vh)
-      reflectGrad.addColorStop(0, 'rgba(255, 217, 59, 0.12)')
-      reflectGrad.addColorStop(0.3, 'rgba(255, 200, 80, 0.05)')
-      reflectGrad.addColorStop(1, 'rgba(0, 0, 0, 0)')
-      ctx.fillStyle = reflectGrad
-      ctx.fillRect(0, floorY, vw, vh - floorY)
-
-      // Grand marble pillars framing the hall — these ARE the podium structure
-      const pillarW = Math.max(42, Math.round(vw * 0.065))
-      const pillarInset = Math.max(12, Math.round(vw * 0.025))
-      const pillarTop = vh * 0.04
-      const pillarBot = floorY + 6
-      const pillarH = pillarBot - pillarTop
-
-      // Draw pillars on both sides
-      for (const side of [0, 1]) {
-        const cx = side === 0 ? pillarInset + pillarW / 2 : vw - pillarInset - pillarW / 2
-        const x = cx - pillarW / 2
-
-        // Pillar shadow (soft, cast to the right)
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.22)'
-        ctx.fillRect(x + 5, pillarTop + 6, pillarW, pillarH)
-
-        // Pillar body — warm Carrara marble gradient
-        const colGrad = ctx.createLinearGradient(x, pillarTop, x + pillarW, pillarTop)
-        colGrad.addColorStop(0, '#e8e2d6')
-        colGrad.addColorStop(0.25, '#f5f0e8')
-        colGrad.addColorStop(0.5, '#faf8f2')
-        colGrad.addColorStop(0.75, '#f0ebe0')
-        colGrad.addColorStop(1, '#d4cec2')
-        ctx.fillStyle = colGrad
-        ctx.fillRect(x, pillarTop, pillarW, pillarH)
-
-        // Fluting (vertical grooves) — elegant Doric style
-        const fluteCount = Math.max(4, Math.round(pillarW / 10))
-        const fluteW = pillarW / (fluteCount * 2 + 1)
-        for (let f = 0; f < fluteCount; f++) {
-          const fx = x + fluteW * (f * 2 + 1)
-          // Groove shadow
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.12)'
-          ctx.fillRect(fx, pillarTop + 12, fluteW * 0.5, pillarH - 24)
-          // Groove highlight (subtle 3D effect)
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.15)'
-          ctx.fillRect(fx + fluteW * 0.5, pillarTop + 12, fluteW * 0.3, pillarH - 24)
-        }
-
-        // Capital (Doric-style: abacus + echinus with gold accent)
-        const capH = Math.max(18, pillarW * 0.4)
-        const capY = pillarTop
-        // Abacus (square slab)
-        ctx.fillStyle = '#f5f0e8'
-        ctx.fillRect(x - 6, capY, pillarW + 12, capH * 0.35)
-        // Echinus (curved cushion)
-        ctx.beginPath()
-        ctx.ellipse(cx, capY + capH * 0.55, pillarW * 0.6, capH * 0.4, 0, 0, Math.PI * 2)
-        ctx.fill()
-        // Gold accent band
-        ctx.fillStyle = '#d4af37'
-        ctx.fillRect(x - 4, capY + capH * 0.32, pillarW + 8, 4)
-        // Capital shadow
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.15)'
-        ctx.fillRect(x - 6, capY + capH * 0.35, pillarW + 12, 3)
-
-        // Base (plinth with torus molding)
-        const baseH = Math.max(14, pillarW * 0.3)
-        ctx.fillStyle = '#e0dacd'
-        ctx.fillRect(x - 5, pillarBot - baseH, pillarW + 10, baseH)
-        // Torus (rounded molding)
-        ctx.beginPath()
-        ctx.ellipse(cx, pillarBot - baseH * 0.3, pillarW * 0.55, baseH * 0.25, 0, 0, Math.PI * 2)
-        ctx.fill()
-        // Base shadow
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.12)'
-        ctx.fillRect(x - 5, pillarBot - 3, pillarW + 10, 3)
-
-        // Ink outline for cartoon definition
-        ctx.strokeStyle = '#1a1a1a'
-        ctx.lineWidth = 2.5
-        ctx.strokeRect(x, pillarTop, pillarW, pillarH)
-      }
-
-      // Decorative architrave (horizontal beam connecting the pillars)
-      const archY = pillarTop - 8
-      const archH = Math.max(16, pillarW * 0.35)
-      const archGrad = ctx.createLinearGradient(0, archY, 0, archY + archH)
-      archGrad.addColorStop(0, '#f5f0e8')
-      archGrad.addColorStop(0.5, '#e8e2d6')
-      archGrad.addColorStop(1, '#d4cec2')
-      ctx.fillStyle = archGrad
-      ctx.fillRect(pillarInset - 8, archY, vw - pillarInset * 2 + 16, archH)
-      // Architrave gold trim
-      ctx.fillStyle = '#d4af37'
-      ctx.fillRect(pillarInset - 8, archY + archH - 4, vw - pillarInset * 2 + 16, 4)
-      // Architrave shadow
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.2)'
-      ctx.fillRect(pillarInset - 8, archY + archH, vw - pillarInset * 2 + 16, 4)
-      // Architrave outline
-      ctx.strokeStyle = '#1a1a1a'
-      ctx.lineWidth = 2
-      ctx.strokeRect(pillarInset - 8, archY, vw - pillarInset * 2 + 16, archH)
+      drawOlympusHall(ctx, vw, vh)
     }, window.devicePixelRatio || 1)
 
     const bgImg = this.add.image(0, 0, bgKey).setOrigin(0, 0).setDisplaySize(Math.ceil(vw), Math.ceil(vh))
@@ -1601,7 +1469,7 @@ export class TitleScene extends Phaser.Scene {
     if (this.closed || this.screen !== 'leaderboard' || buildSeq !== this.lbBuildSeq) return
 
     const isDesktop = vw >= 720 && vw > vh
-    const maxTotalW = isDesktop ? Math.min(1120, vw - left - right) : Math.min(500, vw - left - right)
+    const maxTotalW = isDesktop ? Math.min(1760, vw - left - right - 40) : Math.min(560, vw - left - right)
     const totalX = centerX - maxTotalW / 2
 
     // Error state
@@ -1679,12 +1547,12 @@ export class TitleScene extends Phaser.Scene {
     let tableH: number
 
     if (isDesktop) {
-      const gap = Math.max(28, Math.round(maxTotalW * 0.038))
-      podiumW = Math.round((maxTotalW - gap) * 0.47)
+      const gap = Math.max(20, Math.round(maxTotalW * 0.025))
+      podiumW = Math.round((maxTotalW - gap) * 0.51)
       tableW = maxTotalW - gap - podiumW
       podiumX = totalX
       tableX = totalX + podiumW + gap
-      tableH = Math.min(484, availableH - 20)
+      tableH = Math.min(780, availableH - 32)
       tableY = bodyY + Math.max(8, Math.round((availableH - tableH) / 2))
       podiumH = tableH
       podiumY = tableY
@@ -1695,7 +1563,7 @@ export class TitleScene extends Phaser.Scene {
       const minTableH = 120
       podiumW = maxTotalW
       podiumX = totalX
-      podiumH = Math.min(268, Math.max(150, Math.round(availableH * 0.36)))
+      podiumH = Math.min(310, Math.max(150, Math.round(availableH * 0.42)))
       podiumH = Math.min(podiumH, Math.max(140, availableH - stackGap - 6 - minTableH))
       podiumY = bodyY + 4
       tableW = maxTotalW
@@ -1710,28 +1578,28 @@ export class TitleScene extends Phaser.Scene {
     const baseY = plinthY + Math.round(plinthH * 0.32)
     const usableH = baseY - podiumY
 
-    // Connected 2-1-3 stepped monument with #1 overlapping #2 and #3 in front
-    const overlap = isDesktop ? 10 : 7
-    const blocksTotalW = Math.round(podiumW * (isDesktop ? 0.9 : 0.92))
-    const firstW = Math.round(blocksTotalW * 0.38)
-    const sideW = Math.round((blocksTotalW - firstW + overlap * 2) / 2)
-    const firstH = Math.round(usableH * (isDesktop ? 0.5 : 0.52))
-    const secondH = Math.round(firstH * (isDesktop ? 0.78 : 0.8))
-    const thirdH = Math.round(firstH * (isDesktop ? 0.66 : 0.68))
-    const deckH = isDesktop ? 24 : 16
+    // Separate capitals and bases keep the three champions visually distinct.
+    const columnGap = isDesktop ? Math.max(12, podiumW * 0.022) : 7
+    const blocksTotalW = Math.round(podiumW * 0.94)
+    const firstW = Math.round((blocksTotalW - columnGap * 2) * 0.36)
+    const sideW = Math.round((blocksTotalW - firstW - columnGap * 2) / 2)
+    const firstH = Math.round(usableH * (isDesktop ? 0.54 : 0.58))
+    const secondH = Math.round(firstH * 0.8)
+    const thirdH = Math.round(firstH * 0.68)
+    const deckH = isDesktop ? 26 : 16
 
     const firstX = Math.round(podiumX + (podiumW - firstW) / 2)
-    const secondX = firstX - sideW + overlap
-    const thirdX = firstX + firstW - overlap
+    const secondX = firstX - sideW - columnGap
+    const thirdX = firstX + firstW + columnGap
 
-    // Draw 2nd and 3rd first so 1st place sits heroically in front
+    // Each champion has an independent marble column and capital.
     const podiumSlots = [
       {
         x: secondX,
         y: baseY - secondH,
         w: sideW,
         h: secondH,
-        visualCX: secondX + (sideW - overlap * 0.45) / 2,
+        visualCX: secondX + sideW / 2,
         rank: 2,
         entry: top3[1],
         tier: 1,
@@ -1741,7 +1609,7 @@ export class TitleScene extends Phaser.Scene {
         y: baseY - thirdH,
         w: sideW,
         h: thirdH,
-        visualCX: thirdX + overlap * 0.45 + (sideW - overlap * 0.45) / 2,
+        visualCX: thirdX + sideW / 2,
         rank: 3,
         entry: top3[2],
         tier: 5,
@@ -1758,249 +1626,14 @@ export class TitleScene extends Phaser.Scene {
       },
     ]
 
-    // Bake the marble pillar podium — the pillars ARE the podium structure
-    const podiumKey = `br-podium:${Math.ceil(podiumW)}x${Math.ceil(podiumH)}:${top3.map((e) => (e ? (e.isCurrentUser ? 'u' : '1') : '0')).join('')}`
-    bakeCanvas(
-      this,
-      podiumKey,
-      Math.ceil(podiumW),
-      Math.ceil(podiumH),
-      (ctx) => {
-        const ink = '#1a1a1a'
-        const strokeW = isDesktop ? 4 : 3.2
-
-        // 1. Radiant golden spotlight behind the podium (emanating from #1)
-        const glowCX = podiumW / 2
-        const glowCY = (baseY - firstH - podiumY) * 0.9
-        const glowR = podiumW * 0.55
-        const glow = ctx.createRadialGradient(glowCX, glowCY, glowR * 0.05, glowCX, glowCY, glowR)
-        glow.addColorStop(0, 'rgba(255, 217, 59, 0.35)')
-        glow.addColorStop(0.4, 'rgba(255, 200, 80, 0.18)')
-        glow.addColorStop(0.7, 'rgba(212, 175, 55, 0.08)')
-        glow.addColorStop(1, 'rgba(17, 21, 39, 0)')
-        ctx.fillStyle = glow
-        ctx.beginPath()
-        ctx.arc(glowCX, glowCY, glowR, 0, Math.PI * 2)
-        ctx.fill()
-
-        // 2. Marble pillar podium blocks (back-to-front: #2, #3, then #1 in front)
-        for (const slot of podiumSlots) {
-          if (!slot.entry) continue
-          const lx = slot.x - podiumX
-          const ly = slot.y - podiumY
-          const { w, h, rank } = slot
-          const vcx = slot.visualCX - podiumX
-          const ballR = Math.min(
-            (w - (rank === 1 ? 0 : overlap * 0.5)) * (rank === 1 ? 0.39 : 0.36),
-            (baseY - firstH - podiumY) * (rank === 1 ? 0.38 : 0.34),
-          )
-
-          // Pillar dimensions
-          const pillarTop = ly
-          const pillarBot = ly + h + 10
-          const pillarH = pillarBot - pillarTop
-          const pillarCX = lx + w / 2
-
-          // Pillar shadow (soft, cast to the right)
-          ctx.fillStyle = rank === 1 ? 'rgba(6, 9, 20, 0.5)' : 'rgba(6, 9, 20, 0.32)'
-          ctx.fillRect(lx + 4, pillarTop + 5, w, pillarH)
-
-          // Pillar body — warm Carrara marble gradient
-          const bodyGrad = ctx.createLinearGradient(lx, pillarTop, lx + w, pillarTop)
-          if (rank === 1) {
-            // Gold-tinted marble for #1
-            bodyGrad.addColorStop(0, '#f5f0e8')
-            bodyGrad.addColorStop(0.25, '#faf5e8')
-            bodyGrad.addColorStop(0.5, '#fff9e8')
-            bodyGrad.addColorStop(0.75, '#f5f0e0')
-            bodyGrad.addColorStop(1, '#e0d5c0')
-          } else if (rank === 2) {
-            // Silver-tinted marble for #2
-            bodyGrad.addColorStop(0, '#e8e8f0')
-            bodyGrad.addColorStop(0.25, '#f0f0f5')
-            bodyGrad.addColorStop(0.5, '#f5f5fa')
-            bodyGrad.addColorStop(0.75, '#e8e8f0')
-            bodyGrad.addColorStop(1, '#d0d0d8')
-          } else {
-            // Bronze-tinted marble for #3
-            bodyGrad.addColorStop(0, '#f0e8e0')
-            bodyGrad.addColorStop(0.25, '#f5f0e8')
-            bodyGrad.addColorStop(0.5, '#faf5f0')
-            bodyGrad.addColorStop(0.75, '#f0e8e0')
-            bodyGrad.addColorStop(1, '#d8d0c8')
-          }
-          ctx.fillStyle = bodyGrad
-          ctx.fillRect(lx, pillarTop, w, pillarH)
-
-          // Fluting (vertical grooves) — elegant Doric style
-          const fluteCount = Math.max(3, Math.round(w / 14))
-          const fluteW = w / (fluteCount * 2 + 1)
-          for (let f = 0; f < fluteCount; f++) {
-            const fx = lx + fluteW * (f * 2 + 1)
-            // Groove shadow
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)'
-            ctx.fillRect(fx, pillarTop + 8, fluteW * 0.5, pillarH - 16)
-            // Groove highlight (subtle 3D effect)
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.12)'
-            ctx.fillRect(fx + fluteW * 0.5, pillarTop + 8, fluteW * 0.3, pillarH - 16)
-          }
-
-          // Capital (Doric-style: abacus + echinus with gold accent)
-          const capH = Math.max(14, w * 0.28)
-          const capY = pillarTop
-          // Abacus (square slab)
-          ctx.fillStyle = rank === 1 ? '#fff9e8' : rank === 2 ? '#f5f5fa' : '#faf5f0'
-          ctx.fillRect(lx - 4, capY, w + 8, capH * 0.35)
-          // Echinus (curved cushion)
-          ctx.beginPath()
-          ctx.ellipse(pillarCX, capY + capH * 0.55, w * 0.55, capH * 0.4, 0, 0, Math.PI * 2)
-          ctx.fill()
-          // Gold accent band
-          ctx.fillStyle = rank === 1 ? '#ffd83b' : rank === 2 ? '#c0c8e0' : '#e0a868'
-          ctx.fillRect(lx - 2, capY + capH * 0.32, w + 4, 3)
-          // Capital shadow
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.15)'
-          ctx.fillRect(lx - 4, capY + capH * 0.35, w + 8, 2)
-
-          // Base (plinth with torus molding)
-          const baseH = Math.max(10, w * 0.22)
-          ctx.fillStyle = rank === 1 ? '#f0e8d8' : rank === 2 ? '#e0e0e8' : '#e8e0d8'
-          ctx.fillRect(lx - 3, pillarBot - baseH, w + 6, baseH)
-          // Torus (rounded molding)
-          ctx.beginPath()
-          ctx.ellipse(pillarCX, pillarBot - baseH * 0.3, w * 0.52, baseH * 0.25, 0, 0, Math.PI * 2)
-          ctx.fill()
-          // Base shadow
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.12)'
-          ctx.fillRect(lx - 3, pillarBot - 2, w + 6, 2)
-
-          // Ink outline for cartoon definition
-          ctx.strokeStyle = ink
-          ctx.lineWidth = strokeW
-          ctx.strokeRect(lx, pillarTop, w, pillarH)
-
-          // Soft elliptical contact shadow on the capital top where the ball sits
-          const seatY = pillarTop + capH * 0.5
-          ctx.fillStyle = 'rgba(20, 16, 10, 0.25)'
-          ctx.beginPath()
-          ctx.ellipse(vcx, seatY + 2, ballR * 0.7, Math.max(4, capH * 0.2), 0, 0, Math.PI * 2)
-          ctx.fill()
-
-          // Rank medal badge + golden laurel leaves on #1
-          const badgeR = Math.max(12, Math.min(20, Math.round(Math.min(w * 0.17, h * 0.155))))
-          const badgeY = pillarTop + capH + badgeR + Math.max(5, Math.round(h * 0.045))
-
-          if (rank === 1) {
-            for (const dir of [-1, 1]) {
-              for (let l = 0; l < 3; l++) {
-                const leafX = vcx + dir * (badgeR + 5 + l * 2.5)
-                const leafY = badgeY + (l - 1) * (badgeR * 0.36)
-                const angle = dir * (0.35 + (1 - l) * 0.28)
-                ctx.save()
-                ctx.translate(leafX, leafY)
-                ctx.rotate(angle)
-                ctx.fillStyle = '#ffd93b'
-                ctx.beginPath()
-                ctx.ellipse(0, 0, Math.max(4.5, badgeR * 0.34), Math.max(2.6, badgeR * 0.19), 0, 0, Math.PI * 2)
-                ctx.fill()
-                ctx.strokeStyle = ink
-                ctx.lineWidth = Math.max(2, strokeW * 0.6)
-                ctx.stroke()
-                ctx.restore()
-              }
-            }
-          }
-
-          // Medal drop shadow
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.2)'
-          ctx.beginPath()
-          ctx.arc(vcx, badgeY + 2, badgeR, 0, Math.PI * 2)
-          ctx.fill()
-
-          // Medal circle fill
-          const medalGrad = ctx.createLinearGradient(0, badgeY - badgeR, 0, badgeY + badgeR)
-          if (rank === 1) {
-            medalGrad.addColorStop(0, '#fff394')
-            medalGrad.addColorStop(1, '#f59e0b')
-          } else if (rank === 2) {
-            medalGrad.addColorStop(0, '#f2f6ff')
-            medalGrad.addColorStop(1, '#849cd6')
-          } else {
-            medalGrad.addColorStop(0, '#ffd8b3')
-            medalGrad.addColorStop(1, '#cf651b')
-          }
-          ctx.fillStyle = medalGrad
-          ctx.beginPath()
-          ctx.arc(vcx, badgeY, badgeR, 0, Math.PI * 2)
-          ctx.fill()
-
-          // Medal inner top crescent highlight
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.45)'
-          ctx.beginPath()
-          ctx.ellipse(vcx, badgeY - badgeR * 0.38, badgeR * 0.6, badgeR * 0.28, 0, 0, Math.PI * 2)
-          ctx.fill()
-
-          // Medal ink outline
-          ctx.strokeStyle = ink
-          ctx.lineWidth = Math.max(2.4, strokeW * 0.78)
-          ctx.beginPath()
-          ctx.arc(vcx, badgeY, badgeR, 0, Math.PI * 2)
-          ctx.stroke()
-
-          // Golden celebration rays fanning out around the temples of the #1 ball
-          if (rank === 1) {
-            const ballCYLocal = seatY + 1 - ballR
-            const rayAngles = [-2.88, -2.54, -2.2, -0.94, -0.6, -0.26]
-            const rayInner = ballR * 1.16
-            const rayOuter = ballR * 1.38
-            ctx.lineCap = 'round'
-            for (const ang of rayAngles) {
-              const rx0 = vcx + Math.cos(ang) * rayInner
-              const ry0 = ballCYLocal - ballR * 0.06 + Math.sin(ang) * rayInner
-              const rx1 = vcx + Math.cos(ang) * rayOuter
-              const ry1 = ballCYLocal - ballR * 0.06 + Math.sin(ang) * rayOuter
-              ctx.strokeStyle = ink
-              ctx.lineWidth = Math.max(6, ballR * 0.13)
-              ctx.beginPath()
-              ctx.moveTo(rx0, ry0)
-              ctx.lineTo(rx1, ry1)
-              ctx.stroke()
-
-              ctx.strokeStyle = '#ffd93b'
-              ctx.lineWidth = Math.max(3, ballR * 0.07)
-              ctx.beginPath()
-              ctx.moveTo(rx0, ry0)
-              ctx.lineTo(rx1, ry1)
-              ctx.stroke()
-            }
-          }
-        }
-
-        // 3. Stepped 2-tier cushioned royal-indigo stage plinth grounding all 3 blocks
-        const py = plinthY - podiumY
-        ctx.fillStyle = 'rgba(5, 8, 18, 0.6)'
-        ctx.fill(new Path2D(roundedRectPath(2, py + 5, podiumW - 4, plinthH, plinthH / 2)))
-
-        const plinthPath = new Path2D(roundedRectPath(4, py, podiumW - 8, plinthH, plinthH / 2))
-        const plinthGrad = ctx.createLinearGradient(0, py, 0, py + plinthH)
-        plinthGrad.addColorStop(0, '#524b91')
-        plinthGrad.addColorStop(0.5, '#37326b')
-        plinthGrad.addColorStop(1, '#231f47')
-        ctx.fillStyle = plinthGrad
-        ctx.fill(plinthPath)
-
-        const plinthTopH = Math.round(plinthH * 0.48)
-        ctx.fillStyle = '#655eb0'
-        ctx.fill(new Path2D(roundedRectPath(8, py + 2, podiumW - 16, plinthTopH, plinthTopH / 2)))
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.32)'
-        ctx.fill(new Path2D(roundedRectPath(20, py + 3.5, podiumW - 40, 2.5, 1.25)))
-
-        ctx.strokeStyle = ink
-        ctx.lineWidth = strokeW
-        ctx.stroke(plinthPath)
-      },
-      window.devicePixelRatio || 1,
-    )
+    const podiumKey = `br-olympus-podium:${top3.length}:${isDesktop ? 'wide' : 'stacked'}`
+    bakeCanvas(this, podiumKey, Math.ceil(podiumW), Math.ceil(podiumH), (ctx) => {
+      const columns = podiumSlots.filter((slot) => slot.entry).map((slot) => ({
+        x: slot.x - podiumX, y: slot.y - podiumY, w: slot.w, h: slot.h,
+        visualCX: slot.visualCX - podiumX, rank: slot.rank,
+      }))
+      drawChampionPodium(ctx, podiumW, podiumH, columns, plinthY - podiumY, plinthH, deckH)
+    }, window.devicePixelRatio || 1)
 
     // Podium art + balls + labels animate as ONE group (entrance rise).
     const podiumGroup = this.add.container(0, 0)
@@ -2016,8 +1649,8 @@ export class TitleScene extends Phaser.Scene {
       const { y, w, h, visualCX, rank, entry, tier } = slot
       const cx = visualCX
 
-      // Ball character rests ON TOP of the 3D top cushion deck (never clipped behind the block)
-      const effectiveW = w - (rank === 1 ? 0 : overlap * 0.5)
+      // The unchanged Ball Rush character rests on its column capital.
+      const effectiveW = w
       const ballR = Math.min(
         effectiveW * (rank === 1 ? 0.39 : 0.36),
         (baseY - firstH - podiumY) * (rank === 1 ? 0.38 : 0.34),
@@ -2043,7 +1676,7 @@ export class TitleScene extends Phaser.Scene {
         )
       }
 
-      const badgeR = Math.max(12, Math.min(20, Math.round(Math.min(w * 0.17, h * 0.155))))
+      const badgeR = Math.max(12, Math.min(24, Math.round(Math.min(w * 0.17, h * 0.155))))
       const badgeY = y + deckH + badgeR + Math.max(5, Math.round(h * 0.045))
       const rankT = hudText(this, cx, badgeY, `${rank}`, 1, {
         color: '#1a1a1a',
@@ -2054,29 +1687,29 @@ export class TitleScene extends Phaser.Scene {
       })
       podiumGroup.add(rankT)
 
-      // Player name & score grouped cleanly on the block face
+      // Keep names and scores on the quiet marble face below each medal.
       const textTop = badgeY + badgeR + 4
-      const textAvail = Math.max(28, plinthY - textTop - 4)
-      const nameY = textTop + textAvail * 0.3
-      const scoreY = textTop + textAvail * 0.74
-      const maxTextW = effectiveW - 12
+      const textAvail = Math.max(36, plinthY - textTop - 8)
+      const nameY = textTop + textAvail * 0.28
+      const scoreY = textTop + textAvail * 0.8
+      const maxTextW = effectiveW - 14
 
-      const nameSize = Math.max(12, Math.min(18, Math.round(Math.min(effectiveW * 0.15, h * 0.155))))
+      const nameSize = Math.max(12, Math.min(24, Math.round(Math.min(effectiveW * 0.15, h * 0.155))))
       const nameT = hudText(this, cx, nameY, entry.displayName, 1, {
-        color: '#ffffff',
+        color: '#283148',
         size: nameSize,
-        stroke: 4,
+        stroke: 0,
         origin: [0.5, 0.5],
         shadow: false,
       })
       nameT.setScale(Math.min(1, maxTextW / Math.max(1, nameT.width)))
       podiumGroup.add(nameT)
 
-      const scoreSize = Math.max(13, Math.min(21, Math.round(Math.min(effectiveW * 0.18, h * 0.18))))
+      const scoreSize = Math.max(13, Math.min(29, Math.round(Math.min(effectiveW * 0.18, h * 0.18))))
       const scoreT = hudText(this, cx, scoreY, entry.score.toLocaleString('en-US'), 1, {
-        color: rank === 1 ? '#ffe14d' : rank === 2 ? '#fff6b8' : '#ffd269',
+        color: '#654419',
         size: scoreSize,
-        stroke: 4,
+        stroke: 0,
         origin: [0.5, 0.5],
         shadow: false,
       })
@@ -2084,26 +1717,21 @@ export class TitleScene extends Phaser.Scene {
       podiumGroup.add(scoreT)
     })
 
-    // --- FRAMED LEADERBOARD TABLE (TOP 10) ---
-    // Drop shadow
-    g.fillStyle(0x000000, 0.5)
-    g.fillRoundedRect(tableX + 8, tableY + 10, tableW, tableH, 20)
-    // Outer frame (soft indigo/purple-blue rim like reference)
-    g.fillStyle(0x3b4880, 1)
-    g.fillRoundedRect(tableX, tableY, tableW, tableH, 20)
-    g.lineStyle(4, INK, 1)
-    g.strokeRoundedRect(tableX, tableY, tableW, tableH, 20)
-    // Inner dark recessed well
-    const wellPad = 8
+    // Marble tablet art stays behind the existing masked data and input zone.
+    const tabletKey = 'br-olympus-tablet'
+    bakeCanvas(this, tabletKey, Math.ceil(tableW), Math.ceil(tableH), (ctx) => {
+      drawOlympusTablet(ctx, tableW, tableH)
+    }, window.devicePixelRatio || 1)
+    this.panelContent.add(this.add.image(tableX, tableY, tabletKey)
+      .setOrigin(0, 0).setDisplaySize(tableW, tableH))
+    const wellPad = isDesktop ? 22 : 14
     const wellX = tableX + wellPad
     const wellY = tableY + wellPad
     const wellW = tableW - wellPad * 2
     const wellH = tableH - wellPad * 2
-    g.fillStyle(0x13192e, 1)
-    g.fillRoundedRect(wellX, wellY, wellW, wellH, 16)
 
     // Column headers: # | PLAYER | SCORE
-    const headerH = isDesktop ? 36 : 30
+    const headerH = isDesktop ? 44 : 30
     const headerCY = wellY + headerH / 2 + 4
     const padX = isDesktop ? 16 : 12
     const scrollW = 10
@@ -2114,25 +1742,25 @@ export class TitleScene extends Phaser.Scene {
     const playerColX = rowX + (isDesktop ? 106 : 86)
     const scoreColX = rowX + rowW - (isDesktop ? 16 : 12)
 
-    const hdrSize = isDesktop ? 14 : 12
+    const hdrSize = isDesktop ? 17 : 12
     const hRank = hudText(this, rankColX, headerCY, '#', 1, {
-      color: '#a3b3d9',
+      color: '#65533e',
       size: hdrSize,
-      stroke: 2,
+      stroke: 0,
       origin: [0.5, 0.5],
       shadow: false,
     })
     const hPlayer = hudText(this, playerColX, headerCY, 'PLAYER', 1, {
-      color: '#a3b3d9',
+      color: '#65533e',
       size: hdrSize,
-      stroke: 2,
+      stroke: 0,
       origin: [0, 0.5],
       shadow: false,
     })
     const hScore = hudText(this, scoreColX, headerCY, 'SCORE', 1, {
-      color: '#a3b3d9',
+      color: '#65533e',
       size: hdrSize,
-      stroke: 2,
+      stroke: 0,
       origin: [1, 0.5],
       shadow: false,
     })
@@ -2143,7 +1771,7 @@ export class TitleScene extends Phaser.Scene {
     const rowsAvailH = wellH - headerH - 16
     const slotCount = entries.length
     const rowGap = isDesktop ? 5 : 4
-    const rowH = Math.max(20, Math.floor((rowsAvailH - (10 - 1) * rowGap) / 10))
+    const rowH = Math.max(isDesktop ? 36 : 28, Math.floor((rowsAvailH - (10 - 1) * rowGap) / 10))
     const totalRowsH = slotCount * (rowH + rowGap) - rowGap
     const needsScroll = totalRowsH > rowsAvailH
 
@@ -2169,7 +1797,7 @@ export class TitleScene extends Phaser.Scene {
     const thumbH = needsScroll ? Math.max(28, (rowsAvailH / totalRowsH) * sbH) : 0
     const thumbG = this.add.graphics()
     if (needsScroll) {
-      thumbG.fillStyle(0x0b0f1d, 0.9)
+      thumbG.fillStyle(0xc9bb9f, 1)
       thumbG.fillRoundedRect(sbX, sbY, scrollW, sbH, scrollW / 2)
       thumbG.fillStyle(0xd4af37, 1)
       thumbG.fillRoundedRect(sbX + 1, sbY, scrollW - 2, thumbH, (scrollW - 2) / 2)
@@ -2260,12 +1888,12 @@ export class TitleScene extends Phaser.Scene {
         rowG.lineStyle(2, isCurrentUser ? 0x4fc3f7 : 0xffeb75, 1)
         rowG.strokeRoundedRect(rowX, y, rowW, rowH, 12)
       } else if (isCurrentUser) {
-        rowG.fillStyle(0x213d6b, 0.95)
+        rowG.fillStyle(0xd9eff7, 1)
         rowG.fillRoundedRect(rowX, y, rowW, rowH, 10)
         rowG.lineStyle(2, 0x4fc3f7, 1)
         rowG.strokeRoundedRect(rowX, y, rowW, rowH, 10)
       } else {
-        rowG.fillStyle(i % 2 === 0 ? 0x1b2340 : 0x151c34, 0.9)
+        rowG.fillStyle(i % 2 === 0 ? 0xe7dfcf : 0xf8f1e2, 1)
         rowG.fillRoundedRect(rowX, y, rowW, rowH, 10)
       }
       rowsContainer.add(rowG)
@@ -2276,11 +1904,11 @@ export class TitleScene extends Phaser.Scene {
         addCrownImage(this, rowsContainer, rowX + 13, y + 10, 24, 18, -0.28)
       }
 
-      const fontSize = Math.max(12, Math.min(18, Math.round(rowH * 0.48)))
+      const fontSize = Math.max(12, Math.min(23, Math.round(rowH * 0.48)))
       const rankT = hudText(this, rankColX, cy, `${rank}`, 1, {
-        color: '#ffffff',
+        color: '#283148',
         size: fontSize,
-        stroke: 3,
+        stroke: 0,
         origin: [0.5, 0.5],
         shadow: false,
       })
@@ -2305,9 +1933,9 @@ export class TitleScene extends Phaser.Scene {
 
       const scoreStr = entry.score.toLocaleString('en-US')
       const scoreT = hudText(this, scoreColX, cy, scoreStr, 1, {
-        color: isFirst ? '#ffd93b' : isCurrentUser ? '#4fc3f7' : '#ffffff',
+        color: isCurrentUser ? '#075b7d' : '#283148',
         size: fontSize,
-        stroke: 3,
+        stroke: 0,
         origin: [1, 0.5],
         shadow: false,
       })
@@ -2315,13 +1943,13 @@ export class TitleScene extends Phaser.Scene {
 
       const maxNameW = Math.max(40, scoreColX - scoreT.width - playerColX - 16)
       const nameT = hudText(this, playerColX, cy, entry.displayName, 1, {
-        color: isCurrentUser ? '#4fc3f7' : '#ffffff',
+        color: isCurrentUser ? '#075b7d' : '#283148',
         size: fontSize,
-        stroke: 3,
+        stroke: 0,
         origin: [0, 0.5],
         shadow: false,
       })
-      nameT.setScale(Math.min(1, maxNameW / Math.max(1, nameT.width)))
+      nameT.setWordWrapWidth(maxNameW, true)
       rowsContainer.add(nameT)
     }
     // --- ENTRANCE ANIMATIONS ---
@@ -2349,8 +1977,8 @@ export class TitleScene extends Phaser.Scene {
         window.devicePixelRatio || 1,
       )
       const cloudSpecs = [
-        { x: vw * 0.2, y: vh * 0.1, s: 1.0, a: 0.16, drift: 26, dur: 9000 },
-        { x: vw * 0.68, y: vh * 0.16, s: 0.72, a: 0.11, drift: 34, dur: 12000 },
+        { x: vw * 0.2, y: vh * 0.17, s: 1.0, a: 0.3, drift: 26, dur: 9000 },
+        { x: vw * 0.68, y: vh * 0.2, s: 0.72, a: 0.24, drift: 34, dur: 12000 },
       ]
       for (const c of cloudSpecs) {
         const img = this.add.image(c.x, c.y, cloudKey).setOrigin(0.5, 0.5).setScale(c.s).setAlpha(c.a)
