@@ -1410,109 +1410,143 @@ export class TitleScene extends Phaser.Scene {
     const bodyY = topY + 8
     const availableH = vh - Math.max(16, safe.bottom + 8) - bodyY
 
-    // Bake the Valhalla marble-column background behind the leaderboard content.
+    // Bake the Valhalla Hall of Glory background — marble pillars frame the entire scene
     const bgKey = `br-lb-bg:${Math.ceil(vw)}x${Math.ceil(vh)}`
     bakeCanvas(this, bgKey, Math.ceil(vw), Math.ceil(vh), (ctx) => {
-      // Twilight indigo sky
+      // Deep twilight sky with warm golden-hour glow
       const skyGrad = ctx.createLinearGradient(0, 0, 0, vh)
-      skyGrad.addColorStop(0, '#1b2348')
-      skyGrad.addColorStop(0.5, '#2c3a6e')
+      skyGrad.addColorStop(0, '#0d1226')
+      skyGrad.addColorStop(0.35, '#1b2348')
+      skyGrad.addColorStop(0.7, '#2c3a6e')
       skyGrad.addColorStop(1, '#1a1f3a')
       ctx.fillStyle = skyGrad
       ctx.fillRect(0, 0, vw, vh)
 
-      // Soft golden-hour glow behind the podium area
+      // Radiant golden glow emanating from the podium area (center-bottom)
       const glowCX = vw / 2
-      const glowCY = vh * 0.42
-      const glowR = Math.max(vw, vh) * 0.5
+      const glowCY = vh * 0.75
+      const glowR = Math.max(vw, vh) * 0.65
       const glow = ctx.createRadialGradient(glowCX, glowCY, glowR * 0.05, glowCX, glowCY, glowR)
-      glow.addColorStop(0, 'rgba(255, 217, 59, 0.14)')
-      glow.addColorStop(0.4, 'rgba(255, 200, 80, 0.06)')
-      glow.addColorStop(1, 'rgba(27, 35, 72, 0)')
+      glow.addColorStop(0, 'rgba(255, 217, 59, 0.28)')
+      glow.addColorStop(0.25, 'rgba(255, 200, 80, 0.15)')
+      glow.addColorStop(0.5, 'rgba(212, 175, 55, 0.08)')
+      glow.addColorStop(1, 'rgba(13, 18, 38, 0)')
       ctx.fillStyle = glow
       ctx.fillRect(0, 0, vw, vh)
 
-      // Marble floor ledge at the bottom
-      const floorY = vh * 0.88
+      // Marble floor with reflective sheen
+      const floorY = vh * 0.82
       const floorGrad = ctx.createLinearGradient(0, floorY, 0, vh)
-      floorGrad.addColorStop(0, '#d4cec2')
-      floorGrad.addColorStop(0.3, '#c8c2b4')
+      floorGrad.addColorStop(0, '#e8e2d6')
+      floorGrad.addColorStop(0.15, '#d4cec2')
+      floorGrad.addColorStop(0.5, '#c8c2b4')
       floorGrad.addColorStop(1, '#a8a294')
       ctx.fillStyle = floorGrad
       ctx.fillRect(0, floorY, vw, vh - floorY)
       // Floor edge highlight
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.25)'
-      ctx.fillRect(0, floorY, vw, 2)
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.35)'
+      ctx.fillRect(0, floorY, vw, 3)
+      // Subtle floor reflection of the glow
+      const reflectGrad = ctx.createLinearGradient(0, floorY, 0, vh)
+      reflectGrad.addColorStop(0, 'rgba(255, 217, 59, 0.12)')
+      reflectGrad.addColorStop(0.3, 'rgba(255, 200, 80, 0.05)')
+      reflectGrad.addColorStop(1, 'rgba(0, 0, 0, 0)')
+      ctx.fillStyle = reflectGrad
+      ctx.fillRect(0, floorY, vw, vh - floorY)
 
-      // Fluted marble columns framing the content
-      const colW = Math.max(36, Math.round(vw * 0.055))
-      const colInset = Math.max(8, Math.round(vw * 0.02))
-      const colTop = vh * 0.06
-      const colBot = floorY + 4
-      const colH = colBot - colTop
+      // Grand marble pillars framing the hall — these ARE the podium structure
+      const pillarW = Math.max(42, Math.round(vw * 0.065))
+      const pillarInset = Math.max(12, Math.round(vw * 0.025))
+      const pillarTop = vh * 0.04
+      const pillarBot = floorY + 6
+      const pillarH = pillarBot - pillarTop
 
+      // Draw pillars on both sides
       for (const side of [0, 1]) {
-        const cx = side === 0 ? colInset + colW / 2 : vw - colInset - colW / 2
-        const x = cx - colW / 2
+        const cx = side === 0 ? pillarInset + pillarW / 2 : vw - pillarInset - pillarW / 2
+        const x = cx - pillarW / 2
 
-        // Column shadow
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.18)'
-        ctx.fillRect(x + 3, colTop + 4, colW, colH)
+        // Pillar shadow (soft, cast to the right)
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.22)'
+        ctx.fillRect(x + 5, pillarTop + 6, pillarW, pillarH)
 
-        // Column body — warm marble gradient
-        const colGrad = ctx.createLinearGradient(x, colTop, x + colW, colTop)
+        // Pillar body — warm Carrara marble gradient
+        const colGrad = ctx.createLinearGradient(x, pillarTop, x + pillarW, pillarTop)
         colGrad.addColorStop(0, '#e8e2d6')
-        colGrad.addColorStop(0.3, '#f5f0e8')
-        colGrad.addColorStop(0.7, '#f0ebe0')
+        colGrad.addColorStop(0.25, '#f5f0e8')
+        colGrad.addColorStop(0.5, '#faf8f2')
+        colGrad.addColorStop(0.75, '#f0ebe0')
         colGrad.addColorStop(1, '#d4cec2')
         ctx.fillStyle = colGrad
-        ctx.fillRect(x, colTop, colW, colH)
+        ctx.fillRect(x, pillarTop, pillarW, pillarH)
 
-        // Fluting (vertical grooves)
-        const fluteCount = Math.max(3, Math.round(colW / 12))
-        const fluteW = colW / (fluteCount * 2 + 1)
+        // Fluting (vertical grooves) — elegant Doric style
+        const fluteCount = Math.max(4, Math.round(pillarW / 10))
+        const fluteW = pillarW / (fluteCount * 2 + 1)
         for (let f = 0; f < fluteCount; f++) {
           const fx = x + fluteW * (f * 2 + 1)
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.08)'
-          ctx.fillRect(fx, colTop + 8, fluteW * 0.6, colH - 16)
+          // Groove shadow
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.12)'
+          ctx.fillRect(fx, pillarTop + 12, fluteW * 0.5, pillarH - 24)
+          // Groove highlight (subtle 3D effect)
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.15)'
+          ctx.fillRect(fx + fluteW * 0.5, pillarTop + 12, fluteW * 0.3, pillarH - 24)
         }
 
-        // Capital (Doric-style: simple abacus + echinus)
-        const capH = Math.max(14, colW * 0.35)
-        const capY = colTop
+        // Capital (Doric-style: abacus + echinus with gold accent)
+        const capH = Math.max(18, pillarW * 0.4)
+        const capY = pillarTop
+        // Abacus (square slab)
         ctx.fillStyle = '#f5f0e8'
-        ctx.fillRect(x - 4, capY, colW + 8, capH * 0.4)
+        ctx.fillRect(x - 6, capY, pillarW + 12, capH * 0.35)
+        // Echinus (curved cushion)
         ctx.beginPath()
-        ctx.ellipse(cx, capY + capH * 0.6, colW * 0.55, capH * 0.35, 0, 0, Math.PI * 2)
+        ctx.ellipse(cx, capY + capH * 0.55, pillarW * 0.6, capH * 0.4, 0, 0, Math.PI * 2)
         ctx.fill()
-        // Gold accent band on capital
+        // Gold accent band
         ctx.fillStyle = '#d4af37'
-        ctx.fillRect(x - 2, capY + capH * 0.35, colW + 4, 3)
+        ctx.fillRect(x - 4, capY + capH * 0.32, pillarW + 8, 4)
+        // Capital shadow
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.15)'
+        ctx.fillRect(x - 6, capY + capH * 0.35, pillarW + 12, 3)
 
-        // Base (plinth)
-        const baseH = Math.max(10, colW * 0.25)
+        // Base (plinth with torus molding)
+        const baseH = Math.max(14, pillarW * 0.3)
         ctx.fillStyle = '#e0dacd'
-        ctx.fillRect(x - 3, colBot - baseH, colW + 6, baseH)
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.1)'
-        ctx.fillRect(x - 3, colBot - 2, colW + 6, 2)
+        ctx.fillRect(x - 5, pillarBot - baseH, pillarW + 10, baseH)
+        // Torus (rounded molding)
+        ctx.beginPath()
+        ctx.ellipse(cx, pillarBot - baseH * 0.3, pillarW * 0.55, baseH * 0.25, 0, 0, Math.PI * 2)
+        ctx.fill()
+        // Base shadow
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.12)'
+        ctx.fillRect(x - 5, pillarBot - 3, pillarW + 10, 3)
 
-        // Ink outline
+        // Ink outline for cartoon definition
         ctx.strokeStyle = '#1a1a1a'
         ctx.lineWidth = 2.5
-        ctx.strokeRect(x, colTop, colW, colH)
+        ctx.strokeRect(x, pillarTop, pillarW, pillarH)
       }
 
-      // Subtle cloud wisps
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.06)'
-      for (let c = 0; c < 5; c++) {
-        const cx = vw * (0.15 + c * 0.18)
-        const cy = vh * (0.08 + (c % 3) * 0.06)
-        const cw = 60 + (c * 37) % 80
-        const ch = 18 + (c * 23) % 14
-        ctx.beginPath()
-        ctx.ellipse(cx, cy, cw, ch, 0, 0, Math.PI * 2)
-        ctx.fill()
-      }
+      // Decorative architrave (horizontal beam connecting the pillars)
+      const archY = pillarTop - 8
+      const archH = Math.max(16, pillarW * 0.35)
+      const archGrad = ctx.createLinearGradient(0, archY, 0, archY + archH)
+      archGrad.addColorStop(0, '#f5f0e8')
+      archGrad.addColorStop(0.5, '#e8e2d6')
+      archGrad.addColorStop(1, '#d4cec2')
+      ctx.fillStyle = archGrad
+      ctx.fillRect(pillarInset - 8, archY, vw - pillarInset * 2 + 16, archH)
+      // Architrave gold trim
+      ctx.fillStyle = '#d4af37'
+      ctx.fillRect(pillarInset - 8, archY + archH - 4, vw - pillarInset * 2 + 16, 4)
+      // Architrave shadow
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.2)'
+      ctx.fillRect(pillarInset - 8, archY + archH, vw - pillarInset * 2 + 16, 4)
+      // Architrave outline
+      ctx.strokeStyle = '#1a1a1a'
+      ctx.lineWidth = 2
+      ctx.strokeRect(pillarInset - 8, archY, vw - pillarInset * 2 + 16, archH)
     }, window.devicePixelRatio || 1)
 
     const bgImg = this.add.image(0, 0, bgKey).setOrigin(0, 0).setDisplaySize(Math.ceil(vw), Math.ceil(vh))
@@ -1724,8 +1758,7 @@ export class TitleScene extends Phaser.Scene {
       },
     ]
 
-    // Bake the soft-edged 3D cartoon podium stage into a crisp Canvas2D texture
-    // and place it behind `g` so the balls sit naturally ON TOP of the 3D top cushions.
+    // Bake the marble pillar podium — the pillars ARE the podium structure
     const podiumKey = `br-podium:${Math.ceil(podiumW)}x${Math.ceil(podiumH)}:${top3.map((e) => (e ? (e.isCurrentUser ? 'u' : '1') : '0')).join('')}`
     bakeCanvas(
       this,
@@ -1735,22 +1768,22 @@ export class TitleScene extends Phaser.Scene {
       (ctx) => {
         const ink = '#1a1a1a'
         const strokeW = isDesktop ? 4 : 3.2
-        const cornerR = isDesktop ? 18 : 14
 
-        // 1. Soft warm ambient spotlight behind the podium monument
+        // 1. Radiant golden spotlight behind the podium (emanating from #1)
         const glowCX = podiumW / 2
-        const glowCY = (baseY - firstH - podiumY) * 0.85
-        const glowR = podiumW * 0.46
-        const glow = ctx.createRadialGradient(glowCX, glowCY, glowR * 0.08, glowCX, glowCY, glowR)
-        glow.addColorStop(0, 'rgba(255, 217, 59, 0.22)')
-        glow.addColorStop(0.55, 'rgba(79, 195, 247, 0.09)')
+        const glowCY = (baseY - firstH - podiumY) * 0.9
+        const glowR = podiumW * 0.55
+        const glow = ctx.createRadialGradient(glowCX, glowCY, glowR * 0.05, glowCX, glowCY, glowR)
+        glow.addColorStop(0, 'rgba(255, 217, 59, 0.35)')
+        glow.addColorStop(0.4, 'rgba(255, 200, 80, 0.18)')
+        glow.addColorStop(0.7, 'rgba(212, 175, 55, 0.08)')
         glow.addColorStop(1, 'rgba(17, 21, 39, 0)')
         ctx.fillStyle = glow
         ctx.beginPath()
         ctx.arc(glowCX, glowCY, glowR, 0, Math.PI * 2)
         ctx.fill()
 
-        // 2. Podium blocks (back-to-front: #2, #3, then #1 in front)
+        // 2. Marble pillar podium blocks (back-to-front: #2, #3, then #1 in front)
         for (const slot of podiumSlots) {
           if (!slot.entry) continue
           const lx = slot.x - podiumX
@@ -1759,113 +1792,103 @@ export class TitleScene extends Phaser.Scene {
           const vcx = slot.visualCX - podiumX
           const ballR = Math.min(
             (w - (rank === 1 ? 0 : overlap * 0.5)) * (rank === 1 ? 0.39 : 0.36),
-            ( baseY - firstH - podiumY) * (rank === 1 ? 0.38 : 0.34),
+            (baseY - firstH - podiumY) * (rank === 1 ? 0.38 : 0.34),
           )
 
-          const taper = rank === 1 ? (isDesktop ? 10 : 7) : isDesktop ? 8 : 5
-          const topLeftX = lx + (rank === 3 ? overlap * 0.35 : taper)
-          const topRightX = lx + w - (rank === 2 ? overlap * 0.35 : taper)
-          const frontY = ly + deckH
-          const bottomYBlock = ly + h + 10
+          // Pillar dimensions
+          const pillarTop = ly
+          const pillarBot = ly + h + 10
+          const pillarH = pillarBot - pillarTop
+          const pillarCX = lx + w / 2
 
-          // Smooth 3D block silhouette (receding top deck + vertical front pillar)
-          const buildBlockSilhouette = (dx = 0, dy = 0) => {
-            const p = new Path2D()
-            const rTop = isDesktop ? 10 : 7
-            p.moveTo(lx + dx, bottomYBlock + dy)
-            p.lineTo(lx + dx, frontY + dy + 4)
-            p.quadraticCurveTo(lx + dx, frontY + dy - 2, topLeftX + dx, ly + dy + rTop * 0.4)
-            p.quadraticCurveTo(topLeftX + dx + rTop * 0.5, ly + dy, topLeftX + dx + rTop * 1.4, ly + dy)
-            p.lineTo(topRightX + dx - rTop * 1.4, ly + dy)
-            p.quadraticCurveTo(topRightX + dx - rTop * 0.5, ly + dy, topRightX + dx, ly + dy + rTop * 0.4)
-            p.quadraticCurveTo(lx + w + dx, frontY + dy - 2, lx + w + dx, frontY + dy + 4)
-            p.lineTo(lx + w + dx, bottomYBlock + dy)
-            p.closePath()
-            return p
-          }
+          // Pillar shadow (soft, cast to the right)
+          ctx.fillStyle = rank === 1 ? 'rgba(6, 9, 20, 0.5)' : 'rgba(6, 9, 20, 0.32)'
+          ctx.fillRect(lx + 4, pillarTop + 5, w, pillarH)
 
-          // Ambient drop shadow (casts #1's shadow onto the inner edges of #2 and #3)
-          ctx.fillStyle = rank === 1 ? 'rgba(6, 9, 20, 0.46)' : 'rgba(6, 9, 20, 0.28)'
-          ctx.fill(buildBlockSilhouette(rank === 1 ? 0 : rank === 2 ? -3 : 3, 5))
+          // Pillar body — warm Carrara marble gradient
+          const bodyGrad = ctx.createLinearGradient(lx, pillarTop, lx + w, pillarTop)
           if (rank === 1) {
-            ctx.fillStyle = 'rgba(6, 9, 20, 0.32)'
-            ctx.fill(new Path2D(roundedRectPath(lx - 6, frontY + 2, w + 12, h - deckH + 8, cornerR)))
-          }
-
-          const bodyPath = buildBlockSilhouette(0, 0)
-          const bodyGrad = ctx.createLinearGradient(0, frontY, 0, bottomYBlock)
-          if (rank === 1) {
-            bodyGrad.addColorStop(0, '#ffd83b')
-            bodyGrad.addColorStop(0.55, '#f5a60b')
-            bodyGrad.addColorStop(1, '#d97706')
+            // Gold-tinted marble for #1
+            bodyGrad.addColorStop(0, '#f5f0e8')
+            bodyGrad.addColorStop(0.25, '#faf5e8')
+            bodyGrad.addColorStop(0.5, '#fff9e8')
+            bodyGrad.addColorStop(0.75, '#f5f0e0')
+            bodyGrad.addColorStop(1, '#e0d5c0')
           } else if (rank === 2) {
-            bodyGrad.addColorStop(0, '#c2d4f8')
-            bodyGrad.addColorStop(0.55, '#91a8e0')
-            bodyGrad.addColorStop(1, '#6880bd')
+            // Silver-tinted marble for #2
+            bodyGrad.addColorStop(0, '#e8e8f0')
+            bodyGrad.addColorStop(0.25, '#f0f0f5')
+            bodyGrad.addColorStop(0.5, '#f5f5fa')
+            bodyGrad.addColorStop(0.75, '#e8e8f0')
+            bodyGrad.addColorStop(1, '#d0d0d8')
           } else {
-            bodyGrad.addColorStop(0, '#f7a35c')
-            bodyGrad.addColorStop(0.55, '#de762b')
-            bodyGrad.addColorStop(1, '#b55214')
+            // Bronze-tinted marble for #3
+            bodyGrad.addColorStop(0, '#f0e8e0')
+            bodyGrad.addColorStop(0.25, '#f5f0e8')
+            bodyGrad.addColorStop(0.5, '#faf5f0')
+            bodyGrad.addColorStop(0.75, '#f0e8e0')
+            bodyGrad.addColorStop(1, '#d8d0c8')
           }
           ctx.fillStyle = bodyGrad
-          ctx.fill(bodyPath)
+          ctx.fillRect(lx, pillarTop, w, pillarH)
 
-          ctx.save()
-          ctx.clip(bodyPath)
-
-          // Soft vertical cartoon sheen band on the left side of the front pillar
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.16)'
-          ctx.fillRect(lx + (rank === 3 ? overlap + 6 : 10), frontY, Math.max(10, w * 0.17), h + 10)
-
-          // Receding 3D top deck surface where the ball sits
-          const deckPath = new Path2D()
-          deckPath.moveTo(lx - 2, frontY + 2)
-          deckPath.lineTo(topLeftX, ly)
-          deckPath.lineTo(topRightX, ly)
-          deckPath.lineTo(lx + w + 2, frontY + 2)
-          deckPath.quadraticCurveTo(lx + w * 0.5, frontY + 5, lx - 2, frontY + 2)
-          deckPath.closePath()
-
-          const deckGrad = ctx.createLinearGradient(0, ly, 0, frontY + 4)
-          if (rank === 1) {
-            deckGrad.addColorStop(0, '#fff9c4')
-            deckGrad.addColorStop(1, '#ffe45e')
-          } else if (rank === 2) {
-            deckGrad.addColorStop(0, '#f7faff')
-            deckGrad.addColorStop(1, '#d9e6ff')
-          } else {
-            deckGrad.addColorStop(0, '#ffe8d1')
-            deckGrad.addColorStop(1, '#fcbd84')
+          // Fluting (vertical grooves) — elegant Doric style
+          const fluteCount = Math.max(3, Math.round(w / 14))
+          const fluteW = w / (fluteCount * 2 + 1)
+          for (let f = 0; f < fluteCount; f++) {
+            const fx = lx + fluteW * (f * 2 + 1)
+            // Groove shadow
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)'
+            ctx.fillRect(fx, pillarTop + 8, fluteW * 0.5, pillarH - 16)
+            // Groove highlight (subtle 3D effect)
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.12)'
+            ctx.fillRect(fx + fluteW * 0.5, pillarTop + 8, fluteW * 0.3, pillarH - 16)
           }
-          ctx.fillStyle = deckGrad
-          ctx.fill(deckPath)
 
-          // Crisp front-edge specular bevel separating the 3D top deck from the front face
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.78)'
-          ctx.fill(new Path2D(roundedRectPath(lx + 6, frontY - 1.5, w - 12, 3.5, 1.75)))
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.12)'
-          ctx.fillRect(lx, frontY + 2, w, 2)
-
-          // Soft elliptical contact shadow on the 3D top deck right under the ball
-          const seatY = ly + deckH * 0.58
-          ctx.fillStyle = 'rgba(20, 16, 10, 0.28)'
+          // Capital (Doric-style: abacus + echinus with gold accent)
+          const capH = Math.max(14, w * 0.28)
+          const capY = pillarTop
+          // Abacus (square slab)
+          ctx.fillStyle = rank === 1 ? '#fff9e8' : rank === 2 ? '#f5f5fa' : '#faf5f0'
+          ctx.fillRect(lx - 4, capY, w + 8, capH * 0.35)
+          // Echinus (curved cushion)
           ctx.beginPath()
-          ctx.ellipse(vcx, seatY + 2, ballR * 0.74, Math.max(4.5, deckH * 0.28), 0, 0, Math.PI * 2)
+          ctx.ellipse(pillarCX, capY + capH * 0.55, w * 0.55, capH * 0.4, 0, 0, Math.PI * 2)
           ctx.fill()
+          // Gold accent band
+          ctx.fillStyle = rank === 1 ? '#ffd83b' : rank === 2 ? '#c0c8e0' : '#e0a868'
+          ctx.fillRect(lx - 2, capY + capH * 0.32, w + 4, 3)
+          // Capital shadow
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.15)'
+          ctx.fillRect(lx - 4, capY + capH * 0.35, w + 8, 2)
 
-          ctx.restore()
+          // Base (plinth with torus molding)
+          const baseH = Math.max(10, w * 0.22)
+          ctx.fillStyle = rank === 1 ? '#f0e8d8' : rank === 2 ? '#e0e0e8' : '#e8e0d8'
+          ctx.fillRect(lx - 3, pillarBot - baseH, w + 6, baseH)
+          // Torus (rounded molding)
+          ctx.beginPath()
+          ctx.ellipse(pillarCX, pillarBot - baseH * 0.3, w * 0.52, baseH * 0.25, 0, 0, Math.PI * 2)
+          ctx.fill()
+          // Base shadow
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.12)'
+          ctx.fillRect(lx - 3, pillarBot - 2, w + 6, 2)
 
-          // Smooth cartoon ink outline
+          // Ink outline for cartoon definition
           ctx.strokeStyle = ink
           ctx.lineWidth = strokeW
-          ctx.lineJoin = 'round'
-          ctx.lineCap = 'round'
-          ctx.stroke(bodyPath)
-          // No blue outline on the podium — the table row identifies the current user.
+          ctx.strokeRect(lx, pillarTop, w, pillarH)
+
+          // Soft elliptical contact shadow on the capital top where the ball sits
+          const seatY = pillarTop + capH * 0.5
+          ctx.fillStyle = 'rgba(20, 16, 10, 0.25)'
+          ctx.beginPath()
+          ctx.ellipse(vcx, seatY + 2, ballR * 0.7, Math.max(4, capH * 0.2), 0, 0, Math.PI * 2)
+          ctx.fill()
 
           // Rank medal badge + golden laurel leaves on #1
           const badgeR = Math.max(12, Math.min(20, Math.round(Math.min(w * 0.17, h * 0.155))))
-          const badgeY = ly + deckH + badgeR + Math.max(5, Math.round(h * 0.045))
+          const badgeY = pillarTop + capH + badgeR + Math.max(5, Math.round(h * 0.045))
 
           if (rank === 1) {
             for (const dir of [-1, 1]) {
@@ -1926,7 +1949,6 @@ export class TitleScene extends Phaser.Scene {
 
           // Golden celebration rays fanning out around the temples of the #1 ball
           if (rank === 1) {
-            const seatY = ly + deckH * 0.58
             const ballCYLocal = seatY + 1 - ballR
             const rayAngles = [-2.88, -2.54, -2.2, -0.94, -0.6, -0.26]
             const rayInner = ballR * 1.16
