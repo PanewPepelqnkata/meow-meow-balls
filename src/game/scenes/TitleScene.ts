@@ -470,7 +470,7 @@ export class TitleScene extends Phaser.Scene {
     const bandBottom = vh - bottomInset - m
     const navCount = 3
     const availH = Math.max(1, bandBottom - bandTop - playH - navCount * navH)
-    const buttonSpacing = Math.round(Math.max(8, Math.min(20, availH / navCount)))
+    const buttonSpacing = Math.round(Math.max(12, Math.min(24, availH / navCount)))
     const stackH = playH + navCount * navH + navCount * buttonSpacing
     const minStartY = bandTop + playH / 2
     const maxStartY = Math.max(minStartY, bandBottom - stackH + playH / 2)
@@ -509,7 +509,7 @@ export class TitleScene extends Phaser.Scene {
     const navH = portrait
       ? Math.round(Math.max(38, Math.min(50, vh * 0.054)))
       : Math.round(Math.max(44, Math.min(58, vh * 0.062)))
-    const navGap = portrait ? 8 : 14
+    const navGap = portrait ? 12 : 16
     const navW = portrait
       ? Math.floor((vw - 2 * m - 2 * navGap) / 3)
       : Math.round(Math.max(130, Math.min(190, (vw - 2 * m - 2 * 16) / 3)))
@@ -517,7 +517,7 @@ export class TitleScene extends Phaser.Scene {
       // Centered flow, bottom-anchored so the stats chip always sits in the
       // safe area: chip -> balanced 3 nav buttons row -> PLAY + LOGIN side-by-side -> machine -> logo.
       const isAuthed = authService.isAuthenticated()
-      const rowGap = 12
+      const rowGap = 16
       const chipY = vh - bottomInset - chipH / 2
       const navY = chipY - chipH / 2 - rowGap - navH / 2
       const playY = navY - navH / 2 - rowGap - playH / 2
@@ -547,7 +547,7 @@ export class TitleScene extends Phaser.Scene {
     } else {
       // Compact landscape layout for narrow (< 768px) viewports.
       const isAuthed = authService.isAuthenticated()
-      const rowGap = 10
+      const rowGap = 14
       const navY = vh - m - navH / 2
       const playY = navY - navH / 2 - rowGap - playH / 2
       const chipY = logoCY + logoH / 2 + 8 + chipH / 2
@@ -559,7 +559,7 @@ export class TitleScene extends Phaser.Scene {
         bandBottom - bandTop,
         Math.min(vw * 0.45, 420),
       )
-      const gap = 16
+      const gap = 20
       const navPos: Array<{ x: number; y: number; w?: number; h?: number }> = [
         { x: vw / 2 - (navW + gap), y: navY },
         { x: vw / 2, y: navY },
