@@ -909,34 +909,45 @@ export class ScoreService {
   }
 
   async getLeaderboard(limit = 100): Promise<Score[]> {
-    // Fetch all scores, then dedupe to keep only each user's highest score
-    const { data, error } = await supabase
-      .from('scores')
-      .select(`
-        *,
-        profiles:user_id (
-          id,
-          username,
-          display_name,
-          avatar_url
-        )
-      `)
-      .order('score', { ascending: false })
+    if (limit <= 0) return []
 
-    if (error) {
-      console.error('Error fetching leaderboard:', error)
-      return []
-    }
-
-    // Keep only the highest score per user
+    const pageSize = 250
     const seenUsers = new Set<string>()
     const uniqueScores: Score[] = []
-    for (const score of data as Score[]) {
-      if (!seenUsers.has(score.user_id)) {
-        seenUsers.add(score.user_id)
-        uniqueScores.push(score)
-        if (uniqueScores.length >= limit) break
+    let offset = 0
+
+    while (uniqueScores.length < limit) {
+      const { data, error } = await supabase
+        .from('scores')
+        .select(`
+          *,
+          profiles:user_id (
+            id,
+            username,
+            display_name,
+            avatar_url
+          )
+        `)
+        .order('score', { ascending: false })
+        .order('id', { ascending: true })
+        .range(offset, offset + 249)
+
+      if (error) {
+        console.error('Error fetching leaderboard:', error)
+        return []
       }
+
+      const page = data as Score[]
+      for (const score of page) {
+        if (!seenUsers.has(score.user_id)) {
+          seenUsers.add(score.user_id)
+          uniqueScores.push(score)
+          if (uniqueScores.length >= limit) break
+        }
+      }
+
+      if (page.length < pageSize || uniqueScores.length >= limit) break
+      offset += pageSize
     }
 
     return uniqueScores

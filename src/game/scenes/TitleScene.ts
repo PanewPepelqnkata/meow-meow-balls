@@ -13,7 +13,7 @@ import { BALL_TIERS, getTier } from '../../config/ballTiers'
 import type { BackgroundScene } from './BackgroundScene'
 import type { ThemeName } from '../rendering/BackgroundTheme'
 import { loadSave, resetSave, setThemeSetting } from '../state/save'
-import { variantIdFor } from '../state/runVariant'
+import { tier9Theme, variantIdFor } from '../state/runVariant'
 import { session } from '../state/session'
 import { bakeCanvas, roundedRectPath } from '../rendering/RoughArt'
 import { drawOlympusHall, drawOlympusTablet } from '../rendering/OlympusHallArt'
@@ -69,6 +69,9 @@ import { authService, resolveDisplayName, scoreService } from '../../services/au
 
 const CREAM = '#fff6e0'
 const YELLOW = '#ffeb3b'
+const LEADERBOARD_TEXT = '#25283a'
+const LEADERBOARD_SECONDARY = '#555467'
+const LEADERBOARD_FONT = 'Nunito, ui-rounded, system-ui, sans-serif'
 type ScreenName = 'menu' | 'leaderboard' | 'settings' | 'collection'
 
 interface CastBall {
@@ -159,6 +162,8 @@ export class TitleScene extends Phaser.Scene {
     tableH: number
     dragPointerId: number | null
     dragMode: 'rows' | 'thumb' | null
+    renderRows: (offset: number) => void
+    wheelBlocker: (event: WheelEvent) => void
     dragStartY: number
     dragStartOffset: number
   } | null = null
@@ -1373,6 +1378,8 @@ export class TitleScene extends Phaser.Scene {
     if (s.maskFilter) s.rowsC.filters!.external.remove(s.maskFilter)
     else s.rowsC.clearMask(true)
     s.maskG.destroy()
+    s.zone.destroy()
+    this.game.canvas.removeEventListener('wheel', s.wheelBlocker)
   }
 
   private disarmReset(): void {
@@ -1428,10 +1435,13 @@ export class TitleScene extends Phaser.Scene {
     if (!s) return
     s.offset = Phaser.Math.Clamp(offset, 0, s.maxOffset)
     s.rowsC.y = -s.offset
+    s.renderRows(s.offset)
     s.thumbG.clear()
     if (s.maxOffset <= 0) return
+    s.thumbG.fillStyle(0xd8cdb7, 1)
+    s.thumbG.fillRoundedRect(s.trackX, s.trackY, s.trackW, s.trackH, s.trackW / 2)
     const thumbY = s.trackY + (s.offset / s.maxOffset) * (s.trackH - s.thumbH)
-    s.thumbG.fillStyle(0xd4af37, 1)
+    s.thumbG.fillStyle(0xa77a32, 1)
     s.thumbG.fillRoundedRect(s.trackX + 1, thumbY, s.trackW - 2, s.thumbH, (s.trackW - 2) / 2)
   }
 
@@ -1482,7 +1492,7 @@ export class TitleScene extends Phaser.Scene {
     let fetchError: string | null = null
 
     try {
-      const scores = await scoreService.getLeaderboard(50)
+      const scores = await scoreService.getLeaderboard(Number.POSITIVE_INFINITY)
       const currentUserId = authService.getUser()?.id
 
       entries = scores.map((s, i) => ({
@@ -1574,28 +1584,28 @@ export class TitleScene extends Phaser.Scene {
 
     // One measured grid owns both the art and text anchors.
     const panelGap = isDesktop && vh >= 500 ? 32 : 20
-    const podiumW = isDesktop ? Math.round((maxTotalW - panelGap) * (vh < 500 ? 0.5 : 0.46)) : maxTotalW
+    const podiumW = isDesktop ? Math.round((maxTotalW - panelGap) * 0.46) : maxTotalW
     const tableW = isDesktop ? maxTotalW - panelGap - podiumW : maxTotalW
     const podiumX = totalX
     const tableX = isDesktop ? totalX + podiumW + panelGap : totalX
     const columnGap = isDesktop ? 16 : 10
     const columnW = Math.floor((podiumW - 16 - columnGap * 2) / 3)
     const plateW = columnW - 2
-    const nameSize = podiumW >= 500 ? 20 : 14
-    const scoreSize = podiumW >= 500 ? 24 : 18
+    const nameSize = podiumW >= 500 ? 23 : 16
+    const scoreSize = podiumW >= 500 ? 28 : 21
     let deckH = podiumW >= 500 ? 24 : 18
     let medalR = podiumW >= 500 ? 21 : 14
     let plinthH = podiumW >= 500 ? 30 : 22
     let heightStep = podiumW >= 500 ? 30 : 16
     const podiumLabels = top3.map((entry) => {
-      const name = hudText(this, 0, 0, entry.displayName, 1, {
-        color: '#283148', size: nameSize, stroke: 0, pad: 1,
+      const name = leaderboardTextStyle(hudText(this, 0, 0, entry.displayName, 1, {
+        color: LEADERBOARD_TEXT, size: nameSize, stroke: 0, pad: 1,
         origin: [0.5, 0.5], shadow: false,
-      }).setWordWrapWidth(plateW - 16, true).setAlign('center').setLineSpacing(2)
-      const score = hudText(this, 0, 0, entry.score.toLocaleString('en-US'), 1, {
-        color: '#654419', size: scoreSize, stroke: 0, pad: 1,
+      })).setWordWrapWidth(plateW - 16, true).setAlign('center').setLineSpacing(2)
+      const score = leaderboardTextStyle(hudText(this, 0, 0, entry.score.toLocaleString('en-US'), 1, {
+        color: LEADERBOARD_TEXT, size: scoreSize, stroke: 0, pad: 1,
         origin: [0.5, 0.5], shadow: false,
-      })
+      }))
       return { name, score }
     })
     const plateTextH = Math.max(nameSize * 1.5, ...podiumLabels.map((label) => label.name.height))
@@ -1604,53 +1614,55 @@ export class TitleScene extends Phaser.Scene {
 
     // Keep type readable: measure full names at the intended font size, then
     // give every row the same height based on the tallest wrapped name.
-    const rowFontSize = tableW >= 520 ? 22 : 18
-    const wellPad = tableW >= 520 ? 20 : 14
-    const padX = tableW >= 520 ? 10 : 4
-    const headerH = tableW >= 520 ? 44 : 34
+    const rowFontSize = tableW >= 520 ? 26 : 21
+    const narrowTablet = tableW < 340
+    const wellPad = tableW >= 520 ? 20 : narrowTablet ? 12 : 14
+    const padX = tableW >= 520 ? 10 : narrowTablet ? 2 : 4
+    const headerH = tableW >= 520 ? 48 : narrowTablet ? 36 : 40
     const rowGap = 6
     const scrollW = 8
     const wellW = tableW - wellPad * 2
     const rowW = wellW - padX * 2 - scrollW - 8
-    const rankW = tableW >= 520 ? 36 : 24
-    const avatarW = tableW >= 520 ? 54 : 44
-    const cellGap = tableW >= 520 ? 16 : 10
-    const rowScores = entries.map((entry) => hudText(this, 0, 0, entry.score.toLocaleString('en-US'), 1, {
-      color: entry.isCurrentUser ? '#075b7d' : '#283148', size: rowFontSize, stroke: 0, pad: 1,
-      origin: [1, 0.5], shadow: false,
-    }))
-    const scoreW = Math.max(64, ...rowScores.map((text) => text.width))
+    const rankW = tableW >= 520 ? 44 : narrowTablet ? 32 : 36
+    const avatarW = tableW >= 520 ? 52 : narrowTablet ? 38 : 42
+    const cellGap = tableW >= 520 ? 14 : narrowTablet ? 6 : 8
+    // Measure with one reusable text object, not one canvas per player.
+    const measure = leaderboardTextStyle(hudText(this, 0, 0, '', 1, {
+      color: LEADERBOARD_TEXT, size: rowFontSize, stroke: 0, pad: 1, shadow: false,
+    })).setLineSpacing(2)
+    const scoreStrings = entries.map((entry) => entry.score.toLocaleString('en-US'))
+    let scoreW = 64
+    for (const score of scoreStrings) scoreW = Math.max(scoreW, measure.setText(score).width)
     const nameW = rowW - rankW - avatarW - scoreW - cellGap * 2 - 12
-    const rowNames = entries.map((entry) => hudText(this, 0, 0, entry.displayName, 1, {
-      color: entry.isCurrentUser ? '#075b7d' : '#283148', size: rowFontSize, stroke: 0, pad: 1,
-      origin: [0, 0.5], shadow: false,
-    }).setWordWrapWidth(nameW, true).setLineSpacing(2))
-    const rowH = Math.ceil(Math.max(tableW >= 520 ? 62 : 54,
-      ...rowNames.map((text) => text.height + 20), ...rowScores.map((text) => text.height + 20)))
+    measure.setWordWrapWidth(nameW, true)
+    let rowH = tableW >= 520 ? 68 : 60
+    for (const entry of entries) rowH = Math.max(rowH, measure.setText(entry.displayName).height + 20)
+    rowH = Math.ceil(rowH)
+    measure.destroy()
     const slotCount = entries.length
     const totalRowsH = slotCount * (rowH + rowGap) - rowGap
-    const desiredTableH = wellPad * 2 + headerH + 12 + totalRowsH
+    const desiredTableH = wellPad * 2 + headerH + 12 + (isDesktop ? 6 : 4) * (rowH + rowGap) - rowGap
     // Reserve the full measured row, header and insets before sizing podium art.
     // Text keeps its measured size; only capitals, medals, balls and gaps compact.
     const minTableH = wellPad * 2 + headerH + 12 + rowH
     const podiumBudget = isDesktop ? availableH : availableH - minTableH - panelGap
     const naturalArtH = deckH + 8 + medalR * 2 + 10 + 16 + 10 + 16
       + heightStep * 2 + ballR * 2.8 + plinthH + 8
-    const compactArtH = 8 + 3 + 20 + 3 + 8 + 3 + 6 + 8 + 12 * 2.8 + 10 + 8
+    const compactArtH = 6 + 3 + 16 + 3 + 6 + 3 + 4 + 8 + 10 * 2.8 + 8 + 8
     const artScale = Phaser.Math.Clamp(
       (podiumBudget - plateTextH - podiumScoreH - compactArtH) / (naturalArtH - compactArtH), 0, 1,
     )
     const compact = (minimum: number, normal: number) => minimum + (normal - minimum) * artScale
-    deckH = compact(8, deckH)
-    medalR = compact(10, medalR)
-    plinthH = compact(10, plinthH)
+    deckH = compact(6, deckH)
+    medalR = compact(8, medalR)
+    plinthH = compact(8, plinthH)
     heightStep = compact(4, heightStep)
-    ballR = compact(12, ballR)
+    ballR = compact(10, ballR)
     const medalGap = compact(3, 8)
     const plateGap = compact(3, 10)
     const scoreGap = compact(3, 10)
-    const footGap = compact(6, 16)
-    const plateH = plateTextH + compact(8, 16)
+    const footGap = compact(4, 16)
+    const plateH = plateTextH + compact(6, 16)
     const componentH = deckH + medalGap + medalR * 2 + plateGap + plateH + scoreGap + podiumScoreH + footGap
     const firstH = componentH + heightStep * 2
     const podiumH = firstH + ballR * 2.8 + plinthH + 8
@@ -1658,7 +1670,7 @@ export class TitleScene extends Phaser.Scene {
     const tableH = Math.min(desiredTableH, tableMaxH)
     const compositionH = isDesktop ? Math.max(podiumH, tableH) : podiumH + panelGap + tableH
     const podiumY = bodyY + Math.max(0, (availableH - compositionH) / 2)
-    const tableY = isDesktop ? podiumY + Math.max(0, (podiumH - tableH) / 2) : podiumY + podiumH + panelGap
+    const tableY = isDesktop ? podiumY : podiumY + podiumH + panelGap
     const plinthY = podiumY + podiumH - plinthH - 3
     const baseY = plinthY + 3
     const firstX = podiumX + (podiumW - columnW) / 2
@@ -1722,7 +1734,7 @@ export class TitleScene extends Phaser.Scene {
     const playerColX = rowX + 6 + rankW + avatarW + cellGap
     const scoreColX = rowX + rowW - 6
 
-    const hdrSize = tableW >= 520 ? 16 : 12
+    const hdrSize = tableW >= 520 ? 19 : 15
     const hRank = hudText(this, rankColX, headerCY, '#', 1, {
       color: '#65533e',
       size: hdrSize,
@@ -1745,6 +1757,7 @@ export class TitleScene extends Phaser.Scene {
       shadow: false,
     })
     this.panelContent.add([hRank, hPlayer, hScore])
+    for (const heading of [hRank, hPlayer, hScore]) leaderboardTextStyle(heading, LEADERBOARD_SECONDARY)
 
     // --- SCROLLABLE ROWS AREA ---
     const rowsTopY = wellY + headerH + 6
@@ -1789,6 +1802,63 @@ export class TitleScene extends Phaser.Scene {
     // Scroll input zone (rows + thumb)
     const scrollZone = this.add.zone(wellX, wellY, wellW, wellH).setOrigin(0, 0).setInteractive()
 
+    const avatarSize = tableW >= 520 ? 40 : 36
+    const fallbackTiers = [6, 1, 5, 3, 2, 4, 1, 4, 6, 2]
+    const poolSize = Math.min(slotCount, Math.ceil(rowsAvailH / (rowH + rowGap)) + 2)
+    const pool = Array.from({ length: poolSize }, () => {
+      const background = this.add.graphics()
+      const rank = leaderboardTextStyle(hudText(this, rankColX, 0, '', 1, {
+        color: LEADERBOARD_TEXT, size: rowFontSize, stroke: 0, pad: 1, origin: [0.5, 0.5], shadow: false,
+      }))
+      const name = leaderboardTextStyle(hudText(this, playerColX, 0, '', 1, {
+        color: LEADERBOARD_TEXT, size: rowFontSize, stroke: 0, pad: 1, origin: [0, 0.5], shadow: false,
+      })).setWordWrapWidth(nameW, true).setLineSpacing(2)
+      const score = leaderboardTextStyle(hudText(this, scoreColX, 0, '', 1, {
+        color: LEADERBOARD_TEXT, size: rowFontSize, stroke: 0, pad: 1, origin: [1, 0.5], shadow: false,
+      }))
+      const avatar = this.add.image(iconColX, 0, leaderboardAvatarKey(this, 1, 777, avatarSize))
+        .setDisplaySize(avatarSize, avatarSize)
+      const container = this.add.container(0, 0, [background, rank, avatar, name, score])
+      rowsContainer.add(container)
+      return { container, background, rank, name, score, avatar, index: -1 }
+    })
+    let previousFirst = -1
+    const renderRows = (offset: number) => {
+      const first = Math.max(0, Math.floor(offset / (rowH + rowGap)) - 1)
+      if (previousFirst === first) return
+      previousFirst = first
+      for (let p = 0; p < pool.length; p++) {
+        const view = pool[p]!
+        const i = first + p
+        const entry = entries[i]
+        view.container.setVisible(!!entry)
+        if (!entry) continue
+        view.index = i
+        view.container.setY(rowsTopY + i * (rowH + rowGap))
+        view.background.clear().fillStyle(i === 0 ? 0xf5d78b : i % 2 === 0 ? 0xf0e7d5 : 0xfff8e9, 1)
+          .fillRoundedRect(rowX, 0, rowW, rowH, 10)
+        if (i === 0 || entry.isCurrentUser) view.background.lineStyle(1.5, 0xa77a32, 1)
+          .strokeRoundedRect(rowX, 0, rowW, rowH, 10)
+        const cy = rowH / 2
+        view.rank.setText(`${i + 1}`).setY(cy)
+        view.name.setText(entry.displayName).setY(cy)
+        view.score.setText(scoreStrings[i]!).setY(cy)
+        const tier = i < 3 ? [6, 1, 5][i]! : entry.tierReached > 1
+          ? Math.min(BALL_TIERS.length, entry.tierReached) : fallbackTiers[i % fallbackTiers.length]!
+        const seed = (i % 8 + 1) * 777 + tier * 31
+        view.avatar.setTexture(leaderboardAvatarKey(this, tier, seed, avatarSize))
+          .setY(cy).setDisplaySize(avatarSize, avatarSize)
+      }
+    }
+    renderRows(0)
+    const wheelBlocker = (event: WheelEvent) => {
+      const rect = this.game.canvas.getBoundingClientRect()
+      const x = (event.clientX - rect.left) * vw / rect.width
+      const y = (event.clientY - rect.top) * vh / rect.height
+      if (x >= wellX && x <= wellX + wellW && y >= rowsTopY && y <= rowsTopY + rowsAvailH) event.preventDefault()
+    }
+    this.game.canvas.addEventListener('wheel', wheelBlocker, { passive: false })
+
     // Store scroll state for the scene-level handlers
     this.lbScroll = {
       rowsC: rowsContainer,
@@ -1796,6 +1866,8 @@ export class TitleScene extends Phaser.Scene {
       maskFilter,
       thumbG,
       zone: scrollZone,
+      renderRows,
+      wheelBlocker,
       offset: 0,
       maxOffset: maxScroll,
       viewH: rowsAvailH,
@@ -1849,64 +1921,6 @@ export class TitleScene extends Phaser.Scene {
       }
     })
 
-    const fallbackTiers = [6, 1, 5, 3, 2, 4, 1, 4, 6, 2]
-
-    for (let i = 0; i < slotCount; i++) {
-      const entry = entries[i]!
-      const y = rowsTopY + i * (rowH + rowGap)
-      const cy = y + rowH / 2
-      const rank = i + 1
-      const isFirst = rank === 1
-      const isCurrentUser = entry.isCurrentUser
-
-      // Row background drawn into rowsContainer via a local Graphics.
-      // The current user keeps their cyan identity even at rank #1 (cyan
-      // stroke over the gold fill) — the podium carries no user marker.
-      const rowG = this.add.graphics()
-      if (isFirst) {
-        rowG.fillStyle(0xf1deb0, 1)
-        rowG.fillRoundedRect(rowX, y, rowW, rowH, 10)
-        rowG.lineStyle(1.5, isCurrentUser ? 0x4fc3f7 : 0xc9a453, 1)
-        rowG.strokeRoundedRect(rowX, y, rowW, rowH, 12)
-      } else if (isCurrentUser) {
-        rowG.fillStyle(0xd9eff7, 1)
-        rowG.fillRoundedRect(rowX, y, rowW, rowH, 10)
-        rowG.lineStyle(2, 0x4fc3f7, 1)
-        rowG.strokeRoundedRect(rowX, y, rowW, rowH, 10)
-      } else {
-        rowG.fillStyle(i % 2 === 0 ? 0xe7dfcf : 0xf8f1e2, 1)
-        rowG.fillRoundedRect(rowX, y, rowW, rowH, 10)
-      }
-      rowsContainer.add(rowG)
-
-
-      const rankT = hudText(this, rankColX, cy, `${rank}`, 1, {
-        color: '#65533e', size: rowFontSize, stroke: 0, pad: 1,
-        origin: [0.5, 0.5], shadow: false,
-      })
-      rowsContainer.add(rankT)
-
-      // Ball icon (top 3 match their podium character; 4+ use tierReached or vibrant fallback)
-      const rowTier =
-        rank === 1
-          ? 6
-          : rank === 2
-            ? 1
-            : rank === 3
-              ? 5
-              : entry.tierReached > 1
-                ? Math.min(BALL_TIERS.length, entry.tierReached)
-                : fallbackTiers[i % fallbackTiers.length]!
-      const iconR = tableW >= 520 ? 21 : 17
-      drawBallIcon(this, rowG, rowTier, iconColX, cy, iconR, {
-        seed: rank * 777 + rowTier * 31,
-        layer: rowsContainer,
-      })
-
-      const scoreT = rowScores[i]!.setPosition(scoreColX, cy)
-      const nameT = rowNames[i]!.setPosition(playerColX, cy)
-      rowsContainer.add([scoreT, nameT])
-    }
     // --- ENTRANCE ANIMATIONS ---
     // Restrained cloud drift: transform-only x motion on baked wisp images,
     // skipped entirely under prefers-reduced-motion. No per-frame bakes.
@@ -2608,6 +2622,8 @@ export function drawBallIcon(
     seed?: number
     layer?: Phaser.GameObjects.Container
     blink?: boolean
+    detail?: number
+    character?: boolean
   } = {},
 ): void {
   const t = getTier(tier)
@@ -2619,10 +2635,10 @@ export function drawBallIcon(
     return
   }
   const look = ballLookFor(tier, opts.seed ?? 7)
-  const poly = restContour(look, r, cx, cy, 32)
+  const poly = restContour(look, r, cx, cy, opts.detail ?? 32)
   const pts = poly.map((p) => new Phaser.Math.Vector2(p.x, p.y))
 
-  if (opts.silhouette || tier >= 11) {
+  if (opts.silhouette || (tier >= 11 && !opts.character)) {
     g.fillStyle(0x23242e, 1)
     g.fillPoints(pts, true)
   } else {
@@ -2635,7 +2651,7 @@ export function drawBallIcon(
   g.lineStyle(ballOutlineWidth(r), INK, 1)
   g.strokePoints(pts, true, true)
 
-  if (opts.silhouette || tier >= 11) {
+  if (opts.silhouette || (tier >= 11 && !opts.character)) {
     // The undiscovered state: a '?' where the face would be. hudText adds
     // to the scene — reparent into the caller's layer so screen switches
     // destroy it with the rest of the panel content.
@@ -2652,5 +2668,31 @@ export function drawBallIcon(
     const faceLook = opts.blink ? { ...look, eyeH: look.eyeH * 0.12 } : look
     drawBallFace(g, faceLook, { x: cx, y: cy }, r, 1)
   }
+}
+
+function leaderboardTextStyle(text: Phaser.GameObjects.Text, color = LEADERBOARD_TEXT): Phaser.GameObjects.Text {
+  return text.setFontFamily(LEADERBOARD_FONT).setFontStyle('bold').setColor(color).setStroke(color, 0)
+}
+
+function leaderboardAvatarKey(
+  scene: Phaser.Scene,
+  tier: number,
+  seed: number,
+  displaySize: number,
+): string {
+  const dpr = Math.max(2, Math.min(window.devicePixelRatio || 1, 3))
+  const textureSize = Math.ceil(displaySize * dpr)
+  const theme = tier === 9 ? tier9Theme() : ''
+  const variant = tier === 9 || tier === 10 ? variantIdFor(tier) : 0
+  const key = `br-leaderboard-avatar:${tier}:${theme}:${variant}:${seed}:${textureSize}`
+  if (scene.textures.exists(key)) return key
+
+  const graphics = scene.add.graphics()
+  const center = textureSize / 2
+  const radius = displaySize * dpr / 2 - 2 * dpr
+  drawBallIcon(scene, graphics, tier, center, center, radius, { seed, detail: 64, character: true })
+  graphics.generateTexture(key, textureSize, textureSize)
+  graphics.destroy()
+  return key
 }
 

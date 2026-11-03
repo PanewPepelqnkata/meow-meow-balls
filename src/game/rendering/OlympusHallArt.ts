@@ -249,8 +249,8 @@ export function drawOlympusHall(ctx: CanvasRenderingContext2D, w: number, h: num
   ctx.beginPath()
   ctx.moveTo(1.5, floorY)
   ctx.lineTo(w - 1.5, floorY)
-  ctx.strokeStyle = '#b7b69e'
-  ctx.lineWidth = 2
+  ctx.strokeStyle = '#d5cfbd'
+  ctx.lineWidth = 1
   ctx.stroke()
 
   const vanishY = floorY - h * 0.22
@@ -269,8 +269,8 @@ export function drawOlympusHall(ctx: CanvasRenderingContext2D, w: number, h: num
     ctx.moveTo(1.5, y)
     ctx.lineTo(w - 1.5, y)
   }
-  ctx.strokeStyle = '#c9bc9c'
-  ctx.lineWidth = 1.35
+  ctx.strokeStyle = '#e0d6c2'
+  ctx.lineWidth = 1
   ctx.stroke()
 
   ctx.beginPath()
@@ -286,6 +286,9 @@ export function drawOlympusHall(ctx: CanvasRenderingContext2D, w: number, h: num
 
   foregroundColumn(ctx, w, h, false)
   foregroundColumn(ctx, w, h, true)
+  // A quiet atmospheric wash softens architecture without changing the theme.
+  ctx.fillStyle = 'rgba(255, 248, 233, 0.28)'
+  ctx.fillRect(0, 0, w, h)
 
   ctx.restore()
 }
@@ -304,12 +307,12 @@ export function drawOlympusTablet(ctx: CanvasRenderingContext2D, w: number, h: n
   const radius = Math.min(22, w * 0.07, h * 0.08)
 
   roundedRect(ctx, 3, 3, w - 6, h - 6, radius)
-  ctx.fillStyle = '#e4bd68'
+  ctx.fillStyle = '#c4a466'
   ctx.fill()
   roundedRect(ctx, 8, 7.5, w - 16, h - 19, radius - 5)
-  ctx.fillStyle = '#fff4dc'
+  ctx.fillStyle = '#fff8e9'
   ctx.fill()
-  ctx.strokeStyle = '#b78b3d'
+  ctx.strokeStyle = '#a77a32'
   ctx.lineWidth = 1.8
   ctx.stroke()
   roundedRect(ctx, 12, 11.5, w - 24, h - 27, radius - 8)

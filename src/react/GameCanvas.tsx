@@ -19,7 +19,10 @@ export function GameCanvas() {
   useEffect(() => {
     let cancelled = false
     const t = setTimeout(() => setFontReady(true), 1500)
-    void document.fonts.load(`16px ${FONT_FAMILY}`).then(() => {
+    void Promise.all([
+      document.fonts.load(`16px ${FONT_FAMILY}`),
+      document.fonts.load('700 16px Nunito'),
+    ]).then(() => {
       if (!cancelled) setFontReady(true)
     })
     return () => {
