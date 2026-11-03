@@ -1359,11 +1359,6 @@ export class TitleScene extends Phaser.Scene {
     const right = Math.max(margin, safe.right + 12)
     const y = Math.max(12, safe.top + 8)
     const height = vh < 500 ? 68 : 80
-    const frame = this.add.graphics()
-    frame.fillStyle(0xfff1d1).fillRoundedRect(x, y, vw - x - right, height, 14)
-    frame.lineStyle(3, INK).strokeRoundedRect(x, y, vw - x - right, height, 14)
-    frame.lineStyle(2, 0xd6ad54).lineBetween(x + 16, y + height - 8, vw - right - 16, y + height - 8)
-    this.panelContent.add(frame)
     const backW = vw < 600 ? 84 : 104
     const backH = 40
     const backX = x + 12 + backW / 2
