@@ -462,15 +462,15 @@ export class TitleScene extends Phaser.Scene {
 
     // Buttons on left side (25% from left edge), arranged vertically
     const buttonX = vw * 0.25
-    const playH = Math.round(Math.max(48, Math.min(76, vh * 0.085)))
-    const playW = Math.round(Math.max(220, Math.min(360, vw * 0.28)))
-    const navH = Math.round(Math.max(38, Math.min(58, vh * 0.062)))
-    const navW = Math.round(Math.max(200, Math.min(320, playW * 0.9)))
+    const playH = Math.round(Math.max(36, Math.min(48, vh * 0.055)))
+    const playW = Math.round(Math.max(160, Math.min(240, vw * 0.22)))
+    const navH = Math.round(Math.max(26, Math.min(36, vh * 0.04)))
+    const navW = Math.round(Math.max(140, Math.min(200, playW * 0.9)))
     const bandTop = Math.max(logoCY + logoH / 2 + 14, chipY + chipH / 2 + 10)
     const bandBottom = vh - bottomInset - m
     const navCount = 3
     const availH = Math.max(1, bandBottom - bandTop - playH - navCount * navH)
-    const buttonSpacing = Math.round(Math.max(12, Math.min(24, availH / navCount)))
+    const buttonSpacing = Math.round(Math.max(24, Math.min(36, availH / navCount)))
     const stackH = playH + navCount * navH + navCount * buttonSpacing
     const minStartY = bandTop + playH / 2
     const maxStartY = Math.max(minStartY, bandBottom - stackH + playH / 2)
@@ -502,22 +502,22 @@ export class TitleScene extends Phaser.Scene {
     const { logoCY, logoH } = this.buildLogo(vw / 2, topInset, vw, vh)
     const chipH = Math.round(Math.max(30, Math.min(44, vh * 0.052)))
     const chipW = Math.round(Math.max(170, Math.min(310, Math.min(vw * 0.86, chipH * 7.2))))
-    const playH = Math.round(Math.max(52, Math.min(76, vh * 0.085)))
+    const playH = Math.round(Math.max(36, Math.min(48, vh * 0.055)))
     const playW = portrait
-      ? Math.round(Math.max(200, Math.min(340, vw * 0.72)))
-      : Math.round(Math.max(220, Math.min(380, vw * 0.3)))
+      ? Math.round(Math.max(140, Math.min(220, vw * 0.56)))
+      : Math.round(Math.max(160, Math.min(260, vw * 0.24)))
     const navH = portrait
-      ? Math.round(Math.max(38, Math.min(50, vh * 0.054)))
-      : Math.round(Math.max(44, Math.min(58, vh * 0.062)))
+      ? Math.round(Math.max(24, Math.min(32, vh * 0.036)))
+      : Math.round(Math.max(30, Math.min(40, vh * 0.042)))
     const navGap = portrait ? 12 : 16
     const navW = portrait
       ? Math.floor((vw - 2 * m - 2 * navGap) / 3)
-      : Math.round(Math.max(130, Math.min(190, (vw - 2 * m - 2 * 16) / 3)))
+      : Math.round(Math.max(100, Math.min(140, (vw - 2 * m - 2 * 16) / 3)))
     if (portrait) {
       // Centered flow, bottom-anchored so the stats chip always sits in the
       // safe area: chip -> balanced 3 nav buttons row -> PLAY + LOGIN side-by-side -> machine -> logo.
       const isAuthed = authService.isAuthenticated()
-      const rowGap = 16
+      const rowGap = 28
       const chipY = vh - bottomInset - chipH / 2
       const navY = chipY - chipH / 2 - rowGap - navH / 2
       const playY = navY - navH / 2 - rowGap - playH / 2
@@ -547,7 +547,7 @@ export class TitleScene extends Phaser.Scene {
     } else {
       // Compact landscape layout for narrow (< 768px) viewports.
       const isAuthed = authService.isAuthenticated()
-      const rowGap = 14
+      const rowGap = 26
       const navY = vh - m - navH / 2
       const playY = navY - navH / 2 - rowGap - playH / 2
       const chipY = logoCY + logoH / 2 + 8 + chipH / 2
