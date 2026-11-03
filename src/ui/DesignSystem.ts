@@ -244,12 +244,12 @@ export function buildScreenHeader(
 
   const safe = readSafeArea()
   const compact = vh < 480
-  const edge = Math.max(12, Math.min(28, Math.round(vw * 0.035)))
-  const left = Math.max(edge, safe.left + 8)
-  const right = Math.max(edge, safe.right + 8)
-  const topMargin = Math.max(compact ? 10 : 18, safe.top + 8)
-  const backW = vw < 600 || compact ? 82 : 100
-  const backH = compact ? 36 : 40
+  const edge = Math.max(16, Math.min(32, Math.round(vw * 0.04)))
+  const left = Math.max(edge, safe.left + 12)
+  const right = Math.max(edge, safe.right + 12)
+  const topMargin = Math.max(compact ? 12 : 24, safe.top + 12)
+  const backW = vw < 600 || compact ? 88 : 112
+  const backH = compact ? 40 : 48
   const backX = left + backW / 2
   const backY = topMargin + backH / 2
   const backBtn = new ChunkyButton({
@@ -260,8 +260,8 @@ export function buildScreenHeader(
     h: backH,
     label: 'BACK',
     icon: (g, cx, cy, s) => drawLucide(g, 'arrow-left', cx, cy, s, 0xffffff, 2.5),
-    iconSize: 18,
-    fontSize: 13,
+    iconSize: 20,
+    fontSize: 14,
     pill: true,
     fill: UI_COLORS.BTN_BLUE,
     shadowColor: UI_COLORS.BTN_BLUE_SHADOW,
@@ -279,15 +279,15 @@ export function buildScreenHeader(
     screen: 'panel',
   })
 
-  const titleLeft = left + backW + 12
+  const titleLeft = left + backW + 16
   const titleRight = vw < 700 ? vw - right : vw - Math.max(titleLeft, right)
   const titleX = vw < 700 ? (titleLeft + titleRight) / 2 : vw / 2
   const titleMaxW = Math.max(1, titleRight - titleLeft)
-  const titleSize = compact || vw < 600 ? 26 : 32
-  const titleText = hudText(scene, titleX, backY - 1, title.toUpperCase(), 1, {
+  const titleSize = compact || vw < 600 ? 30 : 40
+  const titleText = hudText(scene, titleX, backY - 2, title.toUpperCase(), 1, {
     color: UI_COLORS.TEXT_GOLD,
     size: titleSize,
-    stroke: 5,
+    stroke: 6,
     origin: [0.5, 0.5],
   })
   titleText.setScale(Math.min(1, titleMaxW / Math.max(1, titleText.width)))
@@ -295,9 +295,9 @@ export function buildScreenHeader(
 
   // The subtitle is bounded independently of the title / Back row.
   if (subtitle) {
-    const subText = hudText(scene, (left + vw - right) / 2, topMargin + backH + (compact ? 14 : 18), subtitle, 1, {
+    const subText = hudText(scene, (left + vw - right) / 2, topMargin + backH + (compact ? 16 : 22), subtitle, 1, {
       color: UI_COLORS.TEXT_MUTED,
-      size: compact ? 11 : vw < 600 ? 10 : 12,
+      size: compact ? 12 : vw < 600 ? 11 : 14,
       stroke: 0,
       origin: [0.5, 0.5],
       shadow: false,
@@ -307,6 +307,6 @@ export function buildScreenHeader(
     parentContainer.add(subText)
   }
 
-  const contentTopY = topMargin + backH + (subtitle ? (compact ? 28 : 36) : (compact ? 10 : 18))
+  const contentTopY = topMargin + backH + (subtitle ? (compact ? 32 : 44) : (compact ? 12 : 24))
   return { headerH: contentTopY - topMargin, contentTopY }
 }

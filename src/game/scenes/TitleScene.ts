@@ -1239,7 +1239,6 @@ export class TitleScene extends Phaser.Scene {
 
     const subs: Partial<Record<ScreenName, string>> = {
       collection: 'COLLECTION ALBUM & DISCOVERY LOG',
-      leaderboard: 'YOUR TEN BEST RUNS',
       settings: 'BACKGROUND THEME & SAVED PROGRESS',
     }
 
@@ -1341,20 +1340,20 @@ export class TitleScene extends Phaser.Scene {
     // Clear loading indicator
     loadingT.destroy()
 
-    const columns = vw >= 700 && vh < 500 && entries.length > 5 ? 2 : 1
-    const listW = Math.min(columns === 2 ? 900 : 480, vw - left - right)
-    const columnGap = 16
-    const cardW = (listW - (columns - 1) * columnGap) / columns
-    const listX = centerX - listW / 2
+    const isDesktop = vw >= 720 && vw > vh
+    const maxTotalW = isDesktop ? Math.min(1200, vw - left - right) : Math.min(520, vw - left - right)
+    const totalX = centerX - maxTotalW / 2
 
     // Error state
     if (fetchError) {
+      const errorW = Math.min(480, maxTotalW)
+      const errorX = centerX - errorW / 2
       const errorH = Math.min(144, availableH)
       const errorY = bodyY + Math.min(40, Math.max(0, (availableH - errorH) / 3))
       g.fillStyle(UI_COLORS.CARD_BG, 1)
-      g.fillRoundedRect(listX, errorY, cardW, errorH, 14)
+      g.fillRoundedRect(errorX, errorY, errorW, errorH, 14)
       g.lineStyle(2, 0xff6b6b, 1)
-      g.strokeRoundedRect(listX, errorY, cardW, errorH, 14)
+      g.strokeRoundedRect(errorX, errorY, errorW, errorH, 14)
 
       const errorT = hudText(this, centerX, errorY + 40, 'FAILED TO LOAD', 1, {
         color: '#ff6b6b',
@@ -1371,19 +1370,21 @@ export class TitleScene extends Phaser.Scene {
         origin: [0.5, 0],
         shadow: false,
       })
-      errorSub.setWordWrapWidth(cardW - 36, true).setAlign('center')
+      errorSub.setWordWrapWidth(errorW - 36, true).setAlign('center')
       this.panelContent.add(errorSub)
       return
     }
 
     // Empty state
     if (entries.length === 0) {
+      const emptyW = Math.min(480, maxTotalW)
+      const emptyX = centerX - emptyW / 2
       const emptyH = Math.min(144, availableH)
       const emptyY = bodyY + Math.min(40, Math.max(0, (availableH - emptyH) / 3))
       g.fillStyle(UI_COLORS.CARD_BG, 1)
-      g.fillRoundedRect(listX, emptyY, cardW, emptyH, 14)
+      g.fillRoundedRect(emptyX, emptyY, emptyW, emptyH, 14)
       g.lineStyle(2, UI_COLORS.CARD_BORDER, 1)
-      g.strokeRoundedRect(listX, emptyY, cardW, emptyH, 14)
+      g.strokeRoundedRect(emptyX, emptyY, emptyW, emptyH, 14)
 
       const empty = hudText(this, centerX, emptyY + 40, 'NO SCORES YET', 1, {
         color: UI_COLORS.TEXT_GOLD,
@@ -1400,202 +1401,420 @@ export class TitleScene extends Phaser.Scene {
         origin: [0.5, 0],
         shadow: false,
       })
-      emptySub.setWordWrapWidth(cardW - 36, true).setAlign('center')
+      emptySub.setWordWrapWidth(emptyW - 36, true).setAlign('center')
       this.panelContent.add(emptySub)
       return
     }
 
-    // --- AAA LEADERBOARD DESIGN ---
-    // Podium for top 3, then a clean list for the rest.
     const top3 = entries.slice(0, 3)
-    const rest = entries.slice(3)
+    const top10 = entries.slice(0, 10)
 
-    // Podium area
-    const podiumH = Math.min(220, availableH * 0.45)
-    const podiumY = bodyY + 16
-    const podiumW = listW
-    const podiumX = listX
+    // Layout geometry: side-by-side on desktop, stacked on mobile
+    let podiumX: number
+    let podiumY: number
+    let podiumW: number
+    let podiumH: number
+    let tableX: number
+    let tableY: number
+    let tableW: number
+    let tableH: number
 
-    // Podium base (3D platform with depth)
-    const baseH = 28
+    if (isDesktop) {
+      const gap = Math.max(32, Math.round(maxTotalW * 0.04))
+      podiumW = Math.round((maxTotalW - gap) * 0.48)
+      tableW = maxTotalW - gap - podiumW
+      podiumX = totalX
+      tableX = totalX + podiumW + gap
+      tableH = Math.min(560, availableH - 16)
+      tableY = bodyY + Math.max(8, (availableH - tableH) / 2)
+      podiumH = Math.min(480, tableH * 0.95)
+      podiumY = tableY + tableH - podiumH
+    } else {
+      podiumW = maxTotalW
+      podiumX = totalX
+      podiumH = Math.min(280, Math.round(availableH * 0.42))
+      podiumY = bodyY + 8
+      tableW = maxTotalW
+      tableX = totalX
+      tableY = podiumY + podiumH + 16
+      tableH = Math.max(200, availableH - (tableY - bodyY) - 8)
+    }
+
+    // --- PODIUM (TOP 3) ---
+    const baseH = isDesktop ? 26 : 20
     const baseY = podiumY + podiumH - baseH
-    // Base shadow
-    g.fillStyle(0x000000, 0.6)
-    g.fillRoundedRect(podiumX + 8, baseY + 8, podiumW, baseH, 14)
-    // Base body
-    g.fillStyle(0x0f1422, 1)
-    g.fillRoundedRect(podiumX, baseY, podiumW, baseH, 14)
-    g.lineStyle(2, 0x2b3555, 1)
-    g.strokeRoundedRect(podiumX, baseY, podiumW, baseH, 14)
-    // Base top highlight
-    g.fillStyle(0x2b3555, 0.5)
-    g.fillRoundedRect(podiumX + 2, baseY + 2, podiumW - 4, 6, 8)
 
-    // 1st place (center, tallest)
-    const firstW = podiumW * 0.34
-    const firstH = podiumH * 0.8
-    const firstX = centerX - firstW / 2
-    const firstY = baseY - firstH
-    // 2nd place (left)
-    const secondW = podiumW * 0.3
-    const secondH = podiumH * 0.6
-    const secondX = firstX - secondW - 16
-    const secondY = baseY - secondH
-    // 3rd place (right)
-    const thirdW = podiumW * 0.3
-    const thirdH = podiumH * 0.5
-    const thirdX = firstX + firstW + 16
-    const thirdY = baseY - thirdH
+    // Stepped 3D stone pedestal under the 3 blocks
+    g.fillStyle(0x090d1a, 0.7)
+    g.fillRoundedRect(podiumX - 4, baseY + 6, podiumW + 8, baseH + 4, 12)
+    g.fillStyle(0x161f3a, 1)
+    g.fillRoundedRect(podiumX, baseY, podiumW, baseH, 12)
+    g.fillStyle(0x2b3a67, 0.7)
+    g.fillRoundedRect(podiumX + 4, baseY + 2, podiumW - 8, 6, 6)
+    g.lineStyle(3, INK, 1)
+    g.strokeRoundedRect(podiumX, baseY, podiumW, baseH, 12)
 
+    // Podium block dimensions (reserve top 40% of podiumH for ball + crown)
+    const maxBlockH = (podiumH - baseH) * (isDesktop ? 0.6 : 0.65)
+    const blockGap = isDesktop ? 10 : 8
+    const firstW = Math.round((podiumW - blockGap * 2) * 0.38)
+    const sideW = Math.round((podiumW - blockGap * 2 - firstW) / 2)
+    const firstH = Math.round(maxBlockH)
+    const secondH = Math.round(maxBlockH * (isDesktop ? 0.8 : 0.85))
+    const thirdH = Math.round(maxBlockH * (isDesktop ? 0.68 : 0.78))
+
+    const secondX = podiumX
+    const firstX = secondX + sideW + blockGap
+    const thirdX = firstX + firstW + blockGap
+
+    // Draw 2nd and 3rd first so 1st place sits heroically in front
     const podiumSlots = [
-      { x: secondX, y: secondY, w: secondW, h: secondH, rank: 2, entry: top3[1] },
-      { x: firstX, y: firstY, w: firstW, h: firstH, rank: 1, entry: top3[0] },
-      { x: thirdX, y: thirdY, w: thirdW, h: thirdH, rank: 3, entry: top3[2] },
+      {
+        x: secondX,
+        y: baseY - secondH,
+        w: sideW,
+        h: secondH,
+        rank: 2,
+        entry: top3[1],
+        tier: 1,
+        face: undefined as 'sleepy' | undefined,
+        sunglasses: true,
+      },
+      {
+        x: thirdX,
+        y: baseY - thirdH,
+        w: sideW,
+        h: thirdH,
+        rank: 3,
+        entry: top3[2],
+        tier: 5,
+        face: 'sleepy' as const,
+        sunglasses: false,
+      },
+      {
+        x: firstX,
+        y: baseY - firstH,
+        w: firstW,
+        h: firstH,
+        rank: 1,
+        entry: top3[0],
+        tier: 6,
+        face: undefined as 'sleepy' | undefined,
+        sunglasses: false,
+      },
     ]
 
     podiumSlots.forEach((slot) => {
       if (!slot.entry) return
-      const { x, y, w, h, rank, entry } = slot
-      const isCurrentUser = entry.isCurrentUser
+      const { x, y, w, h, rank, entry, tier, face, sunglasses } = slot
+      const cx = x + w / 2
 
-      // Podium block with 3D depth
-      const blockColor = rank === 1 ? 0xffd93b : rank === 2 ? 0xc9d1e3 : 0xd08a4e
-      const blockShadow = rank === 1 ? 0xd4a017 : rank === 2 ? 0x9aa5b8 : 0xa66a3a
-      // Shadow
-      g.fillStyle(0x000000, 0.5)
-      g.fillRoundedRect(x + 8, y + 8, w, h, 14)
-      // Side depth (right)
+      // Ball character perched on top of the podium block
+      const ballR = Math.min(w * (rank === 1 ? 0.4 : 0.36), (podiumH - baseH - firstH) * (rank === 1 ? 0.46 : 0.42))
+      const ballCY = y - ballR * 0.85
+
+      // Sparkle rays behind 1st place ball
+      if (rank === 1) {
+        const rayAngles = [-2.55, -2.2, -1.9, -1.24, -0.94, -0.59]
+        g.lineStyle(Math.max(3, ballR * 0.12), 0xffd93b, 1)
+        for (const a of rayAngles) {
+          const r0 = ballR * 1.16
+          const r1 = ballR * 1.42
+          g.beginPath()
+          g.moveTo(cx + Math.cos(a) * r0, ballCY + Math.sin(a) * r0)
+          g.lineTo(cx + Math.cos(a) * r1, ballCY + Math.sin(a) * r1)
+          g.strokePath()
+        }
+      }
+
+      drawBallIcon(this, g, tier, cx, ballCY, ballR, {
+        seed: rank * 777 + tier * 31,
+        layer: this.panelContent,
+        face,
+      })
+
+      // Cool sunglasses on 2nd-place ball
+      if (sunglasses) {
+        const gw = ballR * 0.72
+        const gh = ballR * 0.42
+        const gy = ballCY - ballR * 0.22
+        const gapX = ballR * 0.08
+        g.fillStyle(0x111522, 1)
+        g.fillRoundedRect(cx - gapX - gw, gy - gh / 2, gw, gh, 5)
+        g.fillRoundedRect(cx + gapX, gy - gh / 2, gw, gh, 5)
+        g.lineStyle(Math.max(2, ballR * 0.09), INK, 1)
+        g.strokeRoundedRect(cx - gapX - gw, gy - gh / 2, gw, gh, 5)
+        g.strokeRoundedRect(cx + gapX, gy - gh / 2, gw, gh, 5)
+        // Bridge + temple arms
+        g.beginPath()
+        g.moveTo(cx - gapX, gy - gh * 0.15)
+        g.lineTo(cx + gapX, gy - gh * 0.15)
+        g.moveTo(cx - gapX - gw, gy - gh * 0.2)
+        g.lineTo(cx - ballR * 0.96, gy - gh * 0.35)
+        g.moveTo(cx + gapX + gw, gy - gh * 0.2)
+        g.lineTo(cx + ballR * 0.96, gy - gh * 0.35)
+        g.strokePath()
+        // Lens sheen
+        g.fillStyle(0xffffff, 0.28)
+        g.fillRoundedRect(cx - gapX - gw + 3, gy - gh / 2 + 2, gw * 0.35, gh * 0.35, 2)
+        g.fillRoundedRect(cx + gapX + 3, gy - gh / 2 + 2, gw * 0.35, gh * 0.35, 2)
+      }
+
+      // Champion crown on 1st-place ball
+      if (rank === 1) {
+        drawCrown(g, cx, ballCY - ballR * 1.12, ballR * 1.05, ballR * 0.62)
+      }
+
+      // Podium block colors
+      const blockColor = rank === 1 ? 0xffd93b : rank === 2 ? 0xc0d0e8 : 0xe89b4a
+      const blockTop = rank === 1 ? 0xffe875 : rank === 2 ? 0xe0eaf8 : 0xf4b86e
+      const blockShadow = rank === 1 ? 0xd4a90b : rank === 2 ? 0x8a9ab8 : 0xb36b24
+      const badgeFill = rank === 1 ? 0xffb800 : rank === 2 ? 0x9bb0d1 : 0xc9732c
+
+      // Drop shadow
+      g.fillStyle(0x000000, 0.45)
+      g.fillRoundedRect(x + 5, y + 6, w, h, 12)
+      // Main block body
+      g.fillStyle(blockColor, 1)
+      g.fillRoundedRect(x, y, w, h, 12)
+      // Right-edge 3D shade
       g.fillStyle(blockShadow, 1)
-      g.fillRoundedRect(x + w - 10, y + 6, 10, h, 8)
-      // Main face
-      g.fillStyle(blockColor, 1)
-      g.fillRoundedRect(x, y, w, h, 14)
-      g.lineStyle(3, 0x1a1a1a, 1)
-      g.strokeRoundedRect(x, y, w, h, 14)
-      // Top highlight
-      g.fillStyle(0xffffff, 0.35)
-      g.fillRoundedRect(x + 8, y + 8, w - 16, h * 0.3, 12)
+      g.fillRoundedRect(x + w - 9, y + 4, 9, h - 4, 8)
+      // Top 3D bevel cap
+      const capH = Math.max(10, Math.round(h * 0.14))
+      g.fillStyle(blockTop, 1)
+      g.fillRoundedRect(x + 2, y + 2, w - 4, capH, 10)
+      // Bold cartoon outline
+      g.lineStyle(3, INK, 1)
+      g.strokeRoundedRect(x, y, w, h, 12)
 
-      // Rank badge
-      const badgeR = Math.min(24, w * 0.22)
-      const badgeX = x + w / 2
-      const badgeY = y - badgeR - 12
-      g.fillStyle(0x1a1a1a, 1)
-      g.fillCircle(badgeX, badgeY, badgeR)
-      g.fillStyle(blockColor, 1)
-      g.fillCircle(badgeX, badgeY, badgeR - 3)
-      // Badge highlight
-      g.fillStyle(0xffffff, 0.6)
-      g.fillCircle(badgeX - badgeR * 0.3, badgeY - badgeR * 0.3, badgeR * 0.35)
-      const rankT = hudText(this, badgeX, badgeY, `${rank}`, 1, {
+      // Current user glow border on podium block
+      if (entry.isCurrentUser) {
+        g.lineStyle(3, 0x4fc3f7, 1)
+        g.strokeRoundedRect(x - 3, y - 3, w + 6, h + 6, 14)
+      }
+
+      // Rank badge INSIDE the podium block
+      const badgeR = Math.max(11, Math.min(20, Math.round(Math.min(w * 0.18, h * 0.17))))
+      const badgeY = y + capH + badgeR + Math.max(1, h * 0.02)
+
+      // Golden laurel leaf accents around #1 badge
+      if (rank === 1) {
+        g.fillStyle(0xffaa00, 1)
+        g.lineStyle(2, INK, 1)
+        for (const dir of [-1, 1]) {
+          for (let l = 0; l < 3; l++) {
+            const lx = cx + dir * (badgeR + 5 + l * 2)
+            const ly = badgeY + (1 - l) * (badgeR * 0.42)
+            g.fillCircle(lx, ly, Math.max(3, badgeR * 0.24))
+            g.strokeCircle(lx, ly, Math.max(3, badgeR * 0.24))
+          }
+        }
+      }
+
+      g.fillStyle(badgeFill, 1)
+      g.fillCircle(cx, badgeY, badgeR)
+      g.lineStyle(2.5, INK, 1)
+      g.strokeCircle(cx, badgeY, badgeR)
+      const rankT = hudText(this, cx, badgeY, `${rank}`, 1, {
         color: '#1a1a1a',
-        size: badgeR * 1.2,
+        size: Math.round(badgeR * 1.15),
         stroke: 0,
         origin: [0.5, 0.5],
         shadow: false,
       })
       this.panelContent.add(rankT)
 
-      // Name
-      const nameT = hudText(this, x + w / 2, y + h * 0.45, entry.displayName, 1, {
+      // Player name inside block
+      const textTop = badgeY + badgeR + 2
+      const textAvail = Math.max(24, y + h - textTop - 4)
+      const nameY = textTop + textAvail * 0.28
+      const scoreY = textTop + textAvail * 0.78
+
+      const nameSize = Math.max(11, Math.min(17, Math.round(Math.min(w * 0.14, h * 0.155))))
+      const nameT = hudText(this, cx, nameY, entry.displayName, 1, {
         color: '#ffffff',
-        size: Math.min(18, w * 0.14),
-        stroke: 2,
+        size: nameSize,
+        stroke: 4,
         origin: [0.5, 0.5],
         shadow: false,
       })
-      nameT.setWordWrapWidth(w - 16, true).setAlign('center')
+      nameT.setScale(Math.min(1, (w - 10) / Math.max(1, nameT.width)))
       this.panelContent.add(nameT)
 
-      // Score
-      const scoreT = hudText(this, x + w / 2, y + h * 0.7, entry.score.toLocaleString('en-US'), 1, {
-        color: '#ffffff',
-        size: Math.min(20, w * 0.16),
-        stroke: 2,
+      // Score inside block
+      const scoreSize = Math.max(12, Math.min(20, Math.round(Math.min(w * 0.165, h * 0.18))))
+      const scoreT = hudText(this, cx, scoreY, entry.score.toLocaleString('en-US'), 1, {
+        color: rank === 1 ? '#ffd93b' : '#fff6e0',
+        size: scoreSize,
+        stroke: 4,
         origin: [0.5, 0.5],
         shadow: false,
       })
+      scoreT.setScale(Math.min(1, (w - 8) / Math.max(1, scoreT.width)))
       this.panelContent.add(scoreT)
-
-      // Current user highlight
-      if (isCurrentUser) {
-        g.lineStyle(3, 0x4fc3f7, 1)
-        g.strokeRoundedRect(x - 3, y - 3, w + 6, h + 6, 10)
-      }
     })
 
-    // List for the rest
-    const listY = baseY + 24
-    const listH = availableH - (listY - bodyY)
-    const rowsPerColumn = Math.ceil(rest.length / columns)
-    const rowGap = 8
-    const rowH = Math.min(56, Math.floor((listH - (rowsPerColumn - 1) * rowGap) / rowsPerColumn))
+    // --- FRAMED LEADERBOARD TABLE (TOP 10) ---
+    // Drop shadow
+    g.fillStyle(0x000000, 0.5)
+    g.fillRoundedRect(tableX + 8, tableY + 10, tableW, tableH, 20)
+    // Outer frame (soft indigo/purple-blue rim like reference)
+    g.fillStyle(0x3b4880, 1)
+    g.fillRoundedRect(tableX, tableY, tableW, tableH, 20)
+    g.lineStyle(4, INK, 1)
+    g.strokeRoundedRect(tableX, tableY, tableW, tableH, 20)
+    // Inner dark recessed well
+    const wellPad = 8
+    const wellX = tableX + wellPad
+    const wellY = tableY + wellPad
+    const wellW = tableW - wellPad * 2
+    const wellH = tableH - wellPad * 2
+    g.fillStyle(0x13192e, 1)
+    g.fillRoundedRect(wellX, wellY, wellW, wellH, 16)
 
-    rest.forEach((entry, i) => {
-      const column = Math.floor(i / rowsPerColumn)
-      const cardX = listX + column * (cardW + columnGap)
-      const y = listY + (i % rowsPerColumn) * (rowH + rowGap)
-      const rank = entry.rank
-      const isCurrentUser = entry.isCurrentUser
+    // Column headers: # | PLAYER | SCORE
+    const headerH = isDesktop ? 36 : 30
+    const headerCY = wellY + headerH / 2 + 4
+    const padX = isDesktop ? 16 : 12
+    const scrollW = 10
+    const rowW = wellW - padX * 2 - scrollW - 12
+    const rowX = wellX + padX
+    const rankColX = rowX + (isDesktop ? 28 : 24)
+    const iconColX = rowX + (isDesktop ? 72 : 60)
+    const playerColX = rowX + (isDesktop ? 100 : 84)
+    const scoreColX = rowX + rowW - (isDesktop ? 16 : 12)
 
-      // Card background
-      g.fillStyle(isCurrentUser ? 0x2b4a6f : UI_COLORS.CARD_BG, 0.95)
-      g.fillRoundedRect(cardX, y, cardW, rowH, 12)
-      g.lineStyle(2, isCurrentUser ? 0x4fc3f7 : UI_COLORS.CARD_BORDER, 1)
-      g.strokeRoundedRect(cardX, y, cardW, rowH, 12)
-      // Subtle top highlight
-      g.fillStyle(0xffffff, 0.12)
-      g.fillRoundedRect(cardX + 2, y + 2, cardW - 4, rowH * 0.45, 10)
-      // Left accent bar
-      g.fillStyle(isCurrentUser ? 0x4fc3f7 : 0x2b3555, 1)
-      g.fillRoundedRect(cardX, y, 8, rowH, 4)
+    const hdrSize = isDesktop ? 14 : 12
+    const hRank = hudText(this, rankColX, headerCY, '#', 1, {
+      color: '#a3b3d9',
+      size: hdrSize,
+      stroke: 2,
+      origin: [0.5, 0.5],
+      shadow: false,
+    })
+    const hPlayer = hudText(this, playerColX, headerCY, 'PLAYER', 1, {
+      color: '#a3b3d9',
+      size: hdrSize,
+      stroke: 2,
+      origin: [0, 0.5],
+      shadow: false,
+    })
+    const hScore = hudText(this, scoreColX, headerCY, 'SCORE', 1, {
+      color: '#a3b3d9',
+      size: hdrSize,
+      stroke: 2,
+      origin: [1, 0.5],
+      shadow: false,
+    })
+    this.panelContent.add([hRank, hPlayer, hScore])
 
-      // Rank
-      const rankT = hudText(this, cardX + 20, y + rowH / 2, `#${rank}`, 1, {
-        color: isCurrentUser ? '#4fc3f7' : '#aeb4c9',
-        size: Math.min(18, Math.round(rowH * 0.4)),
-        stroke: 2,
+    // 10-slot rows area
+    const rowsTopY = wellY + headerH + 6
+    const rowsAvailH = wellH - headerH - 16
+    const slotCount = 10
+    const rowGap = isDesktop ? 5 : 4
+    const rowH = Math.max(20, Math.floor((rowsAvailH - (slotCount - 1) * rowGap) / slotCount))
+
+    // Scrollbar track + cyan thumb on the right of the table
+    const sbX = wellX + wellW - padX - scrollW
+    const sbY = rowsTopY
+    const sbH = rowH * slotCount + rowGap * (slotCount - 1)
+    g.fillStyle(0x0b0f1d, 0.9)
+    g.fillRoundedRect(sbX, sbY, scrollW, sbH, scrollW / 2)
+    g.fillStyle(0x28d9ff, 1)
+    g.fillRoundedRect(sbX + 1, sbY + 2, scrollW - 2, Math.max(32, sbH * 0.34), (scrollW - 2) / 2)
+    const fallbackTiers = [6, 1, 5, 3, 2, 4, 1, 4, 6, 2]
+
+    for (let i = 0; i < slotCount; i++) {
+      const entry = top10[i]
+      const y = rowsTopY + i * (rowH + rowGap)
+      const cy = y + rowH / 2
+      const rank = i + 1
+      const isFirst = rank === 1 && !!entry
+      const isCurrentUser = !!entry?.isCurrentUser
+
+      if (isFirst) {
+        // Golden champion banner row
+        g.fillStyle(0xd99b16, 1)
+        g.fillRoundedRect(rowX, y, rowW, rowH, 12)
+        g.fillStyle(0xffdf6b, 0.3)
+        g.fillRoundedRect(rowX + 2, y + 2, rowW - 4, rowH * 0.45, 10)
+        g.lineStyle(2, 0xffeb75, 1)
+        g.strokeRoundedRect(rowX, y, rowW, rowH, 12)
+        // Small champion crown badge on top-left corner of row #1
+        drawCrown(g, rowX + 10, y + 5, Math.min(20, rowH * 0.6), Math.min(14, rowH * 0.42))
+      } else if (isCurrentUser) {
+        g.fillStyle(0x213d6b, 0.95)
+        g.fillRoundedRect(rowX, y, rowW, rowH, 10)
+        g.lineStyle(2, 0x4fc3f7, 1)
+        g.strokeRoundedRect(rowX, y, rowW, rowH, 10)
+      } else {
+        g.fillStyle(i % 2 === 0 ? 0x1b2340 : 0x151c34, 0.9)
+        g.fillRoundedRect(rowX, y, rowW, rowH, 10)
+      }
+
+      const fontSize = Math.max(12, Math.min(18, Math.round(rowH * 0.48)))
+      const rankT = hudText(this, rankColX, cy, `${rank}`, 1, {
+        color: entry ? '#ffffff' : '#4a5678',
+        size: fontSize,
+        stroke: entry ? 3 : 0,
         origin: [0.5, 0.5],
         shadow: false,
       })
       this.panelContent.add(rankT)
 
-      // Ball icon
-      const ballR = Math.min(16, rowH * 0.3)
-      drawBallIcon(this, g, Math.max(1, Math.min(BALL_TIERS.length, entry.tierReached)), cardX + 52, y + rowH / 2, ballR, {
-        seed: entry.tierReached * 991,
+      if (!entry) {
+        const dashT = hudText(this, playerColX, cy, '—', 1, {
+          color: '#3b4668',
+          size: fontSize,
+          stroke: 0,
+          origin: [0, 0.5],
+          shadow: false,
+        })
+        this.panelContent.add(dashT)
+        continue
+      }
+
+      // Ball icon (top 3 match their podium character; 4+ use tierReached or vibrant fallback)
+      const rowTier =
+        rank === 1
+          ? 6
+          : rank === 2
+            ? 1
+            : rank === 3
+              ? 5
+              : entry.tierReached > 1
+                ? Math.min(BALL_TIERS.length, entry.tierReached)
+                : fallbackTiers[i % fallbackTiers.length]!
+      const iconR = Math.max(10, Math.min(18, rowH * 0.38))
+      drawBallIcon(this, g, rowTier, iconColX, cy, iconR, {
+        seed: rank * 777 + rowTier * 31,
         layer: this.panelContent,
+        face: rank === 3 ? 'sleepy' : undefined,
       })
 
-      // Name
-      const nameT = hudText(this, cardX + 76, y + rowH / 2 - 6, entry.displayName, 1, {
-        color: isCurrentUser ? '#4fc3f7' : UI_COLORS.TEXT_WHITE,
-        size: Math.min(14, Math.round(rowH * 0.3)),
-        stroke: 2,
-        origin: [0, 0.5],
-        shadow: false,
-      })
-      this.panelContent.add(nameT)
-
-      // Score
-      const scoreT = hudText(this, cardX + 76, y + rowH / 2 + 8, entry.score.toLocaleString('en-US'), 1, {
-        color: isCurrentUser ? '#4fc3f7' : UI_COLORS.TEXT_MUTED,
-        size: Math.min(16, Math.round(rowH * 0.34)),
-        stroke: 2,
-        origin: [0, 0.5],
-      })
-      this.panelContent.add(scoreT)
-
-      // Date
-      const whenT = hudText(this, cardX + cardW - 12, y + rowH / 2, fmtDate(entry.createdAt), 1, {
-        color: UI_COLORS.TEXT_MUTED,
-        size: 10,
-        stroke: 0,
+      const scoreStr = entry.score.toLocaleString('en-US')
+      const scoreT = hudText(this, scoreColX, cy, scoreStr, 1, {
+        color: isFirst ? '#ffd93b' : isCurrentUser ? '#4fc3f7' : '#ffffff',
+        size: fontSize,
+        stroke: 3,
         origin: [1, 0.5],
         shadow: false,
       })
-      this.panelContent.add(whenT)
-    })
+      this.panelContent.add(scoreT)
+
+      const maxNameW = Math.max(40, scoreColX - scoreT.width - playerColX - 16)
+      const nameT = hudText(this, playerColX, cy, entry.displayName, 1, {
+        color: isCurrentUser && !isFirst ? '#4fc3f7' : '#ffffff',
+        size: fontSize,
+        stroke: 3,
+        origin: [0, 0.5],
+        shadow: false,
+      })
+      nameT.setScale(Math.min(1, maxNameW / Math.max(1, nameT.width)))
+      this.panelContent.add(nameT)
+    }
   }
 
   private buildSettings(vw: number, vh: number, topY: number): void {
@@ -2050,10 +2269,6 @@ export class TitleScene extends Phaser.Scene {
 // Shared drawing helpers
 // ---------------------------------------------------------------------------
 
-function fmtDate(at: number): string {
-  return new Date(at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
-
 /** Rounded-rect path on a 2D canvas context (manual — ctx.roundRect is
  * missing on older iOS Safari). */
 function rrPath(
@@ -2092,6 +2307,45 @@ function starPath(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: numb
   ctx.closePath()
 }
 
+/** Cartoon crown (three spikes + jewel band) drawn with Phaser Graphics —
+ * sits on the leaderboard champion ball and the #1 list row. */
+function drawCrown(
+  g: Phaser.GameObjects.Graphics,
+  cx: number,
+  cy: number,
+  w: number,
+  h: number,
+): void {
+  const x0 = cx - w / 2
+  const y0 = cy - h / 2
+  const bandH = h * 0.34
+  const valleyY = y0 + h * 0.52
+  const sw = w / 3
+  // Zigzag silhouette: band bottom → left edge up → 3 spikes → right edge down.
+  const pts = [
+    new Phaser.Math.Vector2(x0, y0 + h),
+    new Phaser.Math.Vector2(x0, valleyY),
+    new Phaser.Math.Vector2(x0 + sw * 0.5, y0),
+    new Phaser.Math.Vector2(x0 + sw, valleyY),
+    new Phaser.Math.Vector2(x0 + sw * 1.5, y0 - h * 0.18),
+    new Phaser.Math.Vector2(x0 + sw * 2, valleyY),
+    new Phaser.Math.Vector2(x0 + sw * 2.5, y0),
+    new Phaser.Math.Vector2(x0 + w, valleyY),
+    new Phaser.Math.Vector2(x0 + w, y0 + h),
+  ]
+  g.fillStyle(0xffd93b, 1)
+  g.fillPoints(pts, true)
+  g.lineStyle(Math.max(2, w * 0.06), INK, 1)
+  g.strokePoints(pts, true, true)
+  // Band jewels.
+  const jewelY = y0 + h - bandH * 0.5
+  g.fillStyle(0xf44336, 1)
+  g.fillCircle(cx, jewelY, bandH * 0.32)
+  g.fillStyle(0x4fc3f7, 1)
+  g.fillCircle(cx - w * 0.28, jewelY, bandH * 0.24)
+  g.fillCircle(cx + w * 0.28, jewelY, bandH * 0.24)
+}
+
 /**
  * Draws one ball character at (cx, cy) with radius r through the shared
  * appearance pipeline — the SAME look as gameplay (tier fill, wobble
@@ -2112,6 +2366,8 @@ export function drawBallIcon(
     seed?: number
     layer?: Phaser.GameObjects.Container
     blink?: boolean
+    /** 'sleepy' squashes the eyes (half-lidded podium character). */
+    face?: 'sleepy'
   } = {},
 ): void {
   const t = getTier(tier)
@@ -2123,6 +2379,7 @@ export function drawBallIcon(
     return
   }
   const look = ballLookFor(tier, opts.seed ?? 7)
+  if (opts.face === 'sleepy') look.eyeH *= 0.45
   const poly = restContour(look, r, cx, cy, 32)
   const pts = poly.map((p) => new Phaser.Math.Vector2(p.x, p.y))
 

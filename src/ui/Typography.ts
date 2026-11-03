@@ -44,19 +44,21 @@ export function hudText(
   opts: TextOptions,
 ): Phaser.GameObjects.Text {
   const stroke = opts.stroke ?? 3
+  const dpr = Math.max(2, Math.min(window.devicePixelRatio || 1, 3))
   const t = scene.add
-    .text(x, y, initial, {
+    .text(Math.round(x), Math.round(y), initial, {
       fontFamily: FONT_FAMILY,
       fontSize: `${Math.max(10, Math.round(opts.size * fontScale))}px`,
       color: opts.color,
       stroke: '#111111',
-      strokeThickness: Math.max(1, stroke * fontScale),
-      resolution: Math.min(window.devicePixelRatio || 1, 2),
+      strokeThickness: Math.max(1, Math.round(stroke * fontScale * 2) / 2),
+      resolution: dpr,
     })
     .setOrigin(opts.origin?.[0] ?? 0, opts.origin?.[1] ?? 0)
-  if (opts.pad) t.setPadding(opts.pad, opts.pad, opts.pad, opts.pad)
+  const pad = opts.pad ?? Math.ceil(stroke * fontScale * 0.5 + 2)
+  t.setPadding(pad, pad, pad, pad)
   if (opts.shadow !== false) {
-    t.setShadow(0, Math.max(1, 3 * fontScale), '#00000055', 0, false, true)
+    t.setShadow(0, Math.max(1, Math.round(3 * fontScale)), '#00000066', 0, false, true)
   }
   return t
 }

@@ -79,11 +79,10 @@ export function createGame(parent: HTMLElement): Phaser.Game {
   // the pixelated look on Retina. Vector/ink art scales cleanly; the
   // perf cost is bounded by the soft-body particle count, not fill rate.
   // PERF (iPhone 14 Pro readout: 42fps at dpr 3): cap the render buffer
-  // at dpr 2 — 780×1688 instead of 1170×2532 is ~2.3× less fill per
-  // frame. Background art is already dpr-2-baked; ball sprites are
-  // filtered textures; the visible cost is a slightly softer composite
-  // on close inspection. User-approved tradeoff.
-  const dpr = (): number => Math.min(window.devicePixelRatio || 1, 2)
+  // at dpr 3 — 1170×2532 instead of 780×1688. Background art is already
+  // dpr-2-baked; ball sprites are filtered textures; the visible cost is
+  // a slightly softer composite on close inspection. User-approved tradeoff.
+  const dpr = (): number => Math.min(window.devicePixelRatio || 1, 3)
   let lastAppliedW = 0
   let lastAppliedH = 0
   let lastAppliedDpr = 0
