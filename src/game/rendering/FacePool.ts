@@ -452,6 +452,10 @@ export class FacePool {
 
   clear(): void {
     for (const id of [...this.views.keys()]) this.drop(id)
+    // Evict any orphaned prewarmed atlases (refs=0, no live views).
+    for (const [key, atlas] of this.atlases) {
+      if (atlas.refs <= 0) this.evictAtlas(key, atlas)
+    }
   }
 
   destroy(): void {

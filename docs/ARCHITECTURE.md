@@ -277,6 +277,12 @@ RLS on everything; leaderboard reads via security-definer SQL functions.
   bounds. Full server-authoritative simulation is out of scope at launch
   (noted in Unresolved Decisions).
 
+### Browser authentication and analytics time
+
+- Supabase retains sessions in its default browser storage with automatic token refresh. Startup subscribes before reading the stored session, announces the restored user before account hydration, and defers SDK-dependent work outside auth callbacks.
+- Account revisions discard superseded profile/progress responses. Explicit logout cancels queued restoration and clears local account ownership; expired or revoked sessions and cleared browser storage still require sign-in.
+- Boss analytics measures its rolling activity windows against the report's `generatedAt` timestamp, not a second live-clock reading.
+
 ## 8. Error Handling & Resilience
 
 - Auth/network failures degrade gracefully: game is fully playable offline;

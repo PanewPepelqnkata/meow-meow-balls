@@ -1486,8 +1486,9 @@ export function drawTier9Ball(
   panic = 0,
   gaze?: { x: number; y: number },
   seed = 9,
+  theme: 'shark' | 'pig' = tier9Theme(),
 ): void {
-  if (tier9Theme() === 'pig') {
+  if (theme === 'pig') {
     drawPigBall(g, cx, cy, r, variant, poly, panic, gaze, seed)
   } else {
     drawSharkBall(g, cx, cy, r, variant, poly, panic, gaze, seed)
@@ -1511,11 +1512,13 @@ export function drawCollectibleBall(
   panic = 0,
   gaze?: { x: number; y: number },
   seed = 9,
+  theme?: string,
 ): void {
   if (tier === 10) {
     drawCrabBall(g, cx, cy, r, variant, poly, panic, gaze, seed)
     return
   }
-  drawTier9Ball(g, cx, cy, r, variant, poly, panic, gaze, seed)
+  drawTier9Ball(g, cx, cy, r, variant, poly, panic, gaze, seed,
+    theme === 'shark' || theme === 'pig' ? theme : tier9Theme())
 }
 

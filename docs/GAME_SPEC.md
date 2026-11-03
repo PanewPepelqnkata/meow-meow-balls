@@ -35,22 +35,13 @@ points and triggering chain reactions. The run ends when a ball escapes the cont
 
 ## 3. Ball Tiers (locked: exactly 12)
 
-- Exactly 12 tiers are planned (Phase 2.16.2: total raised from 10; tiers 10–12
-  are reserved placeholders — their designs are not yet made).
-- **Tiers 1–7**: predictable progression (each tier = a fixed size, color, and score
-  value; merging two of tier N produces tier N+1). Exact size/score curve to be
-  tuned in implementation, governed by `ballTiers` config (see ARCHITECTURE.md).
-- **Tiers 8–9**: playable merge destinations (rainbow / fantasy identities,
-  per-run variants).
-- **Tiers 10–12 — DEFERRED / UNRESOLVED**: not yet made; the merge chain ends at
-  tier 9 until the user specifies their design and the randomization behavior.
-
-> ⚠️ **UNRESOLVED REQUIREMENT — DO NOT IMPLEMENT**
-> Tier 8–10 randomization behavior has not been specified by the user.
-> No mechanic for tiers 8–10 may be invented or implemented until the user explains
-> the intended behavior. The spec, architecture, and checklist preserve this as an
-> explicit open item. Placeholder: tiers 8–10 exist in the tier table with reserved
-> size/color/score entries only.
+- Exactly 12 tiers are planned. Tiers 1–8 use the core collection spread.
+- **Tiers 1–7**: predictable progression; each has a fixed size, color, and score. Two balls of tier N merge into tier N+1 where the destination is playable.
+- **Tier 8**: the cycling RGB ball, a playable merge destination.
+- **Tiers 9–12**: collectible tiers with eight unrelated character slots each. A run rolls one implemented character per configured collectible tier and keeps it for the run. Palette variations do not count as separate characters.
+- Current implemented characters are Tier 9 shark/pig and Tier 10 crab; the existing weighted run rolls are unchanged. Tiers 11–12 and unfinished character slots remain locked and are not added to gameplay until their artwork/configuration is implemented.
+- Collection history stores `${tier}:${character}:${palette}` in the existing variants map. The book renders the recorded character and first-discovered palette independently of the current run.
+- Older Tier 9 numeric records contain only a palette, not an animal identity; they are preserved as unidentified finds rather than arbitrarily converted into pig or shark. Legacy crab records can be recovered because Tier 10 had only crab.
 
 ## 4. Spawning Rules
 

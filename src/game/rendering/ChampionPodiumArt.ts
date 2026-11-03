@@ -270,7 +270,7 @@ function drawLeaf(
   ctx.stroke()
 }
 
-/** Standalone medal and laurels; the caller owns the centered rank label. */
+/** Standalone medal, laurels, and stamped metallic rank numeral. */
 export function drawChampionMedal(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -364,6 +364,24 @@ export function drawChampionMedal(
   ctx.strokeStyle = highlight
   ctx.lineWidth = outline * 0.28
   ctx.stroke()
+
+  // An inset die impression: the upper-left cut is dark and the lower-right
+  // lip catches the same light as the rim. The numeral shares the alloy.
+  ctx.font = `800 ${radius * 1.26}px Nunito, ui-rounded, sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  const numeral = String(rank)
+  const glyphY = cy + radius * 0.045
+  const relief = Math.max(0.65, radius * 0.045)
+  ctx.fillStyle = highlight
+  ctx.fillText(numeral, cx + relief * 0.55, glyphY + relief)
+  ctx.strokeStyle = medalEdge
+  ctx.lineWidth = Math.max(0.65, radius * 0.055)
+  ctx.strokeText(numeral, cx - relief * 0.35, glyphY - relief * 0.55)
+  ctx.fillStyle = medalEdge
+  ctx.fillText(numeral, cx - relief * 0.35, glyphY - relief * 0.55)
+  ctx.fillStyle = rank === 2 ? '#8d9fa4' : rank === 3 ? '#a56339' : '#bd862a'
+  ctx.fillText(numeral, cx, glyphY)
 
   ctx.restore()
 }

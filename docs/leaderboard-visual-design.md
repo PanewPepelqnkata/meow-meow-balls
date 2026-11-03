@@ -14,8 +14,8 @@ The leaderboard is a cartoon Mount Olympus temple scene, not a dashboard with or
 
 ### Champion podium
 
-- The champion component order is character, laurel medal, measured Greek-corner name plaque, and dedicated gold-framed score plaque. Marble column artwork is a separate base layer; balls, medals, name plaques and score plaques each have independent animation containers.
-- Original ball artwork, faces, colors, top-three tiers, and first-place crown are retained. Column bases align; heights stay distinct. Score plaques have identical construction, measured padding, warm marble faces and bold dark values.
+- The champion component order is character, laurel medal with its rank stamped into the metal texture, measured Greek-corner name plaque, and dedicated gold-framed score plaque. Marble column artwork is a separate base layer; balls, medals, name plaques and score plaques each have independent animation containers.
+- Original Ball Rush ball artwork, faces, colors, top-three tiers, and first-place crown are retained. Column bases align; heights stay distinct. Score plaques have identical construction, measured padding, warm marble faces and bold dark values.
 
 ### Ranking tablet
 
@@ -61,3 +61,11 @@ The leaderboard is a cartoon Mount Olympus temple scene, not a dashboard with or
 - `src/game/rendering/LeaderboardEntrance.ts` — coordinated champion/temple reveal and score count-up.
 - `src/game/rendering/GoldenScreenTransition.ts` — reusable 500ms light sweep with owned cleanup.
 - `src/game/rendering/RoughArt.ts` — shared canvas bake/cache helper.
+
+## Collection identity
+
+- Tiers 9–12 each expose eight character slots; a slot is a character, not a recolor. The current random-run catalog supplies Tier 9 shark/pig and Tier 10 crab. Unimplemented character slots remain visibly locked and are not added to any run roll.
+- Discovery saves use a `${tier}:${character}:${palette}` key inside the existing variants map. Tier 9 pig and shark therefore persist and render as separate characters across run changes; each retains its first-found palette.
+- Legacy Tier 10 numeric variant keys are unambiguous crab finds and remain visible. Legacy Tier 9 numeric palette keys do not identify pig versus shark, so the book reports an unknown older character rather than guessing or duplicating the current run's animal.
+- The collection book has dedicated Tier 9, Tier 10, Tier 11 and Tier 12 chapters with four slots per leaf (eight per spread). Character artwork is rendered with its saved theme and palette using the shared Ball Rush renderer.
+- Supabase account reconciliation no longer fabricates a collectible character/palette from score rows, because score data contains no character identity. Existing explicit collection keys continue through the existing save merge and cloud-progress JSON without database changes.

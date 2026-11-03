@@ -27,7 +27,7 @@ import { session, fastbootRequested } from '../state/session'
 import { bannerForcedByVariant } from '../rendering/DiscoveryBanner'
 import { hasDiscoveredTier, recordDiscovery, recordMerge, recordRunEnd, recordRunStart, savedBest, themeSetting } from '../state/save'
 import { scoreService } from '../../services/auth'
-import { rollNewRunSeed, runVariantFor } from '../state/runVariant'
+import { rollNewRunSeed, runVariantFor, themeFor } from '../state/runVariant'
 import {
   ballLookFor,
   drawBallFace,
@@ -287,9 +287,9 @@ export class PlaygroundScene extends Phaser.Scene {
         }
 
         // Phase 2.14.0 (spec §2): lifetime records for the JOURNAL,
-        // COLLECTION and stats screens. Tiers 8–9 record their PER-RUN
-        // variant (randomized every run — the collectible variants).
-        if (firstTime) recordDiscovery(tier, runVariantFor(tier))
+        // COLLECTION and stats screens. Collectibles retain both their run's
+        // character theme and palette; palette changes are not new characters.
+        if (firstTime) recordDiscovery(tier, runVariantFor(tier), themeFor(tier))
         recordMerge(tier, this.score.score)
         this.mergesThisRun++
         if (tier > this.bestTierRun) this.bestTierRun = tier

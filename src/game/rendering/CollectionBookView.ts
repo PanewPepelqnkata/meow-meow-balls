@@ -1,10 +1,10 @@
 import Phaser from 'phaser'
 import { getTier } from '../../config/ballTiers'
+import { collectionSlotsFor, collectionDiscovery, hasUnidentifiedCollectionFinds } from '../../config/collectibleCollection'
 import { ChunkyButton, UI_COLORS } from '../../ui/DesignSystem'
 import { readSafeArea } from '../../ui/ResponsiveLayout'
 import { hudText } from '../../ui/Typography'
 import { loadSave } from '../state/save'
-import { VARIANT_COUNT } from '../state/runVariant'
 import {
   ballLookFor,
   ballOutlineWidth,
@@ -22,9 +22,10 @@ interface BookLeaf {
 
 const CHAPTERS = [
   { label: 'CORE', tab: 'CORE T1–8', color: 0x3b82f6 },
-  { label: 'TIER 9', tab: 'T9 VARIANTS', color: 0xec4899 },
-  { label: 'CRABS', tab: 'T10 CRABS', color: 0xf97316 },
-  { label: 'MYTHIC', tab: 'MYTHIC', color: 0xa855f7 },
+  { label: 'TIER 9', tab: 'TIER 9', color: 0xec4899 },
+  { label: 'TIER 10', tab: 'TIER 10', color: 0xf97316 },
+  { label: 'TIER 11', tab: 'TIER 11', color: 0xa855f7 },
+  { label: 'TIER 12', tab: 'TIER 12', color: 0xa855f7 },
 ] as const
 
 /** Leather binder with two independently laid-out, spine-hinged paper leaves. */
@@ -220,7 +221,7 @@ export class CollectionBookView {
 
   private renderTabs(): void {
     const gap = 4
-    const w = (this.bookW - 24 - gap * 3) / CHAPTERS.length
+    const w = (this.bookW - 24 - gap * (CHAPTERS.length - 1)) / CHAPTERS.length
     const y = this.bookTopY - 20
     CHAPTERS.forEach((chapter, i) => {
       const x = this.bookX + 12 + i * (w + gap)
@@ -338,33 +339,28 @@ export class CollectionBookView {
     paper.strokeRect(1, 1, this.leafW - 2, this.pageH - 2)
     const x = side === 0 ? 10 : 18
     const w = this.leafW - 28
+    const tier = chapter + 8
     const header = chapter === 0 ? (side === 0 ? 'CORE • I–IV' : 'CORE • V–VIII')
-      : chapter === 1 ? (side === 0 ? 'T9 • VARIANTS I–IV' : 'T9 • VARIANTS V–VIII')
-        : chapter === 2 ? (side === 0 ? 'CRAB ALCOVE' : 'FIELD NOTES')
-          : (side === 0 ? 'TIER 11' : 'TIER 12')
+      : `TIER ${tier} • ${side === 0 ? 'I–IV' : 'V–VIII'}`
     this.paperText(leaf, x, 10, w, header, 15, '#2d241e', 20)
     paper.lineStyle(1, 0xc7b491, 0.7)
     paper.lineBetween(x, 35, x + w, 35)
     const bodyY = 44
-    const bodyH = this.pageH - bodyY - 24
-    if (chapter <= 1) {
-      const count = chapter === 0 ? 8 : VARIANT_COUNT
-      const first = side * Math.ceil(count / 2)
-      const last = Math.min(count, first + Math.ceil(count / 2))
-      const cols = w >= 260 && bodyH < 300 ? 2 : 1
-      const rows = Math.ceil((last - first) / cols)
-      const gap = 6
-      const cardW = (w - gap * (cols - 1)) / cols
-      const cardH = (bodyH - gap * (rows - 1)) / rows
-      for (let i = first; i < last; i++) {
-        const slot = i - first
-        this.renderEntry(leaf, x + (slot % cols) * (cardW + gap), bodyY + Math.floor(slot / cols) * (cardH + gap), cardW, cardH, chapter === 0 ? i + 1 : 9, chapter === 0 ? 0 : i)
-      }
-    } else if (chapter === 2) {
-      if (side === 0) this.renderShowcase(leaf, x, bodyY, w, bodyH, 10)
-      else this.renderCrabNotes(leaf, x, bodyY, w, bodyH)
-    } else {
-      this.renderShowcase(leaf, x, bodyY, w, bodyH, side === 0 ? 11 : 12)
+    const unidentified = chapter === 1 && hasUnidentifiedCollectionFinds(this.save.variants, tier)
+    const bodyH = this.pageH - bodyY - 24 - (unidentified ? 28 : 0)
+    const slots = chapter === 0 ? null : collectionSlotsFor(tier)
+    const first = side * 4
+    const cols = w >= 260 && bodyH < 300 ? 2 : 1
+    const rows = 4 / cols
+    const gap = 6
+    const cardW = (w - gap * (cols - 1)) / cols
+    const cardH = (bodyH - gap * (rows - 1)) / rows
+    for (let slot = 0; slot < 4; slot++) {
+      const entry = first + slot
+      this.renderEntry(leaf, x + (slot % cols) * (cardW + gap), bodyY + Math.floor(slot / cols) * (cardH + gap), cardW, cardH, chapter === 0 ? entry + 1 : tier, 0, slots?.[entry]?.theme)
+    }
+    if (unidentified) {
+      this.paperText(leaf, x, this.pageH - 46, w, 'Older finds: character unknown.\nRediscover to identify.', 9, '#8a7a66', 24, true)
     }
     this.paperText(leaf, x, this.pageH - 18, w, `${chapter * 2 + side + 1}  /  ${CHAPTERS.length * 2}`, 10, '#8a7a66', 14)
     return leaf
@@ -381,91 +377,72 @@ export class CollectionBookView {
     return label
   }
 
-  private renderEntry(leaf: BookLeaf, x: number, y: number, w: number, h: number, tier: number, variant: number): void {
-    const at = tier === 9 ? this.save.variants[`9:${variant}`] : this.save.discovered[String(tier)]
+  private renderEntry(leaf: BookLeaf, x: number, y: number, w: number, h: number, tier: number, variant: number, theme?: string | null): void {
+    const save = this.save
+    const collectible = tier >= 9
+    const discovery = collectible && theme ? collectionDiscovery(save.variants, tier, theme) : null
+    const at = collectible ? discovery?.at : save.discovered[String(tier)]
     const known = at != null
+    const palette = discovery?.variant ?? variant
     const card = this.scene.add.graphics().setName('book-entry')
     leaf.container.add(card)
     card.fillStyle(known ? 0xfffcf5 : 0xede4d1, 1)
     card.fillRoundedRect(x, y, w, h, 6)
     card.lineStyle(1, known ? 0xd8c6a2 : 0xc7b491, 1)
     card.strokeRoundedRect(x, y, w, h, 6)
-    const title = tier === 9 ? `VARIANT ${variant + 1}` : `T${tier} • ${known ? (tier === 8 ? 'PRISM' : getTier(tier)!.face.toUpperCase()) : '????'}`
-    const status = known ? this.discoveryDate(at) : 'UNDISCOVERED'
+    const title = collectible ? (known ? theme!.toUpperCase() : 'UNKNOWN CHARACTER')
+      : `T${tier} • ${known ? (tier === 8 ? 'PRISM' : getTier(tier)!.face.toUpperCase()) : '????'}`
+    const status = known ? this.discoveryDate(at) : collectible && theme == null ? 'LOCKED • UNIMPLEMENTED' : 'UNDISCOVERED'
     if (h < 72) {
-      const r = tier === 9 ? Math.min(11, (h - 6) / 3.2) : Math.min(14, (h - 8) / 2)
-      this.addBall(leaf, x + 24, y + h / 2, r, tier, variant, known)
+      const r = collectible ? Math.min(10, (h - 8) / 4) : Math.min(14, (h - 8) / 2)
+      this.addBall(leaf, x + 24, y + h / 2, r, tier, palette, known, theme)
       this.paperText(leaf, x + 46, y + h / 2 - 14, w - 52, title, 11, known ? '#2d241e' : '#7a6f62', 14)
       this.paperText(leaf, x + 46, y + h / 2 + 3, w - 52, status, 10, known ? '#2563eb' : '#8c7d6b', 12)
     } else {
       this.paperText(leaf, x + 6, y + 6, w - 12, title, 12, known ? '#2d241e' : '#7a6f62', 16)
-      const extent = tier === 9 ? 1.6 : 1.1
-      const r = Math.min(26, w / (extent * 3), (h - 50) / (extent * 2))
-      this.addBall(leaf, x + w / 2, y + 24 + (h - 46) / 2, r, tier, variant, known)
-      if (known) this.drawInkStamp(leaf, x + w / 2, y + h - 17, status, CHAPTERS[tier === 9 ? 1 : 0].color, Math.min(w - 12, 88))
+      const extent = collectible ? 2 : 1.1
+      const r = Math.min(26, w / (extent * 3), (h - (collectible ? 54 : 50)) / (extent * 2))
+      const centerY = collectible ? y + 26 + (h - 54) / 2 : y + 24 + (h - 46) / 2
+      this.addBall(leaf, x + w / 2, centerY, r, tier, palette, known, theme)
+      if (known) this.drawInkStamp(leaf, x + w / 2, y + h - 17, status, CHAPTERS[collectible ? tier - 8 : 0]!.color, Math.min(w - 12, 88))
       else this.paperText(leaf, x + 4, y + h - 21, w - 8, status, 10, '#8c7d6b', 14)
     }
   }
 
-  private renderShowcase(leaf: BookLeaf, x: number, y: number, w: number, h: number, tier: number): void {
-    const known = this.save.discovered[String(tier)] != null
-    const g = this.scene.add.graphics().setName('book-showcase')
-    leaf.container.add(g)
-    g.fillStyle(known ? 0xfffcf5 : 0xede4d1, 1)
-    g.fillRoundedRect(x, y, w, h, 8)
-    g.lineStyle(1.5, known ? CHAPTERS[tier === 10 ? 2 : 3].color : 0xc7b491, 0.8)
-    g.strokeRoundedRect(x, y, w, h, 8)
-    const pictureH = Math.max(30, h - 86)
-    const extent = tier === 10 ? 2.6 : 1.3
-    const radius = Math.min(52, (w - 12) / (2 * extent), pictureH / (2 * extent))
-    this.addBall(leaf, x + w / 2, y + 8 + pictureH / 2, radius, tier, 0, known)
-    this.paperText(leaf, x + 6, y + h - 76, w - 12, tier === 10 ? (known ? 'CORAL CRAB' : 'MYSTERY CRAB') : 'SEALED ENTRY', 13, '#5b4631', 20)
-    const description = tier === 10 ? (known ? 'A run-rolled palette with mighty claws.' : 'Merge two Tier 9 animals to discover this crab.')
-      : getTier(tier)?.playable ? 'A rare discovery for your collection.' : 'This collectible tier is not yet playable.'
-    this.paperText(leaf, x + 8, y + h - 51, w - 16, description, 11, '#8c7d6b', 42, true)
-  }
-
-  private renderCrabNotes(leaf: BookLeaf, x: number, y: number, w: number, h: number): void {
-    const at = this.save.discovered['10']
-    const known = at != null
-    const stampY = y + Math.min(24, h * 0.12)
-    this.drawInkStamp(leaf, x + w / 2, stampY, known ? 'COLLECTED' : 'NOT FOUND', 0xc2410c, Math.min(w - 8, 96))
-    const noteY = stampY + 25
-    const note = known
-      ? `First logged\n${this.discoveryDate(at)}\n\nTwo Tier 9 animals merge into Tier 10.\n\nOne crab palette stays fixed for the whole run.`
-      : 'Merge two Tier 9 animals to open this entry.\n\nYour run keeps the same crab palette for every Tier 10 ball.'
-    this.paperText(leaf, x + 4, noteY, w - 8, note, 13, '#6f5941', h - (noteY - y) - 8, true)
-  }
-
-  private addBall(leaf: BookLeaf, x: number, y: number, r: number, tier: number, variant: number, known: boolean): void {
+  private addBall(leaf: BookLeaf, x: number, y: number, r: number, tier: number, variant: number, known: boolean, theme?: string | null): void {
     const g = this.scene.add.graphics().setName('book-ball')
     leaf.container.add(g)
-    if (!known) {
+    if (!known || (tier >= 9 && !theme)) {
       g.fillStyle(0xd5c8b2, 0.75)
       g.fillCircle(x, y, r)
       g.lineStyle(1.5, 0x8a7a66, 0.9)
       g.strokeCircle(x, y, r)
       g.lineStyle(1, 0x8a7a66, 0.4)
       g.lineBetween(x - r * 0.7, y - r * 0.7, x + r * 0.7, y + r * 0.7)
-      this.paperText(leaf, x - r, y - Math.min(6, r * 0.4), r * 2, `T${tier}`, Math.min(14, r), '#655745', Math.min(18, r * 1.4))
+      this.paperText(leaf, x - r, y - Math.min(6, r * 0.4), r * 2, tier >= 9 ? '?' : `T${tier}`, Math.min(14, r), '#655745', Math.min(18, r * 1.4))
       return
     }
     const seed = tier * 1013 + variant
+    if (tier >= 9 && theme) {
+      const draw = (): void => {
+        g.clear()
+        drawCollectibleBall(g, x, y, r, tier, variant, undefined, 0, undefined, seed, theme)
+      }
+      draw()
+      leaf.redraws.push(draw)
+      return
+    }
     const look = ballLookFor(tier, seed)
     const poly = restContour(look, r, x, y, 24).map((point) => new Phaser.Math.Vector2(point.x, point.y))
     const center = { x, y }
     const tierColor = getTier(tier)!.color
     const draw = (): void => {
       g.clear()
-      if (tier === 9 || tier === 10) {
-        drawCollectibleBall(g, x, y, r, tier, variant, undefined, 0, undefined, seed)
-      } else {
-        g.fillStyle(tier === 8 ? cycleColor(Date.now()) : tierColor, 1)
-        g.fillPoints(poly, true)
-        g.lineStyle(ballOutlineWidth(r), INK, 1)
-        g.strokePoints(poly, true, true)
-        drawBallFace(g, look, center, r, 1)
-      }
+      g.fillStyle(tier === 8 ? cycleColor(Date.now()) : tierColor, 1)
+      g.fillPoints(poly, true)
+      g.lineStyle(ballOutlineWidth(r), INK, 1)
+      g.strokePoints(poly, true, true)
+      drawBallFace(g, look, center, r, 1)
     }
     draw()
     leaf.redraws.push(draw)

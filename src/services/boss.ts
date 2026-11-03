@@ -563,7 +563,7 @@ export function buildBossAnalytics(
   const allRuns: BossRunEnriched[] = [...runs, ...guestRuns].sort(
     (a, b) => Date.parse(b.created_at) - Date.parse(a.created_at),
   )
-  const nowMs = Date.now()
+  const nowMs = Date.parse(generatedAt)
   const dayMs = 86_400_000
   const newPlayers24h = players.filter((p) => nowMs - Date.parse(p.createdAt) <= dayMs).length
   const newPlayers7d = players.filter((p) => nowMs - Date.parse(p.createdAt) <= 7 * dayMs).length

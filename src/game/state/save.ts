@@ -10,10 +10,9 @@
  *                         JOURNAL and COLLECTION screens. Per-run discovery
  *                         (discovery modal) stays in PlaygroundScene; this
  *                         is the lifetime record.
- *   - `variants`        — `${tier}:${variantId}` → first-seen timestamp.
- *                         Tiers 8–9 randomize their look EVERY RUN, so the
- *                         journal accumulates the distinct variants a
- *                         player has collected over time.
+ *   - `variants`       — `${tier}:${theme}:${variantId}` → first-seen timestamp
+ *                         for tier 9–12 characters and their discovery palette.
+ *                         Legacy `${tier}:${variantId}` keys remain supported.
  *   - `settings.theme`  — 'auto' (follow run progression) or a fixed theme.
  *   - `stats`           — lifetime runs / merges / best tier.
  *
@@ -22,6 +21,7 @@
  * missing save. The cache is write-through; failures degrade to in-memory.
  */
 
+import { collectibleDiscoveryKey } from '../../config/collectibleCollection'
 import { gameBus } from '../events/gameBus'
 
 const KEY = 'ballrush.save.v1'
@@ -44,7 +44,7 @@ export interface SaveDataV1 {
   leaderboard: LeaderboardEntry[]
   /** tier → first-discovered-at (ms epoch). */
   discovered: Record<string, number>
-  /** `${tier}:${variantId}` → first-collected-at (ms epoch) — tiers 8/9. */
+  /** Character/palette keys (`tier:theme:variantId`), or legacy numeric keys → first-collected-at (ms epoch). */
   variants: Record<string, number>
   settings: { theme: ThemeSetting }
   stats: { runs: number; merges: number; bestTier: number }
@@ -408,13 +408,16 @@ export function resetSave(options?: { syncCloud?: boolean; clearOwner?: boolean 
   return current
 }
 
-/** Lifetime discovery record (JOURNAL + COLLECTION). Returns the variant id. */
-export function recordDiscovery(tier: number, variantId: number | null): void {
+/** Record lifetime discovery; collectible themes identify characters, variant ids their palettes.
+ * Without a theme, preserve the legacy numeric variant key. */
+export function recordDiscovery(tier: number, variantId: number | null, theme?: string | null): void {
   const save = loadSave()
   const now = Date.now()
   if (save.discovered[String(tier)] == null) save.discovered[String(tier)] = now
   if (variantId != null) {
-    const k = `${tier}:${variantId}`
+    const k = tier >= 9 && tier <= 12 && theme != null
+      ? collectibleDiscoveryKey(tier, theme, variantId)
+      : `${tier}:${variantId}`
     if (save.variants[k] == null) save.variants[k] = now
   }
   if (tier > save.stats.bestTier) save.stats.bestTier = tier

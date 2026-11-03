@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase'
-import type { User, Session } from '@supabase/supabase-js'
+import type { AuthChangeEvent, User, Session } from '@supabase/supabase-js'
 
 import {
   cloneSave,
@@ -92,6 +92,7 @@ function mergeSavesForSameUser(
   })
 }
 
+/** Restore score/tier progress only: scores contain no character or palette identity. */
 function reconcileSaveWithUserScores(
   base: SaveDataV1,
   scores: Score[],
@@ -132,16 +133,6 @@ function reconcileSaveWithUserScores(
         changed = true
       }
     }
-    for (const collectibleTier of [8, 9, 10, 11, 12]) {
-      if (collectibleTier <= tierCap) {
-        const prefix = `${collectibleTier}:`
-        const hasAnyVariant = Object.keys(next.variants).some((k) => k.startsWith(prefix))
-        if (!hasAnyVariant) {
-          next.variants[`${collectibleTier}:0`] = ts
-          changed = true
-        }
-      }
-    }
   }
 
   const scoreEntries: LeaderboardEntry[] = scores.slice(0, 10).map((s) => ({
@@ -169,6 +160,17 @@ export class AuthService {
   private userProgressTableAvailable: boolean | null = null
   private cloudSyncTimer: ReturnType<typeof setTimeout> | null = null
   private pendingCloudSave: SaveDataV1 | null = null
+  private initializationPromise: Promise<void> | null = null
+  private awaitingInitialSession = true
+  private sessionEnded = false
+  private authStateRevision = 0
+  private accountRevision = 0
+  private authFlowRevision = 0
+  private pendingAuthEvent = false
+  private authFlowHasSession = false
+  private authUpdateTimer: ReturnType<typeof setTimeout> | null = null
+  private pendingAccountRestore = false
+  private profileRequestRevision = 0
 
   static getInstance(): AuthService {
     if (!AuthService.instance) {
@@ -252,103 +254,240 @@ export class AuthService {
     }, 1500)
   }
 
-  async initialize(): Promise<void> {
-    setCloudSyncHandler((save, immediate) => this.scheduleCloudSync(save, immediate))
+  private invalidateAccountWork(cancelCloudSync = true): void {
+    this.accountRevision++
+    if (cancelCloudSync) this.cancelScheduledCloudSync()
+    if (this.authUpdateTimer !== null) {
+      clearTimeout(this.authUpdateTimer)
+      this.authUpdateTimer = null
+    }
+    this.pendingAccountRestore = false
+  }
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-    this.session = session
-    this.user = session?.user ?? null
+  private replaceSession(nextSession: Session | null, newAccountContext = false): boolean {
+    const accountChanged = (this.user?.id ?? null) !== (nextSession?.user.id ?? null)
+    if (accountChanged || newAccountContext) this.invalidateAccountWork(accountChanged || nextSession === null)
+    if (accountChanged) this.profile = null
+    this.session = nextSession
+    this.user = nextSession?.user ?? null
+    return accountChanged
+  }
 
-    if (this.user) {
-      const prevOwner = getSaveOwnerId()
-      if (prevOwner !== this.user.id) {
-        resetSave({ syncCloud: false, clearOwner: false })
-        setSaveOwnerId(this.user.id)
-      }
-      await Promise.all([this.fetchProfile(), this.restoreAccountProgress(this.user)])
+  private bindAccountSave(user: User): void {
+    if (getSaveOwnerId() !== user.id) {
+      resetSave({ syncCloud: false, clearOwner: false })
+      setSaveOwnerId(user.id)
+    }
+  }
+
+  private clearSignedOutAccount(): void {
+    this.replaceSession(null, true)
+    this.profile = null
+    resetSave({ syncCloud: false, clearOwner: true })
+    resetGuestId()
+  }
+
+  private queueAuthUpdate(restoreAccount: boolean): void {
+    this.pendingAccountRestore ||= restoreAccount
+    if (this.authUpdateTimer !== null) return
+    const revision = this.accountRevision
+
+    // Supabase awaits auth callbacks under its session/refresh lifecycle. Even UI
+    // listeners may call the SDK, so notify and hydrate only after that callback exits.
+    this.authUpdateTimer = setTimeout(() => {
+      this.authUpdateTimer = null
+      const shouldRestore = this.pendingAccountRestore
+      this.pendingAccountRestore = false
+      if (revision !== this.accountRevision || this.authFlowInProgress !== null) return
+
       this.notifyAuthStateChange()
-    } else {
-      if (getSaveOwnerId() !== null) {
-        // Booted signed-out, but localStorage still held a save from a previous account: clear it.
-        resetSave({ syncCloud: false, clearOwner: true })
+      if (revision !== this.accountRevision || this.authFlowInProgress !== null) return
+      const user = this.user
+      if (shouldRestore && user) {
+        void this.restoreBrowserAccount(user, revision)
+      } else if (shouldRestore && !user) {
+        // Register existing guest progress on boot without running SDK work in a callback.
+        void this.persistGuestSaveToCloud(loadSave())
       }
-      // Sync existing local guest progress (if any) to Supabase guest telemetry
-      // Always register/sync the anonymous guest session on boot so /boss sees every visitor and any local runs
-      const guestSave = loadSave()
-      void this.persistGuestSaveToCloud(guestSave)
+    }, 0)
+  }
+
+  private async restoreBrowserAccount(user: User, revision: number): Promise<void> {
+    try {
+      await Promise.all([this.fetchProfile(), this.restoreAccountProgress(user)])
+      if (revision === this.accountRevision && this.user?.id === user.id && this.authFlowInProgress === null) {
+        this.notifyAuthStateChange()
+      }
+    } catch (error) {
+      console.error('Failed to restore account data:', error)
+    }
+  }
+
+  private handleSdkAuthStateChange(event: AuthChangeEvent, nextSession: Session | null): void {
+    // INITIAL_SESSION is a snapshot, not a new sign-in. A later snapshot must not
+    // overwrite an explicit auth flow, a refresh, or a sign-out already observed.
+    if (event === 'INITIAL_SESSION' && !this.awaitingInitialSession) return
+    this.awaitingInitialSession = false
+    this.authStateRevision++
+
+    if (this.authFlowInProgress === 'logout') {
+      if (event === 'SIGNED_OUT') this.replaceSession(null)
+      return
     }
 
-    supabase.auth.onAuthStateChange(async (event, nextSession) => {
-      this.session = nextSession
-      this.user = nextSession?.user ?? null
+    if (event === 'SIGNED_OUT') {
+      this.sessionEnded = true
+      this.authFlowRevision++
+      this.authFlowInProgress = null
+      this.pendingAuthEvent = false
+      this.authFlowHasSession = false
+      this.clearSignedOutAccount()
+      this.queueAuthUpdate(false)
+      return
+    }
 
-      // Ignore background user_metadata progress updates or flows already managed inline.
-      if (event === 'USER_UPDATED' && this.isUpdatingProgressMeta) {
-        return
-      }
-      if (this.authFlowInProgress !== null) {
-        return
-      }
+    // An in-flight metadata update/refresh from the ended session cannot log the
+    // player back in. A real new sign-in (including OAuth recovery) can.
+    if (this.sessionEnded && event !== 'SIGNED_IN' && event !== 'PASSWORD_RECOVERY') return
+    if (nextSession) this.sessionEnded = false
 
-      if (event === 'SIGNED_IN' && this.user) {
-        const prevOwner = getSaveOwnerId()
-        if (prevOwner !== this.user.id) {
-          resetSave({ syncCloud: false, clearOwner: false })
-          setSaveOwnerId(this.user.id)
-        }
-        await Promise.all([this.fetchProfile(), this.restoreAccountProgress(this.user)])
-        this.notifyAuthStateChange()
-      } else if (event === 'SIGNED_OUT') {
-        this.cancelScheduledCloudSync()
-        this.profile = null
+    if (event === 'SIGNED_IN' && this.authFlowHasSession) {
+      // The owned SDK sign-in already completed. This is a newer sign-in while
+      // its cloud hydration was pending, so it owns the account from now on.
+      this.authFlowRevision++
+      this.authFlowInProgress = null
+      this.authFlowHasSession = false
+      this.pendingAuthEvent = false
+    }
+
+    const accountChanged = this.replaceSession(nextSession, event === 'SIGNED_IN')
+    if (this.authFlowInProgress !== null) {
+      this.pendingAuthEvent = true
+      return
+    }
+    if (event === 'USER_UPDATED' && this.isUpdatingProgressMeta && !accountChanged) return
+
+    if (this.user) {
+      this.bindAccountSave(this.user)
+    } else if (getSaveOwnerId() !== null) {
+      resetSave({ syncCloud: false, clearOwner: true })
+    }
+    this.queueAuthUpdate(accountChanged || event === 'SIGNED_IN' || event === 'INITIAL_SESSION')
+  }
+
+  initialize(): Promise<void> {
+    if (this.initializationPromise) return this.initializationPromise
+    setCloudSyncHandler((save, immediate) => this.scheduleCloudSync(save, immediate))
+    const revision = this.authStateRevision
+
+    this.initializationPromise = (async () => {
+      // Subscribe before getSession: it can itself refresh the persisted session.
+      supabase.auth.onAuthStateChange((event, nextSession) => {
+        this.handleSdkAuthStateChange(event, nextSession)
+      })
+      const { data: { session } } = await supabase.auth.getSession()
+      if (revision !== this.authStateRevision || !this.awaitingInitialSession || this.authFlowInProgress !== null) return
+
+      this.awaitingInitialSession = false
+      this.authStateRevision++
+      this.replaceSession(session)
+      if (this.user) {
+        this.bindAccountSave(this.user)
+      } else if (getSaveOwnerId() !== null) {
+        // Never expose a previous account's local save to a signed-out browser.
         resetSave({ syncCloud: false, clearOwner: true })
-        resetGuestId()
-        this.notifyAuthStateChange()
       }
-    })
+      this.queueAuthUpdate(true)
+    })()
+    return this.initializationPromise
+  }
+
+  private beginAuthFlow(flow: 'login' | 'signup' | 'logout'): number {
+    this.invalidateAccountWork()
+    this.awaitingInitialSession = false
+    this.authStateRevision++
+    this.authFlowInProgress = flow
+    this.pendingAuthEvent = false
+    this.authFlowHasSession = false
+    if (flow === 'logout') this.sessionEnded = true
+    return ++this.authFlowRevision
+  }
+
+  private acceptAuthResult(flowRevision: number, stateRevision: number, user: User, session: Session | null): boolean {
+    if (flowRevision !== this.authFlowRevision || this.authFlowInProgress === null) return false
+    if (stateRevision !== this.authStateRevision) {
+      // Keep the newest event's session/token, not an older SDK response snapshot.
+      if (this.user?.id !== user.id) return false
+    } else {
+      this.replaceSession(session)
+      this.user = user
+      this.sessionEnded = false
+    }
+    this.authFlowHasSession = true
+    return true
+  }
+
+  private finishAuthFlow(flowRevision: number, handledEvent: boolean): void {
+    if (flowRevision !== this.authFlowRevision) return
+    this.authFlowInProgress = null
+    this.authFlowHasSession = false
+    const pendingEvent = this.pendingAuthEvent
+    this.pendingAuthEvent = false
+    if (!handledEvent && pendingEvent) {
+      if (this.user) this.bindAccountSave(this.user)
+      this.queueAuthUpdate(true)
+    }
   }
 
   async signInWithEmail(email: string, password: string): Promise<{ error: Error | null }> {
-    this.cancelScheduledCloudSync()
-    this.authFlowInProgress = 'login'
+    const flowRevision = this.beginAuthFlow('login')
+    const stateRevision = this.authStateRevision
+    let handledEvent = false
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
       if (error || !data.user) {
         return { error: error ?? new Error('Failed to sign in') }
       }
 
-      this.session = data.session
-      this.user = data.user
+      if (!this.acceptAuthResult(flowRevision, stateRevision, data.user, data.session)) {
+        return { error: new Error('Authentication state changed. Please try again.') }
+      }
+      const accountRevision = this.accountRevision
 
       // Never carry guest or previous account local progress into an existing account on login.
-      if (getSaveOwnerId() !== data.user.id) {
-        resetSave({ syncCloud: false, clearOwner: false })
-        setSaveOwnerId(data.user.id)
+      this.bindAccountSave(data.user)
+      await Promise.all([this.fetchProfile(), this.restoreAccountProgress(this.user ?? data.user)])
+      if (flowRevision !== this.authFlowRevision || accountRevision !== this.accountRevision) {
+        return { error: new Error('Authentication state changed. Please try again.') }
       }
-
-      await Promise.all([this.fetchProfile(), this.restoreAccountProgress(data.user)])
+      handledEvent = true
       this.notifyAuthStateChange()
       return { error: null }
     } finally {
-      this.authFlowInProgress = null
+      this.finishAuthFlow(flowRevision, handledEvent)
     }
   }
 
   async signUpWithEmail(email: string, password: string, username: string): Promise<{ error: Error | null }> {
     const guestSave = getSaveOwnerId() === null ? cloneSave(loadSave()) : freshSave()
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          username,
-          ballrush_progress: guestSave,
+    const flowRevision = this.beginAuthFlow('signup')
+    try {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            username,
+            ballrush_progress: guestSave,
+          },
         },
-      },
-    })
-    return { error }
+      })
+      return { error }
+    } finally {
+      // Email confirmation may yield no session. If it did sign in, restore the
+      // guest progress saved in signup metadata outside the SDK callback.
+      this.finishAuthFlow(flowRevision, false)
+    }
   }
 
   /**
@@ -362,11 +501,16 @@ export class AuthService {
       return this.signInWithEmail(trimmed, password)
     }
 
+    const lookupRevision = this.accountRevision
     const { data: profile, error: lookupError } = await supabase
       .from('profiles')
       .select('email')
       .ilike('username', trimmed)
       .maybeSingle()
+
+    if (lookupRevision !== this.accountRevision) {
+      return { error: new Error('Authentication state changed. Please try again.') }
+    }
 
     if (lookupError || !profile?.email) {
       return { error: new Error('Invalid username or password') }
@@ -381,11 +525,16 @@ export class AuthService {
    * progression transfers to the newly created account.
    */
   async signUpWithUsername(username: string, password: string, email?: string): Promise<{ error: Error | null }> {
+    const lookupRevision = this.accountRevision
     const { data: existing, error: lookupError } = await supabase
       .from('profiles')
       .select('id')
       .eq('username', username)
       .maybeSingle()
+
+    if (lookupRevision !== this.accountRevision) {
+      return { error: new Error('Authentication state changed. Please try again.') }
+    }
 
     if (lookupError) {
       return { error: new Error('Failed to check username availability') }
@@ -401,8 +550,8 @@ export class AuthService {
     const guestSave = hadGuestProgress ? cloneSave(loadSave()) : freshSave()
     const authEmail = email || `${username.toLowerCase().replace(/[^a-z0-9]/g, '')}@ballrush.local`
 
-    this.cancelScheduledCloudSync()
-    this.authFlowInProgress = 'signup'
+    const flowRevision = this.beginAuthFlow('signup')
+    let handledEvent = false
     try {
       const { error } = await supabase.auth.signUp({
         email: authEmail,
@@ -419,6 +568,10 @@ export class AuthService {
         return { error }
       }
 
+      if (flowRevision !== this.authFlowRevision) {
+        return { error: new Error('Authentication state changed. Please try again.') }
+      }
+      const stateRevision = this.authStateRevision
       const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email: authEmail,
         password,
@@ -428,8 +581,10 @@ export class AuthService {
         return { error: signInError ?? new Error('Failed to establish session after sign up') }
       }
 
-      this.session = signInData.session
-      this.user = signInData.user
+      if (!this.acceptAuthResult(flowRevision, stateRevision, signInData.user, signInData.session)) {
+        return { error: new Error('Authentication state changed. Please try again.') }
+      }
+      const accountRevision = this.accountRevision
 
       // Bind transferred guest progression to the newly created account.
       writeSave(guestSave, { syncCloud: false, ownerId: signInData.user.id })
@@ -437,6 +592,9 @@ export class AuthService {
         this.fetchProfile(),
         this.persistSaveToCloud(guestSave, signInData.user.id),
       ])
+      if (flowRevision !== this.authFlowRevision || accountRevision !== this.accountRevision) {
+        return { error: new Error('Authentication state changed. Please try again.') }
+      }
 
       // Link anonymous guest profile & copy any prior guest runs into public.scores
       if (hadGuestProgress && guestIdBeforeSignup) {
@@ -445,6 +603,9 @@ export class AuthService {
         } catch {
           // Ignore if RPC is unavailable
         }
+      }
+      if (flowRevision !== this.authFlowRevision || accountRevision !== this.accountRevision) {
+        return { error: new Error('Authentication state changed. Please try again.') }
       }
 
       // If the guest already had a best score, also record their top run in public.scores
@@ -460,10 +621,14 @@ export class AuthService {
         )
       }
 
+      if (flowRevision !== this.authFlowRevision || accountRevision !== this.accountRevision) {
+        return { error: new Error('Authentication state changed. Please try again.') }
+      }
+      handledEvent = true
       this.notifyAuthStateChange()
       return { error: null }
     } finally {
-      this.authFlowInProgress = null
+      this.finishAuthFlow(flowRevision, handledEvent)
     }
   }
 
@@ -488,23 +653,21 @@ export class AuthService {
   }
 
   async signOut(): Promise<void> {
-    this.cancelScheduledCloudSync()
-    this.authFlowInProgress = 'logout'
+    const flowRevision = this.beginAuthFlow('logout')
     try {
       // Flush the active account's current progress to cloud BEFORE signing out.
       if (this.user && getSaveOwnerId() === this.user.id) {
         await this.persistSaveToCloud(cloneSave(loadSave()), this.user.id)
       }
-      await supabase.auth.signOut()
-      this.user = null
-      this.session = null
-      this.profile = null
-      // Once logged out of an account, local progression resets to 0 with a fresh guest ID.
-      resetSave({ syncCloud: false, clearOwner: true })
-      resetGuestId()
+      if (flowRevision !== this.authFlowRevision) return
+      const { error } = await supabase.auth.signOut()
+      if (error) return
+      if (flowRevision !== this.authFlowRevision) return
+      // Once logged out, reset progression and guest identity without queued restores.
+      this.clearSignedOutAccount()
       this.notifyAuthStateChange()
     } finally {
-      this.authFlowInProgress = null
+      this.finishAuthFlow(flowRevision, true)
     }
   }
 
@@ -514,8 +677,9 @@ export class AuthService {
    */
   async restoreAccountProgress(targetUser?: User): Promise<void> {
     const user = targetUser ?? this.user
-    if (!user) return
+    if (!user || this.user?.id !== user.id || getSaveOwnerId() !== user.id) return
     const userId = user.id
+    const revision = this.accountRevision
 
     const localSameOwnerSave = getSaveOwnerId() === userId ? cloneSave(loadSave()) : null
 
@@ -536,7 +700,7 @@ export class AuthService {
             .maybeSingle(),
     ])
 
-    if (this.user?.id !== userId) return
+    if (revision !== this.accountRevision || this.user?.id !== userId || getSaveOwnerId() !== userId) return
 
     if (tableRes.error) {
       const code = tableRes.error.code ?? ''
@@ -548,7 +712,8 @@ export class AuthService {
       this.userProgressTableAvailable = true
     }
 
-    const latestUser = freshUserRes.data?.user ?? user
+    const freshUser = freshUserRes.data?.user
+    const latestUser = freshUser?.id === userId ? freshUser : user
     const rawMetaProgress = latestUser?.user_metadata?.ballrush_progress as Partial<SaveDataV1> | undefined
     const metaSave =
       rawMetaProgress && typeof rawMetaProgress === 'object' ? normalizeSave(rawMetaProgress) : null
@@ -587,7 +752,7 @@ export class AuthService {
     const userScores = Array.isArray(scoresRes.data) ? (scoresRes.data as Score[]) : []
     const { save: finalSave, changed: healedFromScores } = reconcileSaveWithUserScores(combined, userScores)
 
-    if (this.user?.id !== userId) return
+    if (revision !== this.accountRevision || this.user?.id !== userId || getSaveOwnerId() !== userId) return
 
     writeSave(finalSave, { syncCloud: false, ownerId: userId })
 
@@ -613,6 +778,7 @@ export class AuthService {
     const uid = expectedUserId ?? user.id
     if (user.id !== uid) return
     if (getSaveOwnerId() !== uid) return
+    const revision = this.accountRevision
 
     const save = normalizeSave(saveData ?? loadSave())
 
@@ -624,7 +790,7 @@ export class AuthService {
           ballrush_progress: save,
         },
       })
-      if (data?.user && this.user?.id === uid) {
+      if (data?.user?.id === uid && revision === this.accountRevision && this.user?.id === uid) {
         this.user = data.user
       }
     } catch (err) {
@@ -634,7 +800,8 @@ export class AuthService {
     }
 
     // 2. Also upsert into public.user_progress if the table exists on the project.
-    if (this.userProgressTableAvailable !== false && this.user?.id === uid) {
+    if (revision !== this.accountRevision || this.user?.id !== uid || getSaveOwnerId() !== uid) return
+    if (this.userProgressTableAvailable !== false) {
       try {
         const nowIso = new Date().toISOString()
         const fullRow = {
@@ -648,6 +815,7 @@ export class AuthService {
           updated_at: nowIso,
         }
         const { error } = await supabase.from('user_progress').upsert(fullRow, { onConflict: 'user_id' })
+        if (revision !== this.accountRevision || this.user?.id !== uid || getSaveOwnerId() !== uid) return
         if (error) {
           const code = error.code ?? ''
           const msg = error.message ?? ''
@@ -698,13 +866,18 @@ export class AuthService {
     }
   }
   async fetchProfile(): Promise<Profile | null> {
-    if (!this.user) return null
+    const userId = this.user?.id
+    if (!userId) return null
+    const revision = this.accountRevision
+    const requestRevision = ++this.profileRequestRevision
 
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
-      .eq('id', this.user.id)
+      .eq('id', userId)
       .single()
+
+    if (revision !== this.accountRevision || requestRevision !== this.profileRequestRevision || this.user?.id !== userId) return null
 
     if (error) {
       console.error('Error fetching profile:', error)

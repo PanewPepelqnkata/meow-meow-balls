@@ -1135,8 +1135,8 @@ export class BackgroundTheme {
       return
     }
     // Correctness net: remember the TARGET dims — update() repaints
-    // synchronously if the debounced rebuild hasn't run yet (covers
-    // paused-tab timers and any missed event).
+    // after the debounce timer expires (covers paused-tab timers and
+    // any missed event).
     this.pendingW = cssW
     this.pendingH = cssH
     this.pendingDpr = dpr
@@ -1895,10 +1895,13 @@ export class BackgroundTheme {
 
   /** Per-frame star pulse + cloud drift + ambient layer. */
   update(delta: number): void {
-    // Correctness net: if a resize left unbaked dims (debounce pending or
-    // timer frozen by a hidden tab), rebuild NOW — the background must
-    // never stay stale relative to the viewport.
-    if (this.pendingW !== 0 || this.pendingH !== 0 || this.pendingDpr !== 0) {
+    // Correctness net: if a resize left unbaked dims and the debounce
+    // timer has expired, rebuild NOW — the background must never stay
+    // stale relative to the viewport.
+    // GATE: only rebuild when the debounce timer has expired (resizeTimer
+    // is undefined). This collapses continuous resize events into ONE
+    // rebuild 120ms after the last event.
+    if ((this.pendingW !== 0 || this.pendingH !== 0 || this.pendingDpr !== 0) && !this.resizeTimer) {
       this.updateGradImage()
       this.drawBackground()
       this.drawGrid()

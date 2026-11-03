@@ -62,6 +62,30 @@ describe('hasDiscoveredTier (the repeat-discovery gate)', () => {
     expect(hasDiscoveredTier(8)).toBe(false)
   })
 
+  it('stores pig and shark discoveries separately across runs and save roundtrips', () => {
+    recordDiscovery(9, 3, 'pig')
+    recordDiscovery(9, 3, 'shark')
+    const saved = normalizeSave(loadSave())
+    expect(saved.variants['9:pig:3']).toBeGreaterThan(0)
+    expect(saved.variants['9:shark:3']).toBeGreaterThan(0)
+    expect(saved.variants['9:3']).toBeUndefined()
+    resetSave()
+    writeSave(saved, { syncCloud: false })
+    expect(loadSave().variants).toEqual(saved.variants)
+  })
+
+  it('does not change a character’s first-discovery date when found again', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1000)
+    try {
+      recordDiscovery(9, 1, 'pig')
+      vi.mocked(Date.now).mockReturnValue(2000)
+      recordDiscovery(9, 1, 'pig')
+      expect(loadSave().variants['9:pig:1']).toBe(1000)
+    } finally {
+      vi.mocked(Date.now).mockRestore()
+    }
+  })
+
   it('isolates account progression on logout and restores account save on login', () => {
     // 1. Guest earns progression and binds it to Account A on signup
     expect(getSaveOwnerId()).toBeNull()

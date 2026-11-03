@@ -1827,9 +1827,6 @@ export class TitleScene extends Phaser.Scene {
       bakeCanvas(this, medalKey, medalW, medalH, (ctx) => drawChampionMedal(ctx, medalW, medalH, slot.rank), window.devicePixelRatio || 1)
       const medal = this.add.container(cx, slot.medalY, [
         this.add.image(0, 0, medalKey).setDisplaySize(medalW, medalH),
-        leaderboardTextStyle(hudText(this, 0, 0, `${slot.rank}`, 1, {
-          color: LEADERBOARD_TEXT, size: medalR * 1.15, stroke: 0, pad: 1, origin: [0.5, 0.5], shadow: false,
-        })),
       ])
       const labels = podiumLabels[slot.index]!
       const nameKey = `br-champion-name:${plateW}:${plateH}`
