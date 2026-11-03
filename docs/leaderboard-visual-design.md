@@ -25,7 +25,9 @@ The leaderboard is a cartoon Mount Olympus temple scene, not a dashboard with or
 
 ## Layout and interaction
 
-- Wide landscape (at least 1100 CSS pixels) uses two balanced panels inside shared safe margins. Portrait and medium-width layouts stack the champion composition above a tablet up to 820 CSS pixels wide. Short viewports keep bounded scroll rather than clipping the UI.
+- Wide landscape (at least 1100 CSS pixels) uses two balanced panels inside shared safe margins. Phone landscape uses side-by-side panels from 600 CSS pixels wide when height is below 600; below 500px height, margins and the panel gap compact consistently.
+- Stacked layouts reserve the tablet header, insets, and one full measured row before allocating height to the podium. Podium art and spacing interpolate to compact dimensions while the measured player-name and score typography remain unchanged. The tablet consumes the remaining height without an independent minimum that could extend it past the viewport.
+- Portrait and medium-width layouts stack the champion composition above a tablet up to 820 CSS pixels wide. Verified with wide 20-character names at 390×568, 390×640, 640×360, 667×375, and 844×390; each shows at least one complete row inside the viewport.
 - Back navigation remains the existing menu action. `window.__brMenu.open('leaderboard')` and `.screen()` remain useful browser QA hooks.
 - All baked textures use `bakeCanvas`, which caps DPR and releases replaced canvas backing stores. Only transforms/alpha animate.
 

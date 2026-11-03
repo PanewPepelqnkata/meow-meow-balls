@@ -1316,7 +1316,7 @@ export class TitleScene extends Phaser.Scene {
 
   private buildLeaderboardHeader(vw: number, vh: number): { contentTopY: number } {
     const safe = readSafeArea()
-    const margin = vw < 600 ? 16 : 28
+    const margin = vw < 600 || vh < 500 ? 16 : 28
     const x = Math.max(margin, safe.left + 12)
     const right = Math.max(margin, safe.right + 12)
     const y = Math.max(12, safe.top + 8)
@@ -1441,7 +1441,7 @@ export class TitleScene extends Phaser.Scene {
     // stale layout into a rebuilt panel.
     const buildSeq = ++this.lbBuildSeq
     const safe = readSafeArea()
-    const margin = vw < 600 ? 16 : 28
+    const margin = vw < 600 || vh < 500 ? 16 : 28
     const left = Math.max(margin, safe.left + 12)
     const right = Math.max(margin, safe.right + 12)
     const centerX = (left + vw - right) / 2
@@ -1504,7 +1504,7 @@ export class TitleScene extends Phaser.Scene {
     // scene shut down while the request was in flight — discard.
     if (this.closed || this.screen !== 'leaderboard' || buildSeq !== this.lbBuildSeq) return
 
-    const isDesktop = (vw >= 1100 && vw > vh) || (vw >= 720 && vh < 600)
+    const isDesktop = (vw >= 1100 && vw > vh) || (vw >= 600 && vw > vh && vh < 600)
     const maxTotalW = Math.min(isDesktop ? 1560 : 820, vw - left - right)
     const totalX = centerX - maxTotalW / 2
 
@@ -1573,8 +1573,8 @@ export class TitleScene extends Phaser.Scene {
     const top3 = entries.slice(0, 3)
 
     // One measured grid owns both the art and text anchors.
-    const panelGap = isDesktop ? 32 : 20
-    const podiumW = isDesktop ? Math.round((maxTotalW - panelGap) * 0.46) : maxTotalW
+    const panelGap = isDesktop && vh >= 500 ? 32 : 20
+    const podiumW = isDesktop ? Math.round((maxTotalW - panelGap) * (vh < 500 ? 0.5 : 0.46)) : maxTotalW
     const tableW = isDesktop ? maxTotalW - panelGap - podiumW : maxTotalW
     const podiumX = totalX
     const tableX = isDesktop ? totalX + podiumW + panelGap : totalX
@@ -1583,10 +1583,10 @@ export class TitleScene extends Phaser.Scene {
     const plateW = columnW - 2
     const nameSize = podiumW >= 500 ? 20 : 14
     const scoreSize = podiumW >= 500 ? 24 : 18
-    const deckH = podiumW >= 500 ? 24 : 18
-    const medalR = podiumW >= 500 ? 21 : 14
-    const plinthH = podiumW >= 500 ? 30 : 22
-    const heightStep = podiumW >= 500 ? 30 : 16
+    let deckH = podiumW >= 500 ? 24 : 18
+    let medalR = podiumW >= 500 ? 21 : 14
+    let plinthH = podiumW >= 500 ? 30 : 22
+    let heightStep = podiumW >= 500 ? 30 : 16
     const podiumLabels = top3.map((entry) => {
       const name = hudText(this, 0, 0, entry.displayName, 1, {
         color: '#283148', size: nameSize, stroke: 0, pad: 1,
@@ -1598,12 +1598,9 @@ export class TitleScene extends Phaser.Scene {
       })
       return { name, score }
     })
-    const plateH = Math.max(nameSize * 1.5, ...podiumLabels.map((label) => label.name.height)) + 16
+    const plateTextH = Math.max(nameSize * 1.5, ...podiumLabels.map((label) => label.name.height))
     const podiumScoreH = Math.max(...podiumLabels.map((label) => label.score.height))
-    const componentH = deckH + 8 + medalR * 2 + 10 + plateH + 10 + podiumScoreH + 16
-    const firstH = componentH + heightStep * 2
-    const ballR = Math.min(columnW * 0.33, isDesktop ? 72 : 42)
-    const podiumH = Math.ceil(firstH + ballR * 2.8 + plinthH + 8)
+    let ballR = Math.min(columnW * 0.33, isDesktop ? 72 : 42)
 
     // Keep type readable: measure full names at the intended font size, then
     // give every row the same height based on the tallest wrapped name.
@@ -1633,7 +1630,31 @@ export class TitleScene extends Phaser.Scene {
     const slotCount = entries.length
     const totalRowsH = slotCount * (rowH + rowGap) - rowGap
     const desiredTableH = wellPad * 2 + headerH + 12 + totalRowsH
-    const tableMaxH = isDesktop ? availableH : Math.max(120, availableH - podiumH - panelGap)
+    // Reserve the full measured row, header and insets before sizing podium art.
+    // Text keeps its measured size; only capitals, medals, balls and gaps compact.
+    const minTableH = wellPad * 2 + headerH + 12 + rowH
+    const podiumBudget = isDesktop ? availableH : availableH - minTableH - panelGap
+    const naturalArtH = deckH + 8 + medalR * 2 + 10 + 16 + 10 + 16
+      + heightStep * 2 + ballR * 2.8 + plinthH + 8
+    const compactArtH = 8 + 3 + 20 + 3 + 8 + 3 + 6 + 8 + 12 * 2.8 + 10 + 8
+    const artScale = Phaser.Math.Clamp(
+      (podiumBudget - plateTextH - podiumScoreH - compactArtH) / (naturalArtH - compactArtH), 0, 1,
+    )
+    const compact = (minimum: number, normal: number) => minimum + (normal - minimum) * artScale
+    deckH = compact(8, deckH)
+    medalR = compact(10, medalR)
+    plinthH = compact(10, plinthH)
+    heightStep = compact(4, heightStep)
+    ballR = compact(12, ballR)
+    const medalGap = compact(3, 8)
+    const plateGap = compact(3, 10)
+    const scoreGap = compact(3, 10)
+    const footGap = compact(6, 16)
+    const plateH = plateTextH + compact(8, 16)
+    const componentH = deckH + medalGap + medalR * 2 + plateGap + plateH + scoreGap + podiumScoreH + footGap
+    const firstH = componentH + heightStep * 2
+    const podiumH = firstH + ballR * 2.8 + plinthH + 8
+    const tableMaxH = isDesktop ? availableH : availableH - podiumH - panelGap
     const tableH = Math.min(desiredTableH, tableMaxH)
     const compositionH = isDesktop ? Math.max(podiumH, tableH) : podiumH + panelGap + tableH
     const podiumY = bodyY + Math.max(0, (availableH - compositionH) / 2)
@@ -1647,13 +1668,13 @@ export class TitleScene extends Phaser.Scene {
       { rank: 1, tier: 6, x: firstX, h: firstH, index: 0 },
     ].map((slot) => {
       const y = baseY - slot.h
-      const medalY = y + deckH + 8 + medalR
-      const plateY = medalY + medalR + 10
+      const medalY = y + deckH + medalGap + medalR
+      const plateY = medalY + medalR + plateGap
       return { ...slot, y, w: columnW, visualCX: slot.x + columnW / 2,
         medalY, medalR, plateY, plateW, plateH, entry: top3[slot.index] }
     })
     // Plate height depends on measured names, so its geometry is part of the bake key.
-    const podiumKey = `br-olympus-podium:${top3.length}:${plateH}:${componentH}`
+    const podiumKey = `br-olympus-podium:${top3.length}:${plateH}:${componentH}:${artScale}`
     bakeCanvas(this, podiumKey, Math.ceil(podiumW), Math.ceil(podiumH), (ctx) => {
       const columns = podiumSlots.filter((slot) => slot.entry).map((slot) => ({
         ...slot, x: slot.x - podiumX, y: slot.y - podiumY,
@@ -1680,7 +1701,7 @@ export class TitleScene extends Phaser.Scene {
       }))
       const labels = podiumLabels[slot.index]!
       labels.name.setPosition(cx, slot.plateY + plateH / 2)
-      labels.score.setPosition(cx, slot.plateY + plateH + 10 + podiumScoreH / 2)
+      labels.score.setPosition(cx, slot.plateY + plateH + scoreGap + podiumScoreH / 2)
       podiumGroup.add([labels.name, labels.score])
     }
 
