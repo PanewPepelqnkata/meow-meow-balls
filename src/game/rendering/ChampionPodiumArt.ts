@@ -240,6 +240,7 @@ function drawLeaf(
   y2: number,
   breadth: number,
   fill: string,
+  highlight: string,
   outline: number,
 ): void {
   const dx = x2 - x1
@@ -260,36 +261,71 @@ function drawLeaf(
   ctx.strokeStyle = INK
   ctx.lineWidth = outline
   ctx.stroke()
+
+  ctx.beginPath()
+  ctx.moveTo(x1 + dx * 0.2, y1 + dy * 0.2)
+  ctx.lineTo(x1 + dx * 0.72, y1 + dy * 0.72)
+  ctx.strokeStyle = highlight
+  ctx.lineWidth = outline * 0.48
+  ctx.stroke()
 }
 
-function drawMedal(
+/** Standalone medal and laurels; the caller owns the centered rank label. */
+export function drawChampionMedal(
   ctx: CanvasRenderingContext2D,
-  column: ChampionColumn,
-  outline: number,
+  w: number,
+  h: number,
+  rank: number,
 ): void {
-  const { rank, visualCX: cx, medalY: cy, medalR: radius } = column
-  const medalFill = rank === 2 ? '#d9e0e1' : rank === 3 ? '#cf8954' : '#f0bf4d'
-  const medalEdge = rank === 2 ? '#73828a' : rank === 3 ? '#8f4d2b' : '#a96f1e'
-  const laurel = rank === 2 ? '#bdc9cc' : rank === 3 ? '#bd7544' : '#e5ad37'
-  const leafOutline = Math.max(0.8, outline * 0.47)
+  if (w <= 0 || h <= 0) return
 
-  ctx.strokeStyle = medalEdge
-  ctx.lineWidth = Math.max(1.4, outline * 0.77)
+  const cx = w * 0.5
+  const cy = h * 0.5
+  const radius = Math.min(w / 3.8, h / 2.4)
+  const outline = Math.min(3.6, radius * 0.115)
+  const medalFill = rank === 2 ? '#d9e2e3' : rank === 3 ? '#dc9964' : '#f2c65e'
+  const medalFace = rank === 2 ? '#c5d0d3' : rank === 3 ? '#cc8350' : '#eab448'
+  const medalEdge = rank === 2 ? '#788b92' : rank === 3 ? '#8f4d2d' : '#a57123'
+  const highlight = rank === 2 ? '#f5ffff' : rank === 3 ? '#ffcea1' : '#fff1b2'
+  const laurel = rank === 2 ? '#b8c7cb' : rank === 3 ? '#bd7849' : '#dda53a'
+  const leafOutline = outline * 0.52
+
+  ctx.save()
+  ctx.lineJoin = 'round'
+  ctx.lineCap = 'round'
+
   ctx.beginPath()
-  ctx.moveTo(cx - radius * 1.12, cy + radius * 0.78)
-  ctx.bezierCurveTo(cx - radius * 1.48, cy + radius * 0.33, cx - radius * 1.4, cy - radius * 0.31, cx - radius * 1.13, cy - radius * 0.78)
-  ctx.moveTo(cx + radius * 1.12, cy + radius * 0.78)
-  ctx.bezierCurveTo(cx + radius * 1.48, cy + radius * 0.33, cx + radius * 1.4, cy - radius * 0.31, cx + radius * 1.13, cy - radius * 0.78)
+  ctx.moveTo(cx - radius * 0.58, cy + radius * 0.94)
+  ctx.bezierCurveTo(cx - radius * 1.49, cy + radius * 0.64, cx - radius * 1.51, cy - radius * 0.3, cx - radius * 1.1, cy - radius * 0.84)
+  ctx.moveTo(cx + radius * 0.58, cy + radius * 0.94)
+  ctx.bezierCurveTo(cx + radius * 1.49, cy + radius * 0.64, cx + radius * 1.51, cy - radius * 0.3, cx + radius * 1.1, cy - radius * 0.84)
+  ctx.strokeStyle = INK
+  ctx.lineWidth = outline * 1.1
+  ctx.stroke()
+  ctx.strokeStyle = medalEdge
+  ctx.lineWidth = outline * 0.58
   ctx.stroke()
 
-  for (let i = 0; i < 4; i += 1) {
-    const t = (i + 1) / 5
-    const leafY = cy + radius * (0.64 - t * 1.25)
-    const leafX = radius * (1.19 + Math.sin(t * Math.PI) * 0.12)
-    const tipY = leafY - radius * 0.2
-    drawLeaf(ctx, cx - leafX, leafY, cx - leafX - radius * 0.42, tipY, radius * 0.17, laurel, leafOutline)
-    drawLeaf(ctx, cx + leafX, leafY, cx + leafX + radius * 0.42, tipY, radius * 0.17, laurel, leafOutline)
+  for (let i = 0; i < 5; i += 1) {
+    const leafY = cy + radius * (0.62 - i * 0.27)
+    const leafX = radius * (1.18 + Math.sin((i + 0.5) / 5 * Math.PI) * 0.16)
+    for (let side = -1; side <= 1; side += 2) {
+      drawLeaf(ctx, cx + side * leafX, leafY, cx + side * (leafX + radius * 0.32), leafY - radius * 0.23, radius * 0.125, laurel, highlight, leafOutline)
+      drawLeaf(ctx, cx + side * leafX, leafY - radius * 0.04, cx + side * (leafX - radius * 0.25), leafY - radius * 0.31, radius * 0.105, medalFill, highlight, leafOutline)
+    }
   }
+  for (let side = -1; side <= 1; side += 2) {
+    drawLeaf(ctx, cx + side * radius * 1.12, cy - radius * 0.63, cx + side * radius * 1.07, cy - radius * 0.99, radius * 0.12, laurel, highlight, leafOutline)
+  }
+
+  // The lower rim is a physical extrusion, not a blurred canvas shadow.
+  ctx.beginPath()
+  ctx.arc(cx, cy + radius * 0.075, radius, 0, Math.PI * 2)
+  ctx.fillStyle = medalEdge
+  ctx.fill()
+  ctx.strokeStyle = INK
+  ctx.lineWidth = outline
+  ctx.stroke()
 
   ctx.beginPath()
   ctx.arc(cx, cy, radius, 0, Math.PI * 2)
@@ -300,28 +336,148 @@ function drawMedal(
   ctx.stroke()
 
   ctx.beginPath()
-  ctx.arc(cx, cy, radius * 0.77, 0, Math.PI * 2)
+  ctx.arc(cx, cy, radius * 0.81, 0, Math.PI * 2)
+  ctx.fillStyle = medalFace
+  ctx.fill()
   ctx.strokeStyle = medalEdge
-  ctx.lineWidth = Math.max(1, outline * 0.58)
+  ctx.lineWidth = outline * 0.64
   ctx.stroke()
+
+  ctx.beginPath()
+  ctx.arc(cx, cy, radius * 0.905, Math.PI * 1.08, Math.PI * 1.82)
+  ctx.strokeStyle = highlight
+  ctx.lineWidth = outline * 0.72
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.arc(cx, cy, radius * 0.905, Math.PI * 0.09, Math.PI * 0.8)
+  ctx.strokeStyle = medalEdge
+  ctx.lineWidth = outline * 0.52
+  ctx.stroke()
+
+  ctx.beginPath()
+  ctx.arc(cx, cy, radius * 0.695, 0, Math.PI * 2)
+  ctx.strokeStyle = medalEdge
+  ctx.lineWidth = outline * 0.34
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.arc(cx, cy, radius * 0.72, Math.PI * 0.08, Math.PI * 0.88)
+  ctx.strokeStyle = highlight
+  ctx.lineWidth = outline * 0.28
+  ctx.stroke()
+
+  ctx.restore()
 }
 
-function drawPlaque(
+function plaquePath(
   ctx: CanvasRenderingContext2D,
-  column: ChampionColumn,
-  outline: number,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  corner: number,
 ): void {
-  const { plateY, plateW, plateH, visualCX } = column
-  if (plateH <= 0 || plateW <= 0) return
+  ctx.beginPath()
+  ctx.moveTo(x + corner, y)
+  ctx.lineTo(x + w - corner, y)
+  ctx.lineTo(x + w, y + corner)
+  ctx.lineTo(x + w, y + h - corner)
+  ctx.lineTo(x + w - corner, y + h)
+  ctx.lineTo(x + corner, y + h)
+  ctx.lineTo(x, y + h - corner)
+  ctx.lineTo(x, y + corner)
+  ctx.closePath()
+}
 
-  const plateX = visualCX - plateW * 0.5
-  const radiusCorner = Math.min(outline * 1.65, plateH * 0.24)
-  roundedRect(ctx, plateX, plateY, plateW, plateH, radiusCorner)
-  ctx.fillStyle = '#fff7e4'
+/** Text-free plaque with a quiet inset of eight horizontal and six vertical pixels. */
+export function drawChampionPlaque(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  kind: 'name' | 'score',
+): void {
+  if (w <= 0 || h <= 0) return
+
+  const isScore = kind === 'score'
+  const outline = Math.min(2.2, w * 0.055, h * 0.09)
+  const inset = outline * 0.5 + Math.min(0.35, Math.min(w, h) * 0.02)
+  const depth = Math.min(1.8, h * 0.07)
+  const frame = Math.min(1.65, w * 0.05, h * 0.06)
+  const corner = Math.min(3.8, w * 0.06, h * 0.15)
+  const faceW = w - inset * 2
+  const faceH = h - inset * 2 - depth
+  const ornamentScale = Math.min(1, w / 32, h / 20)
+
+  ctx.save()
+  ctx.lineJoin = 'round'
+  ctx.lineCap = 'round'
+
+  plaquePath(ctx, inset, inset + depth, faceW, faceH, corner)
+  ctx.fillStyle = isScore ? '#28291f' : '#ab9874'
   ctx.fill()
-  ctx.strokeStyle = GOLD
-  ctx.lineWidth = Math.max(1.1, outline * 0.72)
+  ctx.strokeStyle = INK
+  ctx.lineWidth = outline
   ctx.stroke()
+
+  const frameFill = ctx.createLinearGradient(0, inset, 0, inset + faceH)
+  frameFill.addColorStop(0, isScore ? '#dfb75e' : '#f5d782')
+  frameFill.addColorStop(1, isScore ? '#96682c' : '#be8931')
+  plaquePath(ctx, inset, inset, faceW, faceH, corner)
+  ctx.fillStyle = frameFill
+  ctx.fill()
+  ctx.strokeStyle = INK
+  ctx.lineWidth = outline
+  ctx.stroke()
+
+  const faceFill = ctx.createLinearGradient(0, inset + frame, 0, inset + faceH - frame)
+  faceFill.addColorStop(0, isScore ? '#fff2cf' : '#fff9e9')
+  faceFill.addColorStop(0.45, isScore ? '#f2dfb7' : '#f8efd9')
+  faceFill.addColorStop(1, isScore ? '#e4ca97' : '#e9dcc0')
+  plaquePath(ctx, inset + frame, inset + frame, faceW - frame * 2, faceH - frame * 2, Math.max(0, corner - frame * 0.65))
+  ctx.fillStyle = faceFill
+  ctx.fill()
+  ctx.strokeStyle = isScore ? '#b79045' : '#ac8745'
+  ctx.lineWidth = outline * 0.42
+  ctx.stroke()
+
+  ctx.beginPath()
+  ctx.moveTo(inset + corner, inset + outline * 0.55)
+  ctx.lineTo(w - inset - corner, inset + outline * 0.55)
+  ctx.strokeStyle = isScore ? '#f3d28b' : '#fff1bd'
+  ctx.lineWidth = outline * 0.38
+  ctx.stroke()
+
+  // Small angular keys stay in the border, leaving the label field untouched.
+  ctx.strokeStyle = isScore ? '#c6a45e' : '#bd9a54'
+  ctx.lineWidth = ornamentScale * 0.72
+  for (let side = -1; side <= 1; side += 2) {
+    const cornerX = side === -1 ? 0 : w
+    const directionX = -side * ornamentScale
+    for (let edge = -1; edge <= 1; edge += 2) {
+      const cornerY = edge === -1 ? 0 : h
+      const directionY = -edge * ornamentScale
+      ctx.beginPath()
+      ctx.moveTo(cornerX + directionX * 5, cornerY + directionY * 5.4)
+      ctx.lineTo(cornerX + directionX * 5, cornerY + directionY * 3.8)
+      ctx.lineTo(cornerX + directionX * 7, cornerY + directionY * 3.8)
+      ctx.lineTo(cornerX + directionX * 7, cornerY + directionY * 4.7)
+      ctx.lineTo(cornerX + directionX * 6.2, cornerY + directionY * 4.7)
+      ctx.stroke()
+    }
+  }
+
+  ctx.strokeStyle = isScore ? '#c3a56c' : '#d8caab'
+  ctx.lineWidth = ornamentScale * 0.6
+  for (let side = -1; side <= 1; side += 2) {
+    const edgeX = side === -1 ? 0 : w
+    const direction = -side * ornamentScale
+    ctx.beginPath()
+    ctx.moveTo(edgeX + direction * 4.8, h * 0.36)
+    ctx.lineTo(edgeX + direction * 6.6, h * 0.46)
+    ctx.lineTo(edgeX + direction * 5.5, h * 0.58)
+    ctx.stroke()
+  }
+
+  ctx.restore()
 }
 
 export function drawChampionPodium(
@@ -344,8 +500,6 @@ export function drawChampionPodium(
     if (column.w <= 0 || column.h <= 0) continue
     drawShaft(ctx, column, deckH, outline)
     drawCapital(ctx, column, deckH, outline)
-    drawMedal(ctx, column, outline)
-    drawPlaque(ctx, column, outline)
   }
 
   ctx.restore()

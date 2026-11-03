@@ -16,8 +16,10 @@ import { loadSave, resetSave, setThemeSetting } from '../state/save'
 import { tier9Theme, variantIdFor } from '../state/runVariant'
 import { session } from '../state/session'
 import { bakeCanvas, roundedRectPath } from '../rendering/RoughArt'
+import { drawChampionMedal, drawChampionPlaque, drawChampionPodium } from '../rendering/ChampionPodiumArt'
 import { drawOlympusHall, drawOlympusTablet } from '../rendering/OlympusHallArt'
-import { drawChampionPodium } from '../rendering/ChampionPodiumArt'
+import { playGoldenScreenTransition } from '../rendering/GoldenScreenTransition'
+import { playLeaderboardEntrance, type ChampionEntranceParts } from '../rendering/LeaderboardEntrance'
 import { cycleColor } from '../rendering/rgbCycle'
 import { UiverseDomButtons } from '../../ui/UiverseDomButtons'
 import { StartIntroScene } from './StartIntroScene'
@@ -172,9 +174,20 @@ export class TitleScene extends Phaser.Scene {
   /** Monotonic build token — a stale async leaderboard fetch detects a
    * resize/navigation rebuild by comparing its captured token. */
   private lbBuildSeq = 0
+  private leaderboardTransitionCleanup: (() => void) | null = null
   private lbModalOpen = false
   private lbCachedScores: Awaited<ReturnType<typeof scoreService.getLeaderboard>> | null = null
+  private lbEntrancePending = false
+  private lbModalLayer: Phaser.GameObjects.Container | null = null
+  private lbModalPopup: Phaser.GameObjects.Container | null = null
+  private lbModalDim: Phaser.GameObjects.Rectangle | null = null
+  private lbModalBusy = false
+  private lbModalClose: ChunkyButton | null = null
+  private lbModalCenter = { x: 0, y: 0 }
+  private lbModalReturnRects: typeof this.panelRects = []
+  private lbModalTweens: Phaser.Tweens.Tween[] = []
   private lbModalCleanup: (() => void) | null = null
+  private lbEntranceCleanup: (() => void) | null = null
   constructor() {
     super('TitleScene')
   }
@@ -248,9 +261,11 @@ export class TitleScene extends Phaser.Scene {
     )
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.closed = true
+      this.returnToPause = false
+      this.leaderboardTransitionCleanup?.()
+      this.leaderboardTransitionCleanup = null
       this.lbModalCleanup?.()
       this.lbModalCleanup = null
-      this.lbBuildSeq++
       this.destroyCollectionBook()
       this.teardownLeaderboardScroll()
       this.disarmReset()
@@ -1259,6 +1274,15 @@ export class TitleScene extends Phaser.Scene {
       if (screen === 'menu') this.returnToPausedGame()
       return
     }
+    const enteringLeaderboard = screen === 'leaderboard' && this.screen !== 'leaderboard'
+    this.lbEntrancePending = enteringLeaderboard && !this.reducedMotion
+    if (enteringLeaderboard) {
+      const z = this.game.scale.displayScale.x || 1
+      const vw = this.scale.width / z
+      const vh = this.scale.height / z
+      this.leaderboardTransitionCleanup?.()
+      this.leaderboardTransitionCleanup = playGoldenScreenTransition(this, this.panelLayer, vw, vh, this.reducedMotion)
+    }
     if (screen !== this.screen) this.disarmReset()
     if (screen !== this.screen) {
       this.lbModalOpen = false
@@ -1335,36 +1359,6 @@ export class TitleScene extends Phaser.Scene {
     const right = Math.max(margin, safe.right + 12)
     const y = Math.max(12, safe.top + 8)
     const height = vh < 500 ? 68 : 80
-    if (this.lbModalOpen) {
-      const frame = this.add.graphics()
-      frame.fillStyle(0xfff8e9).fillRoundedRect(x, y, vw - x - right, height, 14)
-      frame.lineStyle(3, INK).strokeRoundedRect(x, y, vw - x - right, height, 14)
-      this.panelContent.add(frame)
-      const closeW = 64
-      const closeX = vw - right - 12 - closeW / 2
-      const cy = y + height / 2
-      const close = new ChunkyButton({ scene: this, x: closeX, y: cy, w: closeW, h: 40,
-        label: 'CLOSE', fontSize: 13, fill: 0xe8cc8b, shadowColor: 0xa77a32,
-        highlightColor: 0xfff8e9, onClick: () => this.setLeaderboardModal(false) })
-      this.panelContent.add(close.container)
-      this.panelRects.push({ label: 'CLOSE', x: closeX - closeW / 2, y: cy - 20, w: closeW, h: 40, screen: 'panel' })
-      const title = hudText(this, x + 16, cy, 'LEADERBOARD', 1, {
-        color: '#ffe19a', size: 30, stroke: 3, origin: [0, 0.5], shadow: false,
-      })
-      title.setScale(Math.min(1, (closeX - closeW / 2 - x - 28) / title.width))
-      this.panelContent.add(title)
-      const previousOverflow = document.body.style.overflow
-      document.body.style.overflow = 'hidden'
-      const escape = (event: KeyboardEvent) => {
-        if (event.key === 'Escape') this.setLeaderboardModal(false)
-      }
-      window.addEventListener('keydown', escape)
-      this.lbModalCleanup = () => {
-        window.removeEventListener('keydown', escape)
-        document.body.style.overflow = previousOverflow
-      }
-      return { contentTopY: y + height + 12 }
-    }
     const frame = this.add.graphics()
     frame.fillStyle(0xfff1d1).fillRoundedRect(x, y, vw - x - right, height, 14)
     frame.lineStyle(3, INK).strokeRoundedRect(x, y, vw - x - right, height, 14)
@@ -1391,9 +1385,64 @@ export class TitleScene extends Phaser.Scene {
   }
 
   private setLeaderboardModal(open: boolean): void {
-    if (this.screen !== 'leaderboard' || this.closed || this.lbModalOpen === open) return
+    const layer = this.lbModalLayer
+    const popup = this.lbModalPopup
+    const dim = this.lbModalDim
+    const scroll = this.lbScroll
+    if (this.closed || this.screen !== 'leaderboard' || !layer || !popup || !dim || !scroll || this.lbModalBusy || this.lbModalOpen === open) return
     this.lbModalOpen = open
-    this.applyScreenVisibility()
+    this.lbModalBusy = !this.reducedMotion
+    scroll.dragPointerId = null
+    scroll.zone.disableInteractive()
+    scroll.rowsC.setAlpha(open ? 0 : 1)
+    for (const tween of this.lbModalTweens) tween.stop()
+    this.lbModalTweens.length = 0
+    const positionPopup = () => {
+      popup.setPosition(this.lbModalCenter.x * (1 - popup.scaleX), this.lbModalCenter.y * (1 - popup.scaleY))
+    }
+    const finish = () => {
+      this.lbModalBusy = false
+      if (open) {
+        popup.setScale(1).setPosition(0, 0).setAlpha(1)
+        scroll.rowsC.setAlpha(1)
+        scroll.zone.setInteractive()
+      } else {
+        layer.setVisible(false)
+        this.lbModalCleanup?.()
+        this.lbModalCleanup = null
+        this.panelRects = this.lbModalReturnRects.map((rect) => ({ ...rect }))
+      }
+    }
+    if (open) {
+      layer.setVisible(true)
+      this.panelContent.bringToTop(layer)
+      dim.setAlpha(0)
+      popup.setScale(this.reducedMotion ? 1 : 0.9).setAlpha(0)
+      positionPopup()
+      const previousOverflow = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+      const escape = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') this.setLeaderboardModal(false)
+      }
+      window.addEventListener('keydown', escape)
+      this.lbModalCleanup = () => {
+        window.removeEventListener('keydown', escape)
+        document.body.style.overflow = previousOverflow
+      }
+      const close = this.lbModalClose!.container
+      this.panelRects = [{ label: 'CLOSE', x: close.x - 32, y: close.y - 20, w: 64, h: 40, screen: 'panel' }]
+    }
+    if (this.reducedMotion) {
+      dim.setAlpha(open ? 0.65 : 0)
+      popup.setAlpha(open ? 1 : 0)
+      finish()
+      return
+    }
+    const duration = open ? 280 : 190
+    this.lbModalTweens.push(this.tweens.add({ targets: dim, alpha: open ? 0.65 : 0, duration, ease: 'Quad.easeOut' }))
+    this.lbModalTweens.push(this.tweens.add({ targets: scroll.rowsC, alpha: open ? 1 : 0, duration: open ? 120 : 70, delay: open ? 190 : 0 }))
+    this.lbModalTweens.push(this.tweens.add({ targets: popup, scaleX: open ? 1 : 0.94, scaleY: open ? 1 : 0.94,
+      alpha: open ? 1 : 0, duration, ease: open ? 'Cubic.easeOut' : 'Quad.easeIn', onUpdate: positionPopup, onComplete: finish }))
   }
 
   private destroyCollectionBook(): void {
@@ -1413,8 +1462,18 @@ export class TitleScene extends Phaser.Scene {
   /** Remove leaderboard scroll listeners/masks/tweens; GameObjects die with panelContent. */
   private teardownLeaderboardScroll(): void {
     this.lbBuildSeq++
+    this.lbEntranceCleanup?.()
+    this.lbEntranceCleanup = null
     for (const tw of this.lbTweens) tw.stop()
     this.lbTweens.length = 0
+    for (const tween of this.lbModalTweens) tween.stop()
+    this.lbModalTweens.length = 0
+    this.lbModalBusy = false
+    this.lbModalOpen = false
+    this.lbModalLayer = null
+    this.lbModalPopup = null
+    this.lbModalDim = null
+    this.lbModalClose = null
     const s = this.lbScroll
     if (!s) return
     this.lbScroll = null
@@ -1442,7 +1501,7 @@ export class TitleScene extends Phaser.Scene {
     dy: number,
   ): void {
     const s = this.lbScroll
-    if (!s || s.maxOffset <= 0) return
+    if (!s || s.maxOffset <= 0 || !s.zone.input?.enabled || this.lbModalBusy) return
     const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y, this.pointerWorld)
     const wx = world.x
     const wy = world.y
@@ -1512,6 +1571,7 @@ export class TitleScene extends Phaser.Scene {
 
     const bgImg = this.add.image(0, 0, bgKey).setOrigin(0, 0).setDisplaySize(Math.ceil(vw), Math.ceil(vh))
     this.panelContent.addAt(bgImg, 0)
+    if (this.lbEntrancePending && !this.reducedMotion) bgImg.setAlpha(0.15)
     const g = this.add.graphics()
     this.panelContent.add(g)
 
@@ -1564,12 +1624,14 @@ export class TitleScene extends Phaser.Scene {
 
     const isDesktop = (vw >= 1100 && vw > vh) || (vw >= 600 && vw > vh && vh < 600)
     const portrait = vw <= vh
-    const modal = portrait && this.lbModalOpen
+    const modal = portrait
     const maxTotalW = Math.min(isDesktop ? 1560 : 820, vw - left - right)
     const totalX = centerX - maxTotalW / 2
 
     // Error state
     if (fetchError) {
+      bgImg.setAlpha(1)
+      this.lbEntrancePending = false
       const errorW = Math.min(480, maxTotalW)
       const errorX = centerX - errorW / 2
       const errorH = Math.min(144, availableH)
@@ -1601,6 +1663,8 @@ export class TitleScene extends Phaser.Scene {
 
     // Empty state
     if (entries.length === 0) {
+      bgImg.setAlpha(1)
+      this.lbEntrancePending = false
       const emptyW = Math.min(480, maxTotalW)
       const emptyX = centerX - emptyW / 2
       const emptyH = Math.min(144, availableH)
@@ -1696,9 +1760,9 @@ export class TitleScene extends Phaser.Scene {
     // Text keeps its measured size; only capitals, medals, balls and gaps compact.
     const minTableH = wellPad * 2 + headerH + 12 + rowH
     const podiumBudget = isDesktop || portrait ? availableH - (portrait ? 124 : 0) : availableH - minTableH - panelGap
-    const naturalArtH = deckH + 8 + medalR * 2 + 10 + 16 + 10 + 16
+    const naturalArtH = deckH + 8 + medalR * 2 + 10 + 16 + 10 + 16 + 18
       + heightStep * 2 + ballR * 2.8 + plinthH + 8
-    const compactArtH = 6 + 3 + 16 + 3 + 6 + 3 + 4 + 8 + 10 * 2.8 + 8 + 8
+    const compactArtH = 6 + 3 + 16 + 3 + 6 + 3 + 4 + 8 + 10 * 2.8 + 8 + 8 + 10
     const artScale = Phaser.Math.Clamp(
       (podiumBudget - plateTextH - podiumScoreH - compactArtH) / (naturalArtH - compactArtH), 0, 1,
     )
@@ -1712,8 +1776,9 @@ export class TitleScene extends Phaser.Scene {
     const plateGap = compact(3, 10)
     const scoreGap = compact(3, 10)
     const footGap = compact(4, 16)
+    const plaqueScoreH = podiumScoreH + compact(10, 18)
     const plateH = plateTextH + compact(6, 16)
-    const componentH = deckH + medalGap + medalR * 2 + plateGap + plateH + scoreGap + podiumScoreH + footGap
+    const componentH = deckH + medalGap + medalR * 2 + plateGap + plateH + scoreGap + plaqueScoreH + footGap
     const firstH = componentH + heightStep * 2
     const podiumH = firstH + ballR * 2.8 + plinthH + 8
     const tableMaxH = isDesktop ? availableH : availableH - podiumH - panelGap
@@ -1746,28 +1811,52 @@ export class TitleScene extends Phaser.Scene {
     }, window.devicePixelRatio || 1)
     const podiumGroup = this.add.container(0, 0)
     this.panelContent.addAt(podiumGroup, 1)
-    podiumGroup.add(this.add.image(podiumX, podiumY, podiumKey).setOrigin(0, 0).setDisplaySize(podiumW, podiumH))
-    const podiumG = this.add.graphics()
-    podiumGroup.add(podiumG)
+    const baseImage = this.add.image(podiumX, podiumY, podiumKey).setOrigin(0, 0).setDisplaySize(podiumW, podiumH)
+    podiumGroup.add(baseImage)
+    const champions: ChampionEntranceParts[] = []
     for (const slot of podiumSlots) {
       if (!slot.entry) continue
       const cx = slot.visualCX
-      const ballCY = slot.y + deckH * 0.58 + 1 - ballR
-      drawBallIcon(this, podiumG, slot.tier, cx, ballCY, ballR, {
-        seed: slot.rank * 777 + slot.tier * 31, layer: podiumGroup,
+      const seatY = slot.y + deckH * 0.58 + 1
+      const ball = this.add.container(cx, seatY)
+      const ballG = this.add.graphics()
+      ball.add(ballG)
+      drawBallIcon(this, ballG, slot.tier, 0, -ballR, ballR, {
+        seed: slot.rank * 777 + slot.tier * 31, layer: ball,
       })
-      if (slot.rank === 1) addCrownImage(this, podiumGroup, cx - ballR * 0.07,
-        ballCY - ballR * 0.98, ballR * 1.24, ballR * 0.9, -0.12)
-      podiumGroup.add(hudText(this, cx, slot.medalY, `${slot.rank}`, 1, {
-        color: '#283148', size: medalR * 1.2, stroke: 0, pad: 1, origin: [0.5, 0.5], shadow: false,
-      }))
+      if (slot.rank === 1) addCrownImage(this, ball, -ballR * 0.07,
+        -ballR * 1.98, ballR * 1.24, ballR * 0.9, -0.12)
+      const medalW = Math.ceil(medalR * 3.8 + 4)
+      const medalH = Math.ceil(medalR * 2.4 + 4)
+      const medalKey = `br-champion-medal:${slot.rank}:${medalW}:${medalH}`
+      bakeCanvas(this, medalKey, medalW, medalH, (ctx) => drawChampionMedal(ctx, medalW, medalH, slot.rank), window.devicePixelRatio || 1)
+      const medal = this.add.container(cx, slot.medalY, [
+        this.add.image(0, 0, medalKey).setDisplaySize(medalW, medalH),
+        leaderboardTextStyle(hudText(this, 0, 0, `${slot.rank}`, 1, {
+          color: LEADERBOARD_TEXT, size: medalR * 1.15, stroke: 0, pad: 1, origin: [0.5, 0.5], shadow: false,
+        })),
+      ])
       const labels = podiumLabels[slot.index]!
-      labels.name.setPosition(cx, slot.plateY + plateH / 2)
-      labels.score.setPosition(cx, slot.plateY + plateH + scoreGap + podiumScoreH / 2)
-      podiumGroup.add([labels.name, labels.score])
+      const nameKey = `br-champion-name:${plateW}:${plateH}`
+      bakeCanvas(this, nameKey, Math.ceil(plateW), Math.ceil(plateH), (ctx) => drawChampionPlaque(ctx, plateW, plateH, 'name'), window.devicePixelRatio || 1)
+      labels.name.setPosition(0, 0)
+      const name = this.add.container(cx, slot.plateY + plateH / 2, [
+        this.add.image(0, 0, nameKey).setDisplaySize(plateW, plateH), labels.name,
+      ])
+      const scoreKey = `br-champion-score:${plateW}:${plaqueScoreH}`
+      bakeCanvas(this, scoreKey, Math.ceil(plateW), Math.ceil(plaqueScoreH), (ctx) => drawChampionPlaque(ctx, plateW, plaqueScoreH, 'score'), window.devicePixelRatio || 1)
+      labels.score.setPosition(0, 0).setColor(LEADERBOARD_TEXT).setStroke(LEADERBOARD_TEXT, 0.65)
+      const score = this.add.container(cx, slot.plateY + plateH + scoreGap + plaqueScoreH / 2, [
+        this.add.image(0, 0, scoreKey).setDisplaySize(plateW, plaqueScoreH), labels.score,
+      ])
+      podiumGroup.add([ball, medal, name, score])
+      champions.push({ ball, medal, name, score, scoreText: labels.score, value: slot.entry.score })
     }
 
-    if (portrait && !modal) {
+    let portraitAction: Phaser.GameObjects.Container | null = null
+    if (portrait) {
+      portraitAction = this.add.container(0, 0)
+      this.panelContent.add(portraitAction)
       const buttonW = Math.min(350, podiumW - 24)
       const buttonH = 64
       const buttonX = podiumX + podiumW / 2
@@ -1776,7 +1865,7 @@ export class TitleScene extends Phaser.Scene {
         w: buttonW, h: buttonH, label: 'SHOW ALL PLAYERS', fontSize: 22, pill: true,
         fill: 0xe8cc8b, shadowColor: 0xa77a32, highlightColor: 0xfff8e9,
         textColor: '#ffe19a', onClick: () => this.setLeaderboardModal(true) })
-      this.panelContent.add(show.container)
+      portraitAction.add(show.container)
       this.panelRects.push({ label: 'SHOW ALL PLAYERS', x: buttonX - buttonW / 2,
         y: buttonY - buttonH / 2, w: buttonW, h: buttonH, screen: 'panel' })
       const count = leaderboardTextStyle(hudText(this, buttonX, buttonY + buttonH / 2 + 20,
@@ -1784,10 +1873,40 @@ export class TitleScene extends Phaser.Scene {
           color: LEADERBOARD_SECONDARY, size: 14, stroke: 0, pad: 1,
           origin: [0.5, 0.5], shadow: false,
         }), LEADERBOARD_SECONDARY)
-      this.panelContent.add(count)
-      return
+      portraitAction.add(count)
     }
-    podiumGroup.setVisible(!modal)
+
+    const tableLayer = this.add.container(0, 0)
+    if (portrait) {
+      const layer = this.add.container(0, 0).setVisible(false)
+      const dim = this.add.rectangle(vw / 2, vh / 2, vw, vh, 0x000000, 1).setAlpha(0).setInteractive()
+      layer.add([dim, tableLayer])
+      this.panelContent.add(layer)
+      this.lbModalLayer = layer
+      this.lbModalPopup = tableLayer
+      this.lbModalDim = dim
+      this.lbModalCenter = { x: vw / 2, y: vh / 2 }
+      const headerY = Math.max(12, safe.top + 8)
+      const headerFrame = this.add.graphics()
+      headerFrame.fillStyle(0xfff8e9).fillRoundedRect(left, headerY, vw - left - right, 80, 14)
+      headerFrame.lineStyle(2, 0xc6a35e).strokeRoundedRect(left, headerY, vw - left - right, 80, 14)
+      tableLayer.add(headerFrame)
+      const closeX = vw - right - 44
+      const closeY = headerY + 40
+      const close = new ChunkyButton({ scene: this, x: closeX, y: closeY, w: 64, h: 40,
+        label: 'CLOSE', fontSize: 13, fill: 0xe8cc8b, shadowColor: 0xa77a32,
+        highlightColor: 0xfff8e9, onClick: () => this.setLeaderboardModal(false) })
+      tableLayer.add(close.container)
+      this.lbModalClose = close
+      const title = hudText(this, left + 16, closeY, 'LEADERBOARD', 1, {
+        color: '#ffe19a', size: 30, stroke: 3, origin: [0, 0.5], shadow: false,
+      })
+      title.setScale(Math.min(1, (closeX - 32 - left - 28) / title.width))
+      tableLayer.add(title)
+      this.lbModalReturnRects = this.panelRects.map((rect) => ({ ...rect }))
+    } else {
+      this.panelContent.add(tableLayer)
+    }
 
 
     // Marble tablet art stays behind the existing masked data and input zone.
@@ -1795,7 +1914,7 @@ export class TitleScene extends Phaser.Scene {
     bakeCanvas(this, tabletKey, Math.ceil(tableW), Math.ceil(tableH), (ctx) => {
       drawOlympusTablet(ctx, tableW, tableH)
     }, window.devicePixelRatio || 1)
-    this.panelContent.add(this.add.image(tableX, tableY, tabletKey)
+    tableLayer.add(this.add.image(tableX, tableY, tabletKey)
       .setOrigin(0, 0).setDisplaySize(tableW, tableH))
     const wellX = tableX + wellPad
     const wellY = tableY + wellPad
@@ -1829,9 +1948,11 @@ export class TitleScene extends Phaser.Scene {
       origin: [1, 0.5],
       shadow: false,
     })
-    this.panelContent.add([hRank, hPlayer, hScore])
+    tableLayer.add([hRank, hPlayer, hScore])
     for (const heading of [hRank, hPlayer, hScore]) leaderboardTextStyle(heading, LEADERBOARD_SECONDARY)
-    g.lineStyle(1.5, 0xa77a32, 0.8).lineBetween(rowX, wellY + headerH, rowX + rowW, wellY + headerH)
+    const tableLines = this.add.graphics()
+    tableLines.lineStyle(1.5, 0xa77a32, 0.8).lineBetween(rowX, wellY + headerH, rowX + rowW, wellY + headerH)
+    tableLayer.add(tableLines)
 
     // --- SCROLLABLE ROWS AREA ---
     const rowsTopY = wellY + headerH + 6
@@ -1843,7 +1964,7 @@ export class TitleScene extends Phaser.Scene {
 
     // Rows container (masked, scrollable)
     const rowsContainer = this.add.container(0, 0)
-    this.panelContent.add(rowsContainer)
+    tableLayer.add(rowsContainer)
 
     // Mask: clip rows to the visible area below the header
     const maskG = this.add.graphics()
@@ -1871,10 +1992,11 @@ export class TitleScene extends Phaser.Scene {
       thumbG.fillStyle(0xd4af37, 1)
       thumbG.fillRoundedRect(sbX + 1, sbY, scrollW - 2, thumbH, (scrollW - 2) / 2)
     }
-    this.panelContent.add(thumbG)
+    tableLayer.add(thumbG)
 
     // Scroll input zone (rows + thumb)
     const scrollZone = this.add.zone(wellX, wellY, wellW, wellH).setOrigin(0, 0).setInteractive()
+    if (portrait) scrollZone.disableInteractive()
 
     const avatarSize = tableW >= 520 ? 40 : 36
     const fallbackTiers = [6, 1, 5, 3, 2, 4, 1, 4, 6, 2]
@@ -1932,6 +2054,7 @@ export class TitleScene extends Phaser.Scene {
     }
     renderRows(0)
     const wheelBlocker = (event: WheelEvent) => {
+      if (portrait && !this.lbModalOpen) return
       const rect = this.game.canvas.getBoundingClientRect()
       const x = (event.clientX - rect.left) * vw / rect.width
       const y = (event.clientY - rect.top) * vh / rect.height
@@ -2044,36 +2167,14 @@ export class TitleScene extends Phaser.Scene {
         )
       }
 
-      // Podium (art + balls + labels + crown) rises from below as one group
-      podiumGroup.setY(30)
-      podiumGroup.setAlpha(0)
-      this.lbTweens.push(
-        this.tweens.add({
-          targets: podiumGroup,
-          y: 0,
-          alpha: 1,
-          duration: 500,
-          ease: 'Back.easeOut',
-          delay: 100,
-        }),
-      )
-      // Crown shimmer: gentle alpha pulse on the #1 crown
-      const crownImg = podiumGroup.list.find(
-        (o): o is Phaser.GameObjects.Image =>
-          o instanceof Phaser.GameObjects.Image && o.texture.key === 'br-leaderboard-crown-v4',
-      )
-      if (crownImg) {
-        this.lbTweens.push(
-          this.tweens.add({
-            targets: crownImg,
-            alpha: { from: 1, to: 0.75 },
-            duration: 1200,
-            yoyo: true,
-            repeat: -1,
-            ease: 'Sine.easeInOut',
-          }),
-        )
-      }
+    }
+    const animateEntrance = this.lbEntrancePending && !this.reducedMotion
+    this.lbEntrancePending = false
+    if (animateEntrance) {
+      this.lbEntranceCleanup = playLeaderboardEntrance(this, this.panelContent, bgImg, baseImage,
+        champions, portrait ? portraitAction : tableLayer, vw, vh, this.reducedMotion)
+    } else {
+      bgImg.setAlpha(1)
     }
   }
 

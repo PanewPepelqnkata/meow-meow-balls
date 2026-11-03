@@ -10,12 +10,12 @@ The leaderboard is a cartoon Mount Olympus temple scene, not a dashboard with or
 - The leaderboard has its own inset header frame and Back button; the title stays separated from the frame edges at desktop and phone widths. Back returns to the menu.
 - Leaderboard Back uses the same rounded marble-gold surface, extrusion, highlight, and white display label as the modal Close button. SHOW ALL PLAYERS uses the heading's gold `#FFE19A` display lettering.
 - Background architecture stays soft and low contrast where content sits. Near columns frame the scene; no per-frame canvas drawing or large glow effects.
-- Two low-opacity clouds may drift horizontally through transform-only tweens; those and podium entrance motion are skipped under reduced motion. Table text appears together for immediate legibility.
+- Two low-opacity clouds drift with transform-only tweens. Ambient motion and cinematic animation are skipped under reduced motion.
 
 ### Champion podium
 
-- The champion component order is character, rank medal, measured nameplate, score. All three plate widths match; text anchors are derived from the same local geometry as the baked medals and columns.
-- Existing Ball Rush ball character artwork, faces, colors, top-three tiers, and first-place crown are retained. All three column bases align while the columns retain distinct heights.
+- The champion component order is character, laurel medal, measured Greek-corner name plaque, and dedicated gold-framed score plaque. Marble column artwork is a separate base layer; balls, medals, name plaques and score plaques each have independent animation containers.
+- Original ball artwork, faces, colors, top-three tiers, and first-place crown are retained. Column bases align; heights stay distinct. Score plaques have identical construction, measured padding, warm marble faces and bold dark values.
 
 ### Ranking tablet
 
@@ -28,13 +28,23 @@ The leaderboard is a cartoon Mount Olympus temple scene, not a dashboard with or
 
 ### Portrait modal
 
-- The full-screen list respects iOS safe-area insets and uses the available visual viewport height. Its close button and Escape key return to the podium state.
-- Opening locks document scrolling; close, resize rebuild, screen navigation, and scene shutdown restore the prior body overflow style.
-- The modal reuses the same score snapshot, row pool, avatar textures, and scroll implementation as desktop.
+- The full-screen list respects iOS safe-area insets and visual viewport height. Close and Escape return to the same live podium, without rebuilding the temple or replaying its entrance.
+- A full-viewport black scrim fades to 65% opacity. The popup scales from 90% to 100% over 280ms with `Cubic.easeOut`; closing scales/fades it out over 190ms. Blur is intentionally omitted on mobile.
+- Background scrolling locks until the close completes. Navigation, resize and shutdown cancel animations, dispose input ownership, and restore the previous overflow style. The list hit zone is disabled while hidden or transitioning.
+- The modal reuses the same score snapshot, row pool, avatar textures and scrolling implementation as desktop.
 
 ## Layout and interaction
 
 - Wide landscape keeps balanced panels inside shared safe margins. Portrait presents the podium and SHOW ALL PLAYERS action, with the list opened only on demand; landscape never uses the portrait modal.
+
+### Entrance and reusable transition
+
+- Entering from another screen plays a non-blocking 500ms golden diagonal light sweep via `playGoldenScreenTransition`. It owns its objects/tweens and exposes idempotent cancellation for future major-screen callers.
+- After the async leaderboard data is ready, one shared 1800ms sequence runs on desktop and phone: dark temple, top-down warm light, architecture fade, 20px podium rise, ball landings with 7%/8% squash, medal settle, name/score plaques, actual-score count-up, then the desktop tablet reveal.
+- Score counters begin at zero and finish at fetched values. They settle to exact values if navigation cancels the sequence. Layout geometry is not tweened; only transforms and alpha change. The numeric counter updates only three text objects.
+- Entrance is scheduled only by an explicit navigation into the leaderboard, not by a viewport/auth/save rebuild or modal toggle. All sequences skip directly to finished state under reduced motion.
+- No per-frame canvas bakes, particles, or blur filters are used. Static plaque/medal textures are cached and DPR-capped through the existing bake helper.
+
 
 ## Data and scrolling
 
@@ -48,4 +58,6 @@ The leaderboard is a cartoon Mount Olympus temple scene, not a dashboard with or
 - `src/game/scenes/TitleScene.ts` — leaderboard fetch, layout, row rendering/scrolling, title integration, animations.
 - `src/game/rendering/OlympusHallArt.ts` — static environment and tablet canvas art.
 - `src/game/rendering/ChampionPodiumArt.ts` — static champion column and plinth canvas art.
+- `src/game/rendering/LeaderboardEntrance.ts` — coordinated champion/temple reveal and score count-up.
+- `src/game/rendering/GoldenScreenTransition.ts` — reusable 500ms light sweep with owned cleanup.
 - `src/game/rendering/RoughArt.ts` — shared canvas bake/cache helper.
