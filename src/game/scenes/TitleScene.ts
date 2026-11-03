@@ -430,24 +430,21 @@ export class TitleScene extends Phaser.Scene {
   ): void {
     const firstNavY = buttonStartY + playH / 2 + buttonSpacing + navH / 2
     const step = navH + buttonSpacing
-    const navPos = [
+    const navPos: Array<{ x: number; y: number; w?: number; h?: number }> = [
       { x: buttonX, y: firstNavY },
       { x: buttonX, y: firstNavY + step },
       { x: buttonX, y: firstNavY + 2 * step },
     ]
     if (!authService.isAuthenticated()) {
-      navPos.push({ x: buttonX, y: firstNavY + 3 * step })
+      const sideGap = 8
+      const sideW = Math.floor((playW - sideGap) / 2)
+      const leftX = buttonX - playW / 2 + sideW / 2
+      const rightX = buttonX + playW / 2 - sideW / 2
+      navPos.push({ x: rightX, y: buttonStartY, w: sideW, h: playH })
+      this.buildPlayAndNav(vw, buttonStartY, sideW, playH, navW, navH, navPos, leftX)
+    } else {
+      this.buildPlayAndNav(vw, buttonStartY, playW, playH, navW, navH, navPos, buttonX)
     }
-    this.buildPlayAndNav(
-      vw,
-      buttonStartY,
-      playW,
-      playH,
-      navW,
-      navH,
-      navPos,
-      buttonX,
-    )
   }
 
   private buildDesktopLayout(vw: number, vh: number): void {
@@ -471,7 +468,7 @@ export class TitleScene extends Phaser.Scene {
     const navW = Math.round(Math.max(200, Math.min(320, playW * 0.9)))
     const bandTop = Math.max(logoCY + logoH / 2 + 14, chipY + chipH / 2 + 10)
     const bandBottom = vh - bottomInset - m
-    const navCount = authService.isAuthenticated() ? 3 : 4
+    const navCount = 3
     const availH = Math.max(1, bandBottom - bandTop - playH - navCount * navH)
     const buttonSpacing = Math.round(Math.max(8, Math.min(20, availH / navCount)))
     const stackH = playH + navCount * navH + navCount * buttonSpacing
@@ -518,13 +515,12 @@ export class TitleScene extends Phaser.Scene {
       : Math.round(Math.max(130, Math.min(190, (vw - 2 * m - 2 * 16) / 3)))
     if (portrait) {
       // Centered flow, bottom-anchored so the stats chip always sits in the
-      // safe area: chip -> balanced 3 nav buttons row -> optional LOGIN -> PLAY -> machine -> logo.
+      // safe area: chip -> balanced 3 nav buttons row -> PLAY + LOGIN side-by-side -> machine -> logo.
       const isAuthed = authService.isAuthenticated()
-      const rowGap = isAuthed ? 18 : 12
+      const rowGap = 12
       const chipY = vh - bottomInset - chipH / 2
       const navY = chipY - chipH / 2 - rowGap - navH / 2
-      const loginY = isAuthed ? navY : navY - navH / 2 - rowGap - navH / 2
-      const playY = (isAuthed ? navY : loginY) - navH / 2 - rowGap - playH / 2
+      const playY = navY - navH / 2 - rowGap - playH / 2
       const bandTop = logoCY + logoH / 2 + 10
       const bandBottom = playY - playH / 2 - 10
       this.buildMachine(
@@ -533,23 +529,27 @@ export class TitleScene extends Phaser.Scene {
         bandBottom - bandTop,
         Math.min(vw * 0.6, 340),
       )
-      const navPos = [
+      const navPos: Array<{ x: number; y: number; w?: number; h?: number }> = [
         { x: vw / 2 - (navW + navGap), y: navY },
         { x: vw / 2, y: navY },
         { x: vw / 2 + (navW + navGap), y: navY },
       ]
       if (!isAuthed) {
-        navPos.push({ x: vw / 2, y: loginY })
+        // PLAY + LOGIN share one row, splitting the full width evenly.
+        const sideGap = 8
+        const sideW = Math.floor((vw - 2 * m - sideGap) / 2)
+        navPos.push({ x: vw - m - sideW / 2, y: playY, w: sideW, h: playH })
+        this.buildPlayAndNav(vw, playY, sideW, playH, navW, navH, navPos, m + sideW / 2)
+      } else {
+        this.buildPlayAndNav(vw, playY, playW, playH, navW, navH, navPos)
       }
-      this.buildPlayAndNav(vw, playY, playW, playH, navW, navH, navPos)
       this.buildStatsChip(vw / 2, chipY, chipW, chipH)
     } else {
       // Compact landscape layout for narrow (< 768px) viewports.
       const isAuthed = authService.isAuthenticated()
-      const rowGap = isAuthed ? 14 : 10
+      const rowGap = 10
       const navY = vh - m - navH / 2
-      const loginY = isAuthed ? navY : navY - navH / 2 - rowGap - navH / 2
-      const playY = (isAuthed ? navY : loginY) - navH / 2 - rowGap - playH / 2
+      const playY = navY - navH / 2 - rowGap - playH / 2
       const chipY = logoCY + logoH / 2 + 8 + chipH / 2
       const bandTop = chipY + chipH / 2 + 10
       const bandBottom = playY - playH / 2 - 12
@@ -560,15 +560,20 @@ export class TitleScene extends Phaser.Scene {
         Math.min(vw * 0.45, 420),
       )
       const gap = 16
-      const navPos = [
+      const navPos: Array<{ x: number; y: number; w?: number; h?: number }> = [
         { x: vw / 2 - (navW + gap), y: navY },
         { x: vw / 2, y: navY },
         { x: vw / 2 + (navW + gap), y: navY },
       ]
       if (!isAuthed) {
-        navPos.push({ x: vw / 2, y: loginY })
+        // PLAY + LOGIN share one row, splitting the full width evenly.
+        const sideGap = 8
+        const sideW = Math.floor((vw - 2 * m - sideGap) / 2)
+        navPos.push({ x: vw - m - sideW / 2, y: playY, w: sideW, h: playH })
+        this.buildPlayAndNav(vw, playY, sideW, playH, navW, navH, navPos, m + sideW / 2)
+      } else {
+        this.buildPlayAndNav(vw, playY, playW, playH, navW, navH, navPos)
       }
-      this.buildPlayAndNav(vw, playY, playW, playH, navW, navH, navPos)
       this.buildStatsChip(vw / 2, chipY, chipW, chipH)
     }
   }
@@ -1006,7 +1011,7 @@ export class TitleScene extends Phaser.Scene {
     playH: number,
     navW: number,
     navH: number,
-    navPos: Array<{ x: number; y: number }>,
+    navPos: Array<{ x: number; y: number; w?: number; h?: number }>,
     playX = vw / 2,
   ): void {
     // ---- PLAY + nav: uiverse big-moose-69 buttons as a DOM layer
@@ -1020,7 +1025,8 @@ export class TitleScene extends Phaser.Scene {
       { x: navPos[2]!.x, y: navPos[2]!.y, w: navW, h: navH, label: 'SETTINGS', tier: 4, seed: 4242 + 4 * 7, screen: 'settings' },
     ]
     if (!authService.isAuthenticated() && navPos[3]) {
-      specs.push({ x: navPos[3].x, y: navPos[3].y, w: navW, h: navH, label: 'LOGIN', tier: 5, seed: 4242 + 5 * 7, screen: 'login' })
+      const p = navPos[3]
+      specs.push({ x: p.x, y: p.y, w: p.w ?? navW, h: p.h ?? navH, label: 'LOGIN', tier: 5, seed: 4242 + 5 * 7, screen: 'login' })
     }
     if (!this.uiverseDom) this.uiverseDom = new UiverseDomButtons(this)
     this.uiverseDom.build(specs)
