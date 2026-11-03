@@ -462,15 +462,15 @@ export class TitleScene extends Phaser.Scene {
 
     // Buttons on left side (25% from left edge), arranged vertically
     const buttonX = vw * 0.25
-    const playH = Math.round(Math.max(36, Math.min(48, vh * 0.055)))
-    const playW = Math.round(Math.max(160, Math.min(240, vw * 0.22)))
-    const navH = Math.round(Math.max(26, Math.min(36, vh * 0.04)))
-    const navW = Math.round(Math.max(140, Math.min(200, playW * 0.9)))
+    const playH = Math.round(Math.max(44, Math.min(64, vh * 0.075)))
+    const playW = Math.round(Math.max(200, Math.min(320, vw * 0.26)))
+    const navH = Math.round(Math.max(34, Math.min(48, vh * 0.055)))
+    const navW = Math.round(Math.max(180, Math.min(280, playW * 0.9)))
     const bandTop = Math.max(logoCY + logoH / 2 + 14, chipY + chipH / 2 + 10)
     const bandBottom = vh - bottomInset - m
     const navCount = 3
     const availH = Math.max(1, bandBottom - bandTop - playH - navCount * navH)
-    const buttonSpacing = Math.round(Math.max(24, Math.min(36, availH / navCount)))
+    const buttonSpacing = Math.round(Math.max(16, Math.min(28, availH / navCount)))
     const stackH = playH + navCount * navH + navCount * buttonSpacing
     const minStartY = bandTop + playH / 2
     const maxStartY = Math.max(minStartY, bandBottom - stackH + playH / 2)
@@ -502,22 +502,22 @@ export class TitleScene extends Phaser.Scene {
     const { logoCY, logoH } = this.buildLogo(vw / 2, topInset, vw, vh)
     const chipH = Math.round(Math.max(30, Math.min(44, vh * 0.052)))
     const chipW = Math.round(Math.max(170, Math.min(310, Math.min(vw * 0.86, chipH * 7.2))))
-    const playH = Math.round(Math.max(36, Math.min(48, vh * 0.055)))
+    const playH = Math.round(Math.max(44, Math.min(64, vh * 0.075)))
     const playW = portrait
-      ? Math.round(Math.max(140, Math.min(220, vw * 0.56)))
-      : Math.round(Math.max(160, Math.min(260, vw * 0.24)))
+      ? Math.round(Math.max(180, Math.min(300, vw * 0.68)))
+      : Math.round(Math.max(200, Math.min(340, vw * 0.28)))
     const navH = portrait
-      ? Math.round(Math.max(24, Math.min(32, vh * 0.036)))
-      : Math.round(Math.max(30, Math.min(40, vh * 0.042)))
+      ? Math.round(Math.max(32, Math.min(44, vh * 0.048)))
+      : Math.round(Math.max(38, Math.min(52, vh * 0.055)))
     const navGap = portrait ? 12 : 16
     const navW = portrait
       ? Math.floor((vw - 2 * m - 2 * navGap) / 3)
-      : Math.round(Math.max(100, Math.min(140, (vw - 2 * m - 2 * 16) / 3)))
+      : Math.round(Math.max(120, Math.min(170, (vw - 2 * m - 2 * 16) / 3)))
     if (portrait) {
       // Centered flow, bottom-anchored so the stats chip always sits in the
       // safe area: chip -> balanced 3 nav buttons row -> PLAY + LOGIN side-by-side -> machine -> logo.
       const isAuthed = authService.isAuthenticated()
-      const rowGap = 28
+      const rowGap = 20
       const chipY = vh - bottomInset - chipH / 2
       const navY = chipY - chipH / 2 - rowGap - navH / 2
       const playY = navY - navH / 2 - rowGap - playH / 2
@@ -547,7 +547,7 @@ export class TitleScene extends Phaser.Scene {
     } else {
       // Compact landscape layout for narrow (< 768px) viewports.
       const isAuthed = authService.isAuthenticated()
-      const rowGap = 26
+      const rowGap = 18
       const navY = vh - m - navH / 2
       const playY = navY - navH / 2 - rowGap - playH / 2
       const chipY = logoCY + logoH / 2 + 8 + chipH / 2
@@ -1411,8 +1411,8 @@ export class TitleScene extends Phaser.Scene {
     const rest = entries.slice(3)
 
     // Podium area
-    const podiumH = Math.min(200, availableH * 0.4)
-    const podiumY = bodyY + 8
+    const podiumH = Math.min(220, availableH * 0.45)
+    const podiumY = bodyY + 16
     const podiumW = listW
     const podiumX = listX
 
@@ -1432,19 +1432,19 @@ export class TitleScene extends Phaser.Scene {
     g.fillRoundedRect(podiumX + 2, baseY + 2, podiumW - 4, 6, 8)
 
     // 1st place (center, tallest)
-    const firstW = podiumW * 0.32
-    const firstH = podiumH * 0.75
+    const firstW = podiumW * 0.34
+    const firstH = podiumH * 0.8
     const firstX = centerX - firstW / 2
     const firstY = baseY - firstH
     // 2nd place (left)
-    const secondW = podiumW * 0.28
-    const secondH = podiumH * 0.55
-    const secondX = firstX - secondW - 12
+    const secondW = podiumW * 0.3
+    const secondH = podiumH * 0.6
+    const secondX = firstX - secondW - 16
     const secondY = baseY - secondH
     // 3rd place (right)
-    const thirdW = podiumW * 0.28
-    const thirdH = podiumH * 0.45
-    const thirdX = firstX + firstW + 12
+    const thirdW = podiumW * 0.3
+    const thirdH = podiumH * 0.5
+    const thirdX = firstX + firstW + 16
     const thirdY = baseY - thirdH
 
     const podiumSlots = [
@@ -1477,9 +1477,9 @@ export class TitleScene extends Phaser.Scene {
       g.fillRoundedRect(x + 8, y + 8, w - 16, h * 0.3, 12)
 
       // Rank badge
-      const badgeR = Math.min(22, w * 0.2)
+      const badgeR = Math.min(24, w * 0.22)
       const badgeX = x + w / 2
-      const badgeY = y - badgeR - 8
+      const badgeY = y - badgeR - 12
       g.fillStyle(0x1a1a1a, 1)
       g.fillCircle(badgeX, badgeY, badgeR)
       g.fillStyle(blockColor, 1)
@@ -1496,29 +1496,22 @@ export class TitleScene extends Phaser.Scene {
       })
       this.panelContent.add(rankT)
 
-      // Ball icon
-      const ballR = Math.min(28, w * 0.24)
-      drawBallIcon(this, g, Math.max(1, Math.min(BALL_TIERS.length, entry.tierReached)), x + w / 2, y + h * 0.35, ballR, {
-        seed: entry.tierReached * 991,
-        layer: this.panelContent,
-      })
-
       // Name
-      const nameT = hudText(this, x + w / 2, y + h * 0.62, entry.displayName, 1, {
-        color: '#1a1a1a',
-        size: Math.min(16, w * 0.12),
-        stroke: 0,
+      const nameT = hudText(this, x + w / 2, y + h * 0.45, entry.displayName, 1, {
+        color: '#ffffff',
+        size: Math.min(18, w * 0.14),
+        stroke: 2,
         origin: [0.5, 0.5],
         shadow: false,
       })
-      nameT.setWordWrapWidth(w - 8, true).setAlign('center')
+      nameT.setWordWrapWidth(w - 16, true).setAlign('center')
       this.panelContent.add(nameT)
 
       // Score
-      const scoreT = hudText(this, x + w / 2, y + h * 0.82, entry.score.toLocaleString('en-US'), 1, {
-        color: '#1a1a1a',
-        size: Math.min(18, w * 0.14),
-        stroke: 0,
+      const scoreT = hudText(this, x + w / 2, y + h * 0.7, entry.score.toLocaleString('en-US'), 1, {
+        color: '#ffffff',
+        size: Math.min(20, w * 0.16),
+        stroke: 2,
         origin: [0.5, 0.5],
         shadow: false,
       })
@@ -1532,11 +1525,11 @@ export class TitleScene extends Phaser.Scene {
     })
 
     // List for the rest
-    const listY = baseY + 16
+    const listY = baseY + 24
     const listH = availableH - (listY - bodyY)
     const rowsPerColumn = Math.ceil(rest.length / columns)
-    const rowGap = 6
-    const rowH = Math.min(52, Math.floor((listH - (rowsPerColumn - 1) * rowGap) / rowsPerColumn))
+    const rowGap = 8
+    const rowH = Math.min(56, Math.floor((listH - (rowsPerColumn - 1) * rowGap) / rowsPerColumn))
 
     rest.forEach((entry, i) => {
       const column = Math.floor(i / rowsPerColumn)
