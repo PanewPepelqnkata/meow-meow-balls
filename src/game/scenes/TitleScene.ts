@@ -436,7 +436,7 @@ export class TitleScene extends Phaser.Scene {
       { x: buttonX, y: firstNavY + 2 * step },
     ]
     if (!authService.isAuthenticated()) {
-      const sideGap = 8
+      const sideGap = 16
       const sideW = Math.floor((playW - sideGap) / 2)
       const leftX = buttonX - playW / 2 + sideW / 2
       const rightX = buttonX + playW / 2 - sideW / 2
@@ -536,7 +536,7 @@ export class TitleScene extends Phaser.Scene {
       ]
       if (!isAuthed) {
         // PLAY + LOGIN share one row, splitting the full width evenly.
-        const sideGap = 8
+        const sideGap = 16
         const sideW = Math.floor((vw - 2 * m - sideGap) / 2)
         navPos.push({ x: vw - m - sideW / 2, y: playY, w: sideW, h: playH })
         this.buildPlayAndNav(vw, playY, sideW, playH, navW, navH, navPos, m + sideW / 2)
@@ -567,7 +567,7 @@ export class TitleScene extends Phaser.Scene {
       ]
       if (!isAuthed) {
         // PLAY + LOGIN share one row, splitting the full width evenly.
-        const sideGap = 8
+        const sideGap = 16
         const sideW = Math.floor((vw - 2 * m - sideGap) / 2)
         navPos.push({ x: vw - m - sideW / 2, y: playY, w: sideW, h: playH })
         this.buildPlayAndNav(vw, playY, sideW, playH, navW, navH, navPos, m + sideW / 2)
@@ -682,6 +682,17 @@ export class TitleScene extends Phaser.Scene {
     const backImg = this.buildMachineBack(key, w, h, u)
     const frontImg = this.buildMachineFront(key, w, h, u)
 
+    // Ground shadow + pedestal: the machine must sit ON a surface, not float.
+    const groundG = this.add.graphics()
+    groundG.fillStyle(0x000000, 0.42)
+    groundG.fillEllipse(w / 2, h + 3 * u, w * 0.92, 11 * u)
+    groundG.fillStyle(0x0a0c14, 0.9)
+    groundG.fillEllipse(w / 2, h + 1.5 * u, w * 0.8, 8 * u)
+    groundG.fillStyle(0x1a1a1a, 1)
+    groundG.fillRoundedRect(w * 0.12, h - 1 * u, w * 0.76, 6 * u, 2 * u)
+    groundG.fillStyle(0x2a3045, 1)
+    groundG.fillRoundedRect(w * 0.14, h - 0.5 * u, w * 0.72, 3 * u, 1.5 * u)
+
     this.machineC = this.add.container(Math.round(cx - w / 2), Math.round(cy - h / 2))
     this.machineBaseY = this.machineC.y
     this.menuLayer.add(this.machineC)
@@ -692,6 +703,7 @@ export class TitleScene extends Phaser.Scene {
     // (position + radius + bob amplitude) is kept within the globe's
     // interior radius — no clipping object needed.
     const ballsC = this.add.container(0, 0)
+    this.machineC.add(groundG)
     this.machineC.add(backImg)
     this.machineC.add(ballsC)
     this.machineC.add(frontImg)
@@ -754,6 +766,15 @@ export class TitleScene extends Phaser.Scene {
       rrPath(ctx, 66 * u, 122 * u, 11 * u, 5 * u, 2 * u)
       ctx.fill()
 
+      // Collar right side (3D thickness).
+      ctx.fillStyle = '#8f1a1e'
+      ctx.beginPath()
+      ctx.moveTo(61 * u, 60 * u)
+      ctx.lineTo(65 * u, 60 * u)
+      ctx.lineTo(69 * u, 70 * u)
+      ctx.lineTo(65 * u, 70 * u)
+      ctx.closePath()
+      ctx.fill()
       // Red collar between globe and base — vibrant rich red with warm highlight top.
       const collarGrad = ctx.createLinearGradient(0, 60 * u, 0, 70 * u)
       collarGrad.addColorStop(0, '#ff4747')
@@ -767,6 +788,17 @@ export class TitleScene extends Phaser.Scene {
       ctx.closePath()
       ctx.fill()
 
+      // Base right side (3D thickness).
+      ctx.fillStyle = '#8f1a1e'
+      ctx.beginPath()
+      ctx.moveTo(65 * u, 68 * u)
+      ctx.lineTo(69 * u, 68 * u)
+      ctx.lineTo(80 * u, 114 * u)
+      ctx.quadraticCurveTo(82 * u, 122 * u, 74 * u, 122 * u)
+      ctx.lineTo(70 * u, 122 * u)
+      ctx.quadraticCurveTo(78 * u, 122 * u, 76 * u, 114 * u)
+      ctx.closePath()
+      ctx.fill()
       // Red dispenser base (stout body, slightly rounded) — vibrant candy red with subtle lateral form gradient.
       const baseGrad = ctx.createLinearGradient(25 * u, 68 * u, 75 * u, 122 * u)
       baseGrad.addColorStop(0, '#ff4747')
@@ -871,7 +903,12 @@ export class TitleScene extends Phaser.Scene {
       ctx.beginPath()
       ctx.arc(50 * u, 33 * u, 30.25 * u, 0, Math.PI * 2)
       ctx.stroke()
-      // Glass sheen — two confident strokes top-left, a glint bottom-right.
+      // Glass thickness band (right side) — sells the globe as a 3D sphere.
+      ctx.strokeStyle = 'rgba(26,26,26,0.35)'
+      ctx.lineWidth = 2.2 * u
+      ctx.beginPath()
+      ctx.arc(50 * u, 33 * u, 30.25 * u - 2.2 * u, -Math.PI * 0.35, Math.PI * 0.35)
+      ctx.stroke()
       const sheen = (rx: number, from: number, to: number, alpha: string, width: number): void => {
         ctx.strokeStyle = alpha
         ctx.lineWidth = width
@@ -900,6 +937,16 @@ export class TitleScene extends Phaser.Scene {
         'rgba(255,255,255,0.30)',
         Math.max(2, Math.min(2.8, u * 0.45)),
       )
+      // Collar side depth outline.
+      ctx.strokeStyle = ink
+      ctx.lineWidth = bodyW
+      ctx.beginPath()
+      ctx.moveTo(61 * u, 60 * u)
+      ctx.lineTo(65 * u, 60 * u)
+      ctx.lineTo(69 * u, 70 * u)
+      ctx.lineTo(65 * u, 70 * u)
+      ctx.closePath()
+      ctx.stroke()
       // Collar outline.
       ctx.strokeStyle = ink
       ctx.lineWidth = bodyW
@@ -910,6 +957,14 @@ export class TitleScene extends Phaser.Scene {
       ctx.lineTo(35 * u, 70 * u)
       ctx.closePath()
       ctx.stroke()
+      // Base side depth outline.
+      ctx.strokeStyle = ink
+      ctx.lineWidth = bodyW
+      ctx.stroke(
+        new Path2D(
+          `M ${65 * u} ${68 * u} L ${69 * u} ${68 * u} L ${80 * u} ${114 * u} Q ${82 * u} ${122 * u} ${74 * u} ${122 * u} L ${70 * u} ${122 * u} Q ${78 * u} ${122 * u} ${76 * u} ${114 * u} Z`,
+        ),
+      )
       // Base outline (rounded body) + chute lip + coin slot — the same SVG
       // paths, stroked directly via Path2D.
       ctx.lineWidth = bodyW
