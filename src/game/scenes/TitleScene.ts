@@ -139,6 +139,7 @@ export class TitleScene extends Phaser.Scene {
   private lbScroll: {
     rowsC: Phaser.GameObjects.Container
     maskG: Phaser.GameObjects.Graphics
+    maskFilter: Phaser.Filters.Mask | null
     thumbG: Phaser.GameObjects.Graphics
     zone: Phaser.GameObjects.Zone
     offset: number
@@ -1286,18 +1287,19 @@ export class TitleScene extends Phaser.Scene {
 
     const titles: Partial<Record<ScreenName, string>> = {
       collection: 'COLLECTION BOOK',
-      leaderboard: 'HALL OF GLORY',
+      leaderboard: 'LEADERBOARD',
       settings: 'SETTINGS',
     }
 
-    const { contentTopY } = buildScreenHeader(this, this.panelContent, {
-      vw,
-      vh,
-      title: titles[this.screen] ?? this.screen.toUpperCase(),
-      subtitle: subs[this.screen],
-      onBack: () => this.openScreen('menu'),
-      rectsCollector: this.panelRects,
-    })
+    const { contentTopY } = this.screen === 'leaderboard'
+      ? this.buildLeaderboardHeader(vw, vh)
+      : buildScreenHeader(this, this.panelContent, {
+        vw, vh,
+        title: titles[this.screen] ?? this.screen.toUpperCase(),
+        subtitle: subs[this.screen],
+        onBack: () => this.openScreen('menu'),
+        rectsCollector: this.panelRects,
+      })
 
     switch (this.screen) {
       case 'collection':
@@ -1310,6 +1312,38 @@ export class TitleScene extends Phaser.Scene {
         this.buildSettings(vw, vh, contentTopY)
         break
     }
+  }
+
+  private buildLeaderboardHeader(vw: number, vh: number): { contentTopY: number } {
+    const safe = readSafeArea()
+    const margin = vw < 600 ? 16 : 28
+    const x = Math.max(margin, safe.left + 12)
+    const right = Math.max(margin, safe.right + 12)
+    const y = Math.max(12, safe.top + 8)
+    const height = vh < 500 ? 68 : 80
+    const frame = this.add.graphics()
+    frame.fillStyle(0xfff1d1).fillRoundedRect(x, y, vw - x - right, height, 14)
+    frame.lineStyle(3, INK).strokeRoundedRect(x, y, vw - x - right, height, 14)
+    frame.lineStyle(2, 0xd6ad54).lineBetween(x + 16, y + height - 8, vw - right - 16, y + height - 8)
+    this.panelContent.add(frame)
+    const backW = vw < 600 ? 84 : 104
+    const backH = 40
+    const backX = x + 12 + backW / 2
+    const cy = y + height / 2 - 3
+    const back = new ChunkyButton({ scene: this, x: backX, y: cy, w: backW, h: backH,
+      label: 'BACK', fontSize: 14, pill: true,
+      fill: UI_COLORS.BTN_BLUE, shadowColor: UI_COLORS.BTN_BLUE_SHADOW,
+      highlightColor: UI_COLORS.BTN_BLUE_HIGHLIGHT, onClick: () => this.openScreen('menu') })
+    this.panelContent.add(back.container)
+    this.panelRects.push({ label: 'BACK', x: backX - backW / 2, y: cy - backH / 2,
+      w: backW, h: backH, screen: 'panel' })
+    const titleLeft = x + backW + 36
+    const titleRight = vw - right - 16
+    const title = hudText(this, (titleLeft + titleRight) / 2, cy, 'LEADERBOARD', 1,
+      { color: '#ffe19a', size: vw < 600 ? 28 : 38, stroke: 3, origin: [0.5, 0.5], shadow: false })
+    title.setScale(Math.min(1, (titleRight - titleLeft) / title.width))
+    this.panelContent.add(title)
+    return { contentTopY: y + height + 16 }
   }
 
   private destroyCollectionBook(): void {
@@ -1336,7 +1370,8 @@ export class TitleScene extends Phaser.Scene {
     this.input.off('pointermove', this.lbPointerMove, this)
     this.input.off('pointerup', this.lbPointerUp, this)
     this.input.off('pointerupoutside', this.lbPointerUp, this)
-    s.rowsC.clearMask()
+    if (s.maskFilter) s.rowsC.filters!.external.remove(s.maskFilter)
+    else s.rowsC.clearMask(true)
     s.maskG.destroy()
   }
 
@@ -1406,11 +1441,12 @@ export class TitleScene extends Phaser.Scene {
     // stale layout into a rebuilt panel.
     const buildSeq = ++this.lbBuildSeq
     const safe = readSafeArea()
-    const left = Math.max(12, safe.left + 8)
-    const right = Math.max(12, safe.right + 8)
+    const margin = vw < 600 ? 16 : 28
+    const left = Math.max(margin, safe.left + 12)
+    const right = Math.max(margin, safe.right + 12)
     const centerX = (left + vw - right) / 2
-    const bodyY = topY + 8
-    const availableH = vh - Math.max(16, safe.bottom + 8) - bodyY
+    const bodyY = topY
+    const availableH = vh - Math.max(margin, safe.bottom + 12) - bodyY
 
     const bgKey = 'br-olympus-hall'
     bakeCanvas(this, bgKey, Math.ceil(vw), Math.ceil(vh), (ctx) => {
@@ -1468,10 +1504,8 @@ export class TitleScene extends Phaser.Scene {
     // scene shut down while the request was in flight — discard.
     if (this.closed || this.screen !== 'leaderboard' || buildSeq !== this.lbBuildSeq) return
 
-    // Keep the two-column layout for widths that can comfortably fit both panels.
-    // Medium landscape windows use the stacked layout instead of crushing names.
-    const isDesktop = vw >= 900 && vw > vh
-    const maxTotalW = isDesktop ? Math.min(1760, vw - left - right - 40) : Math.min(820, vw - left - right)
+    const isDesktop = (vw >= 1100 && vw > vh) || (vw >= 720 && vh < 600)
+    const maxTotalW = Math.min(isDesktop ? 1560 : 820, vw - left - right)
     const totalX = centerX - maxTotalW / 2
 
     // Error state
@@ -1538,186 +1572,117 @@ export class TitleScene extends Phaser.Scene {
 
     const top3 = entries.slice(0, 3)
 
-    // Layout geometry: side-by-side on desktop, stacked on mobile
-    let podiumX: number
-    let podiumY: number
-    let podiumW: number
-    let podiumH: number
-    let tableX: number
-    let tableY: number
-    let tableW: number
-    let tableH: number
+    // One measured grid owns both the art and text anchors.
+    const panelGap = isDesktop ? 32 : 20
+    const podiumW = isDesktop ? Math.round((maxTotalW - panelGap) * 0.46) : maxTotalW
+    const tableW = isDesktop ? maxTotalW - panelGap - podiumW : maxTotalW
+    const podiumX = totalX
+    const tableX = isDesktop ? totalX + podiumW + panelGap : totalX
+    const columnGap = isDesktop ? 16 : 10
+    const columnW = Math.floor((podiumW - 16 - columnGap * 2) / 3)
+    const plateW = columnW - 2
+    const nameSize = podiumW >= 500 ? 20 : 14
+    const scoreSize = podiumW >= 500 ? 24 : 18
+    const deckH = podiumW >= 500 ? 24 : 18
+    const medalR = podiumW >= 500 ? 21 : 14
+    const plinthH = podiumW >= 500 ? 30 : 22
+    const heightStep = podiumW >= 500 ? 30 : 16
+    const podiumLabels = top3.map((entry) => {
+      const name = hudText(this, 0, 0, entry.displayName, 1, {
+        color: '#283148', size: nameSize, stroke: 0, pad: 1,
+        origin: [0.5, 0.5], shadow: false,
+      }).setWordWrapWidth(plateW - 16, true).setAlign('center').setLineSpacing(2)
+      const score = hudText(this, 0, 0, entry.score.toLocaleString('en-US'), 1, {
+        color: '#654419', size: scoreSize, stroke: 0, pad: 1,
+        origin: [0.5, 0.5], shadow: false,
+      })
+      return { name, score }
+    })
+    const plateH = Math.max(nameSize * 1.5, ...podiumLabels.map((label) => label.name.height)) + 16
+    const podiumScoreH = Math.max(...podiumLabels.map((label) => label.score.height))
+    const componentH = deckH + 8 + medalR * 2 + 10 + plateH + 10 + podiumScoreH + 16
+    const firstH = componentH + heightStep * 2
+    const ballR = Math.min(columnW * 0.33, isDesktop ? 72 : 42)
+    const podiumH = Math.ceil(firstH + ballR * 2.8 + plinthH + 8)
 
-    if (isDesktop) {
-      const gap = Math.max(20, Math.round(maxTotalW * 0.025))
-      podiumW = Math.round((maxTotalW - gap) * 0.51)
-      tableW = maxTotalW - gap - podiumW
-      podiumX = totalX
-      tableX = totalX + podiumW + gap
-      tableH = Math.min(780, availableH - 32)
-      tableY = bodyY + Math.max(8, Math.round((availableH - tableH) / 2))
-      podiumH = tableH
-      podiumY = tableY
-    } else {
-      // Stacked mobile layout — must fit availableH even on short viewports:
-      // shrink the podium before letting the table overflow the screen.
-      const stackGap = 12
-      const minTableH = 120
-      podiumW = maxTotalW
-      podiumX = totalX
-      podiumH = Math.min(310, Math.max(150, Math.round(availableH * 0.42)))
-      podiumH = Math.min(podiumH, Math.max(140, availableH - stackGap - 6 - minTableH))
-      podiumY = bodyY + 4
-      tableW = maxTotalW
-      tableX = totalX
-      tableY = podiumY + podiumH + stackGap
-      tableH = Math.max(96, availableH - (tableY - bodyY) - 6)
-    }
-
-    // --- PODIUM (TOP 3) ---
-    const plinthH = isDesktop ? 36 : 24
-    const plinthY = podiumY + podiumH - plinthH
-    const baseY = plinthY + Math.round(plinthH * 0.32)
-    const usableH = baseY - podiumY
-
-    // Separate capitals and bases keep the three champions visually distinct.
-    const columnGap = isDesktop ? Math.max(12, podiumW * 0.022) : 7
-    const blocksTotalW = Math.round(podiumW * 0.94)
-    const firstW = Math.round((blocksTotalW - columnGap * 2) * 0.36)
-    const sideW = Math.round((blocksTotalW - firstW - columnGap * 2) / 2)
-    const firstH = Math.round(usableH * (isDesktop ? 0.54 : 0.58))
-    const secondH = Math.round(firstH * 0.8)
-    const thirdH = Math.round(firstH * 0.68)
-    const deckH = isDesktop ? 26 : 16
-
-    const firstX = Math.round(podiumX + (podiumW - firstW) / 2)
-    const secondX = firstX - sideW - columnGap
-    const thirdX = firstX + firstW + columnGap
-
-    // Each champion has an independent marble column and capital.
+    // Keep type readable: measure full names at the intended font size, then
+    // give every row the same height based on the tallest wrapped name.
+    const rowFontSize = tableW >= 520 ? 22 : 18
+    const wellPad = tableW >= 520 ? 20 : 14
+    const padX = tableW >= 520 ? 10 : 4
+    const headerH = tableW >= 520 ? 44 : 34
+    const rowGap = 6
+    const scrollW = 8
+    const wellW = tableW - wellPad * 2
+    const rowW = wellW - padX * 2 - scrollW - 8
+    const rankW = tableW >= 520 ? 36 : 24
+    const avatarW = tableW >= 520 ? 54 : 44
+    const cellGap = tableW >= 520 ? 16 : 10
+    const rowScores = entries.map((entry) => hudText(this, 0, 0, entry.score.toLocaleString('en-US'), 1, {
+      color: entry.isCurrentUser ? '#075b7d' : '#283148', size: rowFontSize, stroke: 0, pad: 1,
+      origin: [1, 0.5], shadow: false,
+    }))
+    const scoreW = Math.max(64, ...rowScores.map((text) => text.width))
+    const nameW = rowW - rankW - avatarW - scoreW - cellGap * 2 - 12
+    const rowNames = entries.map((entry) => hudText(this, 0, 0, entry.displayName, 1, {
+      color: entry.isCurrentUser ? '#075b7d' : '#283148', size: rowFontSize, stroke: 0, pad: 1,
+      origin: [0, 0.5], shadow: false,
+    }).setWordWrapWidth(nameW, true).setLineSpacing(2))
+    const rowH = Math.ceil(Math.max(tableW >= 520 ? 62 : 54,
+      ...rowNames.map((text) => text.height + 20), ...rowScores.map((text) => text.height + 20)))
+    const slotCount = entries.length
+    const totalRowsH = slotCount * (rowH + rowGap) - rowGap
+    const desiredTableH = wellPad * 2 + headerH + 12 + totalRowsH
+    const tableMaxH = isDesktop ? availableH : Math.max(120, availableH - podiumH - panelGap)
+    const tableH = Math.min(desiredTableH, tableMaxH)
+    const compositionH = isDesktop ? Math.max(podiumH, tableH) : podiumH + panelGap + tableH
+    const podiumY = bodyY + Math.max(0, (availableH - compositionH) / 2)
+    const tableY = isDesktop ? podiumY + Math.max(0, (podiumH - tableH) / 2) : podiumY + podiumH + panelGap
+    const plinthY = podiumY + podiumH - plinthH - 3
+    const baseY = plinthY + 3
+    const firstX = podiumX + (podiumW - columnW) / 2
     const podiumSlots = [
-      {
-        x: secondX,
-        y: baseY - secondH,
-        w: sideW,
-        h: secondH,
-        visualCX: secondX + sideW / 2,
-        rank: 2,
-        entry: top3[1],
-        tier: 1,
-      },
-      {
-        x: thirdX,
-        y: baseY - thirdH,
-        w: sideW,
-        h: thirdH,
-        visualCX: thirdX + sideW / 2,
-        rank: 3,
-        entry: top3[2],
-        tier: 5,
-      },
-      {
-        x: firstX,
-        y: baseY - firstH,
-        w: firstW,
-        h: firstH,
-        visualCX: firstX + firstW / 2,
-        rank: 1,
-        entry: top3[0],
-        tier: 6,
-      },
-    ]
-
-    const podiumKey = `br-olympus-podium:${top3.length}:${isDesktop ? 'wide' : 'stacked'}`
+      { rank: 2, tier: 1, x: firstX - columnW - columnGap, h: componentH + heightStep, index: 1 },
+      { rank: 3, tier: 5, x: firstX + columnW + columnGap, h: componentH, index: 2 },
+      { rank: 1, tier: 6, x: firstX, h: firstH, index: 0 },
+    ].map((slot) => {
+      const y = baseY - slot.h
+      const medalY = y + deckH + 8 + medalR
+      const plateY = medalY + medalR + 10
+      return { ...slot, y, w: columnW, visualCX: slot.x + columnW / 2,
+        medalY, medalR, plateY, plateW, plateH, entry: top3[slot.index] }
+    })
+    // Plate height depends on measured names, so its geometry is part of the bake key.
+    const podiumKey = `br-olympus-podium:${top3.length}:${plateH}:${componentH}`
     bakeCanvas(this, podiumKey, Math.ceil(podiumW), Math.ceil(podiumH), (ctx) => {
       const columns = podiumSlots.filter((slot) => slot.entry).map((slot) => ({
-        x: slot.x - podiumX, y: slot.y - podiumY, w: slot.w, h: slot.h,
-        visualCX: slot.visualCX - podiumX, rank: slot.rank,
+        ...slot, x: slot.x - podiumX, y: slot.y - podiumY,
+        visualCX: slot.visualCX - podiumX, medalY: slot.medalY - podiumY, plateY: slot.plateY - podiumY,
       }))
       drawChampionPodium(ctx, podiumW, podiumH, columns, plinthY - podiumY, plinthH, deckH)
     }, window.devicePixelRatio || 1)
-
-    // Podium art + balls + labels animate as ONE group (entrance rise).
     const podiumGroup = this.add.container(0, 0)
     this.panelContent.addAt(podiumGroup, 1)
-    const podiumImg = this.add.image(podiumX, podiumY, podiumKey).setOrigin(0, 0).setDisplaySize(podiumW, podiumH)
-    podiumGroup.add(podiumImg)
-    // Dedicated graphics for the ball characters so they move with the group.
+    podiumGroup.add(this.add.image(podiumX, podiumY, podiumKey).setOrigin(0, 0).setDisplaySize(podiumW, podiumH))
     const podiumG = this.add.graphics()
     podiumGroup.add(podiumG)
-
-    podiumSlots.forEach((slot) => {
-      if (!slot.entry) return
-      const { y, w, h, visualCX, rank, entry, tier } = slot
-      const cx = visualCX
-
-      // The unchanged Ball Rush character rests on its column capital.
-      const effectiveW = w
-      const ballR = Math.min(
-        effectiveW * (rank === 1 ? 0.39 : 0.36),
-        (baseY - firstH - podiumY) * (rank === 1 ? 0.38 : 0.34),
-      )
-      const seatY = y + deckH * 0.58
-      const ballCY = seatY + 1 - ballR
-
-      drawBallIcon(this, podiumG, tier, cx, ballCY, ballR, {
-        seed: rank * 777 + tier * 31,
-        layer: podiumGroup,
+    for (const slot of podiumSlots) {
+      if (!slot.entry) continue
+      const cx = slot.visualCX
+      const ballCY = slot.y + deckH * 0.58 + 1 - ballR
+      drawBallIcon(this, podiumG, slot.tier, cx, ballCY, ballR, {
+        seed: slot.rank * 777 + slot.tier * 31, layer: podiumGroup,
       })
-
-      // Plush soft-edged golden crown perched jauntily on the 1st-place ball
-      if (rank === 1) {
-        addCrownImage(
-          this,
-          podiumGroup,
-          cx - ballR * 0.07,
-          ballCY - ballR * 0.98,
-          ballR * 1.24,
-          ballR * 0.9,
-          -0.12,
-        )
-      }
-
-      const badgeR = Math.max(12, Math.min(24, Math.round(Math.min(w * 0.17, h * 0.155))))
-      const badgeY = y + deckH + badgeR + Math.max(5, Math.round(h * 0.045))
-      const rankT = hudText(this, cx, badgeY, `${rank}`, 1, {
-        color: '#1a1a1a',
-        size: Math.round(badgeR * 1.18),
-        stroke: 0,
-        origin: [0.5, 0.5],
-        shadow: false,
-      })
-      podiumGroup.add(rankT)
-
-      // Keep names and scores on the quiet marble face below each medal.
-      const textTop = badgeY + badgeR + 4
-      const textAvail = Math.max(36, plinthY - textTop - 8)
-      const nameY = textTop + textAvail * 0.28
-      const scoreY = textTop + textAvail * 0.8
-      const maxTextW = effectiveW - 14
-
-      const nameSize = Math.max(12, Math.min(24, Math.round(Math.min(effectiveW * 0.15, h * 0.155))))
-      const nameT = hudText(this, cx, nameY, entry.displayName, 1, {
-        color: '#283148',
-        size: nameSize,
-        stroke: 0,
-        origin: [0.5, 0.5],
-        shadow: false,
-      })
-      nameT.setScale(Math.min(1, maxTextW / Math.max(1, nameT.width)))
-      podiumGroup.add(nameT)
-
-      const scoreSize = Math.max(13, Math.min(29, Math.round(Math.min(effectiveW * 0.18, h * 0.18))))
-      const scoreT = hudText(this, cx, scoreY, entry.score.toLocaleString('en-US'), 1, {
-        color: '#654419',
-        size: scoreSize,
-        stroke: 0,
-        origin: [0.5, 0.5],
-        shadow: false,
-      })
-      scoreT.setScale(Math.min(1, (maxTextW + 4) / Math.max(1, scoreT.width)))
-      podiumGroup.add(scoreT)
-    })
+      if (slot.rank === 1) addCrownImage(this, podiumGroup, cx - ballR * 0.07,
+        ballCY - ballR * 0.98, ballR * 1.24, ballR * 0.9, -0.12)
+      podiumGroup.add(hudText(this, cx, slot.medalY, `${slot.rank}`, 1, {
+        color: '#283148', size: medalR * 1.2, stroke: 0, pad: 1, origin: [0.5, 0.5], shadow: false,
+      }))
+      const labels = podiumLabels[slot.index]!
+      labels.name.setPosition(cx, slot.plateY + plateH / 2)
+      labels.score.setPosition(cx, slot.plateY + plateH + 10 + podiumScoreH / 2)
+      podiumGroup.add([labels.name, labels.score])
+    }
 
     // Marble tablet art stays behind the existing masked data and input zone.
     const tabletKey = 'br-olympus-tablet'
@@ -1726,25 +1691,17 @@ export class TitleScene extends Phaser.Scene {
     }, window.devicePixelRatio || 1)
     this.panelContent.add(this.add.image(tableX, tableY, tabletKey)
       .setOrigin(0, 0).setDisplaySize(tableW, tableH))
-    const wellPad = isDesktop ? 22 : 14
     const wellX = tableX + wellPad
     const wellY = tableY + wellPad
-    const wellW = tableW - wellPad * 2
     const wellH = tableH - wellPad * 2
-
-    // Column headers: # | PLAYER | SCORE
-    const headerH = isDesktop ? 44 : 30
-    const headerCY = wellY + headerH / 2 + 4
-    const padX = isDesktop ? 16 : 12
-    const scrollW = 10
-    const rowW = wellW - padX * 2 - scrollW - 12
+    const headerCY = wellY + headerH / 2
     const rowX = wellX + padX
-    const rankColX = rowX + (isDesktop ? 32 : 26)
-    const iconColX = rowX + (isDesktop ? 76 : 62)
-    const playerColX = rowX + (isDesktop ? 106 : 86)
-    const scoreColX = rowX + rowW - (isDesktop ? 16 : 12)
+    const rankColX = rowX + 6 + rankW / 2
+    const iconColX = rowX + 6 + rankW + avatarW / 2
+    const playerColX = rowX + 6 + rankW + avatarW + cellGap
+    const scoreColX = rowX + rowW - 6
 
-    const hdrSize = isDesktop ? 17 : 12
+    const hdrSize = tableW >= 520 ? 16 : 12
     const hRank = hudText(this, rankColX, headerCY, '#', 1, {
       color: '#65533e',
       size: hdrSize,
@@ -1770,11 +1727,7 @@ export class TitleScene extends Phaser.Scene {
 
     // --- SCROLLABLE ROWS AREA ---
     const rowsTopY = wellY + headerH + 6
-    const rowsAvailH = wellH - headerH - 16
-    const slotCount = entries.length
-    const rowGap = isDesktop ? 5 : 4
-    const rowH = Math.max(isDesktop ? 36 : 28, Math.floor((rowsAvailH - (10 - 1) * rowGap) / 10))
-    const totalRowsH = slotCount * (rowH + rowGap) - rowGap
+    const rowsAvailH = wellH - headerH - 12
     const needsScroll = totalRowsH > rowsAvailH
 
     // Scroll state
@@ -1787,9 +1740,15 @@ export class TitleScene extends Phaser.Scene {
     // Mask: clip rows to the visible area below the header
     const maskG = this.add.graphics()
     maskG.fillStyle(0xffffff)
-    maskG.fillRect(wellX, rowsTopY - 2, wellW, rowsAvailH + 4)
-    const rowsMask = new Phaser.Display.Masks.GeometryMask(this, maskG)
-    rowsContainer.setMask(rowsMask)
+    maskG.fillRect(wellX, rowsTopY - 1, wellW, rowsAvailH + 2)
+    let maskFilter: Phaser.Filters.Mask | null = null
+    if (this.game.renderer.type === Phaser.WEBGL) {
+      rowsContainer.enableFilters()
+      maskFilter = rowsContainer.filters!.external.addMask(maskG, false, this.cameras.main, 'world')
+      maskFilter.autoUpdate = false
+    } else {
+      rowsContainer.setMask(new Phaser.Display.Masks.GeometryMask(this, maskG))
+    }
     maskG.setVisible(false)
 
     // Scrollbar track + thumb (only when needed)
@@ -1813,6 +1772,7 @@ export class TitleScene extends Phaser.Scene {
     this.lbScroll = {
       rowsC: rowsContainer,
       maskG,
+      maskFilter,
       thumbG,
       zone: scrollZone,
       offset: 0,
@@ -1883,11 +1843,9 @@ export class TitleScene extends Phaser.Scene {
       // stroke over the gold fill) — the podium carries no user marker.
       const rowG = this.add.graphics()
       if (isFirst) {
-        rowG.fillStyle(0xd99b16, 1)
-        rowG.fillRoundedRect(rowX, y, rowW, rowH, 12)
-        rowG.fillStyle(0xffdf6b, 0.3)
-        rowG.fillRoundedRect(rowX + 2, y + 2, rowW - 4, rowH * 0.45, 10)
-        rowG.lineStyle(2, isCurrentUser ? 0x4fc3f7 : 0xffeb75, 1)
+        rowG.fillStyle(0xf1deb0, 1)
+        rowG.fillRoundedRect(rowX, y, rowW, rowH, 10)
+        rowG.lineStyle(1.5, isCurrentUser ? 0x4fc3f7 : 0xc9a453, 1)
         rowG.strokeRoundedRect(rowX, y, rowW, rowH, 12)
       } else if (isCurrentUser) {
         rowG.fillStyle(0xd9eff7, 1)
@@ -1900,19 +1858,10 @@ export class TitleScene extends Phaser.Scene {
       }
       rowsContainer.add(rowG)
 
-      if (isFirst) {
-        // Crown center keeps the whole 24×18 image inside the rows mask
-        // (mask top = rowsTopY - 2; crown top = y + 1 for the first row).
-        addCrownImage(this, rowsContainer, rowX + 13, y + 10, 24, 18, -0.28)
-      }
 
-      const fontSize = Math.max(12, Math.min(23, Math.round(rowH * 0.48)))
       const rankT = hudText(this, rankColX, cy, `${rank}`, 1, {
-        color: '#283148',
-        size: fontSize,
-        stroke: 0,
-        origin: [0.5, 0.5],
-        shadow: false,
+        color: '#65533e', size: rowFontSize, stroke: 0, pad: 1,
+        origin: [0.5, 0.5], shadow: false,
       })
       rowsContainer.add(rankT)
 
@@ -1927,39 +1876,15 @@ export class TitleScene extends Phaser.Scene {
               : entry.tierReached > 1
                 ? Math.min(BALL_TIERS.length, entry.tierReached)
                 : fallbackTiers[i % fallbackTiers.length]!
-      const iconR = Math.max(10, Math.min(18, rowH * 0.38))
+      const iconR = tableW >= 520 ? 21 : 17
       drawBallIcon(this, rowG, rowTier, iconColX, cy, iconR, {
         seed: rank * 777 + rowTier * 31,
         layer: rowsContainer,
       })
 
-      const scoreStr = entry.score.toLocaleString('en-US')
-      const scoreT = hudText(this, scoreColX, cy, scoreStr, 1, {
-        color: isCurrentUser ? '#075b7d' : '#283148',
-        size: fontSize,
-        stroke: 0,
-        origin: [1, 0.5],
-        shadow: false,
-      })
-      rowsContainer.add(scoreT)
-
-      const maxNameW = Math.max(40, scoreColX - scoreT.width - playerColX - 16)
-      const nameT = hudText(this, playerColX, cy, entry.displayName, 1, {
-        color: isCurrentUser ? '#075b7d' : '#283148',
-        size: fontSize,
-        stroke: 0,
-        origin: [0, 0.5],
-        shadow: false,
-      })
-      // Keep every display name on one line and inside its row. Long names
-      // scale to the available column width as well as the row's vertical space.
-      const nameScale = Math.min(
-        1,
-        maxNameW / Math.max(1, nameT.width),
-        (rowH * 0.72) / Math.max(1, nameT.height),
-      )
-      nameT.setScale(nameScale)
-      rowsContainer.add(nameT)
+      const scoreT = rowScores[i]!.setPosition(scoreColX, cy)
+      const nameT = rowNames[i]!.setPosition(playerColX, cy)
+      rowsContainer.add([scoreT, nameT])
     }
     // --- ENTRANCE ANIMATIONS ---
     // Restrained cloud drift: transform-only x motion on baked wisp images,
@@ -2034,22 +1959,6 @@ export class TitleScene extends Phaser.Scene {
           }),
         )
       }
-      // Row entrance cascade: staggered fade-in per row
-      const rowTexts = rowsContainer.list.filter(
-        (o): o is Phaser.GameObjects.Text => o instanceof Phaser.GameObjects.Text,
-      )
-      rowTexts.forEach((t, i) => {
-        t.setAlpha(0)
-        this.lbTweens.push(
-          this.tweens.add({
-            targets: t,
-            alpha: 1,
-            duration: 240,
-            delay: 400 + i * 45,
-            ease: 'Quad.easeOut',
-          }),
-        )
-      })
     }
   }
 

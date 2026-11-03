@@ -1,3 +1,4 @@
+/** Column geometry and label anchors use podium-canvas local coordinates. */
 export interface ChampionColumn {
   x: number
   y: number
@@ -5,6 +6,11 @@ export interface ChampionColumn {
   h: number
   rank: number
   visualCX: number
+  medalY: number // Medal center.
+  medalR: number
+  plateY: number // Plaque top edge.
+  plateW: number
+  plateH: number
 }
 
 const INK = '#171613'
@@ -13,7 +19,6 @@ const MARBLE_LIGHT = '#fff9e9'
 const MARBLE_SHADE = '#ddd0b3'
 const MARBLE_DARK = '#c6b797'
 const GOLD = '#d9a83f'
-const GOLD_DARK = '#9e6c21'
 
 function roundedRect(
   ctx: CanvasRenderingContext2D,
@@ -75,26 +80,13 @@ function drawPlinth(
     ctx.lineWidth = outline * 0.78
     ctx.stroke()
 
-    const keyH = Math.min(faceH * 0.62, Math.max(0, plinthH * 0.25))
-    if (keyH >= 6) {
-      const tile = Math.max(10, Math.min(20, keyH * 1.55))
-      const keyY = faceTop + (faceH - keyH) * 0.5
-      ctx.strokeStyle = GOLD_DARK
-      ctx.lineWidth = Math.max(1, outline * 0.66)
-      ctx.lineCap = 'square'
-      for (let px = xPad * 2.15; px + tile < w - xPad * 2.15; px += tile) {
-        ctx.beginPath()
-        ctx.moveTo(px, keyY)
-        ctx.lineTo(px + tile * 0.72, keyY)
-        ctx.lineTo(px + tile * 0.72, keyY + keyH)
-        ctx.lineTo(px + tile * 0.25, keyY + keyH)
-        ctx.lineTo(px + tile * 0.25, keyY + keyH * 0.36)
-        ctx.lineTo(px + tile * 0.49, keyY + keyH * 0.36)
-        ctx.lineTo(px + tile * 0.49, keyY + keyH * 0.68)
-        ctx.stroke()
-      }
-      ctx.lineCap = 'round'
-    }
+    const stripeY = faceTop + faceH * 0.5
+    ctx.beginPath()
+    ctx.moveTo(xPad * 2.15, stripeY)
+    ctx.lineTo(w - xPad * 2.15, stripeY)
+    ctx.strokeStyle = GOLD
+    ctx.lineWidth = Math.max(1, outline * 0.66)
+    ctx.stroke()
   }
 
   const footY = plinthY + plinthH * 0.83
@@ -104,13 +96,6 @@ function drawPlinth(
   ctx.fill()
   ctx.strokeStyle = INK
   ctx.lineWidth = outline
-  ctx.stroke()
-
-  ctx.beginPath()
-  ctx.moveTo(xPad * 1.45, plinthY + topH * 0.72)
-  ctx.lineTo(w - xPad * 1.45, plinthY + topH * 0.72)
-  ctx.strokeStyle = GOLD
-  ctx.lineWidth = Math.max(1, outline * 0.65)
   ctx.stroke()
 }
 
@@ -280,12 +265,9 @@ function drawLeaf(
 function drawMedal(
   ctx: CanvasRenderingContext2D,
   column: ChampionColumn,
-  deckH: number,
   outline: number,
 ): void {
-  const { w, h, rank, visualCX: cx } = column
-  const radius = Math.max(12, Math.min(24, Math.round(Math.min(w * 0.17, h * 0.155))))
-  const cy = column.y + deckH + radius + Math.max(5, Math.round(h * 0.045))
+  const { rank, visualCX: cx, medalY: cy, medalR: radius } = column
   const medalFill = rank === 2 ? '#d9e0e1' : rank === 3 ? '#cf8954' : '#f0bf4d'
   const medalEdge = rank === 2 ? '#73828a' : rank === 3 ? '#8f4d2b' : '#a96f1e'
   const laurel = rank === 2 ? '#bdc9cc' : rank === 3 ? '#bd7544' : '#e5ad37'
@@ -327,41 +309,19 @@ function drawMedal(
 function drawPlaque(
   ctx: CanvasRenderingContext2D,
   column: ChampionColumn,
-  plinthY: number,
-  deckH: number,
   outline: number,
 ): void {
-  const { y, h, w, visualCX } = column
-  const radius = Math.max(12, Math.min(24, Math.round(Math.min(w * 0.17, h * 0.155))))
-  const medalCenterY = y + deckH + radius + Math.max(5, Math.round(h * 0.045))
-  const plateY = medalCenterY + radius + Math.max(5, Math.round(h * 0.035))
-  const plateBottom = Math.min(plinthY - Math.max(4, outline), y + h - Math.max(7, h * 0.055))
-  const plateH = Math.min(h * 0.18, plateBottom - plateY)
-  if (plateH <= 0) return
+  const { plateY, plateW, plateH, visualCX } = column
+  if (plateH <= 0 || plateW <= 0) return
 
-  const plateW = w * 0.78
   const plateX = visualCX - plateW * 0.5
   const radiusCorner = Math.min(outline * 1.65, plateH * 0.24)
   roundedRect(ctx, plateX, plateY, plateW, plateH, radiusCorner)
   ctx.fillStyle = '#fff7e4'
   ctx.fill()
-  ctx.strokeStyle = GOLD_DARK
-  ctx.lineWidth = Math.max(1.2, outline * 0.85)
+  ctx.strokeStyle = GOLD
+  ctx.lineWidth = Math.max(1.1, outline * 0.72)
   ctx.stroke()
-
-  const inset = Math.min(3, plateW * 0.045, plateH * 0.18)
-  roundedRect(ctx, plateX + inset, plateY + inset, plateW - inset * 2, plateH - inset * 2, Math.max(1, radiusCorner * 0.55))
-  ctx.strokeStyle = '#d4aa58'
-  ctx.lineWidth = Math.max(0.8, outline * 0.45)
-  ctx.stroke()
-
-  const studR = Math.max(0.9, Math.min(1.8, outline * 0.48))
-  for (let side = -1; side <= 1; side += 2) {
-    ctx.beginPath()
-    ctx.arc(visualCX + side * (plateW * 0.43), plateY + plateH * 0.5, studR, 0, Math.PI * 2)
-    ctx.fillStyle = GOLD
-    ctx.fill()
-  }
 }
 
 export function drawChampionPodium(
@@ -384,8 +344,8 @@ export function drawChampionPodium(
     if (column.w <= 0 || column.h <= 0) continue
     drawShaft(ctx, column, deckH, outline)
     drawCapital(ctx, column, deckH, outline)
-    drawMedal(ctx, column, deckH, outline)
-    drawPlaque(ctx, column, plinthY, deckH, outline)
+    drawMedal(ctx, column, outline)
+    drawPlaque(ctx, column, outline)
   }
 
   ctx.restore()

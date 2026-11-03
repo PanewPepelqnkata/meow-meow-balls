@@ -1,7 +1,6 @@
 /** Static, pixel-space canvas art for the Hall of Glory; no scene or runtime state. */
 const INK = '#30291f'
 const IVORY = '#fff3d5'
-const GOLD = '#d6ad54'
 
 function roundedRect(
   ctx: CanvasRenderingContext2D,
@@ -225,10 +224,7 @@ function greekKey(
   ctx.stroke()
 }
 
-/**
- * Full-viewport bake: the title fascia occupies y=20..80, the floor the bottom
- * 18%, and all stronger architecture hugs the edges to leave the cards quiet.
- */
+/** Full-viewport environment; architecture stays behind the inset UI header. */
 export function drawOlympusHall(ctx: CanvasRenderingContext2D, w: number, h: number): void {
   ctx.save()
   ctx.beginPath()
@@ -291,26 +287,6 @@ export function drawOlympusHall(ctx: CanvasRenderingContext2D, w: number, h: num
   foregroundColumn(ctx, w, h, false)
   foregroundColumn(ctx, w, h, true)
 
-  // Flat cream fascia remains unpatterned behind the overlaid title.
-  roundedRect(ctx, 2.5, 21, w - 5, 58, 6)
-  ctx.fillStyle = '#f7e9c6'
-  ctx.fill()
-  ctx.save()
-  ctx.clip()
-  ctx.fillStyle = '#ecd39d'
-  ctx.fillRect(2.5, 63, w - 5, 16)
-  ctx.fillStyle = GOLD
-  ctx.fillRect(2.5, 60, w - 5, 4)
-  ctx.fillStyle = '#fff4d8'
-  ctx.fillRect(2.5, 25, w - 5, 3)
-  ctx.strokeStyle = '#a27f38'
-  ctx.lineWidth = 1.15
-  greekKey(ctx, 12, 68, w - 24, 6)
-  ctx.restore()
-  roundedRect(ctx, 2.5, 21, w - 5, 58, 6)
-  ctx.strokeStyle = INK
-  ctx.lineWidth = 3.6
-  ctx.stroke()
   ctx.restore()
 }
 
