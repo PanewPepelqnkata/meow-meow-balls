@@ -172,6 +172,9 @@ export class TitleScene extends Phaser.Scene {
   /** Monotonic build token — a stale async leaderboard fetch detects a
    * resize/navigation rebuild by comparing its captured token. */
   private lbBuildSeq = 0
+  private lbModalOpen = false
+  private lbCachedScores: Awaited<ReturnType<typeof scoreService.getLeaderboard>> | null = null
+  private lbModalCleanup: (() => void) | null = null
   constructor() {
     super('TitleScene')
   }
@@ -245,7 +248,8 @@ export class TitleScene extends Phaser.Scene {
     )
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.closed = true
-      this.returnToPause = false
+      this.lbModalCleanup?.()
+      this.lbModalCleanup = null
       this.lbBuildSeq++
       this.destroyCollectionBook()
       this.teardownLeaderboardScroll()
@@ -1256,6 +1260,10 @@ export class TitleScene extends Phaser.Scene {
       return
     }
     if (screen !== this.screen) this.disarmReset()
+    if (screen !== this.screen) {
+      this.lbModalOpen = false
+      this.lbCachedScores = null
+    }
     this.screen = screen
     this.applyScreenVisibility()
   }
@@ -1284,6 +1292,7 @@ export class TitleScene extends Phaser.Scene {
     const z = this.game.scale.displayScale.x || 1
     const vw = this.scale.width / z
     const vh = this.scale.height / z
+    if (vw > vh) this.lbModalOpen = false
 
     const subs: Partial<Record<ScreenName, string>> = {
       collection: 'COLLECTION ALBUM & DISCOVERY LOG',
@@ -1326,6 +1335,36 @@ export class TitleScene extends Phaser.Scene {
     const right = Math.max(margin, safe.right + 12)
     const y = Math.max(12, safe.top + 8)
     const height = vh < 500 ? 68 : 80
+    if (this.lbModalOpen) {
+      const frame = this.add.graphics()
+      frame.fillStyle(0xfff8e9).fillRoundedRect(x, y, vw - x - right, height, 14)
+      frame.lineStyle(3, INK).strokeRoundedRect(x, y, vw - x - right, height, 14)
+      this.panelContent.add(frame)
+      const closeW = 64
+      const closeX = vw - right - 12 - closeW / 2
+      const cy = y + height / 2
+      const close = new ChunkyButton({ scene: this, x: closeX, y: cy, w: closeW, h: 40,
+        label: 'CLOSE', fontSize: 13, fill: 0xe8cc8b, shadowColor: 0xa77a32,
+        highlightColor: 0xfff8e9, onClick: () => this.setLeaderboardModal(false) })
+      this.panelContent.add(close.container)
+      this.panelRects.push({ label: 'CLOSE', x: closeX - closeW / 2, y: cy - 20, w: closeW, h: 40, screen: 'panel' })
+      const title = hudText(this, x + 16, cy, 'LEADERBOARD', 1, {
+        color: '#ffe19a', size: 30, stroke: 3, origin: [0, 0.5], shadow: false,
+      })
+      title.setScale(Math.min(1, (closeX - closeW / 2 - x - 28) / title.width))
+      this.panelContent.add(title)
+      const previousOverflow = document.body.style.overflow
+      document.body.style.overflow = 'hidden'
+      const escape = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') this.setLeaderboardModal(false)
+      }
+      window.addEventListener('keydown', escape)
+      this.lbModalCleanup = () => {
+        window.removeEventListener('keydown', escape)
+        document.body.style.overflow = previousOverflow
+      }
+      return { contentTopY: y + height + 12 }
+    }
     const frame = this.add.graphics()
     frame.fillStyle(0xfff1d1).fillRoundedRect(x, y, vw - x - right, height, 14)
     frame.lineStyle(3, INK).strokeRoundedRect(x, y, vw - x - right, height, 14)
@@ -1351,12 +1390,20 @@ export class TitleScene extends Phaser.Scene {
     return { contentTopY: y + height + 16 }
   }
 
+  private setLeaderboardModal(open: boolean): void {
+    if (this.screen !== 'leaderboard' || this.closed || this.lbModalOpen === open) return
+    this.lbModalOpen = open
+    this.applyScreenVisibility()
+  }
+
   private destroyCollectionBook(): void {
     this.collectionBook?.destroy()
     this.collectionBook = null
   }
 
   private clearPanelContent(): void {
+    this.lbModalCleanup?.()
+    this.lbModalCleanup = null
     this.destroyCollectionBook()
     this.teardownLeaderboardScroll()
     this.panelContent.removeAll(true)
@@ -1492,7 +1539,8 @@ export class TitleScene extends Phaser.Scene {
     let fetchError: string | null = null
 
     try {
-      const scores = await scoreService.getLeaderboard(Number.POSITIVE_INFINITY)
+      const scores = this.lbCachedScores ?? await scoreService.getLeaderboard(Number.POSITIVE_INFINITY)
+      if (buildSeq === this.lbBuildSeq) this.lbCachedScores = scores
       const currentUserId = authService.getUser()?.id
 
       entries = scores.map((s, i) => ({
@@ -1515,6 +1563,8 @@ export class TitleScene extends Phaser.Scene {
     if (this.closed || this.screen !== 'leaderboard' || buildSeq !== this.lbBuildSeq) return
 
     const isDesktop = (vw >= 1100 && vw > vh) || (vw >= 600 && vw > vh && vh < 600)
+    const portrait = vw <= vh
+    const modal = portrait && this.lbModalOpen
     const maxTotalW = Math.min(isDesktop ? 1560 : 820, vw - left - right)
     const totalX = centerX - maxTotalW / 2
 
@@ -1645,7 +1695,7 @@ export class TitleScene extends Phaser.Scene {
     // Reserve the full measured row, header and insets before sizing podium art.
     // Text keeps its measured size; only capitals, medals, balls and gaps compact.
     const minTableH = wellPad * 2 + headerH + 12 + rowH
-    const podiumBudget = isDesktop ? availableH : availableH - minTableH - panelGap
+    const podiumBudget = isDesktop || portrait ? availableH - (portrait ? 124 : 0) : availableH - minTableH - panelGap
     const naturalArtH = deckH + 8 + medalR * 2 + 10 + 16 + 10 + 16
       + heightStep * 2 + ballR * 2.8 + plinthH + 8
     const compactArtH = 6 + 3 + 16 + 3 + 6 + 3 + 4 + 8 + 10 * 2.8 + 8 + 8
@@ -1667,10 +1717,10 @@ export class TitleScene extends Phaser.Scene {
     const firstH = componentH + heightStep * 2
     const podiumH = firstH + ballR * 2.8 + plinthH + 8
     const tableMaxH = isDesktop ? availableH : availableH - podiumH - panelGap
-    const tableH = Math.min(desiredTableH, tableMaxH)
-    const compositionH = isDesktop ? Math.max(podiumH, tableH) : podiumH + panelGap + tableH
+    const tableH = modal ? availableH : Math.min(desiredTableH, tableMaxH)
+    const compositionH = portrait ? podiumH + 124 : isDesktop ? Math.max(podiumH, tableH) : podiumH + panelGap + tableH
     const podiumY = bodyY + Math.max(0, (availableH - compositionH) / 2)
-    const tableY = isDesktop ? podiumY : podiumY + podiumH + panelGap
+    const tableY = modal ? bodyY : isDesktop ? podiumY : podiumY + podiumH + panelGap
     const plinthY = podiumY + podiumH - plinthH - 3
     const baseY = plinthY + 3
     const firstX = podiumX + (podiumW - columnW) / 2
@@ -1717,6 +1767,29 @@ export class TitleScene extends Phaser.Scene {
       podiumGroup.add([labels.name, labels.score])
     }
 
+    if (portrait && !modal) {
+      const buttonW = Math.min(350, podiumW - 24)
+      const buttonH = 64
+      const buttonX = podiumX + podiumW / 2
+      const buttonY = podiumY + podiumH + 24 + buttonH / 2
+      const show = new ChunkyButton({ scene: this, x: buttonX, y: buttonY,
+        w: buttonW, h: buttonH, label: 'SHOW ALL PLAYERS', fontSize: 22, pill: true,
+        fill: 0xe8cc8b, shadowColor: 0xa77a32, highlightColor: 0xfff8e9,
+        textColor: LEADERBOARD_TEXT, onClick: () => this.setLeaderboardModal(true) })
+      this.panelContent.add(show.container)
+      this.panelRects.push({ label: 'SHOW ALL PLAYERS', x: buttonX - buttonW / 2,
+        y: buttonY - buttonH / 2, w: buttonW, h: buttonH, screen: 'panel' })
+      const count = leaderboardTextStyle(hudText(this, buttonX, buttonY + buttonH / 2 + 20,
+        `${entries.length.toLocaleString('en-US')} PLAYERS`, 1, {
+          color: LEADERBOARD_SECONDARY, size: 14, stroke: 0, pad: 1,
+          origin: [0.5, 0.5], shadow: false,
+        }), LEADERBOARD_SECONDARY)
+      this.panelContent.add(count)
+      return
+    }
+    podiumGroup.setVisible(!modal)
+
+
     // Marble tablet art stays behind the existing masked data and input zone.
     const tabletKey = 'br-olympus-tablet'
     bakeCanvas(this, tabletKey, Math.ceil(tableW), Math.ceil(tableH), (ctx) => {
@@ -1758,6 +1831,7 @@ export class TitleScene extends Phaser.Scene {
     })
     this.panelContent.add([hRank, hPlayer, hScore])
     for (const heading of [hRank, hPlayer, hScore]) leaderboardTextStyle(heading, LEADERBOARD_SECONDARY)
+    g.lineStyle(1.5, 0xa77a32, 0.8).lineBetween(rowX, wellY + headerH, rowX + rowW, wellY + headerH)
 
     // --- SCROLLABLE ROWS AREA ---
     const rowsTopY = wellY + headerH + 6
@@ -1835,10 +1909,16 @@ export class TitleScene extends Phaser.Scene {
         if (!entry) continue
         view.index = i
         view.container.setY(rowsTopY + i * (rowH + rowGap))
-        view.background.clear().fillStyle(i === 0 ? 0xf5d78b : i % 2 === 0 ? 0xf0e7d5 : 0xfff8e9, 1)
-          .fillRoundedRect(rowX, 0, rowW, rowH, 10)
-        if (i === 0 || entry.isCurrentUser) view.background.lineStyle(1.5, 0xa77a32, 1)
-          .strokeRoundedRect(rowX, 0, rowW, rowH, 10)
+        view.background.clear().fillStyle(
+          i === 0 ? 0xf5d78b : i === 1 ? 0xf0f1ed : i === 2 ? 0xf3e5d5 : i % 2 === 0 ? 0xf0e7d5 : 0xfff8e9,
+          1,
+        ).fillRoundedRect(rowX, 0, rowW, rowH, 10)
+        const rankInk = i === 0 ? '#a77a32' : i === 1 ? '#647176' : i === 2 ? '#9b633f' : LEADERBOARD_TEXT
+        view.rank.setColor(rankInk)
+        if (i === 0 || i === 1 || i === 2 || entry.isCurrentUser) {
+          view.background.lineStyle(1.5, i === 0 || entry.isCurrentUser ? 0xa77a32 : i === 1 ? 0x98a5a7 : 0xb47b53, 1)
+            .strokeRoundedRect(rowX, 0, rowW, rowH, 10)
+        }
         const cy = rowH / 2
         view.rank.setText(`${i + 1}`).setY(cy)
         view.name.setText(entry.displayName).setY(cy)
@@ -2671,7 +2751,9 @@ export function drawBallIcon(
 }
 
 function leaderboardTextStyle(text: Phaser.GameObjects.Text, color = LEADERBOARD_TEXT): Phaser.GameObjects.Text {
-  return text.setFontFamily(LEADERBOARD_FONT).setFontStyle('bold').setColor(color).setStroke(color, 0)
+  // The bundled Nunito face is 700-only. Optical emboldening retains the same
+  // rounded glyphs while giving the requested extra-bold weight without a new font.
+  return text.setFontFamily(LEADERBOARD_FONT).setFontStyle('800').setColor(color).setStroke(color, 0.65)
 }
 
 function leaderboardAvatarKey(

@@ -18,22 +18,22 @@ The leaderboard is a cartoon Mount Olympus temple scene, not a dashboard with or
 
 ### Ranking tablet
 
-- `drawOlympusTablet` bakes a rounded ivory marble tablet with thick ink silhouette, double gold frame, sparse veins, and Greek-key lower trim.
-- The ranked data occupies a right-side tablet on wide landscape and stacks below the champions on phones and medium windows. Dedicated rank/avatar/name/score columns keep avatars and scores aligned.
-- Player names and scores use locally bundled Nunito Bold without outlines/shadows, at 26px in wide tablets and 21px in narrow tablets. The LEADERBOARD heading keeps Lilita One. All players use charcoal `#25283A`; secondary headings use `#555467`.
-- Names wrap within the measured name column. All rows share a height based on the tallest wrapped name; font size does not shrink with viewport height. Scores use one measured right-aligned column.
-- Tablet height depends on viewport and a six-row desktop/four-row phone target, not player count. Only the list scrolls. A cached Phaser WebGL mask (Canvas GeometryMask fallback) keeps rows below stationary headings.
-- First place uses a restrained `#F5D78B` fill and `#A77A32` border. Other rows alternate `#FFF8E9`/`#F0E7D5`; current-user identification uses a quiet gold border, not cyan text or outlines.
-- The list recycles a viewport-sized pool with two overscan rows, keeping the number of mounted text/avatar objects bounded for 100+ players. One temporary text object measures names/scores; offscreen rows do not each allocate a text canvas.
-- Miniature avatars use the original ball contour/face/collectible renderers. Graphics are baked at DPR 2–3 into cached textures with 64-segment contours; avatar artwork is 36–40px and includes the original pupils, highlights, outlines and colors.
+- `drawOlympusTablet` bakes a rounded ivory marble slab with a thick ink silhouette, double gold frame, sparse veins, and Greek-key lower trim.
+- Desktop landscape keeps the podium-left/tablet-right composition. Portrait initially shows only the three champion columns and a gold `SHOW ALL PLAYERS` button with the player count.
+- The portrait button opens the same virtualized full-screen leaderboard used on desktop: safe-inset heading and close button stay fixed above stationary rank/player/score headings; only the row viewport scrolls.
+- Names wrap within the measured name column. All rows share a height based on the tallest wrapped name. Scores use one measured right-aligned column.
+- Player names and scores use bundled Nunito Bold with optical emboldening, at 26px in wide tablets and 21px in narrow tablets. The LEADERBOARD heading keeps Lilita One. Text stays charcoal with restrained gold first-three-place treatments.
+- The viewport-sized row pool and DPR-baked game-ball avatars are shared by desktop and modal; scrolling reaches every paginated player without creating objects for offscreen rows.
+
+### Portrait modal
+
+- The full-screen list respects iOS safe-area insets and uses the available visual viewport height. Its close button and Escape key return to the podium state.
+- Opening locks document scrolling; close, resize rebuild, screen navigation, and scene shutdown restore the prior body overflow style.
+- The modal reuses the same score snapshot, row pool, avatar textures, and scroll implementation as desktop.
 
 ## Layout and interaction
 
-- Wide landscape (at least 1100 CSS pixels) uses two balanced panels inside shared safe margins. Phone landscape uses side-by-side panels from 600 CSS pixels wide when height is below 600; below 500px height, margins and the panel gap compact consistently.
-- Stacked layouts reserve the tablet header, insets, and one full measured row before allocating height to the podium. Podium art and spacing interpolate to compact dimensions while the measured player-name and score typography remain unchanged. The tablet consumes the remaining height without an independent minimum that could extend it past the viewport.
-- Portrait and medium-width layouts stack the champion composition above a tablet up to 820 CSS pixels wide. Verified with wide 20-character names at 390×568, 390×640, 640×360, 667×375, and 844×390; each shows at least one complete row inside the viewport.
-- Back navigation remains the existing menu action. `window.__brMenu.open('leaderboard')` and `.screen()` remain useful browser QA hooks.
-- All baked textures use `bakeCanvas`, which caps DPR and releases replaced canvas backing stores. Only transforms/alpha animate.
+- Wide landscape keeps balanced panels inside shared safe margins. Portrait presents the podium and SHOW ALL PLAYERS action, with the list opened only on demand; landscape never uses the portrait modal.
 
 ## Data and scrolling
 
