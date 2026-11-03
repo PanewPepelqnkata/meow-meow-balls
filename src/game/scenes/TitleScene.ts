@@ -1468,8 +1468,10 @@ export class TitleScene extends Phaser.Scene {
     // scene shut down while the request was in flight — discard.
     if (this.closed || this.screen !== 'leaderboard' || buildSeq !== this.lbBuildSeq) return
 
-    const isDesktop = vw >= 720 && vw > vh
-    const maxTotalW = isDesktop ? Math.min(1760, vw - left - right - 40) : Math.min(560, vw - left - right)
+    // Keep the two-column layout for widths that can comfortably fit both panels.
+    // Medium landscape windows use the stacked layout instead of crushing names.
+    const isDesktop = vw >= 900 && vw > vh
+    const maxTotalW = isDesktop ? Math.min(1760, vw - left - right - 40) : Math.min(820, vw - left - right)
     const totalX = centerX - maxTotalW / 2
 
     // Error state
@@ -1949,7 +1951,14 @@ export class TitleScene extends Phaser.Scene {
         origin: [0, 0.5],
         shadow: false,
       })
-      nameT.setWordWrapWidth(maxNameW, true)
+      // Keep every display name on one line and inside its row. Long names
+      // scale to the available column width as well as the row's vertical space.
+      const nameScale = Math.min(
+        1,
+        maxNameW / Math.max(1, nameT.width),
+        (rowH * 0.72) / Math.max(1, nameT.height),
+      )
+      nameT.setScale(nameScale)
       rowsContainer.add(nameT)
     }
     // --- ENTRANCE ANIMATIONS ---
