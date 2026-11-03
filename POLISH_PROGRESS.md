@@ -3,6 +3,14 @@
 
 ---
 
+## Leaderboard podium polish — 2026-11-03
+
+- Rounded pastel podium blocks and a pill-shaped plinth replace the hard-edged pedestal styling.
+- Podium balls retain their gameplay faces without sunglasses or sparkle rays; the champion wears a curved, pearl-tipped crown.
+- Highlight and plinth corner radii stay within half their height to prevent protruding corners on mobile.
+- Desktop keeps the podium beside the existing table; mobile keeps the stacked layout.
+
+
 ## 1. System-by-System Architectural Map
 
 ### Core Pipeline

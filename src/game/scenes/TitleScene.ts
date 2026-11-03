@@ -1441,18 +1441,16 @@ export class TitleScene extends Phaser.Scene {
     }
 
     // --- PODIUM (TOP 3) ---
-    const baseH = isDesktop ? 26 : 20
+    const baseH = isDesktop ? 32 : 24
     const baseY = podiumY + podiumH - baseH
 
-    // Stepped 3D stone pedestal under the 3 blocks
-    g.fillStyle(0x090d1a, 0.7)
-    g.fillRoundedRect(podiumX - 4, baseY + 6, podiumW + 8, baseH + 4, 12)
-    g.fillStyle(0x161f3a, 1)
-    g.fillRoundedRect(podiumX, baseY, podiumW, baseH, 12)
-    g.fillStyle(0x2b3a67, 0.7)
-    g.fillRoundedRect(podiumX + 4, baseY + 2, podiumW - 8, 6, 6)
-    g.lineStyle(3, INK, 1)
-    g.strokeRoundedRect(podiumX, baseY, podiumW, baseH, 12)
+    // A single cushioned plinth grounds the three podiums.
+    g.fillStyle(0x101521, 0.55)
+    g.fillRoundedRect(podiumX - 4, baseY + 5, podiumW + 8, baseH + 4, (baseH + 4) / 2)
+    g.fillStyle(0x252b3d, 1)
+    g.fillRoundedRect(podiumX, baseY, podiumW, baseH, baseH / 2)
+    g.lineStyle(1.5, 0x505a70, 0.55)
+    g.strokeRoundedRect(podiumX, baseY, podiumW, baseH, baseH / 2)
 
     // Podium block dimensions (reserve top 40% of podiumH for ball + crown)
     const maxBlockH = (podiumH - baseH) * (isDesktop ? 0.6 : 0.65)
@@ -1478,7 +1476,6 @@ export class TitleScene extends Phaser.Scene {
         entry: top3[1],
         tier: 1,
         face: undefined as 'sleepy' | undefined,
-        sunglasses: true,
       },
       {
         x: thirdX,
@@ -1488,8 +1485,7 @@ export class TitleScene extends Phaser.Scene {
         rank: 3,
         entry: top3[2],
         tier: 5,
-        face: 'sleepy' as const,
-        sunglasses: false,
+        face: undefined as 'sleepy' | undefined,
       },
       {
         x: firstX,
@@ -1500,32 +1496,17 @@ export class TitleScene extends Phaser.Scene {
         entry: top3[0],
         tier: 6,
         face: undefined as 'sleepy' | undefined,
-        sunglasses: false,
       },
     ]
 
     podiumSlots.forEach((slot) => {
       if (!slot.entry) return
-      const { x, y, w, h, rank, entry, tier, face, sunglasses } = slot
+      const { x, y, w, h, rank, entry, tier, face } = slot
       const cx = x + w / 2
 
       // Ball character perched on top of the podium block
       const ballR = Math.min(w * (rank === 1 ? 0.4 : 0.36), (podiumH - baseH - firstH) * (rank === 1 ? 0.46 : 0.42))
       const ballCY = y - ballR * 0.85
-
-      // Sparkle rays behind 1st place ball
-      if (rank === 1) {
-        const rayAngles = [-2.55, -2.2, -1.9, -1.24, -0.94, -0.59]
-        g.lineStyle(Math.max(3, ballR * 0.12), 0xffd93b, 1)
-        for (const a of rayAngles) {
-          const r0 = ballR * 1.16
-          const r1 = ballR * 1.42
-          g.beginPath()
-          g.moveTo(cx + Math.cos(a) * r0, ballCY + Math.sin(a) * r0)
-          g.lineTo(cx + Math.cos(a) * r1, ballCY + Math.sin(a) * r1)
-          g.strokePath()
-        }
-      }
 
       drawBallIcon(this, g, tier, cx, ballCY, ballR, {
         seed: rank * 777 + tier * 31,
@@ -1533,92 +1514,41 @@ export class TitleScene extends Phaser.Scene {
         face,
       })
 
-      // Cool sunglasses on 2nd-place ball
-      if (sunglasses) {
-        const gw = ballR * 0.72
-        const gh = ballR * 0.42
-        const gy = ballCY - ballR * 0.22
-        const gapX = ballR * 0.08
-        g.fillStyle(0x111522, 1)
-        g.fillRoundedRect(cx - gapX - gw, gy - gh / 2, gw, gh, 5)
-        g.fillRoundedRect(cx + gapX, gy - gh / 2, gw, gh, 5)
-        g.lineStyle(Math.max(2, ballR * 0.09), INK, 1)
-        g.strokeRoundedRect(cx - gapX - gw, gy - gh / 2, gw, gh, 5)
-        g.strokeRoundedRect(cx + gapX, gy - gh / 2, gw, gh, 5)
-        // Bridge + temple arms
-        g.beginPath()
-        g.moveTo(cx - gapX, gy - gh * 0.15)
-        g.lineTo(cx + gapX, gy - gh * 0.15)
-        g.moveTo(cx - gapX - gw, gy - gh * 0.2)
-        g.lineTo(cx - ballR * 0.96, gy - gh * 0.35)
-        g.moveTo(cx + gapX + gw, gy - gh * 0.2)
-        g.lineTo(cx + ballR * 0.96, gy - gh * 0.35)
-        g.strokePath()
-        // Lens sheen
-        g.fillStyle(0xffffff, 0.28)
-        g.fillRoundedRect(cx - gapX - gw + 3, gy - gh / 2 + 2, gw * 0.35, gh * 0.35, 2)
-        g.fillRoundedRect(cx + gapX + 3, gy - gh / 2 + 2, gw * 0.35, gh * 0.35, 2)
-      }
-
       // Champion crown on 1st-place ball
       if (rank === 1) {
         drawCrown(g, cx, ballCY - ballR * 1.12, ballR * 1.05, ballR * 0.62)
       }
 
-      // Podium block colors
-      const blockColor = rank === 1 ? 0xffd93b : rank === 2 ? 0xc0d0e8 : 0xe89b4a
-      const blockTop = rank === 1 ? 0xffe875 : rank === 2 ? 0xe0eaf8 : 0xf4b86e
-      const blockShadow = rank === 1 ? 0xd4a90b : rank === 2 ? 0x8a9ab8 : 0xb36b24
-      const badgeFill = rank === 1 ? 0xffb800 : rank === 2 ? 0x9bb0d1 : 0xc9732c
+      // Soft candy palette
+      const blockColor = rank === 1 ? 0xffe6a8 : rank === 2 ? 0xd8e7f7 : 0xf5c8ab
+      const blockTop = rank === 1 ? 0xfff3cf : rank === 2 ? 0xeaf2fc : 0xfbe0ca
+      const badgeFill = rank === 1 ? 0xffd93b : rank === 2 ? 0xb8c7e0 : 0xe08b44
 
-      // Drop shadow
-      g.fillStyle(0x000000, 0.45)
-      g.fillRoundedRect(x + 5, y + 6, w, h, 12)
-      // Main block body
+      // Rounded, softly grounded block; no hard bevel or heavy shadow.
+      g.fillStyle(0x101521, 0.25)
+      g.fillRoundedRect(x + 2, y + 3, w, h, 22)
       g.fillStyle(blockColor, 1)
-      g.fillRoundedRect(x, y, w, h, 12)
-      // Right-edge 3D shade
-      g.fillStyle(blockShadow, 1)
-      g.fillRoundedRect(x + w - 9, y + 4, 9, h - 4, 8)
-      // Top 3D bevel cap
-      const capH = Math.max(10, Math.round(h * 0.14))
+      g.fillRoundedRect(x, y, w, h, 22)
+      const capH = Math.max(12, Math.round(h * 0.15))
       g.fillStyle(blockTop, 1)
-      g.fillRoundedRect(x + 2, y + 2, w - 4, capH, 10)
-      // Bold cartoon outline
-      g.lineStyle(3, INK, 1)
-      g.strokeRoundedRect(x, y, w, h, 12)
+      g.fillRoundedRect(x + 2, y + 2, w - 4, capH, capH / 2)
+      g.lineStyle(1.5, 0x69758a, 0.5)
+      g.strokeRoundedRect(x, y, w, h, 22)
 
-      // Current user glow border on podium block
       if (entry.isCurrentUser) {
-        g.lineStyle(3, 0x4fc3f7, 1)
-        g.strokeRoundedRect(x - 3, y - 3, w + 6, h + 6, 14)
+        g.lineStyle(2, 0x4fc3f7, 0.65)
+        g.strokeRoundedRect(x - 3, y - 3, w + 6, h + 6, 25)
       }
 
-      // Rank badge INSIDE the podium block
-      const badgeR = Math.max(11, Math.min(20, Math.round(Math.min(w * 0.18, h * 0.17))))
-      const badgeY = y + capH + badgeR + Math.max(1, h * 0.02)
-
-      // Golden laurel leaf accents around #1 badge
-      if (rank === 1) {
-        g.fillStyle(0xffaa00, 1)
-        g.lineStyle(2, INK, 1)
-        for (const dir of [-1, 1]) {
-          for (let l = 0; l < 3; l++) {
-            const lx = cx + dir * (badgeR + 5 + l * 2)
-            const ly = badgeY + (1 - l) * (badgeR * 0.42)
-            g.fillCircle(lx, ly, Math.max(3, badgeR * 0.24))
-            g.strokeCircle(lx, ly, Math.max(3, badgeR * 0.24))
-          }
-        }
-      }
-
+      const badgeR = Math.max(12, Math.min(22, Math.round(Math.min(w * 0.2, h * 0.18))))
+      const badgeY = y + capH + badgeR + Math.max(2, h * 0.03)
       g.fillStyle(badgeFill, 1)
       g.fillCircle(cx, badgeY, badgeR)
-      g.lineStyle(2.5, INK, 1)
+      g.lineStyle(1.5, 0x69758a, 0.55)
       g.strokeCircle(cx, badgeY, badgeR)
       const rankT = hudText(this, cx, badgeY, `${rank}`, 1, {
         color: '#1a1a1a',
-        size: Math.round(badgeR * 1.15),
+        size: Math.round(badgeR * 1.2),
         stroke: 0,
         origin: [0.5, 0.5],
         shadow: false,
@@ -2307,7 +2237,7 @@ function starPath(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: numb
   ctx.closePath()
 }
 
-/** Cartoon crown (three spikes + jewel band) drawn with Phaser Graphics —
+/** Soft cartoon crown (curved peaks + pearl pom-poms) drawn with Phaser Graphics —
  * sits on the leaderboard champion ball and the #1 list row. */
 function drawCrown(
   g: Phaser.GameObjects.Graphics,
@@ -2318,32 +2248,72 @@ function drawCrown(
 ): void {
   const x0 = cx - w / 2
   const y0 = cy - h / 2
-  const bandH = h * 0.34
+  const bottomY = y0 + h
   const valleyY = y0 + h * 0.52
-  const sw = w / 3
-  // Zigzag silhouette: band bottom → left edge up → 3 spikes → right edge down.
-  const pts = [
-    new Phaser.Math.Vector2(x0, y0 + h),
-    new Phaser.Math.Vector2(x0, valleyY),
-    new Phaser.Math.Vector2(x0 + sw * 0.5, y0),
-    new Phaser.Math.Vector2(x0 + sw, valleyY),
-    new Phaser.Math.Vector2(x0 + sw * 1.5, y0 - h * 0.18),
-    new Phaser.Math.Vector2(x0 + sw * 2, valleyY),
-    new Phaser.Math.Vector2(x0 + sw * 2.5, y0),
-    new Phaser.Math.Vector2(x0 + w, valleyY),
-    new Phaser.Math.Vector2(x0 + w, y0 + h),
-  ]
+  const sidePeakY = y0 + h * 0.14
+  const midPeakY = y0
+
+  const p0 = { x: x0 + w * 0.06, y: bottomY }
+  const p1 = { x: x0, y: sidePeakY }
+  const v1 = { x: x0 + w * 0.28, y: valleyY }
+  const p2 = { x: cx, y: midPeakY }
+  const v2 = { x: x0 + w * 0.72, y: valleyY }
+  const p3 = { x: x0 + w, y: sidePeakY }
+  const p4 = { x: x0 + w * 0.94, y: bottomY }
+
+  const pts: Phaser.Math.Vector2[] = []
+  const pushQuad = (ax: number, ay: number, cpx: number, cpy: number, bx: number, by: number, steps = 8) => {
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps
+      const inv = 1 - t
+      pts.push(
+        new Phaser.Math.Vector2(
+          inv * inv * ax + 2 * inv * t * cpx + t * t * bx,
+          inv * inv * ay + 2 * inv * t * cpy + t * t * by,
+        ),
+      )
+    }
+  }
+
+  // Smooth curved crown silhouette
+  pushQuad(p0.x, p0.y, x0 - w * 0.02, y0 + h * 0.55, p1.x, p1.y, 6)
+  pushQuad(p1.x, p1.y, x0 + w * 0.14, valleyY + h * 0.08, v1.x, v1.y, 6)
+  pushQuad(v1.x, v1.y, x0 + w * 0.39, y0 + h * 0.15, p2.x, p2.y, 6)
+  pushQuad(p2.x, p2.y, x0 + w * 0.61, y0 + h * 0.15, v2.x, v2.y, 6)
+  pushQuad(v2.x, v2.y, x0 + w * 0.86, valleyY + h * 0.08, p3.x, p3.y, 6)
+  pushQuad(p3.x, p3.y, x0 + w * 1.02, y0 + h * 0.55, p4.x, p4.y, 6)
+  // Slightly curved base so it hugs the ball's head
+  pushQuad(p4.x, p4.y, cx, bottomY - h * 0.08, p0.x, p0.y, 6)
+
+  const strokeW = Math.max(2, w * 0.065)
   g.fillStyle(0xffd93b, 1)
   g.fillPoints(pts, true)
-  g.lineStyle(Math.max(2, w * 0.06), INK, 1)
+
+  // Soft highlight band along the base
+  const bandH = Math.max(3, h * 0.22)
+  g.fillStyle(0xffe875, 0.85)
+  g.fillRoundedRect(p0.x + w * 0.04, bottomY - bandH - strokeW * 0.4, w * 0.8, bandH, bandH / 2)
+
+  g.lineStyle(strokeW, INK, 1)
   g.strokePoints(pts, true, true)
-  // Band jewels.
-  const jewelY = y0 + h - bandH * 0.5
-  g.fillStyle(0xf44336, 1)
-  g.fillCircle(cx, jewelY, bandH * 0.32)
+
+  // Cute round pom-pom pearls on the 3 tips
+  const pearlR = Math.max(2.5, w * 0.075)
+  for (const pk of [p1, p2, p3]) {
+    g.fillStyle(0xffe875, 1)
+    g.fillCircle(pk.x, pk.y, pearlR)
+    g.lineStyle(Math.max(1.5, strokeW * 0.85), INK, 1)
+    g.strokeCircle(pk.x, pk.y, pearlR)
+  }
+
+  // Center gem on the crown band
+  const gemR = Math.max(2, h * 0.13)
+  const gemY = bottomY - h * 0.24
+  g.fillStyle(0xff5252, 1)
+  g.fillCircle(cx, gemY, gemR)
   g.fillStyle(0x4fc3f7, 1)
-  g.fillCircle(cx - w * 0.28, jewelY, bandH * 0.24)
-  g.fillCircle(cx + w * 0.28, jewelY, bandH * 0.24)
+  g.fillCircle(cx - w * 0.24, gemY + h * 0.02, gemR * 0.8)
+  g.fillCircle(cx + w * 0.24, gemY + h * 0.02, gemR * 0.8)
 }
 
 /**
