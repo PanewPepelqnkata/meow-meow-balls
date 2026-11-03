@@ -131,6 +131,39 @@ export class TitleScene extends Phaser.Scene {
   private readonly pointerWorld = new Phaser.Math.Vector2()
   private offs: Array<() => void> = []
   private unsubscribeAuth: (() => void) | null = null
+  /** Reduced-motion preference, read once per the DiscoveryOverlay convention. */
+  private reducedMotion = false
+  /** Leaderboard scroll state — torn down with the panel content. */
+  private lbScroll: {
+    rowsC: Phaser.GameObjects.Container
+    maskG: Phaser.GameObjects.Graphics
+    thumbG: Phaser.GameObjects.Graphics
+    zone: Phaser.GameObjects.Zone
+    offset: number
+    maxOffset: number
+    viewH: number
+    contentH: number
+    rowH: number
+    rowGap: number
+    trackX: number
+    trackY: number
+    trackW: number
+    trackH: number
+    thumbH: number
+    tableX: number
+    tableY: number
+    tableW: number
+    tableH: number
+    dragPointerId: number | null
+    dragMode: 'rows' | 'thumb' | null
+    dragStartY: number
+    dragStartOffset: number
+  } | null = null
+  /** Leaderboard tweens (entrance, crown shimmer, cloud drift) — killed on teardown. */
+  private lbTweens: Phaser.Tweens.Tween[] = []
+  /** Monotonic build token — a stale async leaderboard fetch detects a
+   * resize/navigation rebuild by comparing its captured token. */
+  private lbBuildSeq = 0
   constructor() {
     super('TitleScene')
   }
@@ -160,6 +193,11 @@ export class TitleScene extends Phaser.Scene {
     this.applyDprCamera()
     this.disarmReset()
     this.input.enabled = true
+    try {
+      this.reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    } catch {
+      this.reducedMotion = false
+    }
     this.scene.bringToTop()
     // Phase 2.16.0: the menu owns the screen — the gameplay scenes are
     // COMPLETELY HIDDEN (not merely dimmed), so no second container / HUD
@@ -200,7 +238,9 @@ export class TitleScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.closed = true
       this.returnToPause = false
+      this.lbBuildSeq++
       this.destroyCollectionBook()
+      this.teardownLeaderboardScroll()
       this.disarmReset()
       this.game.events.off('br:dpr', this.onViewportResize, this)
       this.unsubscribeAuth?.()
@@ -1277,8 +1317,25 @@ export class TitleScene extends Phaser.Scene {
 
   private clearPanelContent(): void {
     this.destroyCollectionBook()
+    this.teardownLeaderboardScroll()
     this.panelContent.removeAll(true)
     this.panelRects.length = 0
+  }
+
+  /** Remove leaderboard scroll listeners/masks/tweens; GameObjects die with panelContent. */
+  private teardownLeaderboardScroll(): void {
+    this.lbBuildSeq++
+    for (const tw of this.lbTweens) tw.stop()
+    this.lbTweens.length = 0
+    const s = this.lbScroll
+    if (!s) return
+    this.lbScroll = null
+    this.input.off('wheel', this.lbWheel, this)
+    this.input.off('pointermove', this.lbPointerMove, this)
+    this.input.off('pointerup', this.lbPointerUp, this)
+    this.input.off('pointerupoutside', this.lbPointerUp, this)
+    s.rowsC.clearMask()
+    s.maskG.destroy()
   }
 
   private disarmReset(): void {
@@ -1286,14 +1343,180 @@ export class TitleScene extends Phaser.Scene {
     if (this.resetArmTimer !== null) window.clearTimeout(this.resetArmTimer)
     this.resetArmTimer = null
   }
+  /** Wheel scroll over the leaderboard rows area (ignored outside). */
+  private lbWheel(
+    pointer: Phaser.Input.Pointer,
+    _currentlyOver: Phaser.GameObjects.GameObject[],
+    _dx: number,
+    dy: number,
+  ): void {
+    const s = this.lbScroll
+    if (!s || s.maxOffset <= 0) return
+    const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y, this.pointerWorld)
+    const wx = world.x
+    const wy = world.y
+    if (wx < s.tableX || wx > s.tableX + s.tableW) return
+    if (wy < s.tableY || wy > s.tableY + s.tableH) return
+    this.lbSetOffset(s.offset + dy * 0.5)
+  }
+
+  /** Pointer move during a leaderboard drag (rows or thumb). */
+  private lbPointerMove(pointer: Phaser.Input.Pointer): void {
+    const s = this.lbScroll
+    if (!s || s.dragPointerId !== pointer.id) return
+    const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y, this.pointerWorld)
+    if (s.dragMode === 'rows') {
+      const dy = world.y - s.dragStartY
+      this.lbSetOffset(s.dragStartOffset - dy)
+    } else if (s.dragMode === 'thumb') {
+      const trackRange = s.trackH - s.thumbH
+      if (trackRange <= 0) return
+      const dy = world.y - s.dragStartY
+      const fraction = (s.dragStartOffset / s.maxOffset) + dy / trackRange
+      this.lbSetOffset(fraction * s.maxOffset)
+    }
+  }
+
+  /** Pointer up ends any leaderboard drag. */
+  private lbPointerUp(pointer: Phaser.Input.Pointer): void {
+    const s = this.lbScroll
+    if (!s || s.dragPointerId !== pointer.id) return
+    s.dragPointerId = null
+    s.dragMode = null
+  }
+
+  /** Clamp + apply a new scroll offset, updating rows and thumb. */
+  private lbSetOffset(offset: number): void {
+    const s = this.lbScroll
+    if (!s) return
+    s.offset = Phaser.Math.Clamp(offset, 0, s.maxOffset)
+    s.rowsC.y = -s.offset
+    s.thumbG.clear()
+    if (s.maxOffset <= 0) return
+    const thumbY = s.trackY + (s.offset / s.maxOffset) * (s.trackH - s.thumbH)
+    s.thumbG.fillStyle(0xd4af37, 1)
+    s.thumbG.fillRoundedRect(s.trackX + 1, thumbY, s.trackW - 2, s.thumbH, (s.trackW - 2) / 2)
+  }
 
   private async buildLeaderboard(vw: number, vh: number, topY: number): Promise<void> {
+    // Build token: bumped by teardown/shutdown, so a fetch that resolves
+    // after a resize or navigation away is discarded instead of painting
+    // stale layout into a rebuilt panel.
+    const buildSeq = ++this.lbBuildSeq
     const safe = readSafeArea()
     const left = Math.max(12, safe.left + 8)
     const right = Math.max(12, safe.right + 8)
     const centerX = (left + vw - right) / 2
     const bodyY = topY + 8
     const availableH = vh - Math.max(16, safe.bottom + 8) - bodyY
+
+    // Bake the Valhalla marble-column background behind the leaderboard content.
+    const bgKey = `br-lb-bg:${Math.ceil(vw)}x${Math.ceil(vh)}`
+    bakeCanvas(this, bgKey, Math.ceil(vw), Math.ceil(vh), (ctx) => {
+      // Twilight indigo sky
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, vh)
+      skyGrad.addColorStop(0, '#1b2348')
+      skyGrad.addColorStop(0.5, '#2c3a6e')
+      skyGrad.addColorStop(1, '#1a1f3a')
+      ctx.fillStyle = skyGrad
+      ctx.fillRect(0, 0, vw, vh)
+
+      // Soft golden-hour glow behind the podium area
+      const glowCX = vw / 2
+      const glowCY = vh * 0.42
+      const glowR = Math.max(vw, vh) * 0.5
+      const glow = ctx.createRadialGradient(glowCX, glowCY, glowR * 0.05, glowCX, glowCY, glowR)
+      glow.addColorStop(0, 'rgba(255, 217, 59, 0.14)')
+      glow.addColorStop(0.4, 'rgba(255, 200, 80, 0.06)')
+      glow.addColorStop(1, 'rgba(27, 35, 72, 0)')
+      ctx.fillStyle = glow
+      ctx.fillRect(0, 0, vw, vh)
+
+      // Marble floor ledge at the bottom
+      const floorY = vh * 0.88
+      const floorGrad = ctx.createLinearGradient(0, floorY, 0, vh)
+      floorGrad.addColorStop(0, '#d4cec2')
+      floorGrad.addColorStop(0.3, '#c8c2b4')
+      floorGrad.addColorStop(1, '#a8a294')
+      ctx.fillStyle = floorGrad
+      ctx.fillRect(0, floorY, vw, vh - floorY)
+      // Floor edge highlight
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.25)'
+      ctx.fillRect(0, floorY, vw, 2)
+
+      // Fluted marble columns framing the content
+      const colW = Math.max(36, Math.round(vw * 0.055))
+      const colInset = Math.max(8, Math.round(vw * 0.02))
+      const colTop = vh * 0.06
+      const colBot = floorY + 4
+      const colH = colBot - colTop
+
+      for (const side of [0, 1]) {
+        const cx = side === 0 ? colInset + colW / 2 : vw - colInset - colW / 2
+        const x = cx - colW / 2
+
+        // Column shadow
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.18)'
+        ctx.fillRect(x + 3, colTop + 4, colW, colH)
+
+        // Column body — warm marble gradient
+        const colGrad = ctx.createLinearGradient(x, colTop, x + colW, colTop)
+        colGrad.addColorStop(0, '#e8e2d6')
+        colGrad.addColorStop(0.3, '#f5f0e8')
+        colGrad.addColorStop(0.7, '#f0ebe0')
+        colGrad.addColorStop(1, '#d4cec2')
+        ctx.fillStyle = colGrad
+        ctx.fillRect(x, colTop, colW, colH)
+
+        // Fluting (vertical grooves)
+        const fluteCount = Math.max(3, Math.round(colW / 12))
+        const fluteW = colW / (fluteCount * 2 + 1)
+        for (let f = 0; f < fluteCount; f++) {
+          const fx = x + fluteW * (f * 2 + 1)
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.08)'
+          ctx.fillRect(fx, colTop + 8, fluteW * 0.6, colH - 16)
+        }
+
+        // Capital (Doric-style: simple abacus + echinus)
+        const capH = Math.max(14, colW * 0.35)
+        const capY = colTop
+        ctx.fillStyle = '#f5f0e8'
+        ctx.fillRect(x - 4, capY, colW + 8, capH * 0.4)
+        ctx.beginPath()
+        ctx.ellipse(cx, capY + capH * 0.6, colW * 0.55, capH * 0.35, 0, 0, Math.PI * 2)
+        ctx.fill()
+        // Gold accent band on capital
+        ctx.fillStyle = '#d4af37'
+        ctx.fillRect(x - 2, capY + capH * 0.35, colW + 4, 3)
+
+        // Base (plinth)
+        const baseH = Math.max(10, colW * 0.25)
+        ctx.fillStyle = '#e0dacd'
+        ctx.fillRect(x - 3, colBot - baseH, colW + 6, baseH)
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.1)'
+        ctx.fillRect(x - 3, colBot - 2, colW + 6, 2)
+
+        // Ink outline
+        ctx.strokeStyle = '#1a1a1a'
+        ctx.lineWidth = 2.5
+        ctx.strokeRect(x, colTop, colW, colH)
+      }
+
+      // Subtle cloud wisps
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.06)'
+      for (let c = 0; c < 5; c++) {
+        const cx = vw * (0.15 + c * 0.18)
+        const cy = vh * (0.08 + (c % 3) * 0.06)
+        const cw = 60 + (c * 37) % 80
+        const ch = 18 + (c * 23) % 14
+        ctx.beginPath()
+        ctx.ellipse(cx, cy, cw, ch, 0, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }, window.devicePixelRatio || 1)
+
+    const bgImg = this.add.image(0, 0, bgKey).setOrigin(0, 0).setDisplaySize(Math.ceil(vw), Math.ceil(vh))
+    this.panelContent.addAt(bgImg, 0)
     const g = this.add.graphics()
     this.panelContent.add(g)
 
@@ -1339,7 +1562,9 @@ export class TitleScene extends Phaser.Scene {
 
     // Clear loading indicator
     loadingT.destroy()
-    if (this.screen !== 'leaderboard') return
+    // Stale fetch: the panel was rebuilt (resize/auth/navigation) or the
+    // scene shut down while the request was in flight — discard.
+    if (this.closed || this.screen !== 'leaderboard' || buildSeq !== this.lbBuildSeq) return
 
     const isDesktop = vw >= 720 && vw > vh
     const maxTotalW = isDesktop ? Math.min(1120, vw - left - right) : Math.min(500, vw - left - right)
@@ -1408,7 +1633,6 @@ export class TitleScene extends Phaser.Scene {
     }
 
     const top3 = entries.slice(0, 3)
-    const top10 = entries.slice(0, 10)
 
     // Layout geometry: side-by-side on desktop, stacked on mobile
     let podiumX: number
@@ -1431,14 +1655,19 @@ export class TitleScene extends Phaser.Scene {
       podiumH = tableH
       podiumY = tableY
     } else {
+      // Stacked mobile layout — must fit availableH even on short viewports:
+      // shrink the podium before letting the table overflow the screen.
+      const stackGap = 12
+      const minTableH = 120
       podiumW = maxTotalW
       podiumX = totalX
-      podiumH = Math.min(268, Math.max(218, Math.round(availableH * 0.39)))
+      podiumH = Math.min(268, Math.max(150, Math.round(availableH * 0.36)))
+      podiumH = Math.min(podiumH, Math.max(140, availableH - stackGap - 6 - minTableH))
       podiumY = bodyY + 4
       tableW = maxTotalW
       tableX = totalX
-      tableY = podiumY + podiumH + 12
-      tableH = Math.max(216, availableH - (tableY - bodyY) - 6)
+      tableY = podiumY + podiumH + stackGap
+      tableH = Math.max(96, availableH - (tableY - bodyY) - 6)
     }
 
     // --- PODIUM (TOP 3) ---
@@ -1632,11 +1861,7 @@ export class TitleScene extends Phaser.Scene {
           ctx.lineJoin = 'round'
           ctx.lineCap = 'round'
           ctx.stroke(bodyPath)
-          if (slot.entry.isCurrentUser) {
-            ctx.strokeStyle = 'rgba(79, 195, 247, 0.85)'
-            ctx.lineWidth = 2.5
-            ctx.stroke(new Path2D(roundedRectPath(lx + 3, ly + 3, w - 6, h - 2, Math.max(8, cornerR - 3))))
-          }
+          // No blue outline on the podium — the table row identifies the current user.
 
           // Rank medal badge + golden laurel leaves on #1
           const badgeR = Math.max(12, Math.min(20, Math.round(Math.min(w * 0.17, h * 0.155))))
@@ -1755,8 +1980,14 @@ export class TitleScene extends Phaser.Scene {
       window.devicePixelRatio || 1,
     )
 
+    // Podium art + balls + labels animate as ONE group (entrance rise).
+    const podiumGroup = this.add.container(0, 0)
+    this.panelContent.addAt(podiumGroup, 1)
     const podiumImg = this.add.image(podiumX, podiumY, podiumKey).setOrigin(0, 0).setDisplaySize(podiumW, podiumH)
-    this.panelContent.addAt(podiumImg, 0)
+    podiumGroup.add(podiumImg)
+    // Dedicated graphics for the ball characters so they move with the group.
+    const podiumG = this.add.graphics()
+    podiumGroup.add(podiumG)
 
     podiumSlots.forEach((slot) => {
       if (!slot.entry) return
@@ -1772,16 +2003,16 @@ export class TitleScene extends Phaser.Scene {
       const seatY = y + deckH * 0.58
       const ballCY = seatY + 1 - ballR
 
-      drawBallIcon(this, g, tier, cx, ballCY, ballR, {
+      drawBallIcon(this, podiumG, tier, cx, ballCY, ballR, {
         seed: rank * 777 + tier * 31,
-        layer: this.panelContent,
+        layer: podiumGroup,
       })
 
       // Plush soft-edged golden crown perched jauntily on the 1st-place ball
       if (rank === 1) {
         addCrownImage(
           this,
-          this.panelContent,
+          podiumGroup,
           cx - ballR * 0.07,
           ballCY - ballR * 0.98,
           ballR * 1.24,
@@ -1799,7 +2030,7 @@ export class TitleScene extends Phaser.Scene {
         origin: [0.5, 0.5],
         shadow: false,
       })
-      this.panelContent.add(rankT)
+      podiumGroup.add(rankT)
 
       // Player name & score grouped cleanly on the block face
       const textTop = badgeY + badgeR + 4
@@ -1817,7 +2048,7 @@ export class TitleScene extends Phaser.Scene {
         shadow: false,
       })
       nameT.setScale(Math.min(1, maxTextW / Math.max(1, nameT.width)))
-      this.panelContent.add(nameT)
+      podiumGroup.add(nameT)
 
       const scoreSize = Math.max(13, Math.min(21, Math.round(Math.min(effectiveW * 0.18, h * 0.18))))
       const scoreT = hudText(this, cx, scoreY, entry.score.toLocaleString('en-US'), 1, {
@@ -1828,7 +2059,7 @@ export class TitleScene extends Phaser.Scene {
         shadow: false,
       })
       scoreT.setScale(Math.min(1, (maxTextW + 4) / Math.max(1, scoreT.width)))
-      this.panelContent.add(scoreT)
+      podiumGroup.add(scoreT)
     })
 
     // --- FRAMED LEADERBOARD TABLE (TOP 10) ---
@@ -1885,79 +2116,153 @@ export class TitleScene extends Phaser.Scene {
     })
     this.panelContent.add([hRank, hPlayer, hScore])
 
-    // 10-slot rows area
+    // --- SCROLLABLE ROWS AREA ---
     const rowsTopY = wellY + headerH + 6
     const rowsAvailH = wellH - headerH - 16
-    const slotCount = 10
+    const slotCount = entries.length
     const rowGap = isDesktop ? 5 : 4
-    const rowH = Math.max(20, Math.floor((rowsAvailH - (slotCount - 1) * rowGap) / slotCount))
+    const rowH = Math.max(20, Math.floor((rowsAvailH - (10 - 1) * rowGap) / 10))
+    const totalRowsH = slotCount * (rowH + rowGap) - rowGap
+    const needsScroll = totalRowsH > rowsAvailH
 
-    // Scrollbar track + cyan thumb on the right of the table
+    // Scroll state
+    const maxScroll = Math.max(0, totalRowsH - rowsAvailH)
+
+    // Rows container (masked, scrollable)
+    const rowsContainer = this.add.container(0, 0)
+    this.panelContent.add(rowsContainer)
+
+    // Mask: clip rows to the visible area below the header
+    const maskG = this.add.graphics()
+    maskG.fillStyle(0xffffff)
+    maskG.fillRect(wellX, rowsTopY - 2, wellW, rowsAvailH + 4)
+    const rowsMask = new Phaser.Display.Masks.GeometryMask(this, maskG)
+    rowsContainer.setMask(rowsMask)
+    maskG.setVisible(false)
+
+    // Scrollbar track + thumb (only when needed)
     const sbX = wellX + wellW - padX - scrollW
     const sbY = rowsTopY
-    const sbH = rowH * slotCount + rowGap * (slotCount - 1)
-    g.fillStyle(0x0b0f1d, 0.9)
-    g.fillRoundedRect(sbX, sbY, scrollW, sbH, scrollW / 2)
-    g.fillStyle(0x28d9ff, 1)
-    g.fillRoundedRect(sbX + 1, sbY + 2, scrollW - 2, Math.max(32, sbH * 0.34), (scrollW - 2) / 2)
+    const sbH = rowsAvailH
+    const thumbH = needsScroll ? Math.max(28, (rowsAvailH / totalRowsH) * sbH) : 0
+    const thumbG = this.add.graphics()
+    if (needsScroll) {
+      thumbG.fillStyle(0x0b0f1d, 0.9)
+      thumbG.fillRoundedRect(sbX, sbY, scrollW, sbH, scrollW / 2)
+      thumbG.fillStyle(0xd4af37, 1)
+      thumbG.fillRoundedRect(sbX + 1, sbY, scrollW - 2, thumbH, (scrollW - 2) / 2)
+    }
+    this.panelContent.add(thumbG)
+
+    // Scroll input zone (rows + thumb)
+    const scrollZone = this.add.zone(wellX, wellY, wellW, wellH).setOrigin(0, 0).setInteractive()
+
+    // Store scroll state for the scene-level handlers
+    this.lbScroll = {
+      rowsC: rowsContainer,
+      maskG,
+      thumbG,
+      zone: scrollZone,
+      offset: 0,
+      maxOffset: maxScroll,
+      viewH: rowsAvailH,
+      contentH: totalRowsH,
+      rowH,
+      rowGap,
+      trackX: sbX,
+      trackY: sbY,
+      trackW: scrollW,
+      trackH: sbH,
+      thumbH,
+      tableX,
+      tableY,
+      tableW,
+      tableH,
+      dragPointerId: null,
+      dragMode: null,
+      dragStartY: 0,
+      dragStartOffset: 0,
+    }
+
+    // Wire scene-level input handlers
+    this.input.on('wheel', this.lbWheel, this)
+    this.input.on('pointermove', this.lbPointerMove, this)
+    this.input.on('pointerup', this.lbPointerUp, this)
+    this.input.on('pointerupoutside', this.lbPointerUp, this)
+
+    // Zone pointerdown starts a drag (rows or thumb)
+    scrollZone.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      const s = this.lbScroll
+      if (!s || s.maxOffset <= 0 || s.dragPointerId !== null) return
+      const world = this.cameras.main.getWorldPoint(p.x, p.y, this.pointerWorld)
+      const wx = world.x
+      const wy = world.y
+      if (wx >= s.trackX && wx <= s.trackX + s.trackW && wy >= s.trackY && wy <= s.trackY + s.trackH) {
+        const thumbTop = s.trackY + (s.offset / s.maxOffset) * (s.trackH - s.thumbH)
+        if (wy >= thumbTop && wy <= thumbTop + s.thumbH) {
+          s.dragPointerId = p.id
+          s.dragMode = 'thumb'
+          s.dragStartY = wy
+          s.dragStartOffset = s.offset
+          return
+        }
+      }
+      // Rows area hit test (exclude scrollbar track)
+      if (wx >= wellX && wx <= wellX + wellW - scrollW - 4 && wy >= s.trackY && wy <= s.trackY + s.trackH) {
+        s.dragPointerId = p.id
+        s.dragMode = 'rows'
+        s.dragStartY = wy
+        s.dragStartOffset = s.offset
+      }
+    })
+
     const fallbackTiers = [6, 1, 5, 3, 2, 4, 1, 4, 6, 2]
 
     for (let i = 0; i < slotCount; i++) {
-      const entry = top10[i]
+      const entry = entries[i]!
       const y = rowsTopY + i * (rowH + rowGap)
       const cy = y + rowH / 2
       const rank = i + 1
-      const isFirst = rank === 1 && !!entry
-      const isCurrentUser = !!entry?.isCurrentUser
+      const isFirst = rank === 1
+      const isCurrentUser = entry.isCurrentUser
+
+      // Row background drawn into rowsContainer via a local Graphics.
+      // The current user keeps their cyan identity even at rank #1 (cyan
+      // stroke over the gold fill) — the podium carries no user marker.
+      const rowG = this.add.graphics()
+      if (isFirst) {
+        rowG.fillStyle(0xd99b16, 1)
+        rowG.fillRoundedRect(rowX, y, rowW, rowH, 12)
+        rowG.fillStyle(0xffdf6b, 0.3)
+        rowG.fillRoundedRect(rowX + 2, y + 2, rowW - 4, rowH * 0.45, 10)
+        rowG.lineStyle(2, isCurrentUser ? 0x4fc3f7 : 0xffeb75, 1)
+        rowG.strokeRoundedRect(rowX, y, rowW, rowH, 12)
+      } else if (isCurrentUser) {
+        rowG.fillStyle(0x213d6b, 0.95)
+        rowG.fillRoundedRect(rowX, y, rowW, rowH, 10)
+        rowG.lineStyle(2, 0x4fc3f7, 1)
+        rowG.strokeRoundedRect(rowX, y, rowW, rowH, 10)
+      } else {
+        rowG.fillStyle(i % 2 === 0 ? 0x1b2340 : 0x151c34, 0.9)
+        rowG.fillRoundedRect(rowX, y, rowW, rowH, 10)
+      }
+      rowsContainer.add(rowG)
 
       if (isFirst) {
-        // Golden champion banner row
-        g.fillStyle(0xd99b16, 1)
-        g.fillRoundedRect(rowX, y, rowW, rowH, 12)
-        g.fillStyle(0xffdf6b, 0.3)
-        g.fillRoundedRect(rowX + 2, y + 2, rowW - 4, rowH * 0.45, 10)
-        g.lineStyle(2, 0xffeb75, 1)
-        g.strokeRoundedRect(rowX, y, rowW, rowH, 12)
-        // Small tilted champion crown badge on top-left corner of row #1
-        addCrownImage(this, this.panelContent, rowX + 7, y + 4, 24, 18, -0.28)
-      } else if (isCurrentUser) {
-        g.fillStyle(0x213d6b, 0.95)
-        g.fillRoundedRect(rowX, y, rowW, rowH, 10)
-        g.lineStyle(2, 0x4fc3f7, 1)
-        g.strokeRoundedRect(rowX, y, rowW, rowH, 10)
-      } else {
-        g.fillStyle(i % 2 === 0 ? 0x1b2340 : 0x151c34, 0.9)
-        g.fillRoundedRect(rowX, y, rowW, rowH, 10)
+        // Crown center keeps the whole 24×18 image inside the rows mask
+        // (mask top = rowsTopY - 2; crown top = y + 1 for the first row).
+        addCrownImage(this, rowsContainer, rowX + 13, y + 10, 24, 18, -0.28)
       }
 
       const fontSize = Math.max(12, Math.min(18, Math.round(rowH * 0.48)))
       const rankT = hudText(this, rankColX, cy, `${rank}`, 1, {
-        color: entry ? '#ffffff' : '#4a5678',
+        color: '#ffffff',
         size: fontSize,
-        stroke: entry ? 3 : 0,
+        stroke: 3,
         origin: [0.5, 0.5],
         shadow: false,
       })
-      this.panelContent.add(rankT)
-
-      if (!entry) {
-        const dashT = hudText(this, playerColX, cy, '—', 1, {
-          color: '#3b4668',
-          size: fontSize,
-          stroke: 0,
-          origin: [0, 0.5],
-          shadow: false,
-        })
-        const dashScoreT = hudText(this, scoreColX, cy, '—', 1, {
-          color: '#3b4668',
-          size: fontSize,
-          stroke: 0,
-          origin: [1, 0.5],
-          shadow: false,
-        })
-        this.panelContent.add([dashT, dashScoreT])
-        continue
-      }
+      rowsContainer.add(rankT)
 
       // Ball icon (top 3 match their podium character; 4+ use tierReached or vibrant fallback)
       const rowTier =
@@ -1971,9 +2276,9 @@ export class TitleScene extends Phaser.Scene {
                 ? Math.min(BALL_TIERS.length, entry.tierReached)
                 : fallbackTiers[i % fallbackTiers.length]!
       const iconR = Math.max(10, Math.min(18, rowH * 0.38))
-      drawBallIcon(this, g, rowTier, iconColX, cy, iconR, {
+      drawBallIcon(this, rowG, rowTier, iconColX, cy, iconR, {
         seed: rank * 777 + rowTier * 31,
-        layer: this.panelContent,
+        layer: rowsContainer,
       })
 
       const scoreStr = entry.score.toLocaleString('en-US')
@@ -1984,18 +2289,108 @@ export class TitleScene extends Phaser.Scene {
         origin: [1, 0.5],
         shadow: false,
       })
-      this.panelContent.add(scoreT)
+      rowsContainer.add(scoreT)
 
       const maxNameW = Math.max(40, scoreColX - scoreT.width - playerColX - 16)
       const nameT = hudText(this, playerColX, cy, entry.displayName, 1, {
-        color: isCurrentUser && !isFirst ? '#4fc3f7' : '#ffffff',
+        color: isCurrentUser ? '#4fc3f7' : '#ffffff',
         size: fontSize,
         stroke: 3,
         origin: [0, 0.5],
         shadow: false,
       })
       nameT.setScale(Math.min(1, maxNameW / Math.max(1, nameT.width)))
-      this.panelContent.add(nameT)
+      rowsContainer.add(nameT)
+    }
+    // --- ENTRANCE ANIMATIONS ---
+    // Restrained cloud drift: transform-only x motion on baked wisp images,
+    // skipped entirely under prefers-reduced-motion. No per-frame bakes.
+    if (!this.reducedMotion) {
+      const cloudKey = 'br-lb-cloud'
+      bakeCanvas(
+        this,
+        cloudKey,
+        140,
+        48,
+        (ctx) => {
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.55)'
+          for (const [ex, ey, erx, ery] of [
+            [42, 30, 34, 14],
+            [78, 22, 40, 17],
+            [110, 32, 26, 11],
+          ] as const) {
+            ctx.beginPath()
+            ctx.ellipse(ex, ey, erx, ery, 0, 0, Math.PI * 2)
+            ctx.fill()
+          }
+        },
+        window.devicePixelRatio || 1,
+      )
+      const cloudSpecs = [
+        { x: vw * 0.2, y: vh * 0.1, s: 1.0, a: 0.16, drift: 26, dur: 9000 },
+        { x: vw * 0.68, y: vh * 0.16, s: 0.72, a: 0.11, drift: 34, dur: 12000 },
+      ]
+      for (const c of cloudSpecs) {
+        const img = this.add.image(c.x, c.y, cloudKey).setOrigin(0.5, 0.5).setScale(c.s).setAlpha(c.a)
+        this.panelContent.addAt(img, 1)
+        this.lbTweens.push(
+          this.tweens.add({
+            targets: img,
+            x: c.x + c.drift,
+            duration: c.dur,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut',
+          }),
+        )
+      }
+
+      // Podium (art + balls + labels + crown) rises from below as one group
+      podiumGroup.setY(30)
+      podiumGroup.setAlpha(0)
+      this.lbTweens.push(
+        this.tweens.add({
+          targets: podiumGroup,
+          y: 0,
+          alpha: 1,
+          duration: 500,
+          ease: 'Back.easeOut',
+          delay: 100,
+        }),
+      )
+      // Crown shimmer: gentle alpha pulse on the #1 crown
+      const crownImg = podiumGroup.list.find(
+        (o): o is Phaser.GameObjects.Image =>
+          o instanceof Phaser.GameObjects.Image && o.texture.key === 'br-leaderboard-crown-v4',
+      )
+      if (crownImg) {
+        this.lbTweens.push(
+          this.tweens.add({
+            targets: crownImg,
+            alpha: { from: 1, to: 0.75 },
+            duration: 1200,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut',
+          }),
+        )
+      }
+      // Row entrance cascade: staggered fade-in per row
+      const rowTexts = rowsContainer.list.filter(
+        (o): o is Phaser.GameObjects.Text => o instanceof Phaser.GameObjects.Text,
+      )
+      rowTexts.forEach((t, i) => {
+        t.setAlpha(0)
+        this.lbTweens.push(
+          this.tweens.add({
+            targets: t,
+            alpha: 1,
+            duration: 240,
+            delay: 400 + i * 45,
+            ease: 'Quad.easeOut',
+          }),
+        )
+      })
     }
   }
 
@@ -2503,18 +2898,18 @@ function addCrownImage(
   h: number,
   rotation = 0,
 ): Phaser.GameObjects.Image {
-  const key = 'br-leaderboard-crown-v3'
+  const key = 'br-leaderboard-crown-v4'
   bakeCanvas(
     scene,
     key,
     160,
-    120,
+    140,
     (ctx) => {
       const ink = '#1a1a1a'
       const cx0 = 80
-      const topY = 20
-      const sidePeakY = 32
-      const bottomY = 98
+      const topY = 28
+      const sidePeakY = 40
+      const bottomY = 106
       const leftPeakX = 18
       const rightPeakX = 142
       const leftBaseX = 30
