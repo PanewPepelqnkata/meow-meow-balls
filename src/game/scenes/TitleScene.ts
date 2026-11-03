@@ -1405,66 +1405,198 @@ export class TitleScene extends Phaser.Scene {
       return
     }
 
-    // Render leaderboard entries
-    const rowsPerColumn = Math.ceil(entries.length / columns)
-    const rowGap = availableH < 500 ? 4 : 6
-    const rowH = Math.min(56, Math.floor((availableH - (rowsPerColumn - 1) * rowGap) / rowsPerColumn))
+    // --- AAA LEADERBOARD DESIGN ---
+    // Podium for top 3, then a clean list for the rest.
+    const top3 = entries.slice(0, 3)
+    const rest = entries.slice(3)
 
-    entries.forEach((entry, i) => {
-      const column = Math.floor(i / rowsPerColumn)
-      const cardX = listX + column * (cardW + columnGap)
-      const y = bodyY + (i % rowsPerColumn) * (rowH + rowGap)
-      const rank = entry.rank
-      const isTop3 = rank <= 3
+    // Podium area
+    const podiumH = Math.min(200, availableH * 0.4)
+    const podiumY = bodyY + 8
+    const podiumW = listW
+    const podiumX = listX
+
+    // Podium base (3D platform with depth)
+    const baseH = 28
+    const baseY = podiumY + podiumH - baseH
+    // Base shadow
+    g.fillStyle(0x000000, 0.6)
+    g.fillRoundedRect(podiumX + 8, baseY + 8, podiumW, baseH, 14)
+    // Base body
+    g.fillStyle(0x0f1422, 1)
+    g.fillRoundedRect(podiumX, baseY, podiumW, baseH, 14)
+    g.lineStyle(2, 0x2b3555, 1)
+    g.strokeRoundedRect(podiumX, baseY, podiumW, baseH, 14)
+    // Base top highlight
+    g.fillStyle(0x2b3555, 0.5)
+    g.fillRoundedRect(podiumX + 2, baseY + 2, podiumW - 4, 6, 8)
+
+    // 1st place (center, tallest)
+    const firstW = podiumW * 0.32
+    const firstH = podiumH * 0.75
+    const firstX = centerX - firstW / 2
+    const firstY = baseY - firstH
+    // 2nd place (left)
+    const secondW = podiumW * 0.28
+    const secondH = podiumH * 0.55
+    const secondX = firstX - secondW - 12
+    const secondY = baseY - secondH
+    // 3rd place (right)
+    const thirdW = podiumW * 0.28
+    const thirdH = podiumH * 0.45
+    const thirdX = firstX + firstW + 12
+    const thirdY = baseY - thirdH
+
+    const podiumSlots = [
+      { x: secondX, y: secondY, w: secondW, h: secondH, rank: 2, entry: top3[1] },
+      { x: firstX, y: firstY, w: firstW, h: firstH, rank: 1, entry: top3[0] },
+      { x: thirdX, y: thirdY, w: thirdW, h: thirdH, rank: 3, entry: top3[2] },
+    ]
+
+    podiumSlots.forEach((slot) => {
+      if (!slot.entry) return
+      const { x, y, w, h, rank, entry } = slot
       const isCurrentUser = entry.isCurrentUser
 
-      // Background colors: gold/silver/bronze for top 3, blue tint for current user
-      const rankBg = rank === 1 ? 0xffd93b : rank === 2 ? 0xc9d1e3 : rank === 3 ? 0xd08a4e : isCurrentUser ? 0x2b4a6f : UI_COLORS.CARD_BG
-      g.fillStyle(rankBg, isTop3 ? 1 : 0.9)
-      g.fillRoundedRect(cardX, y, cardW, rowH, 10)
-      g.lineStyle(2, isTop3 ? UI_COLORS.INK : isCurrentUser ? 0x4fc3f7 : UI_COLORS.CARD_BORDER, 1)
-      g.strokeRoundedRect(cardX, y, cardW, rowH, 10)
+      // Podium block with 3D depth
+      const blockColor = rank === 1 ? 0xffd93b : rank === 2 ? 0xc9d1e3 : 0xd08a4e
+      const blockShadow = rank === 1 ? 0xd4a017 : rank === 2 ? 0x9aa5b8 : 0xa66a3a
+      // Shadow
+      g.fillStyle(0x000000, 0.5)
+      g.fillRoundedRect(x + 8, y + 8, w, h, 14)
+      // Side depth (right)
+      g.fillStyle(blockShadow, 1)
+      g.fillRoundedRect(x + w - 10, y + 6, 10, h, 8)
+      // Main face
+      g.fillStyle(blockColor, 1)
+      g.fillRoundedRect(x, y, w, h, 14)
+      g.lineStyle(3, 0x1a1a1a, 1)
+      g.strokeRoundedRect(x, y, w, h, 14)
+      // Top highlight
+      g.fillStyle(0xffffff, 0.35)
+      g.fillRoundedRect(x + 8, y + 8, w - 16, h * 0.3, 12)
 
-      // Rank number
-      const rankT = hudText(this, cardX + 26, y + rowH / 2, `#${rank}`, 1, {
-        color: isTop3 ? UI_COLORS.TEXT_DARK : '#aeb4c9',
-        size: Math.min(22, Math.round(rowH * 0.42)),
-        stroke: isTop3 ? 0 : 2,
+      // Rank badge
+      const badgeR = Math.min(22, w * 0.2)
+      const badgeX = x + w / 2
+      const badgeY = y - badgeR - 8
+      g.fillStyle(0x1a1a1a, 1)
+      g.fillCircle(badgeX, badgeY, badgeR)
+      g.fillStyle(blockColor, 1)
+      g.fillCircle(badgeX, badgeY, badgeR - 3)
+      // Badge highlight
+      g.fillStyle(0xffffff, 0.6)
+      g.fillCircle(badgeX - badgeR * 0.3, badgeY - badgeR * 0.3, badgeR * 0.35)
+      const rankT = hudText(this, badgeX, badgeY, `${rank}`, 1, {
+        color: '#1a1a1a',
+        size: badgeR * 1.2,
+        stroke: 0,
         origin: [0.5, 0.5],
         shadow: false,
       })
       this.panelContent.add(rankT)
 
-      // Ball icon showing tier reached
-      const ballR = Math.min(18, rowH * 0.29)
-      drawBallIcon(this, g, Math.max(1, Math.min(BALL_TIERS.length, entry.tierReached)), cardX + 66, y + rowH / 2, ballR, {
+      // Ball icon
+      const ballR = Math.min(28, w * 0.24)
+      drawBallIcon(this, g, Math.max(1, Math.min(BALL_TIERS.length, entry.tierReached)), x + w / 2, y + h * 0.35, ballR, {
         seed: entry.tierReached * 991,
         layer: this.panelContent,
       })
 
-      // Player display name (nickname)
-      const nameT = hudText(this, cardX + 94, y + rowH / 2 - 8, entry.displayName, 1, {
-        color: isTop3 ? UI_COLORS.TEXT_DARK : isCurrentUser ? '#4fc3f7' : UI_COLORS.TEXT_WHITE,
-        size: Math.min(16, Math.round(rowH * 0.32)),
-        stroke: isTop3 ? 0 : 2,
+      // Name
+      const nameT = hudText(this, x + w / 2, y + h * 0.62, entry.displayName, 1, {
+        color: '#1a1a1a',
+        size: Math.min(16, w * 0.12),
+        stroke: 0,
+        origin: [0.5, 0.5],
+        shadow: false,
+      })
+      nameT.setWordWrapWidth(w - 8, true).setAlign('center')
+      this.panelContent.add(nameT)
+
+      // Score
+      const scoreT = hudText(this, x + w / 2, y + h * 0.82, entry.score.toLocaleString('en-US'), 1, {
+        color: '#1a1a1a',
+        size: Math.min(18, w * 0.14),
+        stroke: 0,
+        origin: [0.5, 0.5],
+        shadow: false,
+      })
+      this.panelContent.add(scoreT)
+
+      // Current user highlight
+      if (isCurrentUser) {
+        g.lineStyle(3, 0x4fc3f7, 1)
+        g.strokeRoundedRect(x - 3, y - 3, w + 6, h + 6, 10)
+      }
+    })
+
+    // List for the rest
+    const listY = baseY + 16
+    const listH = availableH - (listY - bodyY)
+    const rowsPerColumn = Math.ceil(rest.length / columns)
+    const rowGap = 6
+    const rowH = Math.min(52, Math.floor((listH - (rowsPerColumn - 1) * rowGap) / rowsPerColumn))
+
+    rest.forEach((entry, i) => {
+      const column = Math.floor(i / rowsPerColumn)
+      const cardX = listX + column * (cardW + columnGap)
+      const y = listY + (i % rowsPerColumn) * (rowH + rowGap)
+      const rank = entry.rank
+      const isCurrentUser = entry.isCurrentUser
+
+      // Card background
+      g.fillStyle(isCurrentUser ? 0x2b4a6f : UI_COLORS.CARD_BG, 0.95)
+      g.fillRoundedRect(cardX, y, cardW, rowH, 12)
+      g.lineStyle(2, isCurrentUser ? 0x4fc3f7 : UI_COLORS.CARD_BORDER, 1)
+      g.strokeRoundedRect(cardX, y, cardW, rowH, 12)
+      // Subtle top highlight
+      g.fillStyle(0xffffff, 0.12)
+      g.fillRoundedRect(cardX + 2, y + 2, cardW - 4, rowH * 0.45, 10)
+      // Left accent bar
+      g.fillStyle(isCurrentUser ? 0x4fc3f7 : 0x2b3555, 1)
+      g.fillRoundedRect(cardX, y, 8, rowH, 4)
+
+      // Rank
+      const rankT = hudText(this, cardX + 20, y + rowH / 2, `#${rank}`, 1, {
+        color: isCurrentUser ? '#4fc3f7' : '#aeb4c9',
+        size: Math.min(18, Math.round(rowH * 0.4)),
+        stroke: 2,
+        origin: [0.5, 0.5],
+        shadow: false,
+      })
+      this.panelContent.add(rankT)
+
+      // Ball icon
+      const ballR = Math.min(16, rowH * 0.3)
+      drawBallIcon(this, g, Math.max(1, Math.min(BALL_TIERS.length, entry.tierReached)), cardX + 52, y + rowH / 2, ballR, {
+        seed: entry.tierReached * 991,
+        layer: this.panelContent,
+      })
+
+      // Name
+      const nameT = hudText(this, cardX + 76, y + rowH / 2 - 6, entry.displayName, 1, {
+        color: isCurrentUser ? '#4fc3f7' : UI_COLORS.TEXT_WHITE,
+        size: Math.min(14, Math.round(rowH * 0.3)),
+        stroke: 2,
         origin: [0, 0.5],
         shadow: false,
       })
       this.panelContent.add(nameT)
 
       // Score
-      const scoreT = hudText(this, cardX + 94, y + rowH / 2 + 10, entry.score.toLocaleString('en-US'), 1, {
-        color: isTop3 ? UI_COLORS.TEXT_DARK : UI_COLORS.TEXT_MUTED,
-        size: Math.min(18, Math.round(rowH * 0.36)),
-        stroke: isTop3 ? 0 : 2,
+      const scoreT = hudText(this, cardX + 76, y + rowH / 2 + 8, entry.score.toLocaleString('en-US'), 1, {
+        color: isCurrentUser ? '#4fc3f7' : UI_COLORS.TEXT_MUTED,
+        size: Math.min(16, Math.round(rowH * 0.34)),
+        stroke: 2,
         origin: [0, 0.5],
       })
       this.panelContent.add(scoreT)
 
       // Date
       const whenT = hudText(this, cardX + cardW - 12, y + rowH / 2, fmtDate(entry.createdAt), 1, {
-        color: isTop3 ? '#2c2514' : UI_COLORS.TEXT_MUTED,
-        size: 11,
+        color: UI_COLORS.TEXT_MUTED,
+        size: 10,
         stroke: 0,
         origin: [1, 0.5],
         shadow: false,
