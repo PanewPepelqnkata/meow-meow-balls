@@ -1025,6 +1025,8 @@ export class BackgroundTheme {
   /** Shooting star state (space theme): null = idle. */
   private shoot: { x: number; y: number; vx: number; vy: number; life: number } | null = null
   private nextShootAt = 2500
+  /** Boot guard: first paint bypasses the resize debounce. */
+  private hasBootPainted = false
   constructor(scene: Phaser.Scene, initialTheme: ThemeName = 'light') {
     this.scene = scene
     this.currentTheme = initialTheme
@@ -1901,7 +1903,9 @@ export class BackgroundTheme {
     // GATE: only rebuild when the debounce timer has expired (resizeTimer
     // is undefined). This collapses continuous resize events into ONE
     // rebuild 120ms after the last event.
-    if ((this.pendingW !== 0 || this.pendingH !== 0 || this.pendingDpr !== 0) && !this.resizeTimer) {
+    // BOOT GUARD: first paint bypasses the debounce (hasBootPainted).
+    // Subsequent resizes wait for the 120ms timer to expire.
+    if ((this.pendingW !== 0 || this.pendingH !== 0 || this.pendingDpr !== 0) && (!this.resizeTimer || !this.hasBootPainted)) {
       this.updateGradImage()
       this.drawBackground()
       this.drawGrid()
@@ -1912,6 +1916,7 @@ export class BackgroundTheme {
       this.pendingW = 0
       this.pendingH = 0
       this.pendingDpr = 0
+      this.hasBootPainted = true
     }
     const fromSpace = this.currentTheme === 'space'
     const toSpace = this.toTheme === 'space'
