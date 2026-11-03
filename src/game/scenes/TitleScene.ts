@@ -1375,9 +1375,9 @@ export class TitleScene extends Phaser.Scene {
     const backX = x + 12 + backW / 2
     const cy = y + height / 2 - 3
     const back = new ChunkyButton({ scene: this, x: backX, y: cy, w: backW, h: backH,
-      label: 'BACK', fontSize: 14, pill: true,
-      fill: UI_COLORS.BTN_BLUE, shadowColor: UI_COLORS.BTN_BLUE_SHADOW,
-      highlightColor: UI_COLORS.BTN_BLUE_HIGHLIGHT, onClick: () => this.openScreen('menu') })
+      label: 'BACK', fontSize: 13,
+      fill: 0xe8cc8b, shadowColor: 0xa77a32,
+      highlightColor: 0xfff8e9, onClick: () => this.openScreen('menu') })
     this.panelContent.add(back.container)
     this.panelRects.push({ label: 'BACK', x: backX - backW / 2, y: cy - backH / 2,
       w: backW, h: backH, screen: 'panel' })
@@ -1775,7 +1775,7 @@ export class TitleScene extends Phaser.Scene {
       const show = new ChunkyButton({ scene: this, x: buttonX, y: buttonY,
         w: buttonW, h: buttonH, label: 'SHOW ALL PLAYERS', fontSize: 22, pill: true,
         fill: 0xe8cc8b, shadowColor: 0xa77a32, highlightColor: 0xfff8e9,
-        textColor: LEADERBOARD_TEXT, onClick: () => this.setLeaderboardModal(true) })
+        textColor: '#ffe19a', onClick: () => this.setLeaderboardModal(true) })
       this.panelContent.add(show.container)
       this.panelRects.push({ label: 'SHOW ALL PLAYERS', x: buttonX - buttonW / 2,
         y: buttonY - buttonH / 2, w: buttonW, h: buttonH, screen: 'panel' })

@@ -8,6 +8,7 @@ The leaderboard is a cartoon Mount Olympus temple scene, not a dashboard with or
 
 - `drawOlympusHall` paints a full-viewport environment once per layout size: clouds, quiet distant colonnade and temple, a restrained gold rule behind the safe-inset title frame, and perspective marble floor.
 - The leaderboard has its own inset header frame and Back button; the title stays separated from the frame edges at desktop and phone widths. Back returns to the menu.
+- Leaderboard Back uses the same rounded marble-gold surface, extrusion, highlight, and white display label as the modal Close button. SHOW ALL PLAYERS uses the heading's gold `#FFE19A` display lettering.
 - Background architecture stays soft and low contrast where content sits. Near columns frame the scene; no per-frame canvas drawing or large glow effects.
 - Two low-opacity clouds may drift horizontally through transform-only tweens; those and podium entrance motion are skipped under reduced motion. Table text appears together for immediate legibility.
 
