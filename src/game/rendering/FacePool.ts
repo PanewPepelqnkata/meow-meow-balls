@@ -53,6 +53,8 @@ interface FaceAtlas {
   layout: FaceLayout
   /** The look this atlas was baked from (mouth style, tilt, asym). */
   look: BallLook
+  /** Number of live balls currently using this atlas. */
+  refs: number
 }
 
 /**
@@ -135,6 +137,8 @@ export class FacePool {
       this.scene.textures.exists(pupilKey) &&
       this.scene.textures.exists(mouthKey)
     ) {
+      const atlas = this.atlases.get(lookKeyStr)
+      if (atlas) atlas.refs += 1
       this.ballLookKeys.set(ballId, lookKeyStr)
       const view: SpriteBallView = {
         // The body quads start HIDDEN: '__DEFAULT' is an opaque 32x32 PNG,
@@ -154,65 +158,14 @@ export class FacePool {
       return view
     }
 
-    // SCLERA: white oval + thick ink rim, centered in the tile. Baked at
-    // layout scale (r = FACE_ATLAS_R); displayed scaled by (liveR / r).
-    const e0: EyeLayout = L.eyes[0]!
-    // The old texture is NOT removed: the atlas is SHARED between every
-    // ball with the same look, and other balls' face sprites are still
-    // bound to it. Phaser's remove() nulls the texture source, so the
-    // next render of one of those sprites throws "Cannot read properties
-    // of null (reading 'resolution')" inside the render pass — which
-    // kills the game loop and the whole UI with it. generateTexture()
-    // overwrites the key in place, so the removal is unnecessary: the
-    // existing sprites keep a valid texture and show the new bake.
-    this.tempG.clear()
-    this.tempG.setPosition(128, 128)
-    this.tempG.fillStyle(0xffffff, 1)
-    // 64-pt smoothness: the sclera displays at up to ~1:3 css→device
-    // scale on dpr-3 phones; 32-pt faceting was visible as hexagonal
-    // edges (user report). One bake per ball — cost is nil.
-    this.tempG.fillEllipse(0, 0, e0.a * 2, e0.b * 2, 64)
-    this.tempG.lineStyle(e0.rim, INK, 1)
-    this.tempG.strokeEllipse(0, 0, e0.a * 2, e0.b * 2, 64)
-    this.tempG.generateTexture(scleraKey, 256, 256)
-    // PUPIL: ink oval + main highlight + tiny secondary dot, centered.
-    // The old texture is NOT removed (see the SCLERA note above): the
-    // atlas is shared between every ball with this look, and removing it
-    // nulls the source of a texture other balls' face sprites are still
-    // bound to — the next render then throws inside the render pass and
-    // kills the whole game loop.
-    this.tempG.clear()
-    this.tempG.setPosition(128, 128)
-    this.tempG.fillStyle(INK, 1)
-    this.tempG.fillEllipse(0, 0, e0.pa * 2, e0.pb * 2, 64)
-    this.tempG.fillStyle(0xffffff, 1)
-    this.tempG.fillEllipse(-e0.pa * 0.32, -e0.pb * 0.34, e0.pa * 0.6, e0.pa * 0.6, 48)
-    this.tempG.fillEllipse(-e0.pa * 0.1, -e0.pb * 0.38, e0.pa * 0.24, e0.pa * 0.24, 32)
-    this.tempG.generateTexture(pupilKey, 256, 256)
-    // MOUTH: the ink marker stroke, centered on its bounding arc.
-    const m = L.mouth
-    // The old texture is NOT removed (see the SCLERA note above).
-    this.tempG.clear()
-    this.tempG.setPosition(128, 128)
-    const steps = 14
-    const pts: Array<{ x: number; y: number }> = []
-    for (let i = 0; i <= steps; i++) {
-      const t = -1 + (2 * i) / steps
-      const tiltLift = m.style === 1 ? 1 + m.tilt * 0.35 * t : 1
-      pts.push({ x: t * m.halfW, y: (1 - t * t) * m.depth * tiltLift })
-    }
-    // Center the arc's bbox: mouth spans x ∈ [−halfW, halfW], y ∈ [0, depth].
-    this.tempG.setPosition(128, 128 - m.depth / 2)
-    this.tempG.lineStyle(m.stroke, INK, 1)
-    this.tempG.strokePoints(pts as unknown as Phaser.Math.Vector2[], false, false)
-    this.tempG.generateTexture(mouthKey, 256, 256)
-    this.tempG.clear()
+    this.bakeAtlas(L, scleraKey, pupilKey, mouthKey)
 
     let atlas = this.atlases.get(lookKeyStr)
     if (!atlas) {
-      atlas = { prefix, scleraKey, pupilKey, mouthKey, layout: L, look }
+      atlas = { prefix, scleraKey, pupilKey, mouthKey, layout: L, look, refs: 0 }
       this.atlases.set(lookKeyStr, atlas)
     }
+    atlas.refs += 1
     this.ballLookKeys.set(ballId, lookKeyStr)
 
     const view: SpriteBallView = {
@@ -227,6 +180,50 @@ export class FacePool {
     }
     this.views.set(ballId, view)
     return view
+  }
+
+  /** Bake the three face textures for a look. No view, no refs. */
+  private bakeAtlas(
+    L: FaceLayout,
+    scleraKey: string,
+    pupilKey: string,
+    mouthKey: string,
+  ): void {
+    // SCLERA: white oval + thick ink rim, centered in the tile. Baked at
+    // layout scale (r = FACE_ATLAS_R); displayed scaled by (liveR / r).
+    const e0: EyeLayout = L.eyes[0]!
+    this.tempG.clear()
+    this.tempG.setPosition(128, 128)
+    this.tempG.fillStyle(0xffffff, 1)
+    this.tempG.fillEllipse(0, 0, e0.a * 2, e0.b * 2, 64)
+    this.tempG.lineStyle(e0.rim, INK, 1)
+    this.tempG.strokeEllipse(0, 0, e0.a * 2, e0.b * 2, 64)
+    this.tempG.generateTexture(scleraKey, 256, 256)
+    // PUPIL: ink oval + main highlight + tiny secondary dot, centered.
+    this.tempG.clear()
+    this.tempG.setPosition(128, 128)
+    this.tempG.fillStyle(INK, 1)
+    this.tempG.fillEllipse(0, 0, e0.pa * 2, e0.pb * 2, 64)
+    this.tempG.fillStyle(0xffffff, 1)
+    this.tempG.fillEllipse(-e0.pa * 0.32, -e0.pb * 0.34, e0.pa * 0.6, e0.pa * 0.6, 48)
+    this.tempG.fillEllipse(-e0.pa * 0.1, -e0.pb * 0.38, e0.pa * 0.24, e0.pa * 0.24, 32)
+    this.tempG.generateTexture(pupilKey, 256, 256)
+    // MOUTH: the ink marker stroke, centered on its bounding arc.
+    const m = L.mouth
+    this.tempG.clear()
+    this.tempG.setPosition(128, 128)
+    const steps = 14
+    const pts: Array<{ x: number; y: number }> = []
+    for (let i = 0; i <= steps; i++) {
+      const t = -1 + (2 * i) / steps
+      const tiltLift = m.style === 1 ? 1 + m.tilt * 0.35 * t : 1
+      pts.push({ x: t * m.halfW, y: (1 - t * t) * m.depth * tiltLift })
+    }
+    this.tempG.setPosition(128, 128 - m.depth / 2)
+    this.tempG.lineStyle(m.stroke, INK, 1)
+    this.tempG.strokePoints(pts as unknown as Phaser.Math.Vector2[], false, false)
+    this.tempG.generateTexture(mouthKey, 256, 256)
+    this.tempG.clear()
   }
 
   /**
@@ -408,15 +405,20 @@ export class FacePool {
     const look = ballLookFor(tier, seed)
     const lookKeyStr = FacePool.lookSignature(look)
     if (this.atlases.has(lookKeyStr)) return
-    const syntheticId = -1 - Math.abs(seed % 100000)
-    this.ensure(syntheticId, look)
-    this.drop(syntheticId) // atlas persists (shared); view was throwaway
-    void lookKeyStr
+    // Bake the atlas WITHOUT creating a view or touching refs — the atlas
+    // persists with refs=0 until a real ball claims it via ensure().
+    const r = FACE_ATLAS_R
+    const L = faceLayoutFor(look, r, 1)
+    const prefix = lookKeyStr
+    const scleraKey = `${prefix}-sclera`
+    const pupilKey = `${prefix}-pupil`
+    const mouthKey = `${prefix}-mouth`
+    this.bakeAtlas(L, scleraKey, pupilKey, mouthKey)
+    this.atlases.set(lookKeyStr, { prefix, scleraKey, pupilKey, mouthKey, layout: L, look, refs: 0 })
   }
 
   drop(ballId: number): void {
-    // Atlases are LOOK-keyed and SHARED (bounded by distinct looks) —
-    // merged/removed balls release only their sprite views + id mapping.
+    const lookKey = this.ballLookKeys.get(ballId)
     this.ballLookKeys.delete(ballId)
     const view = this.views.get(ballId)
     if (view) {
@@ -429,6 +431,23 @@ export class FacePool {
       view.mouth.destroy()
       this.views.delete(ballId)
     }
+    if (lookKey) {
+      const atlas = this.atlases.get(lookKey)
+      if (atlas) {
+        atlas.refs -= 1
+        if (atlas.refs <= 0) {
+          this.evictAtlas(lookKey, atlas)
+        }
+      }
+    }
+  }
+
+  /** Remove an unreferenced atlas and its three textures. */
+  private evictAtlas(lookKey: string, atlas: FaceAtlas): void {
+    this.atlases.delete(lookKey)
+    this.scene.textures.remove(atlas.scleraKey)
+    this.scene.textures.remove(atlas.pupilKey)
+    this.scene.textures.remove(atlas.mouthKey)
   }
 
   clear(): void {
@@ -437,6 +456,9 @@ export class FacePool {
 
   destroy(): void {
     this.clear()
+    for (const [key, atlas] of this.atlases) {
+      this.evictAtlas(key, atlas)
+    }
     this.tempG.destroy()
     this.fearG.destroy()
   }

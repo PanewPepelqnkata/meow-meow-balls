@@ -189,6 +189,7 @@ export class PhysicsWorld {
     Matter.Composite.remove(this.world, body)
     const i = this.bodiesCache.indexOf(body)
     if (i >= 0) this.bodiesCache.splice(i, 1)
+    this.preStepVelocities.delete(body.id)
   }
 
   registerComposite(composite: Matter.Composite): void {
@@ -200,6 +201,7 @@ export class PhysicsWorld {
     if (this._disposed) return
     const gone = new Set(Matter.Composite.allBodies(composite))
     this.bodiesCache = this.bodiesCache.filter((b) => !gone.has(b))
+    for (const b of gone) this.preStepVelocities.delete(b.id)
   }
 
   getAllBodies(): Matter.Body[] {
@@ -335,6 +337,7 @@ export class PhysicsWorld {
         Matter.Composite.remove(this.world, body)
         const i = this.bodiesCache.indexOf(body)
         if (i >= 0) this.bodiesCache.splice(i, 1)
+        this.preStepVelocities.delete(body.id)
       }
     }
     this.accumulatorMs = 0
@@ -348,6 +351,7 @@ export class PhysicsWorld {
     Matter.Events.off(this.engine, 'collisionStart', this.onCollisionStart)
     this.collisionQueue = []
     this.bodiesCache = []
+    this.preStepVelocities.clear()
     Matter.Composite.clear(this.world, false)
     Matter.Engine.clear(this.engine)
   }
