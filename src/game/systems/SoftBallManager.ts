@@ -1035,9 +1035,11 @@ export class SoftBallManager {
       const beyondBand = past > CONTAINER.frameThickness + GAME_OVER.outsideMargin
       // Never clamp balls above the wall tops (even during Shake): the top
       // of the container is always open so balls never glitch against an
-      // invisible ceiling/lid. During Shake, only beyondBand is bypassed so
-      // balls inside the wall height cannot escape sideways.
-      const clampExempt = aboveTops || (!this.shakeActive && beyondBand)
+      // invisible ceiling/lid. Balls already beyond the wall band are also
+      // exempt — they are genuinely outside and falling; clamping them back
+      // would teleport them through the static collider and save them from
+      // a legitimate game-over.
+      const clampExempt = aboveTops || beyondBand
       for (const p of ball.soft.particles) {
         let nx = 0
         let ny = 0
