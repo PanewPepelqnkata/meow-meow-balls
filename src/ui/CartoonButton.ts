@@ -20,6 +20,8 @@ export interface CartoonButtonOptions {
   fill: number
   disabledFill?: number
   disabled?: boolean
+  /** Guest-disabled: grayed out but still clickable (shows login prompt). */
+  guestDisabled?: boolean
   /** Icon painter, receives center coords + size. Flat buttons paint the
    * icon inside the body; doodle buttons ignore it (white dot badge + text). */
   icon?: (g: Phaser.GameObjects.Graphics, cx: number, cy: number, s: number) => void
@@ -151,8 +153,9 @@ export class CartoonButton {
     this.objs.push(c)
 
     const depth = 44
-    const fill = this.opts.disabled ? (this.opts.disabledFill ?? UI_COLORS.BTN_GRAY) : this.opts.fill
-    const highlightColor = this.opts.disabled ? UI_COLORS.BTN_GRAY_HIGHLIGHT : UI_COLORS.BTN_BLUE_HIGHLIGHT
+    const isGrayed = this.opts.disabled || this.opts.guestDisabled
+    const fill = isGrayed ? (this.opts.disabledFill ?? UI_COLORS.BTN_GRAY) : this.opts.fill
+    const highlightColor = isGrayed ? UI_COLORS.BTN_GRAY_HIGHLIGHT : UI_COLORS.BTN_BLUE_HIGHLIGHT
     const doodle = this.opts.style === 'doodle'
     let iconY: number
     let iconS: number
@@ -198,7 +201,7 @@ export class CartoonButton {
       const strokeWidth = Math.max(3, w * 0.045)
       body.lineStyle(strokeWidth, UI_COLORS.INK, 1)
       body.strokeRoundedRect(-w / 2, -h / 2, w, h, r)
-      if (!this.opts.disabled) {
+      if (!isGrayed) {
         body.fillStyle(highlightColor, 0.4)
         body.fillRoundedRect(-w / 2 + 6, -h / 2 + 5, w - 12, h * 0.22, r * 0.6)
       }
@@ -241,11 +244,12 @@ export class CartoonButton {
       label.setPosition(0, doodle ? 0 : h * 0.3)
       c.add(label)
     }
-    if (this.opts.disabled) c.setAlpha(0.75)
+    if (isGrayed) c.setAlpha(0.75)
 
     const hit = scene.add.rectangle(0, 0, w, h, 0xffffff, 0.001).setInteractive({ useHandCursor: !this.opts.disabled })
     c.add(hit)
-    if (!this.opts.disabled) {
+    // Guest-disabled buttons ARE clickable (to show the login prompt), just grayed out.
+    if (!this.opts.disabled || this.opts.guestDisabled) {
       hit.on('pointerdown', () => {
         scene.tweens.add({ targets: c, scale: 0.95, duration: 80, yoyo: true, ease: 'Quad.easeOut' })
       })

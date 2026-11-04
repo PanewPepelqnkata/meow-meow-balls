@@ -1180,6 +1180,9 @@ export class PlaygroundScene extends Phaser.Scene {
 
   private finalizeActiveRunIfIncomplete(reason?: string): void {
     if (!this.runStarted || this.gameOver || isDrunkoTestRoute()) return
+    // Skip invalid runs (0 merges AND 0 score) — don't record or submit them
+    const isValidRun = this.mergesThisRun > 0 || this.score.score > 0
+    if (!isValidRun) return
     this.registry.set('best', recordRunEnd(this.score.score, this.bestTierRun, this.mergesThisRun))
     gameBus.emit('state:best', { best: this.best() })
     void scoreService.submitScore(
@@ -1198,12 +1201,14 @@ export class PlaygroundScene extends Phaser.Scene {
     // Phase 2.14.0: lifetime records — leaderboard entry (score + best tier
     // reached) and the persisted best score. Sandbox runs keep the existing
     // best but leave no saved progression or leaderboard record.
-    if (!isDrunkoTestRoute()) {
+    // Skip invalid runs (0 merges AND 0 score) — don't record or submit them.
+    const isValidRun = this.mergesThisRun > 0 || this.score.score > 0
+    if (!isDrunkoTestRoute() && isValidRun) {
       this.registry.set('best', recordRunEnd(this.score.score, this.bestTierRun, this.mergesThisRun))
     }
     gameBus.emit('state:best', { best: this.best() })
     // Submit immediately at Game Over trigger so the run is recorded even before the pop animation ends.
-    if (!isDrunkoTestRoute()) {
+    if (!isDrunkoTestRoute() && isValidRun) {
       void scoreService.submitScore(
         this.score.score,
         this.bestTierRun,

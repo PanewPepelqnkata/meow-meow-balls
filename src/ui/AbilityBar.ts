@@ -69,33 +69,37 @@ export class AbilityBar {
       }
     }
 
-    const defs: Array<{ fill: number; icon: typeof Icons.raise; hotkey?: string; qty?: string; disabled?: boolean; label?: string; press?: () => void }> = [
+    const isPortrait = l.composition === 'portrait'
+    const defs: Array<{ fill: number; icon: typeof Icons.raise; hotkey?: string; qty?: string; disabled?: boolean; label?: string; press?: () => void; guestDisabled?: boolean }> = [
       {
         fill: UI_COLORS.BTN_BLUE,
         icon: Icons.swap,
-        hotkey: 'Q',
+        hotkey: isPortrait ? undefined : 'Q',
         qty: '1',
-        disabled: this.isGuest || this.swapUsed || !this.abilitiesEnabled,
+        disabled: this.swapUsed || !this.abilitiesEnabled,
+        guestDisabled: this.isGuest,
         label: this.swapUsed ? 'USED' : 'SWAP',
         press: this.isGuest ? guestPress : () => this.handlers.onSwap(),
       },
       {
         fill: UI_COLORS.BTN_BLUE,
         icon: Icons.shake,
-        hotkey: 'W',
+        hotkey: isPortrait ? undefined : 'W',
         qty: this.shakeUsed ? undefined : '1',
-        disabled: this.isGuest || this.shakeUsed || !this.abilitiesEnabled,
+        disabled: this.shakeUsed || !this.abilitiesEnabled,
+        guestDisabled: this.isGuest,
         label: this.shakeUsed ? 'USED' : 'SHAKE',
         press: this.isGuest ? guestPress : () => this.handlers.onShake(),
       },
       {
         fill: UI_COLORS.BTN_BLUE,
         icon: Icons.raise,
-        hotkey: 'E',
+        hotkey: isPortrait ? undefined : 'E',
         // Phase 2.13.1: one-use — the button flips to USED/disabled the
         // moment activation succeeds and stays that way for the whole run.
         qty: this.raiseUsed ? undefined : '1',
-        disabled: this.isGuest || this.raiseUsed || !this.abilitiesEnabled,
+        disabled: this.raiseUsed || !this.abilitiesEnabled,
+        guestDisabled: this.isGuest,
         label: this.raiseUsed ? 'USED' : 'RAISE',
         press: this.isGuest ? guestPress : () => this.handlers.onRaise(),
       },
@@ -113,6 +117,7 @@ export class AbilityBar {
           hotkey: d.hotkey,
           quantity: d.qty,
           disabled: d.disabled,
+          guestDisabled: d.guestDisabled,
           label: d.label,
           labelSize: Math.max(10, l.abilities.size * 0.16),
           onPress: d.press,

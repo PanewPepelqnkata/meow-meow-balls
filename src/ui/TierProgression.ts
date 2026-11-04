@@ -158,19 +158,22 @@ export class TierProgression {
         this.objs.push(arrow)
       }
     } else {
-      // Portrait row.
+      // Portrait row — scale line thickness to node size (phones have small nodes).
       const y = l.tiers.rowY ?? 0
       const x0 = l.tiers.rowX0 ?? 0
       const x1 = l.tiers.rowX1 ?? l.vw
+      const nodeR = l.tiers.nodeR
+      const underW = Math.max(2, nodeR * 0.5)
+      const trackW = Math.max(1.5, nodeR * 0.25)
       for (let i = 0; i < nodes.length; i++) {
         positions.push({ x: x0 + ((x1 - x0) * i) / (nodes.length - 1), y })
       }
       const under = this.scene.add.graphics().setDepth(39)
-      under.lineStyle(9, 0x1c2430, 0.5)
+      under.lineStyle(underW, 0x1c2430, 0.5)
       under.lineBetween(Math.max(6, x0 - 16), y, Math.min(l.vw - 6, x1 + 16), y)
       this.objs.push(under)
       const track = this.scene.add.graphics().setDepth(40)
-      track.lineStyle(4.5, 0x3f8cff, 1)
+      track.lineStyle(trackW, 0x3f8cff, 1)
       track.lineBetween(Math.max(6, x0 - 16), y, Math.min(l.vw - 6, x1 + 16), y)
       this.objs.push(track)
     }
