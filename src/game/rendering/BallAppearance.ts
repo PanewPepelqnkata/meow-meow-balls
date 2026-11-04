@@ -1286,6 +1286,7 @@ export function drawRoboBall(
   const pal = ROBO_PALETTES[variant % ROBO_PALETTES.length]!
   const look = ballLookFor(9, seed)
   const ink = Math.max(2, r * 0.05)
+  const out = ballOutlineWidth(r)
   const now = Date.now() / 1000
   // The easter-egg expression (wink) rides the same timeline as the
   // other balls — suppressed while panicking (fear wins).
@@ -1310,42 +1311,45 @@ export function drawRoboBall(
     g.fillCircle(cx, cy, r * layer.rr)
   }
 
-  // ---- ANTENNAE — two thin stems with round yellow tips, anchored to
-  // the top of the body. Slight natural angle differences (left tilts
-  // left, right tilts right). They track the contour top so they stay
-  // glued during squash/rotation. ----
+  // ---- ANTENNAE — two identical thick stems with round yellow tips,
+  // angled slightly outward, emerging from a dark base on top of the
+  // head. Both antennae have the SAME construction and visual weight. ----
   let topY = cy - r
   if (poly && poly.length >= 8) {
     let top = poly[0]!
     for (const p of poly) if (p.y < top.y) top = p
     topY = top.y
   }
-  const antOut = ballOutlineWidth(r) * 0.7
-  const antW = Math.max(2, r * 0.06)
-  const antLen = r * 0.55
-  const tipR = r * 0.11
-  // Antenna tip bounce: subtle vertical wiggle during reactions.
+  // Antenna base: a small dark mound on top of the head.
+  const antBaseW = r * 0.5
+  const antBaseH = r * 0.18
+  g.fillStyle(INK, 1)
+  g.fillEllipse(cx, topY + r * 0.02, antBaseW, antBaseH)
+  // Antenna geometry: identical for both sides, mirrored.
+  const antW = Math.max(3, r * 0.09) // stem width — thick and consistent
+  const antLen = r * 0.5
+  const tipR = r * 0.13
   const antBounce = Math.sin(now * 8 + seed) * r * 0.02 * (0.3 + panic * 0.7)
   for (const s of [-1, 1]) {
-    const baseX = cx + s * r * 0.28
-    const baseY = topY + r * 0.08
-    const tipX = baseX + s * r * 0.18
+    const baseX = cx + s * r * 0.22
+    const baseY = topY + r * 0.06
+    const tipX = baseX + s * r * 0.22
     const tipY = baseY - antLen + antBounce
-    // Stem.
+    // Stem: a thick tapered quad, light grey/white fill.
     g.fillStyle(pal.antenna, 1)
     g.beginPath()
     g.moveTo(baseX - antW / 2, baseY)
-    g.lineTo(tipX - antW / 2, tipY)
-    g.lineTo(tipX + antW / 2, tipY)
+    g.lineTo(tipX - antW * 0.35, tipY)
+    g.lineTo(tipX + antW * 0.35, tipY)
     g.lineTo(baseX + antW / 2, baseY)
     g.closePath()
     g.fillPath()
-    g.lineStyle(antOut, INK, 1)
+    g.lineStyle(out * 0.7, INK, 1)
     g.strokePath()
-    // Yellow tip.
+    // Yellow tip: a round circle at the stem's end.
     g.fillStyle(pal.antennaTip, 1)
     g.fillCircle(tipX, tipY, tipR)
-    g.lineStyle(antOut, INK, 1)
+    g.lineStyle(out * 0.7, INK, 1)
     g.strokeCircle(tipX, tipY, tipR)
   }
 
@@ -1357,84 +1361,87 @@ export function drawRoboBall(
     g.fillStyle(pal.body, 1)
     g.fillCircle(cx, cy, r)
   }
-  // Body highlight: subtle lighter purple upper-left.
-  g.fillStyle(pal.bodyLight, 0.5)
+  // Body highlight: subtle lighter purple upper-left crescent.
+  g.fillStyle(pal.bodyLight, 0.45)
   g.beginPath()
-  g.arc(cx, cy, r * 0.82, Math.PI * 1.05, Math.PI * 1.65, false)
-  g.arc(cx, cy, r * 0.55, Math.PI * 1.65, Math.PI * 1.05, true)
+  g.arc(cx, cy, r * 0.88, Math.PI * 1.08, Math.PI * 1.55, false)
+  g.arc(cx, cy, r * 0.62, Math.PI * 1.55, Math.PI * 1.08, true)
   g.closePath()
   g.fillPath()
   // Bottom shading: slightly darker toward the base.
-  g.fillStyle(pal.body, 0.6)
+  g.fillStyle(pal.body, 0.55)
   g.beginPath()
-  g.arc(cx, cy, r * 0.88, Math.PI * 0.15, Math.PI * 0.85, false)
-  g.arc(cx, cy, r * 0.65, Math.PI * 0.85, Math.PI * 0.15, true)
+  g.arc(cx, cy, r * 0.9, Math.PI * 0.12, Math.PI * 0.88, false)
+  g.arc(cx, cy, r * 0.68, Math.PI * 0.88, Math.PI * 0.12, true)
   g.closePath()
   g.fillPath()
 
-  // ---- SIDE BUTTONS — two small circles on the right side of the body:
-  // upper red, lower golden yellow. Properly integrated into the body. ----
-  const btnX = cx + r * 0.72
-  const btnR = r * 0.09
-  const btnOut = ballOutlineWidth(r) * 0.6
+  // ---- SIDE BUTTONS — two clearly visible circles on the right side
+  // of the body: upper red, lower golden yellow. Positioned OUTSIDE the
+  // screen area, on the body's right edge, NOT clipped by the outline. ----
+  const btnX = cx + r * 0.68
+  const btnR = r * 0.11
+  const btnOut = out * 0.65
   // Upper: red.
   g.fillStyle(pal.buttonRed, 1)
-  g.fillCircle(btnX, cy - r * 0.18, btnR)
+  g.fillCircle(btnX, cy - r * 0.22, btnR)
   g.lineStyle(btnOut, INK, 1)
-  g.strokeCircle(btnX, cy - r * 0.18, btnR)
+  g.strokeCircle(btnX, cy - r * 0.22, btnR)
   // Lower: golden yellow.
   g.fillStyle(pal.buttonYellow, 1)
-  g.fillCircle(btnX, cy + r * 0.12, btnR)
+  g.fillCircle(btnX, cy + r * 0.08, btnR)
   g.lineStyle(btnOut, INK, 1)
-  g.strokeCircle(btnX, cy + r * 0.12, btnR)
+  g.strokeCircle(btnX, cy + r * 0.08, btnR)
 
-  // ---- THE SCREEN — the television face: a large rounded rectangle
-  // centred on the front of the body. Bright cyan fill, darker blue
-  // shading toward the bottom, small white reflection upper-left. ----
-  const scrW = r * 1.35
-  const scrH = r * 1.1
+  // ---- THE SCREEN — the television face: a LARGE rounded rectangle
+  // dominating the front of the body. Bright cyan fill, darker blue
+  // shading toward the bottom, white reflection upper-left. The screen
+  // is ~70% of body width and ~60% of body height. ----
+  const scrW = r * 1.5
+  const scrH = r * 1.2
   const scrX = cx - scrW / 2
-  const scrY = cy - r * 0.52
-  const scrR = r * 0.22 // corner radius
+  const scrY = cy - r * 0.55
+  const scrR = r * 0.28 // generous corner radius
   // Screen fill.
   g.fillStyle(pal.screen, 1)
   g.fillRoundedRect(scrX, scrY, scrW, scrH, scrR)
-  // Screen lower shading.
-  g.fillStyle(pal.screenDark, 0.5)
-  g.fillRoundedRect(scrX, scrY + scrH * 0.55, scrW, scrH * 0.45, { tl: 0, tr: 0, bl: scrR, br: scrR })
-  // Screen reflection: small white curved highlight upper-left.
-  g.fillStyle(0xffffff, 0.35)
+  // Screen lower shading: a subtle darker blue band at the bottom.
+  g.fillStyle(pal.screenDark, 0.4)
+  g.fillRoundedRect(scrX + scrW * 0.05, scrY + scrH * 0.6, scrW * 0.9, scrH * 0.35, { tl: 0, tr: 0, bl: scrR * 0.8, br: scrR * 0.8 })
+  // Screen reflection: a white curved highlight in the upper-left.
+  g.fillStyle(0xffffff, 0.4)
   g.beginPath()
-  g.moveTo(scrX + scrW * 0.12, scrY + scrH * 0.08)
-  quadFrom(g, scrX + scrW * 0.12, scrY + scrH * 0.08, scrX + scrW * 0.28, scrY + scrH * 0.02, scrX + scrW * 0.38, scrY + scrH * 0.12)
-  quadFrom(g, scrX + scrW * 0.38, scrY + scrH * 0.12, scrX + scrW * 0.3, scrY + scrH * 0.22, scrX + scrW * 0.15, scrY + scrH * 0.2)
+  g.moveTo(scrX + scrW * 0.1, scrY + scrH * 0.12)
+  quadFrom(g, scrX + scrW * 0.1, scrY + scrH * 0.12, scrX + scrW * 0.22, scrY + scrH * 0.04, scrX + scrW * 0.35, scrY + scrH * 0.1)
+  quadFrom(g, scrX + scrW * 0.35, scrY + scrH * 0.1, scrX + scrW * 0.28, scrY + scrH * 0.2, scrX + scrW * 0.14, scrY + scrH * 0.18)
   g.closePath()
   g.fillPath()
-  // Screen outline.
-  g.lineStyle(ink * 0.9, INK, 1)
+  // Screen outline: thick and clean.
+  g.lineStyle(ink * 1.0, INK, 1)
   g.strokeRoundedRect(scrX, scrY, scrW, scrH, scrR)
 
-  // ---- SCREEN FLICKER — occasional brief alpha flicker (easter egg).
-  // Deterministic per-ball, rare, and subtle. ----
+  // ---- SCREEN FLICKER — occasional brief alpha flicker (easter egg). ----
   const flickerSeed = Math.sin(now * 13 + seed * 7) * Math.cos(now * 7 + seed * 3)
   if (flickerSeed > 0.985 && panic < 0.3) {
-    g.fillStyle(0xffffff, 0.15)
+    g.fillStyle(0xffffff, 0.12)
     g.fillRoundedRect(scrX, scrY, scrW, scrH, scrR)
   }
 
-  // ---- THE EYES — the standard pair (white sclera, chunky ink rim,
-  // one dark oval pupil, main + secondary glints, wink easter egg),
-  // seated on the screen. Panic widens them and pins pupils upward. ----
+  // ---- THE EYES — two large, expressive eyes INSIDE the screen, with
+  // a small deliberate gap between them. White sclera, large black pupils,
+  // small white highlights. Symmetrical construction. ----
   const L = faceLayoutFor(look, r, 1, gaze)
   const em = Math.min(1, panic)
   const up = 0.45 * em
-  const eyeY = cy - r * 0.18
-  const eyeDx = r * 0.32
+  // Eyes positioned inside the screen, centered vertically with a slight
+  // upward bias, spaced with a small gap between their outer edges.
+  const eyeY = scrY + scrH * 0.42
+  const eyeDx = r * 0.28 // half the distance between eye centers
   // Curious expression: occasionally widen eyes slightly (easter egg).
-  const curious = Math.sin(now * 0.31 + seed * 11) > 0.92 && panic < 0.2 ? 1.08 : 1
+  const curious = Math.sin(now * 0.31 + seed * 11) > 0.92 && panic < 0.2 ? 1.06 : 1
   for (const [i, e] of L.eyes.entries()) {
     const ex = cx + eyeDx * (i === 0 ? -1 : 1)
-    const ey = eyeY + e.y * 0.5
+    const ey = eyeY + e.y * 0.3
     const closed = exprRobo === 'wink' && i === 1
     if (closed) {
       // Closed lid: one downward ink arc across the eye.
@@ -1466,18 +1473,18 @@ export function drawRoboBall(
   }
 
   // ---- THE MOUTH — a small, simple curved smile centred below the
-  // eyes. Flattens toward a tense line as panic climbs. ----
-  const mouthY = cy + r * 0.28
-  const mouthW = r * 0.22
-  const dip = r * (0.08 - 0.05 * panic)
-  g.lineStyle(ink * 0.9, INK, 1)
+  // eyes, INSIDE the screen. Flattens toward a tense line as panic climbs. ----
+  const mouthY = scrY + scrH * 0.72
+  const mouthW = r * 0.18
+  const dip = r * (0.06 - 0.04 * panic)
+  g.lineStyle(ink * 0.85, INK, 1)
   g.beginPath()
   g.moveTo(cx - mouthW, mouthY)
   quadFrom(g, cx - mouthW, mouthY, cx, mouthY + dip, cx + mouthW, mouthY)
   g.strokePath()
 
   // ---- THE INK OUTLINE — the contour itself, over everything. ----
-  g.lineStyle(ballOutlineWidth(r), INK, 1)
+  g.lineStyle(out, INK, 1)
   if (poly && poly.length >= 3) {
     g.strokePoints(poly as unknown as Phaser.Math.Vector2[], true, true)
   } else {
