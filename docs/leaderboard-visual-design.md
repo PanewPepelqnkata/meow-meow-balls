@@ -52,6 +52,7 @@ The leaderboard is a cartoon Mount Olympus temple scene, not a dashboard with or
 - Mouse wheel/trackpad, row drag, thumb drag, and mobile touch drag update the same clamped list offset. A non-passive canvas wheel handler prevents document scroll within the player list and is removed on teardown. The scrollbar track remains visible while scrolling.
 - Back/navigation teardown destroys the separately owned scroll input zone, along with the mask and wheel handler. Leaving the leaderboard cannot leave an invisible touch target over the menu.
 - `src/services/auth-leaderboard.test.ts` covers players beyond the API row cap, deduplication across pages, distinct-player limits, and later-page errors.
+- The gameplay HUD shows `Global #N` for the authenticated player's ordinal among distinct players, using this same best-score order; guests, unranked accounts, and failed rank loads show `Global #—`. Rank refreshes on login/account changes and successful score persistence.
 
 ## Source files
 

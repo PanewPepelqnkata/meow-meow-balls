@@ -13,6 +13,7 @@ export class ScoreDisplay {
   private score: Phaser.GameObjects.Text | null = null
   private scoreVal = 0
   private bestVal = 0
+  private rankVal: number | null = null
   private readonly scene: Phaser.Scene
 
   constructor(scene: Phaser.Scene) {
@@ -71,10 +72,16 @@ export class ScoreDisplay {
   }
 
   private globalText(): string {
-    // No leaderboard backend exists yet (Phase 9) — the rank is shown
-    // honestly as a dash; the layout/text style matches the reference.
+    // A rank exists only for an authenticated player whose score is present
+    // in the ordered leaderboard. Guests, unranked players, and failed loads
+    // stay honest with a dash rather than showing a guessed position.
     // Portrait shortens the line so the top row always fits Best + Score.
-    return 'Global #—'
+    return this.rankVal === null ? 'Global #—' : `Global #${this.rankVal}`
+  }
+
+  setRank(rank: number | null): void {
+    this.rankVal = rank !== null && Number.isInteger(rank) && rank > 0 ? rank : null
+    this.global?.setText(this.globalText())
   }
 
   setScore(score: number, best: number): void {

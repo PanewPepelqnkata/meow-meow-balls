@@ -1,7 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Score } from './auth'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { AuthService, scoreService, type Score } from './auth'
+import type { User } from '@supabase/supabase-js'
 
-const transport = vi.hoisted(() => ({ rows: [] as Score[], failFrom: Infinity }))
+const transport = vi.hoisted(() => ({
+  rows: [] as Score[],
+  failFrom: Infinity,
+  rangeGate: null as Promise<{ data: Score[]; error: Error | null }> | null,
+}))
 vi.mock('../lib/supabase', () => ({
   getSupabase: () => ({
     from: () => {
@@ -13,6 +18,7 @@ vi.mock('../lib/supabase', () => ({
           return query
         },
         range: async (from: number, to: number) => {
+          if (transport.rangeGate) return transport.rangeGate
           if (from >= transport.failFrom) return { data: null, error: new Error('Page unavailable') }
           const sorted = [...transport.rows].sort((a, b) => {
             for (const order of orders) {
@@ -29,7 +35,11 @@ vi.mock('../lib/supabase', () => ({
   }),
 }))
 
-import { scoreService } from './auth'
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((done) => { resolve = done })
+  return { promise, resolve }
+}
 
 function score(id: number, user: string, points: number): Score {
   return { id, user_id: user, score: points, tier_reached: 6, balls_merged: 20,
@@ -39,6 +49,11 @@ function score(id: number, user: string, points: number): Score {
 beforeEach(() => {
   transport.rows = []
   transport.failFrom = Infinity
+  transport.rangeGate = null
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
 })
 
 describe('leaderboard pagination', () => {
@@ -73,4 +88,31 @@ describe('leaderboard pagination', () => {
       error.mockRestore()
     }
   })
+  it('returns authenticated placement past the first page using distinct-player ordering', async () => {
+    const auth = AuthService.getInstance()
+    const user = { id: 'target-player' } as User
+    vi.spyOn(auth, 'getUser').mockReturnValue(user)
+    transport.rows = [
+      ...Array.from({ length: 260 }, (_, i) => score(i + 1, 'repeat-player', 1000 - i)),
+      score(261, 'target-player', 500),
+      score(262, 'later-player', 400),
+    ]
+
+    await expect(scoreService.getUserRank()).resolves.toBe(2)
+  })
+
+  it('discards a rank response when the authenticated account changes in flight', async () => {
+    const auth = AuthService.getInstance()
+    let currentUser: User | null = { id: 'account-a' } as User
+    vi.spyOn(auth, 'getUser').mockImplementation(() => currentUser)
+    const gate = deferred<{ data: Score[]; error: Error | null }>()
+    transport.rangeGate = gate.promise
+
+    const pending = scoreService.getUserRank()
+    currentUser = { id: 'account-b' } as User
+    gate.resolve({ data: [score(1, 'account-a', 1000)], error: null })
+
+    await expect(pending).resolves.toBeNull()
+  })
+
 })

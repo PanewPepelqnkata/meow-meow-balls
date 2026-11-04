@@ -978,6 +978,7 @@ export class ScoreService {
     this.activeRunCreatePromise = null
   }
 
+
   /**
    * Create or update the current run's row in `guest_scores` (anonymous) or `scores` (signed-in).
    * Safe to call on first drop, during merges, on restart/menu leave, and at game over.
@@ -1143,6 +1144,48 @@ export class ScoreService {
     }
 
     return uniqueScores
+  }
+
+  /** Return the authenticated player's rank without depending on profile embeds. */
+  async getUserRank(): Promise<number | null> {
+    const auth = AuthService.getInstance()
+    const userId = auth.getUser()?.id
+    if (!userId) return null
+
+    const pageSize = 250
+    const seenUsers = new Set<string>()
+    let rank = 0
+    let offset = 0
+
+    while (true) {
+      const { data, error } = await getSupabase()
+        .from('scores')
+        .select('user_id, score, id')
+        .order('score', { ascending: false })
+        .order('id', { ascending: true })
+        .range(offset, offset + pageSize - 1)
+
+      if (error) {
+        console.error('Error fetching user rank:', error)
+        return null
+      }
+
+      const page = data as Pick<Score, 'user_id'>[]
+      for (const row of page) {
+        if (seenUsers.has(row.user_id)) continue
+        seenUsers.add(row.user_id)
+        rank++
+        if (row.user_id === userId) {
+          return AuthService.getInstance().getUser()?.id === userId ? rank : null
+        }
+      }
+
+      if (page.length < pageSize) break
+      offset += pageSize
+    }
+
+    if (AuthService.getInstance().getUser()?.id !== userId) return null
+    return null
   }
 
   async getUserBestScore(): Promise<Score | null> {

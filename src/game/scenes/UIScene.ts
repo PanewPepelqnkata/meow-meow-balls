@@ -33,6 +33,8 @@ export class UIScene extends Phaser.Scene {
   /** Last completed run's leaderboard payload (for the post-login SAVE
    * YOUR SCORE submission). Null once the score has been saved. */
   private lastRunStats: { score: number; tierReached: number; ballsMerged: number; durationMs: number } | null = null
+  private rankRequestSeq = 0
+  private rankRefreshEnabled = false
   private offs: Array<() => void> = []
   private pauseAllowed = true
   private readonly pointerWorld = new Phaser.Math.Vector2()
@@ -60,6 +62,7 @@ export class UIScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.rankRefreshEnabled = true
     // HiDPI camera setup; reapplied on resize.
     this.applyDprCamera()
     this.pauseAllowed = true
@@ -134,6 +137,8 @@ export class UIScene extends Phaser.Scene {
             .then(({ error }) => {
               if (error) {
                 console.error('Auto score submission failed:', error)
+              } else {
+                this.refreshRank()
               }
             })
         }
@@ -165,7 +170,12 @@ export class UIScene extends Phaser.Scene {
       // banner — gameplay never pauses for it.
       gameBus.on('discovery:banner', ({ tier, seed }) => this.discoveryBanner.show(tier, seed)),
     )
+    this.offs.push(authService.onAuthStateChange(() => this.refreshRank()))
+    // Auth subscriptions are not immediate, so pull the current account on boot.
+    this.refreshRank()
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.rankRefreshEnabled = false
+      this.rankRequestSeq++
       for (const off of this.offs) off()
       this.offs = []
       this.discoveryOverlay.reset()
@@ -221,9 +231,30 @@ export class UIScene extends Phaser.Scene {
           }
           this.lastRunStats = null
           this.gameOverlay.markScoreSaved()
+          this.refreshRank()
         })
     })
     modal.open('signup')
+  }
+
+  /** Refresh the authenticated player's global ordinal without allowing a
+   * stale account, failed request, or stopped scene to paint a rank. */
+  private refreshRank(): void {
+    if (!this.rankRefreshEnabled) return
+    const requestSeq = ++this.rankRequestSeq
+    const userId = authService.getUser()?.id ?? null
+    this.uiRoot.setRank(null)
+    if (!userId) return
+
+    void scoreService.getUserRank().then((rank) => {
+      if (!this.rankRefreshEnabled || requestSeq !== this.rankRequestSeq) return
+      if (authService.getUser()?.id !== userId) return
+      this.uiRoot.setRank(rank)
+    }).catch(() => {
+      if (!this.rankRefreshEnabled || requestSeq !== this.rankRequestSeq) return
+      if (authService.getUser()?.id !== userId) return
+      this.uiRoot.setRank(null)
+    })
   }
 
   /** Phase 2.13.0: per-frame discovery burst animation (speed lines, flash).

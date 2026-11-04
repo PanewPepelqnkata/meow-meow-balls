@@ -124,6 +124,10 @@ export class UiRoot {
     this.scores.setScore(score, best)
   }
 
+  setRank(rank: number | null): void {
+    this.scores.setRank(rank)
+  }
+
   setNextTier(tier: number, seed: number): void {
     this.nextBall.setNext(tier, seed)
   }
