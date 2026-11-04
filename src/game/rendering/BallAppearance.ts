@@ -1259,14 +1259,6 @@ export const DRUNKO_PALETTES: readonly DrunkoPalette[] = [
   { skin: 0xee9e52, skinLight: 0xffca8a, beard: 0xd2c6ae, beardDark: 0xa29478, cap: 0x6e4226, capBrim: 0x55301b, lid: 0xe87884, bottle: 0x2f6623, label: 0xeeddab, glow: 0xffc890 }, // 3: rum barrel
   { skin: 0xf4b877, skinLight: 0xffd6a6, beard: 0xded8ce, beardDark: 0xb0a692, cap: 0x8f5c3e, capBrim: 0x6d452c, lid: 0xef8a96, bottle: 0x3a7f30, label: 0xf4e6bc, glow: 0xffd6ae }, // 4: cider
 ]
-/** Fixed local beard stubble marks; kept out of the draw loop. */
-const DRUNKO_STUBBLE: readonly [number, number][] = [
-  [-0.5, 0.62],
-  [-0.18, 0.78],
-  [0.3, 0.7],
-  [0.58, 0.55],
-  [0.05, 0.88],
-]
 
 /**
  * Draw the Tier 9 DRUNK'O ball — the third tier-9 theme: a warm
@@ -1349,93 +1341,101 @@ export function drawDrunkoBall(
   g.closePath()
   g.fillPath()
 
-  // ---- THE BEARD — one rounded mass, entirely inside the silhouette.
-  // Four joined quadratics per scallop keep both dips and crests soft. ----
-  const beardTop = cy + r * 0.05
-  const scallopW = (r * 1.7) / 3
-  const scallopDip = r * 0.06
+  // ---- THE BEARD — irregular fluffy mass grown from beneath the cheeks.
+  // The upper edge is a soft asymmetric curve, not a straight band; the
+  // lower edge carries rounded tufts so it reads as hair, not a mask. ----
+  const beardTopL = cy + r * 0.1
+  const beardTopR = cy + r * 0.06
   const traceBeardTop = (): void => {
-    g.moveTo(cx - r * 0.85, beardTop)
-    for (let i = 0; i < 3; i++) {
-      const x = cx - r * 0.85 + i * scallopW
-      quadFrom(g, x, beardTop, x + scallopW * 0.125, beardTop,
-        x + scallopW * 0.25, beardTop + scallopDip * 0.5)
-      quadFrom(g, x + scallopW * 0.25, beardTop + scallopDip * 0.5,
-        x + scallopW * 0.375, beardTop + scallopDip,
-        x + scallopW * 0.5, beardTop + scallopDip)
-      quadFrom(g, x + scallopW * 0.5, beardTop + scallopDip,
-        x + scallopW * 0.625, beardTop + scallopDip,
-        x + scallopW * 0.75, beardTop + scallopDip * 0.5)
-      quadFrom(g, x + scallopW * 0.75, beardTop + scallopDip * 0.5,
-        x + scallopW * 0.875, beardTop, x + scallopW, beardTop)
-    }
+    g.moveTo(cx - r * 0.82, beardTopL)
+    quadFrom(g, cx - r * 0.82, beardTopL,
+      cx - r * 0.62, cy + r * 0.02, cx - r * 0.42, cy + r * 0.12)
+    quadFrom(g, cx - r * 0.42, cy + r * 0.12,
+      cx - r * 0.28, cy + r * 0.18, cx - r * 0.14, cy + r * 0.16)
+    quadFrom(g, cx - r * 0.14, cy + r * 0.16,
+      cx - r * 0.04, cy + r * 0.15, cx + r * 0.06, cy + r * 0.18)
+    quadFrom(g, cx + r * 0.06, cy + r * 0.18,
+      cx + r * 0.22, cy + r * 0.22, cx + r * 0.38, cy + r * 0.14)
+    quadFrom(g, cx + r * 0.38, cy + r * 0.14,
+      cx + r * 0.6, cy + r * 0.04, cx + r * 0.8, beardTopR)
   }
-  // The lower arc follows roughly 0.82r, with three small rounded lobes.
+  // Rounded tufts along the lower edge; no sharp spikes.
   const traceBeardBottom = (): void => {
-    quadFrom(g, cx + r * 0.76, cy + r * 0.39,
-      cx + r * 0.76, cy + r * 0.5, cx + r * 0.66, cy + r * 0.58)
-    quadFrom(g, cx + r * 0.66, cy + r * 0.58,
-      cx + r * 0.56, cy + r * 0.66, cx + r * 0.43, cy + r * 0.7)
-    quadFrom(g, cx + r * 0.43, cy + r * 0.7,
-      cx + r * 0.3, cy + r * 0.74, cx + r * 0.22, cy + r * 0.78)
-    quadFrom(g, cx + r * 0.22, cy + r * 0.78,
-      cx + r * 0.14, cy + r * 0.87, cx, cy + r * 0.86)
-    quadFrom(g, cx, cy + r * 0.86,
-      cx - r * 0.14, cy + r * 0.87, cx - r * 0.22, cy + r * 0.78)
-    quadFrom(g, cx - r * 0.22, cy + r * 0.78,
-      cx - r * 0.3, cy + r * 0.74, cx - r * 0.43, cy + r * 0.7)
-    quadFrom(g, cx - r * 0.43, cy + r * 0.7,
-      cx - r * 0.56, cy + r * 0.66, cx - r * 0.66, cy + r * 0.58)
-    quadFrom(g, cx - r * 0.66, cy + r * 0.58,
-      cx - r * 0.76, cy + r * 0.5, cx - r * 0.76, cy + r * 0.39)
+    quadFrom(g, cx + r * 0.72, cy + r * 0.42,
+      cx + r * 0.7, cy + r * 0.52, cx + r * 0.58, cy + r * 0.6)
+    quadFrom(g, cx + r * 0.58, cy + r * 0.6,
+      cx + r * 0.5, cy + r * 0.7, cx + r * 0.38, cy + r * 0.68)
+    quadFrom(g, cx + r * 0.38, cy + r * 0.68,
+      cx + r * 0.3, cy + r * 0.82, cx + r * 0.16, cy + r * 0.8)
+    quadFrom(g, cx + r * 0.16, cy + r * 0.8,
+      cx + r * 0.08, cy + r * 0.9, cx - r * 0.04, cy + r * 0.86)
+    quadFrom(g, cx - r * 0.04, cy + r * 0.86,
+      cx - r * 0.16, cy + r * 0.92, cx - r * 0.26, cy + r * 0.8)
+    quadFrom(g, cx - r * 0.26, cy + r * 0.8,
+      cx - r * 0.36, cy + r * 0.84, cx - r * 0.44, cy + r * 0.72)
+    quadFrom(g, cx - r * 0.44, cy + r * 0.72,
+      cx - r * 0.56, cy + r * 0.68, cx - r * 0.62, cy + r * 0.56)
+    quadFrom(g, cx - r * 0.62, cy + r * 0.56,
+      cx - r * 0.72, cy + r * 0.5, cx - r * 0.72, cy + r * 0.4)
   }
   g.fillStyle(pal.beard, 1)
   g.beginPath()
   traceBeardTop()
-  // Rounded cheek tufts centred near (+/-0.88r, 0.15r), not triangles.
-  quadFrom(g, cx + r * 0.85, beardTop,
-    cx + r * 0.99, cy + r * 0.035, cx + r * 0.98, cy + r * 0.15)
-  quadFrom(g, cx + r * 0.98, cy + r * 0.15,
-    cx + r * 0.985, cy + r * 0.27, cx + r * 0.85, cy + r * 0.29)
-  quadFrom(g, cx + r * 0.85, cy + r * 0.29,
-    cx + r * 0.77, cy + r * 0.3, cx + r * 0.76, cy + r * 0.39)
+  // Soft cheek tufts that hug the face instead of a hard side edge.
+  quadFrom(g, cx + r * 0.8, beardTopR,
+    cx + r * 0.94, cy + r * 0.08, cx + r * 0.9, cy + r * 0.2)
+  quadFrom(g, cx + r * 0.9, cy + r * 0.2,
+    cx + r * 0.94, cy + r * 0.3, cx + r * 0.8, cy + r * 0.32)
+  quadFrom(g, cx + r * 0.8, cy + r * 0.32,
+    cx + r * 0.74, cy + r * 0.34, cx + r * 0.72, cy + r * 0.42)
   traceBeardBottom()
-  quadFrom(g, cx - r * 0.76, cy + r * 0.39,
-    cx - r * 0.77, cy + r * 0.3, cx - r * 0.85, cy + r * 0.29)
-  quadFrom(g, cx - r * 0.85, cy + r * 0.29,
-    cx - r * 0.985, cy + r * 0.27, cx - r * 0.98, cy + r * 0.15)
-  quadFrom(g, cx - r * 0.98, cy + r * 0.15,
-    cx - r * 0.99, cy + r * 0.035, cx - r * 0.85, beardTop)
+  quadFrom(g, cx - r * 0.72, cy + r * 0.4,
+    cx - r * 0.74, cy + r * 0.32, cx - r * 0.82, cy + r * 0.3)
+  quadFrom(g, cx - r * 0.82, cy + r * 0.3,
+    cx - r * 0.95, cy + r * 0.26, cx - r * 0.92, cy + r * 0.14)
+  quadFrom(g, cx - r * 0.92, cy + r * 0.14,
+    cx - r * 0.95, cy + r * 0.06, cx - r * 0.82, beardTopL)
   g.closePath()
   g.fillPath()
 
-  // A shadow band shares the same lower edge, so it cannot spill outside.
-  g.fillStyle(pal.beardDark, 0.8)
+  // Darker underside follows the same tufted lower edge.
+  g.fillStyle(pal.beardDark, 0.75)
   g.beginPath()
-  g.moveTo(cx + r * 0.76, cy + r * 0.39)
+  g.moveTo(cx + r * 0.72, cy + r * 0.42)
   traceBeardBottom()
-  quadFrom(g, cx - r * 0.76, cy + r * 0.39,
-    cx - r * 0.7, cy + r * 0.4, cx - r * 0.57, cy + r * 0.48)
-  quadFrom(g, cx - r * 0.57, cy + r * 0.48,
-    cx - r * 0.3, cy + r * 0.66, cx, cy + r * 0.69)
-  quadFrom(g, cx, cy + r * 0.69,
-    cx + r * 0.3, cy + r * 0.66, cx + r * 0.57, cy + r * 0.48)
-  quadFrom(g, cx + r * 0.57, cy + r * 0.48,
-    cx + r * 0.7, cy + r * 0.4, cx + r * 0.76, cy + r * 0.39)
+  quadFrom(g, cx - r * 0.72, cy + r * 0.4,
+    cx - r * 0.6, cy + r * 0.44, cx - r * 0.4, cy + r * 0.56)
+  quadFrom(g, cx - r * 0.4, cy + r * 0.56,
+    cx - r * 0.2, cy + r * 0.66, cx, cy + r * 0.64)
+  quadFrom(g, cx, cy + r * 0.64,
+    cx + r * 0.24, cy + r * 0.66, cx + r * 0.46, cy + r * 0.54)
+  quadFrom(g, cx + r * 0.46, cy + r * 0.54,
+    cx + r * 0.64, cy + r * 0.44, cx + r * 0.72, cy + r * 0.42)
   g.closePath()
   g.fillPath()
 
   // Leave a soft skin opening around the mouth, tongue and enlarged drool.
   g.fillStyle(pal.skin, 1)
-  g.fillEllipse(cx, cy + r * 0.46, r * 0.62, r * 0.58)
+  g.fillEllipse(cx, cy + r * 0.44, r * 0.58, r * 0.5)
   g.lineStyle(ink * 0.6, INK, 1)
   g.beginPath()
   traceBeardTop()
   g.strokePath()
-  g.fillStyle(pal.beardDark, 0.9)
-  for (const [sx, sy] of DRUNKO_STUBBLE) {
-    // Bring the fixed marks inside the shorter, rounded lower contour.
-    g.fillCircle(cx + sx * r, cy + sy * r * 0.9, Math.max(1.2, r * 0.028))
+  // A few curved hair strokes suggest messy facial hair; no dot noise.
+  g.lineStyle(Math.max(1.2, ink * 0.55), pal.beardDark, 0.85)
+  {
+    const strokes: ReadonlyArray<readonly [number, number, number, number, number, number]> = [
+      [-0.52, 0.34, -0.44, 0.46, -0.34, 0.5],
+      [-0.2, 0.56, -0.14, 0.68, -0.04, 0.7],
+      [0.18, 0.6, 0.26, 0.7, 0.36, 0.66],
+      [0.48, 0.36, 0.56, 0.46, 0.5, 0.56],
+    ]
+    for (const [x0, y0, cxs, cys, x1, y1] of strokes) {
+      g.beginPath()
+      g.moveTo(cx + x0 * r, cy + y0 * r)
+      quadFrom(g, cx + x0 * r, cy + y0 * r, cx + cxs * r, cy + cys * r, cx + x1 * r, cy + y1 * r)
+      g.strokePath()
+    }
   }
 
   // ---- THE FACE — half-closed eyes, pink lower lids and messy brows. ----
@@ -1562,9 +1562,12 @@ export function drawDrunkoBall(
   const cosT = Math.cos(bottleTilt)
   const sinT = Math.sin(bottleTilt)
   // u runs up the bottle axis; v runs across its width.
+  // Local bottle coordinates use u=up and v=across. Rotate the same
+  // right-handed basis as the body anchor so the bottle follows bodyAngle
+  // instead of counter-rotating against it.
   const bp = (u: number, v: number): { x: number; y: number } => ({
-    x: bx + v * cosT - u * sinT,
-    y: by - u * cosT - v * sinT,
+    x: bx + v * cosT + u * sinT,
+    y: by - u * cosT + v * sinT,
   })
   const neckW = bw * 0.45
   const shoulder = bh * 0.62
@@ -1634,69 +1637,121 @@ export function drawDrunkoBall(
     g.lineTo(h1.x, h1.y)
     g.strokePath()
   }
+  // The hand wraps the bottle with a small thumb bump instead of a ball.
   const handPos = rot(r * 0.92, r * 0.48)
   g.fillStyle(pal.skin, 1)
-  g.fillCircle(handPos.x, handPos.y, r * 0.14)
+  g.beginPath()
+  g.moveTo(handPos.x - r * 0.12, handPos.y - r * 0.05)
+  quadFrom(g, handPos.x - r * 0.12, handPos.y - r * 0.05,
+    handPos.x - r * 0.16, handPos.y - r * 0.14, handPos.x - r * 0.04, handPos.y - r * 0.15)
+  quadFrom(g, handPos.x - r * 0.04, handPos.y - r * 0.15,
+    handPos.x + r * 0.1, handPos.y - r * 0.16, handPos.x + r * 0.13, handPos.y - r * 0.06)
+  quadFrom(g, handPos.x + r * 0.13, handPos.y - r * 0.06,
+    handPos.x + r * 0.17, handPos.y + r * 0.06, handPos.x + r * 0.08, handPos.y + r * 0.13)
+  quadFrom(g, handPos.x + r * 0.08, handPos.y + r * 0.13,
+    handPos.x - r * 0.04, handPos.y + r * 0.18, handPos.x - r * 0.13, handPos.y + r * 0.1)
+  quadFrom(g, handPos.x - r * 0.13, handPos.y + r * 0.1,
+    handPos.x - r * 0.18, handPos.y + r * 0.02, handPos.x - r * 0.12, handPos.y - r * 0.05)
+  g.closePath()
+  g.fillPath()
   g.lineStyle(ink * 0.7, INK, 1)
-  g.strokeCircle(handPos.x, handPos.y, r * 0.14)
+  g.strokePath()
+  // Thumb crease over the bottle edge.
+  g.lineStyle(Math.max(1.2, ink * 0.5), INK, 0.8)
+  g.beginPath()
+  g.moveTo(handPos.x - r * 0.02, handPos.y - r * 0.1)
+  quadFrom(g, handPos.x - r * 0.02, handPos.y - r * 0.1,
+    handPos.x + r * 0.05, handPos.y - r * 0.04, handPos.x + r * 0.04, handPos.y + r * 0.05)
+  g.strokePath()
 
-  // ---- THE CAP — its own outline sits above the body's finished ink. ----
-  const capTilt = -0.16 + bodyAngle
-  const capPos = rot(r * 0.05, -r * 0.58)
+  // ---- THE CAP — a low fabric flat-cap hugging the head, tilted slightly.
+  // Crown is asymmetric with a curved top; the band is a thin curved strip;
+  // the brim projects forward as a curved visor. ----
+  const capTilt = -0.14 + bodyAngle
+  const capW = r * 1.5
+  const capH = r * 0.52
+  const capBase = -r * 0.34
+  // Keep the cap attached to the LIVE contour so squash/rotation stay glued.
+  let capAnchorY = -r * 0.58
+  if (poly && poly.length >= 3) {
+    let topLocalY = Infinity
+    for (const point of poly) {
+      const dx = point.x - cx
+      const dy = point.y - cy
+      const localY = -dx * sinA + dy * cosA
+      if (localY < topLocalY) topLocalY = localY
+    }
+    if (Number.isFinite(topLocalY)) capAnchorY = topLocalY - r * 0.06 - capBase
+  }
+  const capPos = rot(r * 0.04, capAnchorY)
   const capCx = capPos.x
   const capCy = capPos.y
-  const capW = r * 1.55
-  const capH = r * 0.75
-  const brimH = capH * 0.22
-  // Relative to the anchor, the brim ends near cy - 0.9r, just over the rim.
-  const capBase = -r * 0.32 - brimH
   const cosC = Math.cos(capTilt)
   const sinC = Math.sin(capTilt)
   const cp = (u: number, v: number): { x: number; y: number } => ({
     x: capCx + u * cosC - v * sinC,
     y: capCy + u * sinC + v * cosC,
   })
+  // Crown: asymmetric, gently curved top, slight forward (right) lean.
   g.fillStyle(pal.cap, 1)
   g.beginPath()
   {
-    const p0 = cp(-capW / 2, capBase)
+    const p0 = cp(-capW * 0.52, capBase)
     g.moveTo(p0.x, p0.y)
-    for (let s = 1; s <= 16; s++) {
-      const th = Math.PI - (s / 16) * Math.PI
-      const p = cp(Math.cos(th) * (capW / 2), capBase - Math.sin(th) * capH)
-      g.lineTo(p.x, p.y)
-    }
+    const a = cp(-capW * 0.5, capBase - capH * 0.55)
+    quadFrom(g, p0.x, p0.y, a.x, a.y, cp(-capW * 0.3, capBase - capH * 0.86).x, cp(-capW * 0.3, capBase - capH * 0.86).y)
+    const b0 = cp(-capW * 0.3, capBase - capH * 0.86)
+    const b1 = cp(-capW * 0.05, capBase - capH * 1.02)
+    const b2 = cp(capW * 0.22, capBase - capH * 0.9)
+    quadFrom(g, b0.x, b0.y, b1.x, b1.y, b2.x, b2.y)
+    const c1 = cp(capW * 0.46, capBase - capH * 0.62)
+    const c2 = cp(capW * 0.52, capBase)
+    quadFrom(g, b2.x, b2.y, c1.x, c1.y, c2.x, c2.y)
+    // Lower edge follows the head curve back to the left side.
+    const d1 = cp(capW * 0.1, capBase + capH * 0.12)
+    quadFrom(g, c2.x, c2.y, d1.x, d1.y, p0.x, p0.y)
   }
   g.closePath()
   g.fillPath()
   g.lineStyle(out * 0.85, INK, 1)
   g.strokePath()
 
-  // A darker, slightly flared trapezoid has a separate inked upper seam.
+  // Thin curved band hugging the crown's lower edge (not a thick bar).
+  g.lineStyle(Math.max(1.5, ink * 0.8), pal.capBrim, 1)
+  g.beginPath()
+  {
+    const e0 = cp(-capW * 0.5, capBase - capH * 0.06)
+    g.moveTo(e0.x, e0.y)
+    const e1 = cp(0, capBase + capH * 0.1)
+    const e2 = cp(capW * 0.5, capBase - capH * 0.04)
+    quadFrom(g, e0.x, e0.y, e1.x, e1.y, e2.x, e2.y)
+  }
+  g.strokePath()
+
+  // Curved front brim projecting forward/right, connected to the crown.
   g.fillStyle(pal.capBrim, 1)
   g.beginPath()
   {
-    const b0 = cp(-capW * 0.52, capBase)
-    const b1 = cp(capW * 0.52, capBase)
-    const b2 = cp(capW * 0.55, capBase + brimH)
-    const b3 = cp(-capW * 0.55, capBase + brimH)
-    g.moveTo(b0.x, b0.y)
-    g.lineTo(b1.x, b1.y)
-    g.lineTo(b2.x, b2.y)
-    g.lineTo(b3.x, b3.y)
+    const f0 = cp(capW * 0.18, capBase - capH * 0.02)
+    g.moveTo(f0.x, f0.y)
+    const f1 = cp(capW * 0.62, capBase + capH * 0.02)
+    const f2 = cp(capW * 0.66, capBase + capH * 0.22)
+    quadFrom(g, f0.x, f0.y, f1.x, f1.y, f2.x, f2.y)
+    const f3 = cp(capW * 0.34, capBase + capH * 0.18)
+    quadFrom(g, f2.x, f2.y, f3.x, f3.y, f0.x, f0.y)
   }
   g.closePath()
   g.fillPath()
-  g.lineStyle(out * 0.7, INK, 1)
+  g.lineStyle(out * 0.65, INK, 1)
   g.strokePath()
 
-  // Cross-dash stitching on the crown.
-  g.lineStyle(Math.max(1.5, ink * 0.75), pal.capBrim, 0.95)
+  // Small cross stitching on the crown.
+  g.lineStyle(Math.max(1.5, ink * 0.7), pal.capBrim, 0.95)
   {
-    const c0 = cp(-capW * 0.12, capBase - capH * 0.5)
-    const c1 = cp(capW * 0.1, capBase - capH * 0.42)
-    const c2 = cp(-capW * 0.02, capBase - capH * 0.62)
-    const c3 = cp(capW * 0.02, capBase - capH * 0.32)
+    const c0 = cp(-capW * 0.14, capBase - capH * 0.5)
+    const c1 = cp(capW * 0.06, capBase - capH * 0.42)
+    const c2 = cp(-capW * 0.05, capBase - capH * 0.62)
+    const c3 = cp(capW * 0.0, capBase - capH * 0.34)
     g.beginPath()
     g.moveTo(c0.x, c0.y)
     g.lineTo(c1.x, c1.y)
@@ -1706,10 +1761,10 @@ export function drawDrunkoBall(
     g.lineTo(c3.x, c3.y)
     g.strokePath()
   }
-  g.fillStyle(0xffffff, 0.18)
+  g.fillStyle(0xffffff, 0.16)
   {
-    const h = cp(-capW * 0.18, capBase - capH * 0.55)
-    g.fillEllipse(h.x, h.y, capW * 0.4, capH * 0.3)
+    const h = cp(-capW * 0.2, capBase - capH * 0.6)
+    g.fillEllipse(h.x, h.y, capW * 0.36, capH * 0.32)
   }
 }
 
