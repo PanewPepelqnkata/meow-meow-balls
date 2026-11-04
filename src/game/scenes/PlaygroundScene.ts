@@ -1157,7 +1157,7 @@ export class PlaygroundScene extends Phaser.Scene {
   private readonly overWatch = new GameOverWatch()
 
   private checkGameOver(deltaMs: number): void {
-    if (this.gameOver || this.shake.isActive) return
+    if (this.gameOver) return
     const height = this.walls.height
     const outside: number[] = []
     for (const ball of this.balls.getBalls()) {

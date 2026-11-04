@@ -2,6 +2,7 @@ import Matter from 'matter-js'
 import { SHAKE_ABILITY } from '../../config/shakeAbility'
 import { STAGE } from '../../config/stage'
 import { CONTAINER, containerBounds } from '../../config/container'
+import { isOutsideContainer } from '../../config/gameOver'
 import { createWallBody } from './ContainerBodies'
 import type { SoftBallManager } from './SoftBallManager'
 
@@ -212,8 +213,12 @@ export class ShakeManager {
     if (!this.manager) return
 
     const balls = this.manager.getBalls()
+    const height = CONTAINER.height
     for (const b of balls) {
       if (b.state === 'removed') continue
+      // Skip balls already outside the container — let them fall and lose
+      const c = this.manager.centroid(b.id)
+      if (c && isOutsideContainer(c, height)) continue
       this.manager.wakeBall(b.id)
 
       // Random lateral variation per ball so balls mix and bounce off each other
