@@ -200,6 +200,13 @@ export function ballOutlineWidth(r: number): number {
   return Math.max(3, Math.min(7, r * 0.16))
 }
 
+/** Outline width for collection thumbnails — thinner at small radii so the
+ * art stays readable. Scales linearly with no floor, capped lower than the
+ * gameplay outline. */
+export function collectionOutlineWidth(r: number): number {
+  return Math.max(1, Math.min(2.5, r * 0.07))
+}
+
 /**
  * Radially displace a contour by the ball's fixed low-frequency wobble and
  * smooth once. Used by the gameplay renderer (live simulated contour as
@@ -652,6 +659,7 @@ export function drawSharkBall(
   panic = 0,
   gaze?: { x: number; y: number },
   seed = 9,
+  thumbnail = false,
 ): void {
   const pal = SHARK_PALETTES[variant % SHARK_PALETTES.length]!
   const look = ballLookFor(9, seed)
@@ -918,7 +926,7 @@ export function drawSharkBall(
   g.fillEllipse(cx + eyeDx + r * 0.22, eyeY + r * 0.34, r * 0.44, r * 0.24)
 
   // ---- THE INK OUTLINE — the contour itself, over everything. ----
-  g.lineStyle(ballOutlineWidth(r), INK, 1)
+  g.lineStyle(thumbnail ? collectionOutlineWidth(r) : ballOutlineWidth(r), INK, 1)
   if (poly && poly.length >= 3) {
     g.strokePoints(poly as unknown as Phaser.Math.Vector2[], true, true)
   } else {
@@ -984,6 +992,7 @@ export function drawPigBall(
   panic = 0,
   gaze?: { x: number; y: number },
   seed = 9,
+  thumbnail = false,
 ): void {
   const pal = PIG_PALETTES[variant % PIG_PALETTES.length]!
   const look = ballLookFor(9, seed)
@@ -1220,7 +1229,7 @@ export function drawPigBall(
   }
 
   // ---- THE INK OUTLINE — the contour itself, over everything. ----
-  g.lineStyle(ballOutlineWidth(r), INK, 1)
+  g.lineStyle(thumbnail ? collectionOutlineWidth(r) : ballOutlineWidth(r), INK, 1)
   if (poly && poly.length >= 3) {
     g.strokePoints(poly as unknown as Phaser.Math.Vector2[], true, true)
   } else {
@@ -1534,11 +1543,12 @@ export function drawRoboBall(
   gaze?: { x: number; y: number },
   seed = 9,
   ballId?: number,
+  thumbnail = false,
 ): void {
   const pal = ROBO_PALETTES[variant % ROBO_PALETTES.length]!
   const look = ballLookFor(9, seed)
   const ink = Math.max(2, r * 0.05)
-  const out = ballOutlineWidth(r)
+  const out = thumbnail ? collectionOutlineWidth(r) : ballOutlineWidth(r)
   const now = Date.now() / 1000
   const nowMs = Date.now()
   // The easter-egg expression (wink) rides the same timeline as the
@@ -1904,11 +1914,12 @@ export function drawDrunkoBall(
   gaze?: { x: number; y: number },
   seed = 9,
   bodyAngle = 0,
+  thumbnail = false,
 ): void {
   const pal = DRUNKO_PALETTES[variant % DRUNKO_PALETTES.length]!
   const look = ballLookFor(9, seed)
   const ink = Math.max(2, r * 0.05)
-  const out = ballOutlineWidth(r)
+  const out = thumbnail ? collectionOutlineWidth(r) : ballOutlineWidth(r)
   const now = Date.now() / 1000
   // Fear takes precedence over the shared easter-egg expression timeline.
   const expr = panic > 0.45 ? 'normal' : expressionAt(seed, now * 1000)
@@ -2455,6 +2466,7 @@ export function drawCrabBall(
   panic = 0,
   gaze?: { x: number; y: number },
   seed = 10,
+  thumbnail = false,
 ): void {
   void seed
   const pal = CRAB_PALETTES[variant % CRAB_PALETTES.length]!
@@ -2602,7 +2614,7 @@ export function drawCrabBall(
   }
 
   // ---- THE INK OUTLINE — the contour itself, over everything. ----
-  g.lineStyle(ballOutlineWidth(r), INK, 1)
+  g.lineStyle(thumbnail ? collectionOutlineWidth(r) : ballOutlineWidth(r), INK, 1)
   if (poly && poly.length >= 3) {
     g.strokePoints(poly as unknown as Phaser.Math.Vector2[], true, true)
   } else {
@@ -2658,15 +2670,16 @@ export function drawTier9Ball(
   theme: Tier9Theme = tier9Theme(),
   bodyAngle = 0,
   ballId?: number,
+  thumbnail = false,
 ): void {
   if (theme === 'pig') {
-    drawPigBall(g, cx, cy, r, variant, poly, panic, gaze, seed)
+    drawPigBall(g, cx, cy, r, variant, poly, panic, gaze, seed, thumbnail)
   } else if (theme === 'drunko') {
-    drawDrunkoBall(g, cx, cy, r, variant, poly, panic, gaze, seed, bodyAngle)
+    drawDrunkoBall(g, cx, cy, r, variant, poly, panic, gaze, seed, bodyAngle, thumbnail)
   } else if (theme === 'robo') {
-    drawRoboBall(g, cx, cy, r, variant, poly, panic, gaze, seed, ballId)
+    drawRoboBall(g, cx, cy, r, variant, poly, panic, gaze, seed, ballId, thumbnail)
   } else {
-    drawSharkBall(g, cx, cy, r, variant, poly, panic, gaze, seed)
+    drawSharkBall(g, cx, cy, r, variant, poly, panic, gaze, seed, thumbnail)
   }
 }
 
@@ -2690,9 +2703,10 @@ export function drawCollectibleBall(
   theme?: string,
   bodyAngle = 0,
   ballId?: number,
+  thumbnail = false,
 ): void {
   if (tier === 10) {
-    drawCrabBall(g, cx, cy, r, variant, poly, panic, gaze, seed)
+    drawCrabBall(g, cx, cy, r, variant, poly, panic, gaze, seed, thumbnail)
     return
   }
   if (tier !== 9) {
@@ -2700,6 +2714,6 @@ export function drawCollectibleBall(
   }
   drawTier9Ball(g, cx, cy, r, variant, poly, panic, gaze, seed,
     theme === 'shark' || theme === 'pig' || theme === 'drunko' || theme === 'robo' ? theme : tier9Theme(),
-    bodyAngle, ballId)
+    bodyAngle, ballId, thumbnail)
 }
 

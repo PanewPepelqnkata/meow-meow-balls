@@ -404,7 +404,7 @@ export class CollectionBookView {
       // Collectible art draws its own details inside the radius; use the
       // same extent as core tiers so the character fills the card.
       const extent = 1.1
-      const r = Math.min(34, w / (extent * 3), (h - 50) / (extent * 2))
+      const r = Math.min(52, w / (extent * 2.2), (h - 50) / (extent * 1.8))
       const centerY = y + 24 + (h - 46) / 2
       this.addBall(leaf, x + w / 2, centerY, r, tier, palette, known, theme)
       if (known) this.drawInkStamp(leaf, x + w / 2, y + h - 17, status, CHAPTERS[collectible ? tier - 8 : 0]!.color, Math.min(w - 12, 88))
@@ -429,7 +429,7 @@ export class CollectionBookView {
     if (tier >= 9 && theme) {
       const draw = (): void => {
         g.clear()
-        drawCollectibleBall(g, x, y, r, tier, variant, undefined, 0, undefined, seed, theme)
+        drawCollectibleBall(g, x, y, r, tier, variant, undefined, 0, undefined, seed, theme, 0, undefined, true)
       }
       draw()
       leaf.redraws.push(draw)
