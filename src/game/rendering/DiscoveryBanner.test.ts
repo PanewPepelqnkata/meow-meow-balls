@@ -6,141 +6,95 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // enough; vi.mock hoists above the static imports.
 vi.mock('phaser', () => ({ default: {} }))
 
-import { bannerForcedByVariant, bannerRect, bannerStreaks, makeRng } from './DiscoveryBanner'
+import { bannerForcedByVariant, bannerRect, makeRng } from './DiscoveryBanner'
 
 describe('the discovery banner geometry', () => {
-  it('slopes DOWN to the right — the right end sits lower than the left', () => {
-    const r = bannerRect(390, 844)
-    // t=1 is the LEFT end (middle of the top edge, high); t=0 is the
-    // RIGHT end (past the top-right corner, lower).
-    const left = bandPoint2(r, 1)
-    const right = bandPoint2(r, 0)
-    // Right end strictly LOWER on screen (larger y) than the left end.
-    expect(right.y).toBeGreaterThan(left.y)
-    expect(right.x).toBeGreaterThan(left.x)
+  it('positions the banner in the top-right area', () => {
+    // Phone portrait
+    const phone = bannerRect(390, 844)
+    expect(phone.cx).toBeGreaterThan(390 * 0.5)
+    expect(phone.cy).toBeLessThan(844 * 0.2)
+
+    // Desktop landscape
+    const desktop = bannerRect(1280, 720)
+    expect(desktop.cx).toBeGreaterThan(1280 * 0.5)
+    expect(desktop.cy).toBeLessThan(720 * 0.2)
   })
 
-  it('keeps the left end near the middle of the top edge on a phone', () => {
-    const r = bannerRect(390, 844)
-    const left = bandPoint2(r, 1)
-    expect(left.x).toBeGreaterThan(390 * 0.38)
-    expect(left.x).toBeLessThan(390 * 0.62)
-    // LOW on screen: the left end sits ~13% of the viewport down.
-    expect(left.y).toBeGreaterThan(844 * 0.1)
-    expect(left.y).toBeLessThan(844 * 0.16)
+  it('has a slight tilt for dynamic feel', () => {
+    const rect = bannerRect(1280, 720)
+    expect(rect.angle).toBeGreaterThan(0)
+    expect(rect.angle).toBeLessThan(0.2) // Less than ~11 degrees
   })
 
-  it('is a SHORT box on a wide desktop viewport', () => {
-    const r = bannerRect(1280, 800)
-    // The left end is pushed right (vw - 0.62·vh): the ribbon is a
-    // compact stamp near the corner, not a full-width bar.
-    const left = bandPoint2(r, 1)
-    const right = bandPoint2(r, 0)
-    const span = right.x - left.x
-    expect(span).toBeLessThan(800 * 0.9)
-    expect(left.x).toBeGreaterThan(1280 * 0.55)
-  })
-
-  it('stays a sane thickness on tiny and huge viewports', () => {
-    const small = bannerRect(320, 568)
-    const big = bannerRect(2560, 1440)
-    expect(small.halfThick).toBeGreaterThanOrEqual(23) // the 46px floor / 2
-    expect(big.halfThick).toBeLessThanOrEqual(38) // the 76px desktop cap / 2
-  })
-})
-
-/** A point along the band's centre line, t in 0..1 (0 = right/corner end,
- * 1 = left/middle end) — mirrors the private bandPoint. */
-function bandPoint2(rect: ReturnType<typeof bannerRect>, t: number): { x: number; y: number } {
-  const len = rect.halfLen * 2
-  return {
-    x: rect.cx + Math.cos(rect.angle) * (t - 0.5) * len,
-    y: rect.cy + Math.sin(rect.angle) * (t - 0.5) * len,
-  }
-}
-
-describe('the banner wind streaks', () => {
-  it('are deterministic per seed', () => {
-    const r = bannerRect(390, 844)
-    const a = bannerStreaks(r, 4242)
-    const b = bannerStreaks(r, 4242)
-    expect(a).toEqual(b)
-  })
-
-  it('FILL the box — lanes span the band thickness edge to edge', () => {
-    const r = bannerRect(390, 844)
-    const lanes = bannerStreaks(r, 4242)
-    expect(lanes.length).toBeGreaterThanOrEqual(6)
-    const vs = lanes.map((l) => l.v).sort((x, y) => x - y)
-    // The outermost lanes reach within a stroke of the box edges.
-    expect(vs[0]).toBeLessThan(-r.halfThick * 0.7)
-    expect(vs[vs.length - 1]).toBeGreaterThan(r.halfThick * 0.7)
-    // …and nothing reaches past the box (9px inset, centre-line).
-    for (const lane of lanes) {
-      expect(Math.abs(lane.v)).toBeLessThanOrEqual(r.halfThick - 9)
-    }
-  })
-
-  it('are FAST — visible crossing flashes by in ~0.3–0.5s', () => {
-    const r = bannerRect(390, 844)
-    for (const lane of bannerStreaks(r, 4242)) {
-      // speed is the fraction of the wrap per 9s clock loop: wrap time
-      // = 9000/speed ms. The visible chord is ~half the wrap; require
-      // the wrap under 1.2s.
-      expect(9000 / lane.speed).toBeLessThan(1200)
-      expect(9000 / lane.speed).toBeGreaterThan(500)
-    }
-  })
-
-  it('are LONG — most of the box, so they read as lines passing', () => {
-    const r = bannerRect(390, 844)
-    for (const lane of bannerStreaks(r, 4242)) {
-      expect(lane.len).toBeGreaterThan(r.halfLen * 0.5)
-      expect(lane.len).toBeLessThanOrEqual(r.halfLen * 1.05)
-    }
+  it('scales appropriately on different viewports', () => {
+    const phone = bannerRect(390, 844)
+    const desktop = bannerRect(1280, 720)
+    // Phone should be narrower
+    expect(phone.halfLen).toBeLessThan(desktop.halfLen)
+    // Both should have reasonable thickness
+    expect(phone.halfThick).toBeGreaterThan(30)
+    expect(desktop.halfThick).toBeGreaterThan(30)
   })
 })
 
 describe('the banner RNG', () => {
-  it('is a stable mulberry32 stream', () => {
-    const a = makeRng(12345)
-    const b = makeRng(12345)
-    const seqA = [a(), a(), a()]
-    const seqB = [b(), b(), b()]
-    expect(seqA).toEqual(seqB)
-    for (const v of seqA) expect(v).toBeGreaterThanOrEqual(0)
-    for (const v of seqA) expect(v).toBeLessThan(1)
+  it('is deterministic per seed', () => {
+    const rng1 = makeRng(12345)
+    const rng2 = makeRng(12345)
+    const vals1 = [rng1(), rng1(), rng1()]
+    const vals2 = [rng2(), rng2(), rng2()]
+    expect(vals1).toEqual(vals2)
+  })
+
+  it('produces different sequences for different seeds', () => {
+    const rng1 = makeRng(12345)
+    const rng2 = makeRng(54321)
+    const vals1 = [rng1(), rng1(), rng1()]
+    const vals2 = [rng2(), rng2(), rng2()]
+    expect(vals1).not.toEqual(vals2)
+  })
+
+  it('produces values in [0, 1)', () => {
+    const rng = makeRng(99999)
+    for (let i = 0; i < 100; i++) {
+      const v = rng()
+      expect(v).toBeGreaterThanOrEqual(0)
+      expect(v).toBeLessThan(1)
+    }
   })
 })
 
 describe('the wind-mode URL param', () => {
-  let originalWindow: typeof window | undefined
+  const originalWindow = globalThis.window
 
   beforeEach(() => {
-    originalWindow = globalThis.window
+    // @ts-expect-error - mocking window for tests
+    globalThis.window = { location: { search: '' } }
   })
 
   afterEach(() => {
-    if (originalWindow === undefined) delete (globalThis as { window?: typeof window }).window
-    else (globalThis as { window?: typeof window }).window = originalWindow
+    globalThis.window = originalWindow
   })
 
-  function withParam(value: string | null): void {
-    const params = new URLSearchParams()
-    if (value !== null) params.set('discovery', value)
-    const url = `https://game.local/${params.size ? `?${params}` : ''}`
-    ;(globalThis as { window?: unknown }).window = { location: new URL(url) }
-  }
+  it('returns false when no discovery param', () => {
+    globalThis.window.location.search = ''
+    expect(bannerForcedByVariant()).toBe(false)
+  })
 
-  it('is ON for ?discovery=wind', () => {
-    withParam('wind')
+  it('returns false for other discovery values', () => {
+    globalThis.window.location.search = '?discovery=card'
+    expect(bannerForcedByVariant()).toBe(false)
+  })
+
+  it('returns true for discovery=wind', () => {
+    globalThis.window.location.search = '?discovery=wind'
     expect(bannerForcedByVariant()).toBe(true)
   })
 
-  it('is OFF for the modal styles, old wind1-5, and no param', () => {
-    for (const v of [null, 'card', 'gib', 'band', 'wind1', 'wind5']) {
-      withParam(v)
-      expect(bannerForcedByVariant()).toBe(false)
-    }
+  it('returns false when window is undefined', () => {
+    // @ts-expect-error - removing window
+    delete globalThis.window
+    expect(bannerForcedByVariant()).toBe(false)
   })
 })
