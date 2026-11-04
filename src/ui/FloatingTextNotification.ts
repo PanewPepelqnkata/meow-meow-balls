@@ -1,4 +1,5 @@
 import Phaser from 'phaser'
+import { hudText } from './Typography'
 
 /**
  * Floating text notification system for in-game messages.
@@ -12,6 +13,7 @@ export class FloatingTextNotification {
     tween: Phaser.Tweens.Tween
   }> = []
   private baseY: number
+  private lastShowTime = 0
 
   constructor(scene: Phaser.Scene, baseY: number) {
     this.scene = scene
@@ -21,21 +23,25 @@ export class FloatingTextNotification {
   /**
    * Show a notification message. Stacks on top of existing notifications.
    * Text floats upward and fades out over 4 seconds.
+   * Debounces rapid calls (300ms) to prevent double-firing.
    */
   show(message: string, x: number): void {
+    const now = Date.now()
+    if (now - this.lastShowTime < 300) return // Debounce rapid clicks
+    this.lastShowTime = now
+
     // Calculate stack position (each notification is 40px above the previous)
     const stackOffset = this.notifications.length * 40
     const y = this.baseY - stackOffset
 
-    const text = this.scene.add.text(x, y, message, {
-      fontFamily: 'Arial, sans-serif',
-      fontSize: '18px',
-      color: '#ffffff',
-      stroke: '#000000',
-      strokeThickness: 4,
-      align: 'center',
+    // Use Lilita One font with blue accent color
+    const text = hudText(this.scene, x, y, message, 1, {
+      color: '#4fc3f7', // Blue accent
+      size: 20,
+      stroke: 3,
+      origin: [0.5, 0.5],
+      shadow: true,
     })
-    text.setOrigin(0.5, 0.5)
     text.setDepth(1000) // Above everything
 
     // Float upward and fade out over 4 seconds

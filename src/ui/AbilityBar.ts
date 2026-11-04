@@ -55,11 +55,17 @@ export class AbilityBar {
     const rowW = n * l.abilities.size + (n - 1) * l.abilities.gap
     const startX = l.abilities.centerX ? (l.vw - rowW) / 2 : l.abilities.startX
 
-    // Initialize guest notification system (positioned above the ability bar)
+    // Position notification above the container (not the ability bar)
+    // Container top in stage coords is interiorCorners().topLeft.y
+    // For portrait: convert stage Y to viewport Y using the world zoom
+    const containerTopStage = 765 // CONTAINER.topY from config
+    const containerTopVp = l.world ? (containerTopStage - l.world.centerY) * l.world.zoom + l.vh / 2 : l.abilities.startY - 100
+    const notificationY = Math.max(60, containerTopVp - 40) // Above container, min 60px from top
+
     if (!this.guestNotification) {
-      this.guestNotification = new FloatingTextNotification(this.scene, l.abilities.startY - 20)
+      this.guestNotification = new FloatingTextNotification(this.scene, notificationY)
     } else {
-      this.guestNotification.setBaseY(l.abilities.startY - 20)
+      this.guestNotification.setBaseY(notificationY)
     }
 
     // Guests can't use abilities - show notification on press
