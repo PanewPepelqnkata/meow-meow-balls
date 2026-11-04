@@ -1672,6 +1672,7 @@ export function drawDrunkoBall(
   const capH = r * 0.72
   const capBase = -r * 0.3
   // Keep the cap attached to the LIVE contour so squash/rotation stay glued.
+  // The cap sits directly on the head — no gap, no floating.
   let capAnchorY = -r * 0.58
   if (poly && poly.length >= 3) {
     let topLocalY = Infinity
@@ -1681,7 +1682,7 @@ export function drawDrunkoBall(
       const localY = -dx * sinA + dy * cosA
       if (localY < topLocalY) topLocalY = localY
     }
-    if (Number.isFinite(topLocalY)) capAnchorY = topLocalY - r * 0.04 - capBase
+    if (Number.isFinite(topLocalY)) capAnchorY = topLocalY - capBase
   }
   const capPos = rot(r * 0.02, capAnchorY)
   const capCx = capPos.x
@@ -1713,6 +1714,20 @@ export function drawDrunkoBall(
   }
   g.closePath()
   g.fillPath()
+  // Contact shadow beneath the cap so it reads as resting on the head.
+  g.fillStyle(0x000000, 0.12)
+  g.beginPath()
+  {
+    const s0 = cp(-capW * 0.44, capBase + capH * 0.06)
+    g.moveTo(s0.x, s0.y)
+    const s1 = cp(0, capBase + capH * 0.18)
+    const s2 = cp(capW * 0.44, capBase + capH * 0.04)
+    quadFrom(g, s0.x, s0.y, s1.x, s1.y, s2.x, s2.y)
+    const s3 = cp(0, capBase + capH * 0.22)
+    quadFrom(g, s2.x, s2.y, s3.x, s3.y, s0.x, s0.y)
+  }
+  g.closePath()
+  g.fillPath()
   g.lineStyle(out * 0.85, INK, 1)
   g.strokePath()
 
@@ -1735,18 +1750,18 @@ export function drawDrunkoBall(
   }
   g.strokePath()
 
-  // Visor: thick curved projection forward/right with a darker underside.
-  const visorW = capW * 0.72
-  const visorH = capH * 0.28
+  // Visor: gently curved, moderate projection, darker underside.
+  const visorW = capW * 0.58
+  const visorH = capH * 0.24
   g.fillStyle(pal.capBrim, 1)
   g.beginPath()
   {
-    const v0 = cp(capW * 0.08, capBase + capH * 0.02)
+    const v0 = cp(capW * 0.06, capBase + capH * 0.04)
     g.moveTo(v0.x, v0.y)
-    const v1 = cp(capW * 0.08 + visorW * 0.55, capBase - visorH * 0.15)
-    const v2 = cp(capW * 0.08 + visorW, capBase + visorH * 0.35)
+    const v1 = cp(capW * 0.06 + visorW * 0.5, capBase - visorH * 0.2)
+    const v2 = cp(capW * 0.06 + visorW, capBase + visorH * 0.3)
     quadFrom(g, v0.x, v0.y, v1.x, v1.y, v2.x, v2.y)
-    const v3 = cp(capW * 0.08 + visorW * 0.5, capBase + visorH * 0.55)
+    const v3 = cp(capW * 0.06 + visorW * 0.45, capBase + visorH * 0.5)
     quadFrom(g, v2.x, v2.y, v3.x, v3.y, v0.x, v0.y)
   }
   g.closePath()
