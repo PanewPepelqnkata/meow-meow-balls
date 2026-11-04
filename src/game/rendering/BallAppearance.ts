@@ -207,6 +207,12 @@ export function collectionOutlineWidth(r: number): number {
   return Math.max(1, Math.min(2.5, r * 0.07))
 }
 
+/** Ink width for collection thumbnails — thinner internal details (eyes,
+ * nose, mouth, etc.) so small balls stay readable. */
+export function collectionInkWidth(r: number): number {
+  return Math.max(0.8, Math.min(1.8, r * 0.035))
+}
+
 /**
  * Radially displace a contour by the ball's fixed low-frequency wobble and
  * smooth once. Used by the gameplay renderer (live simulated contour as
@@ -663,7 +669,7 @@ export function drawSharkBall(
 ): void {
   const pal = SHARK_PALETTES[variant % SHARK_PALETTES.length]!
   const look = ballLookFor(9, seed)
-  const ink = Math.max(2, r * 0.05)
+  const ink = thumbnail ? collectionInkWidth(r) : Math.max(2, r * 0.05)
   // The easter-egg expression (wink) rides the same timeline as the
   // other balls — suppressed while panicking (fear wins).
   const now = Date.now() / 1000
@@ -996,7 +1002,7 @@ export function drawPigBall(
 ): void {
   const pal = PIG_PALETTES[variant % PIG_PALETTES.length]!
   const look = ballLookFor(9, seed)
-  const ink = Math.max(2, r * 0.05)
+  const ink = thumbnail ? collectionInkWidth(r) : Math.max(2, r * 0.05)
   const now = Date.now() / 1000
   // The easter-egg expression (wink) rides the same timeline as the
   // other balls — suppressed while panicking (fear wins).
@@ -1137,7 +1143,7 @@ export function drawPigBall(
     const py = tailY0 + Math.sin(t * turns * Math.PI * 2 + Math.PI / 2) * amp - t * r * 0.1 * tailS
     tailPts.push({ x: px, y: py })
   }
-  g.lineStyle(Math.max(2.5, r * 0.07), INK, 1)
+  g.lineStyle(thumbnail ? collectionInkWidth(r) : Math.max(2.5, r * 0.07), INK, 1)
   g.strokePoints(tailPts as unknown as Phaser.Math.Vector2[], false, false)
 
   // ---- ROSY CHEEKS REMOVED (user: cheek circles don't look good). ----
@@ -1547,7 +1553,7 @@ export function drawRoboBall(
 ): void {
   const pal = ROBO_PALETTES[variant % ROBO_PALETTES.length]!
   const look = ballLookFor(9, seed)
-  const ink = Math.max(2, r * 0.05)
+  const ink = thumbnail ? collectionInkWidth(r) : Math.max(2, r * 0.05)
   const out = thumbnail ? collectionOutlineWidth(r) : ballOutlineWidth(r)
   const now = Date.now() / 1000
   const nowMs = Date.now()
@@ -1918,7 +1924,7 @@ export function drawDrunkoBall(
 ): void {
   const pal = DRUNKO_PALETTES[variant % DRUNKO_PALETTES.length]!
   const look = ballLookFor(9, seed)
-  const ink = Math.max(2, r * 0.05)
+  const ink = thumbnail ? collectionInkWidth(r) : Math.max(2, r * 0.05)
   const out = thumbnail ? collectionOutlineWidth(r) : ballOutlineWidth(r)
   const now = Date.now() / 1000
   // Fear takes precedence over the shared easter-egg expression timeline.
@@ -2470,7 +2476,7 @@ export function drawCrabBall(
 ): void {
   void seed
   const pal = CRAB_PALETTES[variant % CRAB_PALETTES.length]!
-  const ink = Math.max(2.5, r * 0.055)
+  const ink = thumbnail ? collectionInkWidth(r) : Math.max(2.5, r * 0.055)
   const now = Date.now()
 
   // ---- THE GLOW — a clean radial stack, warm crab-orange. ----
@@ -2560,7 +2566,7 @@ export function drawCrabBall(
       const phase = now * 0.005 + i * 2.1 + (side > 0 ? Math.PI : 0)
       const tipX = baseX + side * r * (0.3 - t * 0.08)
       const tipY = baseY + r * 0.3 + Math.sin(phase) * r * 0.04 * (1 + panic)
-      g.lineStyle(Math.max(2, r * 0.05), pal.claw, 1)
+      g.lineStyle(thumbnail ? collectionInkWidth(r) : Math.max(2, r * 0.05), pal.claw, 1)
       g.beginPath()
       g.moveTo(baseX, baseY)
       g.lineTo(baseX + side * r * 0.14, baseY + r * 0.06)
@@ -2628,12 +2634,12 @@ export function drawCrabBall(
     const stalkBaseY = cy - r * 0.78
     const stalkTopY = stalkBaseY - r * 0.26
     // Stalk: thick, tapering.
-    g.lineStyle(Math.max(3, r * 0.085), pal.shell, 1)
+    g.lineStyle(thumbnail ? collectionInkWidth(r) : Math.max(3, r * 0.085), pal.shell, 1)
     g.beginPath()
     g.moveTo(stalkX, stalkBaseY)
     g.lineTo(stalkX, stalkTopY)
     g.strokePath()
-    g.lineStyle(Math.max(1.5, r * 0.04), INK, 1)
+    g.lineStyle(thumbnail ? collectionInkWidth(r) : Math.max(1.5, r * 0.04), INK, 1)
     g.strokePath()
     // Eyeball: white + ink rim, pupil with gaze, highlight.
     const eyeR = r * (0.19 - 0.02 * panic)
@@ -2645,7 +2651,7 @@ export function drawCrabBall(
     g.fillCircle(stalkX + gx, stalkTopY + gy, eyeR * 0.5)
     g.fillStyle(0xffffff, 0.9)
     g.fillCircle(stalkX - eyeR * 0.28, stalkTopY - eyeR * 0.3, eyeR * 0.2)
-    g.lineStyle(Math.max(1.2, r * 0.035), INK, 1)
+    g.lineStyle(thumbnail ? collectionInkWidth(r) : Math.max(1.2, r * 0.035), INK, 1)
     g.strokeCircle(stalkX, stalkTopY, eyeR)
   }
 }
