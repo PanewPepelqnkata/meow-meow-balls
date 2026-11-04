@@ -1,4 +1,5 @@
 import Phaser from 'phaser'
+import { MAX_RENDER_DPR } from '../config/stage'
 
 /**
  * Phase 2.11.0 typography (spec §4): ONE display family — Lilita One, a
@@ -44,7 +45,9 @@ export function hudText(
   opts: TextOptions,
 ): Phaser.GameObjects.Text {
   const stroke = opts.stroke ?? 3
-  const dpr = Math.max(2, Math.min(window.devicePixelRatio || 1, 3))
+  // Text canvas matches the render buffer (MAX_RENDER_DPR), floored at 2
+  // so DPR-1 desktop text is still supersampled.
+  const dpr = Math.max(2, Math.min(window.devicePixelRatio || 1, MAX_RENDER_DPR))
   const t = scene.add
     .text(Math.round(x), Math.round(y), initial, {
       fontFamily: FONT_FAMILY,

@@ -1085,10 +1085,13 @@ export class BackgroundTheme {
     this.updateGradImage()
     this.bakeThemeArt(this.currentTheme)
     // Restore live-layer visibility: the bake created the prewarmed
-    // theme's art Image VISIBLE (Phaser default) — without this, a
-    // full-screen 780×1688 stale layer draws every frame from boot
-    // until the theme transition.
+    // theme's art Image VISIBLE (Phaser default), and drawGrid() showed
+    // the grid because currentTheme was the prewarmed theme — without
+    // this, full-screen 780×1688 stale layers draw every frame from boot
+    // until the theme transition. The grid keeps its prewarmed bake (the
+    // space transition reuses it); only its visibility is restored.
     this.applyCloudAlphas()
+    this.gridImage?.setVisible((this.toTheme ?? this.currentTheme) === 'space')
   }
 
   /**

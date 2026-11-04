@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { STAGE } from '../config/stage'
+import { MAX_RENDER_DPR, STAGE } from '../config/stage'
 import { resolveViewportContainer } from '../config/container'
 import { BackgroundScene } from './scenes/BackgroundScene'
 import { StartIntroScene } from './scenes/StartIntroScene'
@@ -74,15 +74,10 @@ export function createGame(parent: HTMLElement): Phaser.Game {
     w: parent.clientWidth || window.innerWidth,
     h: parent.clientHeight || window.innerHeight,
   })
-  // Full-device pixel ratio: iPhones (DPR 3) were capped at 2, so the
-  // 390×3 physical buffer was rendered from a 390×2 canvas and stretched —
-  // the pixelated look on Retina. Vector/ink art scales cleanly; the
-  // perf cost is bounded by the soft-body particle count, not fill rate.
-  // PERF (iPhone 14 Pro readout: 42fps at dpr 3): cap the render buffer
-  // at dpr 3 — 1170×2532 instead of 780×1688. Background art is already
-  // dpr-2-baked; ball sprites are filtered textures; the visible cost is
-  // a slightly softer composite on close inspection. User-approved tradeoff.
-  const dpr = (): number => Math.min(window.devicePixelRatio || 1, 3)
+  // Render-buffer DPR: capped at MAX_RENDER_DPR (see config/stage.ts for
+  // the fill-rate measurement). DPR-3 iPhones render 780×1688 and the
+  // canvas element is CSS-styled back to the viewport size.
+  const dpr = (): number => Math.min(window.devicePixelRatio || 1, MAX_RENDER_DPR)
   let lastAppliedW = 0
   let lastAppliedH = 0
   let lastAppliedDpr = 0

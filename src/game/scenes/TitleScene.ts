@@ -10,6 +10,7 @@ import {
   restContour,
 } from '../rendering/BallAppearance'
 import { BALL_TIERS, getTier } from '../../config/ballTiers'
+import { MAX_RENDER_DPR } from '../../config/stage'
 import type { BackgroundScene } from './BackgroundScene'
 import type { ThemeName } from '../rendering/BackgroundTheme'
 import { loadSave, resetSave, setThemeSetting } from '../state/save'
@@ -2855,7 +2856,7 @@ function leaderboardAvatarKey(
   seed: number,
   displaySize: number,
 ): string {
-  const dpr = Math.max(2, Math.min(window.devicePixelRatio || 1, 3))
+  const dpr = Math.max(2, Math.min(window.devicePixelRatio || 1, MAX_RENDER_DPR))
   const textureSize = Math.ceil(displaySize * dpr)
   const theme = tier === 9 ? tier9Theme() : ''
   const variant = tier === 9 || tier === 10 ? variantIdFor(tier) : 0
