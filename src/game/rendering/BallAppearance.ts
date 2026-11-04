@@ -1569,16 +1569,19 @@ export function drawRoboBall(
   // ---- Antenna spring physics ----
   const ant = stepRoboAntennaSpring(ballId, seed, cx, cy, r, poly, panic, nowMs)
 
-  // ---- THE GLOW — soft radial stack, tinted lavender. Drawn FIRST. ----
+  // ---- THE GLOW — a faint atmospheric halo, drawn FIRST. Kept well
+  // OUTSIDE the body silhouette language: wide, very low alpha, so it
+  // reads as air/light — never as a second, larger purple body. (The
+  // previous stack reached 1.72r at cumulative alpha ~0.8 and looked
+  // like body fill spilling past the contour, especially the bottom
+  // semicircle.)
   const glowWobble = Math.sin(now * 0.7)
   const glowLayers: ReadonlyArray<{ rr: number; alpha: number }> = [
-    { rr: 1.72 + glowWobble * 0.03, alpha: 0.1 },
-    { rr: 1.5, alpha: 0.16 },
-    { rr: 1.3, alpha: 0.24 },
-    { rr: 1.12, alpha: 0.3 },
+    { rr: 1.42 + glowWobble * 0.02, alpha: 0.06 },
+    { rr: 1.26, alpha: 0.08 },
   ]
   for (const layer of glowLayers) {
-    g.fillStyle(pal.glow, layer.alpha + glowWobble * 0.02)
+    g.fillStyle(pal.glow, layer.alpha + glowWobble * 0.01)
     g.fillCircle(cx, cy, r * layer.rr)
   }
 
