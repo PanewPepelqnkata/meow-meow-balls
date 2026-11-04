@@ -1692,15 +1692,20 @@ export function drawRoboBall(
   g.lineStyle(btnOut, INK, 1)
   g.strokeCircle(btnX, btn2Y, btnR)
 
-  // ---- THE EYES — two large expressive eyes inside the screen. ----
+  // ---- THE EYES — the shared collection construction (white sclera +
+  // ink rim + ONE dark pupil + highlights), sized for the screen. The
+  // geometry comes from faceLayoutFor like every other ball; Robo only
+  // recenters the pair inside the cyan screen. Sclera is enlarged and the
+  // pupil shrunk relative to the old blobby pair so the white stays
+  // clearly visible — the same readable ratio the standard face uses.
   const L = faceLayoutFor(look, r, 1, gaze)
   const em = Math.min(1, panic)
   const up = 0.45 * em
   const faceCx = scrX + scrW * 0.52
   const eyeY = scrY + scrH * 0.46
-  const eyeDx = r * 0.238 * scaleX
-  const baseWa = r * 0.205 * scaleX
-  const baseWb = r * 0.225 * scaleY
+  const eyeDx = r * 0.245 * scaleX
+  const baseWa = r * 0.235 * scaleX
+  const baseWb = r * 0.26 * scaleY
   const curious = Math.sin(now * 0.31 + seed * 11) > 0.92 && panic < 0.2 ? 1.06 : 1
   for (const [i, e] of L.eyes.entries()) {
     const ex = faceCx + eyeDx * (i === 0 ? -1 : 1)
@@ -1711,7 +1716,7 @@ export function drawRoboBall(
       const lid: Array<{ x: number; y: number }> = []
       for (let s = 0; s <= 12; s++) {
         const u = -1 + (2 * s) / 12
-        lid.push({ x: ex + u * e.a * 0.85, y: ey - e.b * 0.05 + (1 - u * u) * e.b * 0.4 })
+        lid.push({ x: ex + u * baseWa * 0.85, y: ey - baseWb * 0.05 + (1 - u * u) * baseWb * 0.4 })
       }
       g.strokePoints(lid as unknown as Phaser.Math.Vector2[], false, false)
       continue
@@ -1722,13 +1727,16 @@ export function drawRoboBall(
     g.fillEllipse(ex, ey, wa * 2, wb * 2)
     g.lineStyle(e.rim, INK, 1)
     g.strokeEllipse(ex, ey, wa * 2, wb * 2)
-    const pb = e.pb * (1 - 0.35 * em)
-    const py = e.py * (1 - em) - up * (e.b - pb - e.rim * 0.5) * em
+    // Pupil: smaller than the layout default so the white sclera reads.
+    const pa = wa * 0.52
+    const pb = wb * 0.52 * (1 - 0.35 * em)
+    const px = e.px * (wa / Math.max(0.001, e.a))
+    const py = e.py * (wb / Math.max(0.001, e.b)) * (1 - em) - up * (wb - pb - e.rim * 0.5) * em
     g.fillStyle(INK, 1)
-    g.fillEllipse(ex + e.px, ey + py, e.pa * 2, pb * 2)
+    g.fillEllipse(ex + px, ey + py, pa * 2, pb * 2)
     g.fillStyle(0xffffff, 1)
-    g.fillEllipse(ex + e.px - e.pa * 0.32, ey + py - pb * 0.34, e.pa * 0.6, e.pa * 0.6, 24)
-    g.fillEllipse(ex + e.px - e.pa * 0.1, ey + py - pb * 0.38, e.pa * 0.24, e.pa * 0.24, 16)
+    g.fillEllipse(ex + px - pa * 0.32, ey + py - pb * 0.34, pa * 0.6, pa * 0.6, 24)
+    g.fillEllipse(ex + px - pa * 0.1, ey + py - pb * 0.38, pa * 0.24, pa * 0.24, 16)
   }
 
   // ---- THE MOUTH — small curved smile inside the screen. ----
@@ -1749,8 +1757,13 @@ export function drawRoboBall(
     g.strokeCircle(cx, cy, r)
   }
 
-  // ---- ANTENNAE — two curved stems with round yellow tips, drawn AFTER
-  // the body outline so the dome mount covers their bases cleanly. ----
+  // ---- ANTENNAE — a MATCHING pair of curved stems with round yellow
+  // tips, drawn AFTER the body outline so the dome mount covers their
+  // bases cleanly. Both stems share identical construction, thickness,
+  // taper and outline weight; they emerge from the same level on the dome
+  // and sit at a symmetric slight outward angle at rest. Only the spring
+  // deflection differs per side (idle sway / landing bend), so the pair
+  // always reads as one design.
   const domeCx = cx - r * 0.01
   const domeBaseY = topY + r * 0.11
   const domeW = r * 0.46
@@ -1758,22 +1771,26 @@ export function drawRoboBall(
   const stemBaseW = Math.max(4, r * 0.125)
   const stemTipW = Math.max(3.6, r * 0.105)
   const tipR = r * 0.145
+  const stemOut = Math.max(2, ink * 0.85)
 
   for (const s of [-1, 1]) {
     const sway = s < 0 ? ant.swayL : ant.swayR
     const bend = s < 0 ? ant.bendL : ant.bendR
+    // Shared anchor level on the dome, symmetric outward spacing.
     const baseX = domeCx + s * r * 0.11
     const baseY = domeBaseY - domeH * 0.55
-    // Rest tip offset (playful asymmetry: left tilts ~35°, right ~32°).
-    const restDx = s * r * (s < 0 ? 0.27 : 0.25)
-    const restDy = -r * (s < 0 ? 0.38 : 0.40)
+    // Symmetric rest pose: identical outward tilt + height on both sides.
+    const restDx = s * r * 0.26
+    const restDy = -r * 0.39
     // Apply spring deflection.
     const tipX = baseX + restDx + sway * r
     const tipY = baseY + restDy + bend * r
-    // Control point: bows gently outward, bends with spring.
+    // Control point: bows gently outward, bends with spring. Same curve
+    // shape both sides (mirrored), so the stems flex smoothly rather than
+    // rotate as rigid sticks.
     const ctrlX = baseX + restDx * 0.55 + sway * r * 0.45
     const ctrlY = baseY + restDy * 0.55 + bend * r * 0.35
-    // Stem: tapered curved ribbon.
+    // Stem: tapered curved ribbon (identical taper both sides).
     const stemW0 = stemBaseW / 2
     const stemW1 = stemTipW / 2
     g.fillStyle(pal.antenna, 1)
@@ -1784,14 +1801,14 @@ export function drawRoboBall(
     quadFrom(g, tipX + stemW1, tipY, ctrlX + stemW0 * 0.6, ctrlY, baseX + stemW0, baseY)
     g.closePath()
     g.fillPath()
-    g.lineStyle(Math.max(2, ink * 0.85), INK, 1)
+    g.lineStyle(stemOut, INK, 1)
     g.strokePath()
-    // Yellow tip: round ball at stem end.
+    // Yellow tip: round ball at stem end (same diameter + outline both).
     g.fillStyle(pal.antennaTip, 1)
     g.fillCircle(tipX, tipY, tipR)
     g.fillStyle(0xffe268, 0.7)
     g.fillCircle(tipX - tipR * 0.25, tipY - tipR * 0.25, tipR * 0.5)
-    g.lineStyle(Math.max(2, ink * 0.85), INK, 1)
+    g.lineStyle(stemOut, INK, 1)
     g.strokeCircle(tipX, tipY, tipR)
   }
 
