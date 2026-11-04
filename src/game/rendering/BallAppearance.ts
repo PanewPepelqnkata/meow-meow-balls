@@ -1768,8 +1768,6 @@ export function drawRoboBall(
   const domeBaseY = topY + r * 0.11
   const domeW = r * 0.46
   const domeH = r * 0.24
-  const stemBaseW = Math.max(4, r * 0.125)
-  const stemTipW = Math.max(3.6, r * 0.105)
   const tipR = r * 0.145
   const stemOut = Math.max(2, ink * 0.85)
 
@@ -1790,15 +1788,15 @@ export function drawRoboBall(
     // rotate as rigid sticks.
     const ctrlX = baseX + restDx * 0.55 + sway * r * 0.45
     const ctrlY = baseY + restDy * 0.55 + bend * r * 0.35
-    // Stem: tapered curved ribbon (identical taper both sides).
-    const stemW0 = stemBaseW / 2
-    const stemW1 = stemTipW / 2
+    // Stem: a uniform-thickness curved stem (NOT a tapered ribbon) so both
+    // antennae read identically thin like the right one. Same width base→tip.
+    const stemHW = Math.max(1.8, r * 0.055)
     g.fillStyle(pal.antenna, 1)
     g.beginPath()
-    g.moveTo(baseX - stemW0, baseY)
-    quadFrom(g, baseX - stemW0, baseY, ctrlX - stemW0 * 0.6, ctrlY, tipX - stemW1, tipY)
-    g.lineTo(tipX + stemW1, tipY)
-    quadFrom(g, tipX + stemW1, tipY, ctrlX + stemW0 * 0.6, ctrlY, baseX + stemW0, baseY)
+    g.moveTo(baseX - stemHW, baseY)
+    quadFrom(g, baseX - stemHW, baseY, ctrlX - stemHW, ctrlY, tipX - stemHW, tipY)
+    g.lineTo(tipX + stemHW, tipY)
+    quadFrom(g, tipX + stemHW, tipY, ctrlX + stemHW, ctrlY, baseX + stemHW, baseY)
     g.closePath()
     g.fillPath()
     g.lineStyle(stemOut, INK, 1)
