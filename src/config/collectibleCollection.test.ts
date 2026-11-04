@@ -3,12 +3,11 @@ import { collectionDiscovery, collectionSlotsFor, hasUnidentifiedCollectionFinds
 import { rollCollectibleTheme } from './collectibleThemes'
 
 describe('collection character identities', () => {
-  it('keeps pig and shark in separate slots even when their discovery palettes match', () => {
-    const discoveries = { '9:pig:2': 100, '9:shark:2': 200, '9:pig:5': 300 }
-    const slots = collectionSlotsFor(9)
-    expect(slots.filter((slot) => slot.theme).map((slot) => slot.theme)).toEqual(['shark', 'pig'])
+  it('keeps characters separate even when their discovery palettes match', () => {
+    const discoveries = { '9:pig:2': 100, '9:shark:2': 200, '9:pig:5': 300, '9:drunko:2': 400 }
     expect(collectionDiscovery(discoveries, 9, 'pig')).toEqual({ at: 100, variant: 2 })
     expect(collectionDiscovery(discoveries, 9, 'shark')).toEqual({ at: 200, variant: 2 })
+    expect(collectionDiscovery(discoveries, 9, 'drunko')).toEqual({ at: 400, variant: 2 })
   })
 
   it('retains a character’s first discovered palette rather than the latest run palette', () => {

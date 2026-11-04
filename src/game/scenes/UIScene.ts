@@ -6,6 +6,7 @@ import { DiscoveryBanner } from '../rendering/DiscoveryBanner'
 import { AuthModal } from '../../ui/AuthModal'
 import { authService, scoreService } from '../../services/auth'
 import { gameBus } from '../events/gameBus'
+import { isDrunkoTestRoute } from '../state/runVariant'
 import { session } from '../state/session'
 
 /**
@@ -120,25 +121,34 @@ export class UIScene extends Phaser.Scene {
         this.uiRoot.setAbilitiesEnabled(enabled)
       }),
       gameBus.on('run:gameover', ({ score, best, tierReached, ballsMerged, durationMs }) => {
+        const drunkoTestRoute = isDrunkoTestRoute()
         this.lastBest = best
         this.uiRoot.setScore(score, best)
-        this.lastRunStats = { score, tierReached, ballsMerged, durationMs }
+        this.lastRunStats = drunkoTestRoute ? null : { score, tierReached, ballsMerged, durationMs }
 
-        // Auto-submit score for both authenticated players and anonymous guests
-        void scoreService
-          .submitScore(score, tierReached, ballsMerged, durationMs)
-          .then(({ error }) => {
-            if (error) {
-              console.error('Auto score submission failed:', error)
-            }
-          })
+        // The /drunko sandbox is a real game run, but it must never create a
+        // leaderboard record or invite the player to save one.
+        if (!drunkoTestRoute) {
+          void scoreService
+            .submitScore(score, tierReached, ballsMerged, durationMs)
+            .then(({ error }) => {
+              if (error) {
+                console.error('Auto score submission failed:', error)
+              }
+            })
+        }
         // SAVE YOUR SCORE rides the panel only for signed-out players with
         // a score worth saving; post-login the modal submits lastRunStats.
         const saveScore =
-          !authService.isAuthenticated() && score > 0
+          !drunkoTestRoute && !authService.isAuthenticated() && score > 0
             ? { onSave: () => this.openAuthForScoreSave() }
             : undefined
-        this.gameOverlay.show(score, best, score >= best && score > 0, saveScore)
+        this.gameOverlay.show(
+          score,
+          best,
+          !drunkoTestRoute && score >= best && score > 0,
+          saveScore,
+        )
       }),
       gameBus.on('run:started', () => {
         this.gameOverlay.hide()
@@ -190,10 +200,12 @@ export class UIScene extends Phaser.Scene {
    * on successful login/signup submit the finished run to the leaderboard
    * and swap the panel's CTA for the SCORE SAVED! confirmation. */
   private openAuthForScoreSave(): void {
+    if (isDrunkoTestRoute()) return
     const stats = this.lastRunStats
     if (!stats) return
     const modal = new AuthModal(document.body)
     modal.onSuccess((mode) => {
+      if (isDrunkoTestRoute()) return
       // Guest progression only transfers when creating a new account (signup).
       // Logging into an existing account uses that account's own progression.
       if (mode !== 'signup') {

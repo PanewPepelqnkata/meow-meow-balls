@@ -1,6 +1,6 @@
 import type Phaser from 'phaser'
 import { BALL_EMOTION } from '../../config/ballEmotion'
-import { tier9Theme } from '../state/runVariant'
+import { tier9Theme, type Tier9Theme } from '../state/runVariant'
 
 /**
  * Phaser's Graphics typings demand Vector2[] but the renderer only reads
@@ -1227,6 +1227,507 @@ export function drawPigBall(
   }
 }
 
+export interface DrunkoPalette {
+  /** Skin (the main body colour — warm orange/peach). */
+  skin: number
+  /** Skin highlight (lighter, upper face). */
+  skinLight: number
+  /** Beard (messy light grey-brown). */
+  beard: number
+  /** Beard shadow (deeper tone at the beard's lower edge). */
+  beardDark: number
+  /** Cap (brown). */
+  cap: number
+  /** Cap brim (darker brown). */
+  capBrim: number
+  /** Pink lower eyelids (the intoxicated read). */
+  lid: number
+  /** Bottle glass (green). */
+  bottle: number
+  /** Bottle label (cream). */
+  label: number
+  /** The reward halo's colour (behind the whole ball). */
+  glow: number
+}
+
+/** The drunko palettes, exported alongside SHARK/PIG (journal/QA parity).
+ *  Variant picks one; the per-run THEME roll picks the family first. */
+export const DRUNKO_PALETTES: readonly DrunkoPalette[] = [
+  { skin: 0xf6b76b, skinLight: 0xffd9a0, beard: 0xd9d2c4, beardDark: 0xb3a48e, cap: 0x8a5632, capBrim: 0x6b3f22, lid: 0xf08a94, bottle: 0x3e7d2c, label: 0xf3e3b8, glow: 0xffd9a8 }, // 0: tavern peach
+  { skin: 0xefa45c, skinLight: 0xffcf92, beard: 0xcfc4b2, beardDark: 0xa89a86, cap: 0x7a4a2a, capBrim: 0x5e3620, lid: 0xec7f8c, bottle: 0x357026, label: 0xf2e2b0, glow: 0xffcf9a }, // 1: amber
+  { skin: 0xf8c184, skinLight: 0xffe0b2, beard: 0xe2dccf, beardDark: 0xbcae97, cap: 0x96603a, capBrim: 0x74482a, lid: 0xf3969e, bottle: 0x468a33, label: 0xf6e9c4, glow: 0xffe2b8 }, // 2: pale ale
+  { skin: 0xee9e52, skinLight: 0xffca8a, beard: 0xd2c6ae, beardDark: 0xa29478, cap: 0x6e4226, capBrim: 0x55301b, lid: 0xe87884, bottle: 0x2f6623, label: 0xeeddab, glow: 0xffc890 }, // 3: rum barrel
+  { skin: 0xf4b877, skinLight: 0xffd6a6, beard: 0xded8ce, beardDark: 0xb0a692, cap: 0x8f5c3e, capBrim: 0x6d452c, lid: 0xef8a96, bottle: 0x3a7f30, label: 0xf4e6bc, glow: 0xffd6ae }, // 4: cider
+]
+/** Fixed local beard stubble marks; kept out of the draw loop. */
+const DRUNKO_STUBBLE: readonly [number, number][] = [
+  [-0.5, 0.62],
+  [-0.18, 0.78],
+  [0.3, 0.7],
+  [0.58, 0.55],
+  [0.05, 0.88],
+]
+
+/**
+ * Draw the Tier 9 DRUNK'O ball — the third tier-9 theme: a warm
+ * orange/peach drunkard with a tilted brown stitched cap, a messy grey
+ * beard with side tufts, sleepy half-closed eyes with pink lower lids,
+ * a drooling mouth and a green bottle held beside the body.
+ *
+ * SAME CONTRACT as drawSharkBall: the body is the ball's CONTOUR (pass
+ * `poly`; without it a circle of radius r at (cx, cy)); the FACE is part
+ * of the design (callers must NOT draw the standard face on top).
+ *
+ * EASTER EGGS ride the shared `expressionAt` timeline: 'wink' closes the
+ * right eye, 'grin' swaps the drool frown for a visible smile, 'tongue'
+ * sticks the tongue out. The blink is the natural closed-lid kind. FEAR
+ * (`panic`) snaps the eyes WIDE open (the drunkard sobers up), drops the
+ * bottle low, hides the drool and adds a sweat drop.
+ */
+export function drawDrunkoBall(
+  g: Phaser.GameObjects.Graphics,
+  cx: number,
+  cy: number,
+  r: number,
+  variant = 0,
+  poly?: Array<{ x: number; y: number }>,
+  panic = 0,
+  gaze?: { x: number; y: number },
+  seed = 9,
+  bodyAngle = 0,
+): void {
+  const pal = DRUNKO_PALETTES[variant % DRUNKO_PALETTES.length]!
+  const look = ballLookFor(9, seed)
+  const ink = Math.max(2, r * 0.05)
+  const out = ballOutlineWidth(r)
+  const now = Date.now() / 1000
+  // The easter-egg expression rides the same timeline as the other balls
+  // — suppressed while panicking (fear wins).
+  const expr = panic > 0.45 ? 'normal' : expressionAt(seed, now * 1000)
+  const jx = Math.sin(now * 41) * r * 0.02 * panic * panic
+  const jy = Math.cos(now * 37) * r * 0.015 * panic * panic
+  cx += jx
+  cy += jy
+
+  // Rotate accessory anchors (bottle, cap, beard) with the body's current
+  // rotation so they stay attached during squash/roll. The body contour
+  // itself already deforms via `poly`; only the fixed-offset features need
+  // the manual transform.
+  const cosA = Math.cos(bodyAngle)
+  const sinA = Math.sin(bodyAngle)
+  const rot = (dx: number, dy: number): { x: number; y: number } => ({
+    x: cx + dx * cosA - dy * sinA,
+    y: cy + dx * sinA + dy * cosA,
+  })
+
+  // ---- THE GLOW — the same soft radial stack as the shark/pig, tinted
+  // warm amber: 4 concentric discs, widest first, ~9s breath. FIRST. ----
+  const glowWobble = Math.sin(now * 0.7)
+  const glowLayers: ReadonlyArray<{ rr: number; alpha: number }> = [
+    { rr: 1.72 + glowWobble * 0.03, alpha: 0.1 },
+    { rr: 1.5, alpha: 0.16 },
+    { rr: 1.3, alpha: 0.24 },
+    { rr: 1.12, alpha: 0.3 },
+  ]
+  for (const layer of glowLayers) {
+    g.fillStyle(pal.glow, layer.alpha + glowWobble * 0.02)
+    g.fillCircle(cx, cy, r * layer.rr)
+  }
+
+  // ---- THE BOTTLE — held at the ball's RIGHT side, tilted outward,
+  // drawn BEFORE the body so the body's ink outline overlaps the bottle's
+  // inner edge (the held read). Fear drops it a little. ----
+  const bottleTilt = 0.22 + panic * 0.3 + bodyAngle // radians, outward + body rotation
+  const bottlePos = rot(r * 1.02, r * 0.34 + panic * r * 0.22)
+  const bx = bottlePos.x
+  const by = bottlePos.y
+  const bw = r * 0.34
+  const bh = r * 0.98
+  const cosT = Math.cos(bottleTilt)
+  const sinT = Math.sin(bottleTilt)
+  // Local bottle coords (u = along the bottle axis, v = across), rotated
+  // by bottleTilt around the bottle's base centre.
+  const bp = (u: number, v: number): { x: number; y: number } => ({
+    x: bx + v * cosT - u * sinT,
+    y: by - u * cosT - v * sinT,
+  })
+  // Body of the bottle: a rounded slab from u=0..u=0.62h, then the neck.
+  const neckW = bw * 0.4
+  const shoulder = bh * 0.62
+  g.fillStyle(pal.bottle, 1)
+  g.beginPath()
+  {
+    const p0 = bp(0, -bw / 2)
+    const p1 = bp(shoulder, -bw / 2)
+    const p2 = bp(bh * 0.78, -neckW / 2)
+    const p3 = bp(bh, -neckW / 2)
+    const p4 = bp(bh, neckW / 2)
+    const p5 = bp(bh * 0.78, neckW / 2)
+    const p6 = bp(shoulder, bw / 2)
+    const p7 = bp(0, bw / 2)
+    g.moveTo(p0.x, p0.y)
+    g.lineTo(p1.x, p1.y)
+    g.lineTo(p2.x, p2.y)
+    g.lineTo(p3.x, p3.y)
+    g.lineTo(p4.x, p4.y)
+    g.lineTo(p5.x, p5.y)
+    g.lineTo(p6.x, p6.y)
+    g.lineTo(p7.x, p7.y)
+  }
+  g.closePath()
+  g.fillPath()
+  g.lineStyle(ink * 0.9, INK, 1)
+  g.strokePath()
+  // The cream label: a band across the bottle body with a tiny leaf mark.
+  {
+    const l0 = bp(bh * 0.18, -bw / 2)
+    const l1 = bp(bh * 0.46, -bw / 2)
+    const l2 = bp(bh * 0.46, bw / 2)
+    const l3 = bp(bh * 0.18, bw / 2)
+    g.fillStyle(pal.label, 1)
+    g.beginPath()
+    g.moveTo(l0.x, l0.y)
+    g.lineTo(l1.x, l1.y)
+    g.lineTo(l2.x, l2.y)
+    g.lineTo(l3.x, l3.y)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(ink * 0.55, INK, 0.9)
+    g.strokePath()
+    // The decorative sprig: a short stem with two leaf ticks.
+    const s0 = bp(bh * 0.24, 0)
+    const s1 = bp(bh * 0.4, 0)
+    g.lineStyle(Math.max(1.2, ink * 0.5), pal.capBrim, 0.95)
+    g.beginPath()
+    g.moveTo(s0.x, s0.y)
+    g.lineTo(s1.x, s1.y)
+    g.strokePath()
+    for (const [fu, fv] of [[0.3, -0.09], [0.3, 0.09], [0.36, -0.08], [0.36, 0.08]] as const) {
+      const a = bp(bh * fu, 0)
+      const b = bp(bh * (fu + 0.04), bw * fv)
+      g.beginPath()
+      g.moveTo(a.x, a.y)
+      g.lineTo(b.x, b.y)
+      g.strokePath()
+    }
+  }
+  // Bottle highlight: a thin light streak up the neck.
+  {
+    const h0 = bp(bh * 0.66, -neckW * 0.18)
+    const h1 = bp(bh * 0.95, -neckW * 0.18)
+    g.lineStyle(Math.max(1.5, r * 0.045), 0xffffff, 0.5)
+    g.beginPath()
+    g.moveTo(h0.x, h0.y)
+    g.lineTo(h1.x, h1.y)
+    g.strokePath()
+  }
+  // The hand: a small skin stub where the bottle meets the body.
+  const handPos = rot(r * 0.86, r * 0.5)
+  g.fillStyle(pal.skin, 1)
+  g.fillCircle(handPos.x, handPos.y, r * 0.16)
+  g.lineStyle(ink * 0.7, INK, 1)
+  g.strokeCircle(handPos.x, handPos.y, r * 0.16)
+
+  // ---- THE BODY — the contour, warm skin, with a lighter upper-face
+  // band (the natural shading: lit forehead, plain lower half — the
+  // beard supplies the bottom detail). ----
+  if (poly && poly.length >= 3) {
+    g.fillStyle(pal.skin, 1)
+    g.fillPoints(poly as unknown as Phaser.Math.Vector2[], true)
+  } else {
+    g.fillStyle(pal.skin, 1)
+    g.fillCircle(cx, cy, r)
+  }
+  g.fillStyle(pal.skinLight, 0.55)
+  g.beginPath()
+  g.arc(cx, cy, r * 0.88, Math.PI * 1.12, Math.PI * 1.88, false)
+  for (let s = 8; s >= 0; s--) {
+    const t = s / 8
+    const th = Math.PI * (1.12 + (1.88 - 1.12) * t)
+    g.lineTo(cx + Math.cos(th) * r * 0.6, cy + Math.sin(th) * r * 0.6)
+  }
+  g.closePath()
+  g.fillPath()
+
+  // ---- THE BEARD — a messy grey mass over the LOWER face: a scalloped
+  // top edge (zigzag tufts) and a shaggy bottom that follows the body
+  // curve, plus two side tufts sticking out at the cheeks. Drawn over the
+  // body fill, under the ink outline. ----
+  const beardTop = cy + r * 0.08
+  // Side tufts first (they stick past the body edge).
+  for (const s of [-1, 1]) {
+    const tuftPos = rot(s * r * 0.98, r * 0.18)
+    const tx = tuftPos.x
+    const ty = tuftPos.y
+    g.fillStyle(pal.beard, 1)
+    g.beginPath()
+    g.moveTo(tx - s * r * 0.1, ty - r * 0.22)
+    g.lineTo(tx + s * r * 0.22, ty - r * 0.1)
+    g.lineTo(tx + s * r * 0.05, ty + r * 0.02)
+    g.lineTo(tx + s * r * 0.24, ty + r * 0.12)
+    g.lineTo(tx - s * r * 0.08, ty + r * 0.2)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(ink * 0.7, INK, 1)
+    g.strokePath()
+  }
+  // The main beard mass: top zigzag across the face, then down and along
+  // the body's lower arc back to the start.
+  g.fillStyle(pal.beard, 1)
+  g.beginPath()
+  const tufts = 7
+  g.moveTo(cx - r * 0.92, beardTop)
+  for (let i = 0; i < tufts; i++) {
+    const x0 = cx - r * 0.92 + (i / tufts) * r * 1.84
+    const x1 = cx - r * 0.92 + ((i + 1) / tufts) * r * 1.84
+    const dip = (i % 2 === 0 ? 1 : 0.45) * r * 0.16
+    g.lineTo((x0 + x1) / 2, beardTop + dip)
+    g.lineTo(x1, beardTop)
+  }
+  // Down the right side, along the bottom (shaggy: alternate radii), up
+  // the left side back to the start.
+  g.lineTo(cx + r * 0.98, cy + r * 0.42)
+  const shag = 6
+  for (let i = 0; i <= shag; i++) {
+    const t = i / shag
+    const th = Math.PI * (0.22 + 0.56 * (1 - t)) // right-low → bottom → left
+    const rr = r * (0.86 + (i % 2 === 0 ? 0.1 : 0.0))
+    g.lineTo(cx + Math.cos(th) * rr, cy + Math.sin(th) * rr * 0.98)
+  }
+  g.lineTo(cx - r * 0.98, cy + r * 0.2)
+  g.closePath()
+  g.fillPath()
+  // Beard shading: a darker band along the bottom edge.
+  g.fillStyle(pal.beardDark, 0.8)
+  g.beginPath()
+  g.arc(cx, cy, r * 0.9, Math.PI * 0.3, Math.PI * 0.7, false)
+  g.arc(cx, cy, r * 0.62, Math.PI * 0.7, Math.PI * 0.3, true)
+  g.closePath()
+  g.fillPath()
+  // Beard ink: the zigzag top edge only (the outer edge is the body's own
+  // outline, drawn last).
+  g.lineStyle(ink * 0.75, INK, 1)
+  g.beginPath()
+  g.moveTo(cx - r * 0.92, beardTop)
+  for (let i = 0; i < tufts; i++) {
+    const x0 = cx - r * 0.92 + (i / tufts) * r * 1.84
+    const x1 = cx - r * 0.92 + ((i + 1) / tufts) * r * 1.84
+    const dip = (i % 2 === 0 ? 1 : 0.45) * r * 0.16
+    g.lineTo((x0 + x1) / 2, beardTop + dip)
+    g.lineTo(x1, beardTop)
+  }
+  g.strokePath()
+  // A few stubble dots in the beard.
+  g.fillStyle(pal.beardDark, 0.9)
+  for (const [sx, sy] of DRUNKO_STUBBLE) {
+    g.fillCircle(cx + sx * r, cy + sy * r, Math.max(1.2, r * 0.028))
+  }
+
+  // ---- THE FACE — sleepy half-closed eyes with pink lower lids, messy
+  // eyebrows, and the drooling mouth. One coordinated pass. ----
+  const L = faceLayoutFor(look, r, 1, gaze)
+  const em = Math.min(1, panic)
+  const blinkMs = (now * 1000 + seed * 1013) % 4700
+  const blinking = panic <= 0.45 && blinkMs < 130
+  const eyeY = cy - r * 0.22
+  const eyeDx = r * 0.4
+  for (const [i, e] of L.eyes.entries()) {
+    const exF = cx + eyeDx * (i === 0 ? -1 : 1)
+    const ey = eyeY + e.y * 0.5
+    const closed = blinking || (expr === 'wink' && i === 1)
+    if (closed) {
+      // Closed lid: one downward ink arc across the eye.
+      g.lineStyle(e.rim * 0.95, INK, 1)
+      const lid: Array<{ x: number; y: number }> = []
+      for (let s = 0; s <= 12; s++) {
+        const u = -1 + (2 * s) / 12
+        lid.push({ x: exF + u * e.a * 0.85, y: ey - e.b * 0.05 + (1 - u * u) * e.b * 0.4 })
+      }
+      g.strokePoints(lid as unknown as Phaser.Math.Vector2[], false, false)
+      continue
+    }
+    // Sclera + rim. Panic snaps the eye OPEN (taller); the drunk default
+    // is half-closed (the upper lid covers the top ~45%).
+    const wa = e.a * (1 + 0.1 * em)
+    const wb = e.b * (1 + 0.25 * em)
+    g.fillStyle(0xffffff, 1)
+    g.fillEllipse(exF, ey, wa * 2, wb * 2)
+    // The pink lower lid: a pink crescent filling the bottom of the
+    // sclera — the intoxicated read. Stronger when calm, washed out by
+    // fear.
+    g.fillStyle(pal.lid, 0.85 * (1 - em * 0.6))
+    g.beginPath()
+    g.arc(exF, ey, wb * 0.92, 0, Math.PI, false)
+    g.closePath()
+    g.fillPath()
+    // Pupil: pinned up + shrunk with panic (the standard morph); a drunk
+    // pupil rides LOW otherwise (half-hidden under the upper lid line).
+    const pb = e.pb * (1 - 0.3 * em)
+    const py = e.py * (1 - em) - 0.4 * (e.b - pb - e.rim * 0.5) * em + e.b * 0.16 * (1 - em)
+    g.fillStyle(INK, 1)
+    g.fillEllipse(exF + e.px, ey + py, e.pa * 2, pb * 2)
+    g.fillStyle(0xffffff, 1)
+    g.fillEllipse(exF + e.px - e.pa * 0.32, ey + py - pb * 0.34, e.pa * 0.6, e.pa * 0.6, 24)
+    // The half-closed UPPER LID: a skin-coloured slab over the top of the
+    // eye with an ink lower edge — the sleepy read. Fear lifts it away.
+    const lidDrop = wb * (0.95 - 0.75 * em)
+    g.fillStyle(pal.skin, 1)
+    g.beginPath()
+    g.fillRect(exF - wa * 1.06, ey - wb * 1.1, wa * 2.12, lidDrop)
+    g.fillPath()
+    g.lineStyle(e.rim * 0.9, INK, 1)
+    g.beginPath()
+    g.moveTo(exF - wa * 0.98, ey - wb * 1.1 + lidDrop)
+    quadFrom(g, exF - wa * 0.98, ey - wb * 1.1 + lidDrop, exF, ey - wb * 1.1 + lidDrop + wb * 0.16, exF + wa * 0.98, ey - wb * 1.1 + lidDrop)
+    g.strokePath()
+    // Eye rim: only the visible lower arc (the top is under the lid).
+    g.lineStyle(e.rim, INK, 1)
+    g.beginPath()
+    g.arc(exF, ey, wa, Math.PI * 0.08, Math.PI * 0.92, false)
+    g.strokePath()
+  }
+
+  // THE EYEBROWS — two messy short strokes above the eyes, slightly
+  // tilted (the relaxed drunk look). Fear raises them.
+  g.lineStyle(Math.max(1.5, ink * 0.8), INK, 0.9)
+  for (const s of [-1, 1]) {
+    const bx0 = cx + s * eyeDx - r * 0.16
+    const by0 = eyeY - r * (0.52 + 0.14 * em)
+    g.beginPath()
+    g.moveTo(bx0, by0 + s * r * 0.03)
+    quadFrom(g, bx0, by0 + s * r * 0.03, bx0 + r * 0.14, by0 - r * 0.06, bx0 + r * 0.3, by0 + r * 0.02)
+    g.strokePath()
+    // A second messy tick.
+    g.beginPath()
+    g.moveTo(bx0 + r * 0.06, by0 + r * 0.05)
+    g.lineTo(bx0 + r * 0.2, by0 + r * 0.08)
+    g.strokePath()
+  }
+
+  // THE MOUTH — a small drooling frown low on the face, with the drool
+  // droplet hanging off its right corner. 'grin' swaps the frown for a
+  // visible smile; 'tongue' adds the tongue; fear flattens it tense and
+  // hides the drool.
+  const mouthY = cy + r * 0.42
+  const mouthW = r * 0.3
+  const smiling = expr === 'grin' || expr === 'tongue'
+  const dip = smiling ? r * 0.12 : r * (0.05 - 0.04 * panic)
+  g.lineStyle(ink * 1.0, INK, 1)
+  g.beginPath()
+  g.moveTo(cx - mouthW / 2, mouthY)
+  quadFrom(g, cx - mouthW / 2, mouthY, cx, mouthY + (smiling ? dip : -dip), cx + mouthW / 2, mouthY)
+  g.strokePath()
+  if (expr === 'tongue' && panic < 0.3) {
+    g.fillStyle(0xff9eb5, 0.95)
+    g.fillEllipse(cx + mouthW * 0.2, mouthY + dip * 0.9, r * 0.15, r * 0.1)
+  }
+  // THE DROOL — a droplet hanging from the mouth's right corner, with a
+  // subtle stretch wobble (the characteristic drunk drool). Hidden by
+  // fear (the drunkard sobers up).
+  if (panic < 0.45) {
+    const stretch = 1 + Math.sin(now * 2.2 + seed) * 0.18
+    const dx = cx + mouthW * 0.32
+    const dy = mouthY + r * 0.06
+    g.fillStyle(0x9fdcff, 0.9)
+    g.beginPath()
+    g.moveTo(dx - r * 0.045, dy)
+    quadFrom(g, dx - r * 0.045, dy, dx - r * 0.06, dy + r * 0.1 * stretch, dx, dy + r * 0.16 * stretch)
+    quadFrom(g, dx, dy + r * 0.16 * stretch, dx + r * 0.06, dy + r * 0.1 * stretch, dx + r * 0.045, dy)
+    g.closePath()
+    g.fillPath()
+    g.fillStyle(0xffffff, 0.7)
+    g.fillCircle(dx - r * 0.015, dy + r * 0.06 * stretch, r * 0.016)
+  }
+  // Fear sweat: one drop at the temple.
+  if (panic > 0.45) {
+    const sweat = Math.min(1, (panic - 0.45) / 0.55)
+    const sweatPos = rot(-r * 0.62, -r * 0.42)
+    g.fillStyle(0x9fdcff, 0.95 * sweat)
+    g.fillCircle(sweatPos.x, sweatPos.y, r * 0.055 * (0.7 + 0.3 * sweat))
+  }
+
+  // ---- THE CAP — a big brown tilted cap on the crown, with a stitched
+  // cross detail and a brim. Drawn over the body's top; the body's ink
+  // outline (drawn next) laps the cap's base so it reads attached. ----
+  const capTilt = -0.16 + bodyAngle // radians — the signature tilt + body rotation
+  const capPos = rot(r * 0.05, -r * 0.62)
+  const capCx = capPos.x
+  const capCy = capPos.y
+  const capW = r * 1.5
+  const capH = r * 0.72
+  const cosC = Math.cos(capTilt)
+  const sinC = Math.sin(capTilt)
+  const cp = (u: number, v: number): { x: number; y: number } => ({
+    x: capCx + u * cosC - v * sinC,
+    y: capCy + u * sinC + v * cosC,
+  })
+  // The crown: a dome (half-ellipse in cap space, sampled as a polyline).
+  g.fillStyle(pal.cap, 1)
+  g.beginPath()
+  {
+    const p0 = cp(-capW / 2, 0)
+    g.moveTo(p0.x, p0.y)
+    for (let s = 0; s <= 12; s++) {
+      const th = Math.PI - (s / 12) * Math.PI
+      const p = cp(Math.cos(th) * (capW / 2), -Math.sin(th) * capH)
+      g.lineTo(p.x, p.y)
+    }
+    const p1 = cp(capW / 2, 0)
+    g.lineTo(p1.x, p1.y)
+  }
+  g.closePath()
+  g.fillPath()
+  g.lineStyle(out * 0.85, INK, 1)
+  g.strokePath()
+  // The brim: a darker band across the cap's base.
+  g.fillStyle(pal.capBrim, 1)
+  g.beginPath()
+  {
+    const b0 = cp(-capW * 0.52, 0)
+    const b1 = cp(capW * 0.52, 0)
+    const b2 = cp(capW * 0.46, capH * 0.22)
+    const b3 = cp(-capW * 0.46, capH * 0.22)
+    g.moveTo(b0.x, b0.y)
+    g.lineTo(b1.x, b1.y)
+    g.lineTo(b2.x, b2.y)
+    g.lineTo(b3.x, b3.y)
+  }
+  g.closePath()
+  g.fillPath()
+  g.lineStyle(ink * 0.7, INK, 1)
+  g.strokePath()
+  // The stitched detail: a small cross of two dashes on the crown.
+  g.lineStyle(Math.max(1.5, ink * 0.75), pal.capBrim, 0.95)
+  {
+    const c0 = cp(-capW * 0.12, -capH * 0.5)
+    const c1 = cp(capW * 0.1, -capH * 0.42)
+    const c2 = cp(-capW * 0.02, -capH * 0.62)
+    const c3 = cp(capW * 0.02, -capH * 0.32)
+    g.beginPath()
+    g.moveTo(c0.x, c0.y)
+    g.lineTo(c1.x, c1.y)
+    g.strokePath()
+    g.beginPath()
+    g.moveTo(c2.x, c2.y)
+    g.lineTo(c3.x, c3.y)
+    g.strokePath()
+  }
+  // Cap highlight: a soft light patch on the crown's upper left.
+  g.fillStyle(0xffffff, 0.18)
+  {
+    const h = cp(-capW * 0.18, -capH * 0.55)
+    g.fillEllipse(h.x, h.y, capW * 0.4, capH * 0.3)
+  }
+
+  // ---- THE INK OUTLINE — the contour itself, over everything. ----
+  g.lineStyle(out, INK, 1)
+  if (poly && poly.length >= 3) {
+    g.strokePoints(poly as unknown as Phaser.Math.Vector2[], true, true)
+  } else {
+    g.strokeCircle(cx, cy, r)
+  }
+}
+
 export interface CrabPalette {
   /** Shell (the main carapace colour). */
   shell: number
@@ -1465,17 +1966,9 @@ export function drawCrabBall(
 /**
  * The ONE tier-9 entry point for every consumer (renderer, previews,
  * banner, overlay, claw, progression, baker): routes to the theme the
- * run rolled — `tier9Theme()` (shark or pig, seed-derived, URL-overridable)
- * — and lets `variant` pick the palette WITHIN that theme.
-}
-
-/**
- * The ONE tier-9 entry point for every consumer (renderer, previews,
- * banner, overlay, claw, progression, baker): routes to the theme the
- * run rolled — `tier9Theme()` (shark or pig, seed-derived, URL-overridable)
- * — and lets `variant` pick the palette WITHIN that theme.
+ * run rolled — `tier9Theme()` (shark, pig or drunko; seed-derived,
+ * URL-overridable) — and lets `variant` pick the palette WITHIN that theme.
  */
-
 export function drawTier9Ball(
   g: Phaser.GameObjects.Graphics,
   cx: number,
@@ -1486,10 +1979,13 @@ export function drawTier9Ball(
   panic = 0,
   gaze?: { x: number; y: number },
   seed = 9,
-  theme: 'shark' | 'pig' = tier9Theme(),
+  theme: Tier9Theme = tier9Theme(),
+  bodyAngle = 0,
 ): void {
   if (theme === 'pig') {
     drawPigBall(g, cx, cy, r, variant, poly, panic, gaze, seed)
+  } else if (theme === 'drunko') {
+    drawDrunkoBall(g, cx, cy, r, variant, poly, panic, gaze, seed, bodyAngle)
   } else {
     drawSharkBall(g, cx, cy, r, variant, poly, panic, gaze, seed)
   }
@@ -1497,9 +1993,9 @@ export function drawTier9Ball(
 
 /**
  * The ONE collectible entry point for every consumer: routes by TIER
- * (9 → shark/pig by the run theme, 10 → crab) and lets `variant` pick
- * the palette WITHIN the theme. Call this — never the theme functions
- * directly.
+ * (9 → shark/pig/drunko by the run theme, 10 → crab) and lets `variant`
+ * pick the palette WITHIN the theme. Call this — never the theme
+ * functions directly.
  */
 export function drawCollectibleBall(
   g: Phaser.GameObjects.Graphics,
@@ -1513,6 +2009,7 @@ export function drawCollectibleBall(
   gaze?: { x: number; y: number },
   seed = 9,
   theme?: string,
+  bodyAngle = 0,
 ): void {
   if (tier === 10) {
     drawCrabBall(g, cx, cy, r, variant, poly, panic, gaze, seed)
@@ -1522,6 +2019,7 @@ export function drawCollectibleBall(
     throw new Error(`No collectible art implemented for tier ${tier}`)
   }
   drawTier9Ball(g, cx, cy, r, variant, poly, panic, gaze, seed,
-    theme === 'shark' || theme === 'pig' ? theme : tier9Theme())
+    theme === 'shark' || theme === 'pig' || theme === 'drunko' ? theme : tier9Theme(),
+    bodyAngle)
 }
 

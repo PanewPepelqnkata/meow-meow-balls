@@ -1,6 +1,14 @@
 {
   "rewrites": [
     {
+      "source": "/drunko",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/drunko/",
+      "destination": "/index.html"
+    },
+    {
       "source": "/boss",
       "destination": "/index.html"
     },

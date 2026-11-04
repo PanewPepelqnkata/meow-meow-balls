@@ -32,11 +32,13 @@ previous phase's acceptance criteria pass and the user signs off.
 **Status (pending user review):** soak test passes in headless simulation (30 balls, 70 s simulated, all settled, none escaped); typecheck/lint/tests/build green. ⚠️ On-device 60 fps NOT yet measured — requires physical-device check.
 
 ## Phase 2 — Ball Entities & Tiers
-- [x] `ballTiers.ts` with 10 entries; tiers 8–10 marked **reserved** (no spawn, no unlock path). Tier-7 pairs are HELD (no invented tier-8 merge) — documented in config + MergeSystem.
+- [x] `ballTiers.ts` with 12 entries; tiers 1–10 are playable merge destinations, while unfinished tiers 11–12 remain reserved and locked.
 - [x] `Ball` model + `BallManager` (create/destroy, body↔model map, pooled).
 - [x] Runtime vector-rendered balls per ART_DIRECTION §3 (outline, shade, highlight, layered face) — cached textures per tier (`rendering/BallTextures` in `BallRenderer.ts`).
+- [x] Tier-9 **Drunk'o Ball** (`drunko`) collectible/theme, alongside shark and pig: ordinary Tier-9 balls use the run's rolled theme; character and palette stay fixed for that run.
+- [x] Isolated `/drunko` character-test route: Tier-9 Drunko queue/drop/refill/Swap, with no saved progress, collection, leaderboard, analytics, or production-statistics writes.
 - [x] Squash-and-stretch on impact; idle wobble (`rendering/deform.ts`, pure + tested); blink/expression state machine deferred to polish phase.
-- [x] MergeSystem: collision-driven merges tiers 1–6 → 2–7, duplicate guards, chain window scoring, sleeping spawn to avoid same-frame re-trigger.
+- [x] MergeSystem: collision-driven merges through implemented tier destinations, duplicate guards, chain window scoring, sleeping spawn to avoid same-frame re-trigger.
 - [x] ScoreSystem: tier scores from config, chain bonus (2^depth, cap 8×), reset per run, typed `state:score` events.
 - [x] Merge FX: pooled colored particle burst + floating score popup (`rendering/ScoreFeedback.ts`).
 - [x] Grid background (light gray, visible through clear interior) + playful striped container (`rendering/ContainerView.ts`).
@@ -45,6 +47,7 @@ previous phase's acceptance criteria pass and the user signs off.
 
 **Accept:** each tier visually distinct; deformation reads as cartoon but collisions stay rigid; no per-frame allocation churn in renderer.
 **Status (pending user review):** typecheck/lint/tests 30/30/build green; merge stress soak passes (30 balls, 60s, merges active, mass conserved, stable). ⚠️ Visual appearance NOT verified — screenshot captured but not inspectable in this environment; requires user browser review.
+**Drunk'o Ball status (implementation complete; acceptance pending):** theme registration, shared collectible rendering, and the isolated route are implemented. No new automated/browser checks were run for this documentation update; visual/reference acceptance and production deployment verification are not claimed.
 **Phase 2.24 (SpriteBalls — per-tier baked slime sprites, iPhone 42fps fix):** device profile showed render >12ms at baked≈0 with the live Graphics path streaming ~1,150 triangles/ball/frame (fillPoints + strokePoints, non-batched). The renderer now uses ONE combined body texture per ordinary tier (1–7), baked once at the tier radius through the same wobble contour pipeline and rasterized via Graphics.generateTexture (`rendering/TierBaker.ts`); each ordinary ball renders as one batched body quad plus pooled face sprites. Strong impacts temporarily draw a live contour so localized jelly deformation remains visible. Tier 8 stays live because its body colour cycles from the clock; collectible tiers stay live for their themed procedural art. FACES (`rendering/FacePool.ts`): per-ball 3-texture atlas (sclera/pupil/mouth) baked once at registration, 5 pooled quads/ball at depth 11; gaze (glance timeline) repositions pupils per frame; easter-egg expressions + panic morph + sweat fall back to the live face draw for that ball only. API preserved: bakedSize/isBaked report sprite counts; `spriteView` dev hook exposes live sprite transforms. Current verification: 369/369 tests, tsc, eslint; browser QA validates tier 8 live cycling, tier 8/9 live rendering, and wall-raise performance.
 **Phase 2.9.7 (physics stabilization + art style):** live instrumentation found maxPen 39.9px on 4-4 pairs, 308/1011 frames with >1px overlap (30%). Root cause: pressureAcceleration 10 + rim/brace 0.35 — the pressure pushed particles INTO contacts faster than the solver resolved them, and the soft ring folded under load instead of resisting. Fix: rim 0.85, braces 0.85 (structural stiffness — softness comes from damping/restitution, not a floppy ring), pressureAcceleration 4 (reduced — less fighting), contact separation cap 2→15px + two passes, and a boundary clamp (clampToContainer) after separation (separation was pushing particles through walls/floor without it — caused 16 escaped particles). Measured after: maxPen 34.3 (23% of r=75 vs 53%), frames with pen>1px: 6/1011 (0.6% vs 30%), escapes 0. Resting jitter 0.29-0.34 (stable, no growth). Fall speed 13.6/14 (preserved). Art: irregularity 3→2 harmonics, amplitude reduced to ±1.5% radius (Ball Guys subtle organic asymmetry; worst ratio 1.056); face enlarged (0.2→0.28 radius) with bigger sclera, offset pupils, cleaner highlights and wider smile per reference proportions. Captures: refference/captures/2.9.7-BEFORE-*.png (before), 2.9.4-case*.png and 2.9.6-*.png (after). 81 tests pass (4 new).
 **Phase 2.9.6 (hand-drawn slime, larger small tiers, Raise Walls):** (1) Sizes: t1 34→38 (+12%), t2 44→48 (+9%), progression monotonic 38→48→57→75→97→126. (2) Walls: normal height 660→475 (−28%), floor y=1085 unchanged, rim y=610; WallAnimator (new) animates height 475↔660 over 900ms with smoothstep, holds 25s, collider vertices updated per-frame via setPosition+setVertices, ContainerView.redrawWalls syncs stripes from the same geometry. HUD 'Extend Walls' slot wired: tap → activate() → countdown overlay (WALLS Ns), no re-trigger while active, reset on restart. Lowering sweep nudges particles below the rim. (3) Hand-drawn contour: per-ball seed → 3 low-frequency harmonics (3/5/7 waves, ±1.3–2.6% of radius) applied along deformed contour normals — deterministic, subtle (worst ratio 1.056), rides compression. (4) Softer feel: rim 0.35, braces 0.35, damping 0.16 (retained; softer values caused floor-tunneling collapse — particle body radius must stay at the visual ring, collisionOutset moved to the contact-separation distance only). Center density 0.0012→0.0003 (light center: heavy center pressed the ring flat at rest). Settle pass: center velocity zeroed when area at rest (killed the 0.9px/step sink). CRITICAL FIX: putting collisionOutset in the ring-radius math collapsed every ball (particles r 15.9 on ring 18.1) — ring layout uses the visual radius only. Live captures: refference/captures/2.9.6-*.png (9 shots: falling, resting, irregularity, walls normal/raising/raised/ball-inside/lowering/normal-again). 77 tests pass (3 new: wall lifecycle, size progression, irregularity determinism).
@@ -83,7 +86,7 @@ previous phase's acceptance criteria pass and the user signs off.
 - [ ] Extend Walls (timed wall extension, container width unchanged).
 - [ ] Shake (tuned impulse; parameters in config).
 - [ ] Swap (reroll upcoming ball).
-- [ ] ⚠️ Nothing here may touch tiers 8–10 behavior — still awaiting user spec.
+- [ ] ⚠️ Unfinished collectible character slots and tiers 11–12 remain locked; do not invent their designs or behavior.
 
 **Accept:** each power-up demonstrably helps without breaking stability; used-state persists across HUD re-renders; walls restore exactly after timer.
 
@@ -99,7 +102,7 @@ previous phase's acceptance criteria pass and the user signs off.
       (canvas, reusing ball pipeline), logo, large Play button, PB/profile chip,
       leaderboard entry, settings button — and *nothing else* (no ads/shop/promo).
 - [ ] **Gameplay HUD** per ART_DIRECTION §6A.2: score + personal best, NEXT preview
-      (Phaser-baked tier images via bridge), ball-progression indicator (tiers 8–10
+      (Phaser-baked tier images via bridge), ball-progression indicator (tiers 11–12
       shown as dimmed locked slots only), three power-up buttons with USED state,
       danger warning strip, pause overlay. No sidebars/ads/currencies during a run.
 - [ ] Settings, stats/history, leaderboard screen shell, game over screen.
@@ -109,8 +112,8 @@ previous phase's acceptance criteria pass and the user signs off.
 
 **Accept:** full navigation without gameplay breakage; Play → playing in one tap
 from load; HUD usable one-handed on phones and never covers the container;
-progression indicator only ever shows tiers 1–7 as reachable (8–10 dimmed/locked,
-awaiting user spec); no React↔Phaser direct imports (lint-enforced).
+progression indicator only shows implemented tiers 1–10 as reachable (11–12
+dimmed/locked until implemented); no React↔Phaser direct imports (lint-enforced).
 
 ## Phase 8 — Supabase Backend
 - [ ] Project setup; migrations: `profiles`, `runs`, leaderboard functions/views.
@@ -136,15 +139,14 @@ awaiting user spec); no React↔Phaser direct imports (lint-enforced).
 ## Phase 11 — Launch Polish & Backlog Gate
 - [ ] Sound/music final pass; icon/favicon; meta tags.
 - [ ] Manual regression sweep of TEST_PLAN.
-- [ ] Review backlog: cosmetics, async friends, **tier 8–10 mechanic (blocked on user)**.
+- [ ] Review backlog: cosmetics, async friends, **remaining collectible characters and locked tiers 11–12**.
 
 **Accept:** user sign-off for launch.
 
 ---
 
-### Standing blockage (repeated deliberately)
+### Remaining collectible scope
 
-> **Tiers 8–10 randomization mechanic is unspecified.** The user must explain the
-> intended behavior before any code touching tier 8–10 spawn, appearance, scoring,
-> or merge behavior is written. Until then they exist only as reserved config
-> entries with no gameplay path.
+> Tier 9 shark/pig/Drunk'o Ball and Tier 10 crab are implemented. Unfinished
+> character slots and tiers 11–12 stay locked until their artwork and configuration
+> are implemented; they have no gameplay path yet.

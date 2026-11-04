@@ -430,7 +430,7 @@ export class SoftBallRenderer {
       // (shark/pig) picks the renderer; the variant picks the palette
       // within the theme. Fear (panic) and the gaze easter egg pass
       // straight through.
-      drawCollectibleBall(g, built.cx, built.cy, r.soft.radius, r.tier, variantIdFor(r.tier), built.poly, this.emotion.panicOf(r.id), gazeAt(r.seed, Date.now()), r.seed)
+      drawCollectibleBall(g, built.cx, built.cy, r.soft.radius, r.tier, variantIdFor(r.tier), built.poly, this.emotion.panicOf(r.id), gazeAt(r.seed, Date.now()), r.seed, undefined, r.soft.center.angle)
       return
     }
     // Every other tier (including the tier 8 cycling RGB ball) is a

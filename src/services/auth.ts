@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase'
+import { isDrunkoTestRoute } from '../game/state/runVariant'
 import type { AuthChangeEvent, User, Session } from '@supabase/supabase-js'
 
 import {
@@ -199,6 +200,12 @@ export class AuthService {
   }
 
   private scheduleCloudSync(save: SaveDataV1, immediate: boolean): void {
+    // The /drunko run is deliberately ephemeral: even delayed save handlers
+    // must not enqueue a guest or account progression write for this route.
+    if (isDrunkoTestRoute()) {
+      this.cancelScheduledCloudSync()
+      return
+    }
     if (this.authFlowInProgress === 'logout') return
     const user = this.user
 
@@ -469,7 +476,8 @@ export class AuthService {
   }
 
   async signUpWithEmail(email: string, password: string, username: string): Promise<{ error: Error | null }> {
-    const guestSave = getSaveOwnerId() === null ? cloneSave(loadSave()) : freshSave()
+    const guestSave = !isDrunkoTestRoute() && getSaveOwnerId() === null ? cloneSave(loadSave()) : freshSave()
+    const signupProgress = isDrunkoTestRoute() ? {} : { ballrush_progress: guestSave }
     const flowRevision = this.beginAuthFlow('signup')
     try {
       const { error } = await supabase.auth.signUp({
@@ -478,7 +486,7 @@ export class AuthService {
         options: {
           data: {
             username,
-            ballrush_progress: guestSave,
+            ...signupProgress,
           },
         },
       })
@@ -544,8 +552,10 @@ export class AuthService {
       return { error: new Error('Username is already taken') }
     }
 
-    // Capture genuine guest progress BEFORE signing up so we can transfer it to the new account.
-    const hadGuestProgress = getSaveOwnerId() === null
+    // Sandbox signup keeps authentication available without transferring or
+    // publishing the ephemeral run's progression.
+    const sandbox = isDrunkoTestRoute()
+    const hadGuestProgress = !sandbox && getSaveOwnerId() === null
     const guestIdBeforeSignup = hadGuestProgress ? getOrCreateGuestId() : null
     const guestSave = hadGuestProgress ? cloneSave(loadSave()) : freshSave()
     const authEmail = email || `${username.toLowerCase().replace(/[^a-z0-9]/g, '')}@ballrush.local`
@@ -553,13 +563,14 @@ export class AuthService {
     const flowRevision = this.beginAuthFlow('signup')
     let handledEvent = false
     try {
+      const signupProgress = sandbox ? {} : { ballrush_progress: guestSave }
       const { error } = await supabase.auth.signUp({
         email: authEmail,
         password,
         options: {
           data: {
             username,
-            ballrush_progress: guestSave,
+            ...signupProgress,
           },
         },
       })
@@ -773,6 +784,7 @@ export class AuthService {
    * and `public.user_progress` (when present).
    */
   async persistSaveToCloud(saveData?: Partial<SaveDataV1>, expectedUserId?: string): Promise<void> {
+    if (isDrunkoTestRoute()) return
     const user = this.user
     if (!user) return
     const uid = expectedUserId ?? user.id
@@ -848,6 +860,7 @@ export class AuthService {
    * Persist anonymous guest progression to `public.guest_profiles` via RPC.
    */
   async persistGuestSaveToCloud(saveData?: Partial<SaveDataV1>): Promise<void> {
+    if (isDrunkoTestRoute()) return
     if (this.user || getSaveOwnerId() !== null) return
     const guestId = getOrCreateGuestId()
     const save = normalizeSave(saveData ?? loadSave())
@@ -974,6 +987,9 @@ export class ScoreService {
     ballsMerged: number,
     durationMs: number,
   ): Promise<{ scoreId: number | null; error: Error | null }> {
+    // /drunko is a real gameplay sandbox, but its run rows must never reach
+    // guest_scores or scores, including when a caller bypasses scene guards.
+    if (isDrunkoTestRoute()) return { scoreId: null, error: null }
     const auth = AuthService.getInstance()
     const user = auth.getUser()
     const cleanScore = Math.max(0, Math.round(score))
@@ -1052,6 +1068,8 @@ export class ScoreService {
     ballsMerged: number,
     durationMs: number,
   ): Promise<{ error: Error | null }> {
+    // Keep direct post-game callers harmless on the isolated test route.
+    if (isDrunkoTestRoute()) return { error: null }
     const auth = AuthService.getInstance()
     const user = auth.getUser()
     const actorId = user ? user.id : `guest:${getOrCreateGuestId()}`

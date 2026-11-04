@@ -27,7 +27,7 @@ import { session, fastbootRequested } from '../state/session'
 import { bannerForcedByVariant } from '../rendering/DiscoveryBanner'
 import { hasDiscoveredTier, recordDiscovery, recordMerge, recordRunEnd, recordRunStart, savedBest, themeSetting } from '../state/save'
 import { scoreService } from '../../services/auth'
-import { rollNewRunSeed, runVariantFor, themeFor } from '../state/runVariant'
+import { isDrunkoTestRoute, rollNewRunSeed, runVariantFor, themeFor } from '../state/runVariant'
 import {
   ballLookFor,
   drawBallFace,
@@ -282,8 +282,10 @@ export class PlaygroundScene extends Phaser.Scene {
         // Phase 2.14.0 (spec §2): lifetime records for the JOURNAL,
         // COLLECTION and stats screens. Collectibles retain both their run's
         // character theme and palette; palette changes are not new characters.
-        if (firstTime) recordDiscovery(tier, runVariantFor(tier), themeFor(tier))
-        recordMerge(tier, this.score.score)
+        if (!isDrunkoTestRoute()) {
+          if (firstTime) recordDiscovery(tier, runVariantFor(tier), themeFor(tier))
+          recordMerge(tier, this.score.score)
+        }
         this.mergesThisRun++
         if (tier > this.bestTierRun) this.bestTierRun = tier
         this.syncLiveRun(false)
@@ -967,7 +969,7 @@ export class PlaygroundScene extends Phaser.Scene {
     this.swapUsed = true
     // Swap rerolls the CURRENT (held) ball only — the preview slot is
     // untouched, keeping the queue consistent (Phase 2.13.0).
-    this.currentBall = { tier: randomSpawnTier(), seed: randomSeed() }
+    this.currentBall = { tier: isDrunkoTestRoute() ? 9 : randomSpawnTier(), seed: randomSeed() }
     this.publishQueue()
     gameBus.emit('ability:swapUsed', {})
   }
@@ -1024,21 +1026,27 @@ export class PlaygroundScene extends Phaser.Scene {
     this.registeredIds.add(ball.id)
     if (!this.runStarted) {
       this.runStarted = true
-      scoreService.startNewRun()
-      recordRunStart()
-      this.syncLiveRun(true)
+      if (!isDrunkoTestRoute()) {
+        scoreService.startNewRun()
+        recordRunStart()
+        this.syncLiveRun(true)
+      }
     }
     // frame (the update-loop flip would otherwise lag one frame).
     this.lastDropHolding = false
     gameBus.emit('state:dropHolding', { holding: false })
     // Queue rotation: previous next becomes current; a fresh ball enters next.
     this.currentBall = { ...this.nextBallState }
-    this.nextBallState = { tier: randomSpawnTier(), seed: randomSeed() }
+    const drunkoTestRoute = isDrunkoTestRoute()
+    this.nextBallState = { tier: drunkoTestRoute ? 9 : randomSpawnTier(), seed: randomSeed() }
     // ?test=<tier>: keep dealing the test tier so the queue never runs out
-    // of it (a plain drop in test mode always yields the test ball).
-    const testTier = Number(new URLSearchParams(window.location.search).get('test') ?? '')
-    if (Number.isInteger(testTier) && testTier >= 1 && testTier <= 12) {
-      this.nextBallState = { tier: testTier, seed: randomSeed() }
+    // of it (a plain drop in test mode always yields the test ball). /drunko
+    // takes precedence so query overrides cannot change its tier.
+    if (!drunkoTestRoute) {
+      const testTier = Number(new URLSearchParams(window.location.search).get('test') ?? '')
+      if (Number.isInteger(testTier) && testTier >= 1 && testTier <= 12) {
+        this.nextBallState = { tier: testTier, seed: randomSeed() }
+      }
     }
     // PERF (iOS): pre-bake the new NEXT ball's face atlas NOW (idle
     // frame) — the drop frame then reuses it instead of rasterizing
@@ -1059,13 +1067,13 @@ export class PlaygroundScene extends Phaser.Scene {
    * in the Next Ball box); the crane reads `currentBall` directly.
    */
   private initQueue(): void {
-    this.currentBall = { tier: randomSpawnTier(), seed: randomSeed() }
-    this.nextBallState = { tier: randomSpawnTier(), seed: randomSeed() }
-    // ?test=8: the crane holds a tier-8 ball (and the queue keeps dealing
-    // tier 8s) — a quick way to eyeball the colour-cycling ball and its
-    // discovery animations without merging up to it.
+    const drunkoTestRoute = isDrunkoTestRoute()
+    this.currentBall = { tier: drunkoTestRoute ? 9 : randomSpawnTier(), seed: randomSeed() }
+    this.nextBallState = { tier: drunkoTestRoute ? 9 : randomSpawnTier(), seed: randomSeed() }
+    // ?test=<tier> pins both queue slots for visual testing; /drunko is a
+    // deliberate route override and always takes precedence over query flags.
     const testTier = Number(new URLSearchParams(window.location.search).get('test') ?? '')
-    if (Number.isInteger(testTier) && testTier >= 1 && testTier <= 12) {
+    if (!drunkoTestRoute && Number.isInteger(testTier) && testTier >= 1 && testTier <= 12) {
       this.currentBall = { tier: testTier, seed: randomSeed() }
       this.nextBallState = { tier: testTier, seed: randomSeed() }
     }
@@ -1135,7 +1143,7 @@ export class PlaygroundScene extends Phaser.Scene {
   }
 
   private syncLiveRun(force = false): void {
-    if (!this.runStarted) return
+    if (!this.runStarted || isDrunkoTestRoute()) return
     const now = Date.now()
     if (!force && now - this.lastLiveSyncAt < 2500) return
     this.lastLiveSyncAt = now
@@ -1148,7 +1156,7 @@ export class PlaygroundScene extends Phaser.Scene {
   }
 
   private finalizeActiveRunIfIncomplete(): void {
-    if (!this.runStarted || this.gameOver) return
+    if (!this.runStarted || this.gameOver || isDrunkoTestRoute()) return
     this.registry.set('best', recordRunEnd(this.score.score, this.bestTierRun, true))
     gameBus.emit('state:best', { best: this.best() })
     void scoreService.submitScore(
@@ -1164,17 +1172,21 @@ export class PlaygroundScene extends Phaser.Scene {
     this.inputController.setEnabled(false)
     gameBus.emit('ability:enabled', { enabled: false })
     // Phase 2.14.0: lifetime records — leaderboard entry (score + best tier
-    // reached) and the persisted best score. recordRunEnd returns the new
-    // all-time best so the HUD 'BEST' reflects the save.
-    this.registry.set('best', recordRunEnd(this.score.score, this.bestTierRun, this.runStarted))
+    // reached) and the persisted best score. Sandbox runs keep the existing
+    // best but leave no saved progression or leaderboard record.
+    if (!isDrunkoTestRoute()) {
+      this.registry.set('best', recordRunEnd(this.score.score, this.bestTierRun, this.runStarted))
+    }
     gameBus.emit('state:best', { best: this.best() })
-    // Submit immediately at Game Over trigger so the run is recorded even before the pop animation ends
-    void scoreService.submitScore(
-      this.score.score,
-      this.bestTierRun,
-      this.mergesThisRun,
-      Math.round(this.activeTimeMs),
-    )
+    // Submit immediately at Game Over trigger so the run is recorded even before the pop animation ends.
+    if (!isDrunkoTestRoute()) {
+      void scoreService.submitScore(
+        this.score.score,
+        this.bestTierRun,
+        this.mergesThisRun,
+        Math.round(this.activeTimeMs),
+      )
+    }
     // GAME OVER SEQUENCE: balls realize they're doomed, panic, then pop in
     // a staggered chain. The panel springs in when the chain finishes
     // ('run:gameover' now fires from the sequence completion, not here).

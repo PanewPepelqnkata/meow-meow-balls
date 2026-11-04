@@ -1,7 +1,7 @@
 # BALL RUSH — Game Specification
 
 Version: 0.2 (updated for menu + gameplay reference screenshots — awaiting user review)
-Status: PLANNING ONLY. No code has been implemented.
+Status: Implementation in progress; review checkpoints in IMPLEMENTATION_CHECKLIST.md.
 
 ---
 
@@ -39,9 +39,11 @@ points and triggering chain reactions. The run ends when a ball escapes the cont
 - **Tiers 1–7**: predictable progression; each has a fixed size, color, and score. Two balls of tier N merge into tier N+1 where the destination is playable.
 - **Tier 8**: the cycling RGB ball, a playable merge destination.
 - **Tiers 9–12**: collectible tiers with eight unrelated character slots each. A run rolls one implemented character per configured collectible tier and keeps it for the run. Palette variations do not count as separate characters.
-- Current implemented characters are Tier 9 shark/pig and Tier 10 crab; the existing weighted run rolls are unchanged. Tiers 11–12 and unfinished character slots remain locked and are not added to gameplay until their artwork/configuration is implemented.
+- Current implemented characters are Tier 9 shark/pig/Drunk'o Ball (`drunko`) and Tier 10 crab. Tiers 11–12 and unfinished character slots remain locked until their artwork/configuration is implemented.
+- Ordinary Tier 9 balls draw the run's theme, including Drunko in normal play; shark, pig and Drunko currently have equal roll weights. Character and palette are fixed for the run, not rerolled per ball.
+- Drunko has a tilted stitched cap, grey beard, sleepy half-closed eyes, drool and a green bottle. Shared idle expressions include blink, wink, grin and tongue; fear opens the eyes, lowers the bottle, hides the drool and adds sweat.
 - Collection history stores `${tier}:${character}:${palette}` in the existing variants map. The book renders the recorded character and first-discovered palette independently of the current run.
-- Older Tier 9 numeric records contain only a palette, not an animal identity; they are preserved as unidentified finds rather than arbitrarily converted into pig or shark. Legacy crab records can be recovered because Tier 10 had only crab.
+- Older Tier 9 numeric records contain only a palette, not a character identity; they are preserved as unidentified finds rather than arbitrarily assigned a character. Legacy crab records can be recovered because Tier 10 had only crab.
 
 ## 4. Spawning Rules
 
@@ -95,6 +97,10 @@ points and triggering chain reactions. The run ends when a ball escapes the cont
 - Vercel deployment (static build of the Vite app).
 - Free to play, no monetization, no ads.
 - Desktop: mouse input. Mobile: touch input. Both must work without mode switches.
+- `/drunko` is an isolated character-test route: both queue slots, every drop,
+  refill and Swap stay Tier 9 Drunk'o Ball, regardless of query overrides.
+  Local saves, collection progress, leaderboards, analytics and production
+  statistics remain untouched; in-run score and merges still work normally.
 
 ## 10. Visual Direction (summary — details in ART_DIRECTION.md)
 
@@ -146,7 +152,8 @@ acceptance criteria in IMPLEMENTATION_CHECKLIST.md (Phases 7, 11) and TEST_PLAN 
 
 ### 10A.3 Locked behavior re-confirmed
 All §2–§5 mechanics are unchanged by this update (merges, chains, 12 tiers,
-tiers 1–7 predictable, tiers 8–9 playable, tiers 10–12 unspecified, power-ups ×1/run, ball-out ends run,
+tiers 1–7 predictable, tiers 8–10 playable with the implemented themes in §3,
+tiers 11–12 locked, power-ups ×1/run, ball-out ends run,
 danger line does not). Visual deformation stays purely in the render layer;
 rigid-body physics is never deformed.
 
@@ -162,7 +169,7 @@ rigid-body physics is never deformed.
 
 See "Unresolved Decisions" at the end of this planning deliverable. The most critical:
 
-1. **Tier 8–10 randomization mechanic — user must explain before any implementation.**
+1. **Remaining collectible character slots and tiers 11–12 need artwork/configuration; implemented theme rolls stay fixed per run (§3).**
 2. Exact tier size/score tuning values (config, tune during implementation).
 3. Chain-merge scoring formula (proposed in ART/ARCH docs, needs sign-off).
 4. Leaderboard anti-cheat strictness (server-side validation depth).

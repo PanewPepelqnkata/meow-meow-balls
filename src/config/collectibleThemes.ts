@@ -21,13 +21,14 @@ export interface CollectibleTheme {
   weight: number
 }
 
-/** Per-tier collectible theme tables. Tier 9 has two equally likely
- *  themes (shark / pig); tiers 10–12 will grow their own tables here as
- *  their designs land. */
+/** Per-tier collectible theme tables. Tier 9 has three equally likely
+ *  themes (shark / pig / drunko); tiers 10–12 will grow their own tables
+ *  here as their designs land. */
 export const COLLECTIBLE_THEMES: Record<number, readonly CollectibleTheme[]> = {
   9: [
     { name: 'shark', weight: 1 },
     { name: 'pig', weight: 1 },
+    { name: 'drunko', weight: 1 },
   ],
   10: [
     { name: 'crab', weight: 1 },

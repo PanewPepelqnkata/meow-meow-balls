@@ -3,13 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-T98RKZG8TY"></script>
     <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-
-      gtag('config', 'G-T98RKZG8TY');
+      if (!/(?:^|\/)drunko\/*$/.test(window.location.pathname)) {
+        const tag = document.createElement('script');
+        tag.async = true;
+        tag.src = 'https://www.googletagmanager.com/gtag/js?id=G-T98RKZG8TY';
+        document.head.appendChild(tag);
+        window.dataLayer = window.dataLayer || [];
+        window.gtag = function () { window.dataLayer.push(arguments); };
+        window.gtag('js', new Date());
+        window.gtag('config', 'G-T98RKZG8TY');
+      }
     </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta

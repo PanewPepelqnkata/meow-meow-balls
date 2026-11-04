@@ -19,10 +19,13 @@
  * Robustness: every localStorage access is guarded (private mode, blocked
  * storage, corrupted JSON) — the game must be fully playable with a dead or
  * missing save. The cache is write-through; failures degrade to in-memory.
+ * On /drunko, reads still expose existing progress, but every mutation is
+ * disabled, including storage probes, identity changes, and delayed cloud sync.
  */
 
 import { collectibleDiscoveryKey } from '../../config/collectibleCollection'
 import { gameBus } from '../events/gameBus'
+import { isDrunkoTestRoute } from './runVariant'
 
 const KEY = 'ballrush.save.v1'
 const OWNER_KEY = 'ballrush.save.owner'
@@ -178,6 +181,7 @@ export function setCloudSyncHandler(handler: ((save: SaveDataV1, immediate: bool
 function storage(): Storage | null {
   try {
     if (typeof localStorage === 'undefined') return null
+    if (isDrunkoTestRoute()) return localStorage
     // Probe access once (Safari private mode throws on the property itself).
     const probe = '__br_probe__'
     localStorage.setItem(probe, '1')
@@ -206,6 +210,7 @@ export function getSaveOwnerId(): string | null {
 }
 
 export function setSaveOwnerId(userId: string | null): void {
+  if (isDrunkoTestRoute()) return
   ownerCache = userId && userId.trim().length > 0 ? userId.trim() : null
   const s = storage()
   if (!s) return
@@ -248,6 +253,8 @@ export function getOrCreateGuestId(): string {
     }
   }
   const next = generateUuidV4()
+  // Sandbox callers may read an existing identity, but never persist a new one.
+  if (isDrunkoTestRoute()) return next
   guestIdCache = next
   if (s) {
     try {
@@ -260,6 +267,7 @@ export function getOrCreateGuestId(): string {
 }
 
 export function resetGuestId(): string {
+  if (isDrunkoTestRoute()) return getOrCreateGuestId()
   const next = generateUuidV4()
   guestIdCache = next
   const s = storage()
@@ -274,6 +282,7 @@ export function resetGuestId(): string {
 }
 
 function write(): void {
+  if (isDrunkoTestRoute()) return
   const s = storage()
   if (!s || !cache) return
   try {
@@ -312,10 +321,12 @@ function cancelScheduledWrites(): void {
 let writeTimer: ReturnType<typeof setTimeout> | null = null
 let idleHandle: number | null = null
 function writeSoon(): void {
+  if (isDrunkoTestRoute()) return
   if (writeTimer || idleHandle !== null) return
   const flushSoon = (): void => {
     idleHandle = null
     writeTimer = null
+    if (isDrunkoTestRoute()) return
     write()
     if (cache) cloudSyncHandler?.(cloneSave(cache), false)
   }
@@ -328,6 +339,7 @@ function writeSoon(): void {
 }
 function writeNow(syncCloud = true): void {
   cancelScheduledWrites()
+  if (isDrunkoTestRoute()) return
   write()
   if (syncCloud && cache) cloudSyncHandler?.(cloneSave(cache), true)
 }
@@ -374,6 +386,7 @@ export function writeSave(
   save: Partial<SaveDataV1>,
   options?: { syncCloud?: boolean; ownerId?: string | null },
 ): SaveDataV1 {
+  if (isDrunkoTestRoute()) return loadSave()
   const normalized = normalizeSave(save)
   const current = assignCache(normalized)
   if (options && 'ownerId' in options) {
@@ -387,6 +400,7 @@ export function writeSave(
 
 /** Test/QA hook & logout reset: wipe the save completely (Settings → Reset progress or logout). */
 export function resetSave(options?: { syncCloud?: boolean; clearOwner?: boolean }): SaveDataV1 {
+  if (isDrunkoTestRoute()) return loadSave()
   cancelScheduledWrites()
   const current = assignCache(freshSave())
   if (options?.clearOwner !== false) {
@@ -411,6 +425,7 @@ export function resetSave(options?: { syncCloud?: boolean; clearOwner?: boolean 
 /** Record lifetime discovery; collectible themes identify characters, variant ids their palettes.
  * Without a theme, preserve the legacy numeric variant key. */
 export function recordDiscovery(tier: number, variantId: number | null, theme?: string | null): void {
+  if (isDrunkoTestRoute()) return
   const save = loadSave()
   const now = Date.now()
   if (save.discovered[String(tier)] == null) save.discovered[String(tier)] = now
@@ -433,6 +448,7 @@ export function hasDiscoveredTier(tier: number): boolean {
 
 /** A run genuinely started (first ball dropped): increment lifetime runs count and flush immediately. */
 export function recordRunStart(): void {
+  if (isDrunkoTestRoute()) return
   const save = loadSave()
   save.stats.runs++
   if (save.stats.bestTier < 1) save.stats.bestTier = 1
@@ -441,6 +457,7 @@ export function recordRunStart(): void {
 
 /** One merge happened (lifetime stat). */
 export function recordMerge(tier: number, currentRunScore = 0): void {
+  if (isDrunkoTestRoute()) return
   const save = loadSave()
   save.stats.merges++
   if (tier > save.stats.bestTier) save.stats.bestTier = tier
@@ -455,6 +472,7 @@ export function recordRunEnd(
   alreadyCountedRun = false,
 ): number {
   const save = loadSave()
+  if (isDrunkoTestRoute()) return save.best
   const now = Date.now()
   if (!alreadyCountedRun) save.stats.runs++
   if (score > save.best) save.best = score
@@ -477,6 +495,7 @@ export function savedBest(): number {
 }
 
 export function setThemeSetting(theme: ThemeSetting): void {
+  if (isDrunkoTestRoute()) return
   loadSave().settings.theme = theme
   writeNow()
 }
