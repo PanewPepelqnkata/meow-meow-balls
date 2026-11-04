@@ -1,6 +1,7 @@
+import { COLLECTIBLE_TIERS } from '../../config/collectibleCollection'
 import Phaser from 'phaser'
 import { getTier } from '../../config/ballTiers'
-import { renderContour, softBallArea, softBallCentroid, softBallSleeping, SOFT } from '../systems/SoftBall'
+import { renderContour, softBallArea, softBallCentroid, SOFT } from '../systems/SoftBall'
 import type { SoftBallEntity } from '../systems/SoftBallManager'
 import { BallEmotionSystem } from '../systems/BallEmotion'
 import type { GameOverSequence } from './GameOverSequence'
@@ -25,67 +26,15 @@ import {
 import type { DeformState } from './deform'
 import { variantIdFor } from '../state/runVariant'
 import { TierBaker } from './TierBaker'
-
-/**
- * The tier 8/9 BAKE DEBOUNCE — a ball must be CONTINUOUSLY asleep for
- * this many frames before its frozen texture is used. Matter's per-body
- * sleep flags flip around the threshold in a settled pile; without the
- * debounce the tier 9 ball alternated baked-sprite ↔ live-Graphics paths
- * frame to frame, which read as violent flickering.
- */
-const SLEEP_DEBOUNCE_FRAMES = 30
-
-import type { TierTextures } from './TierBaker'
 import { FacePool } from './FacePool'
 import type { SpriteBallView } from './FacePool'
 import { cycleColor } from './rgbCycle'
 
 /**
- * Phase 2.24 SPRITE-BALLS renderer (per-tier baked slime textures) — the
- * measured replacement for the live Graphics pipeline that held iPhone 14
- * Pro at ~42 fps (fillPoints + strokePoints streamed ~1,150 triangles per
- * ball per frame into one non-batched buffer).
- *
- * EVERY ball (tier 1–7) renders as TWO batched quads off ONE per-tier
- * texture pair, baked ONCE per tier at rest geometry (round contour
- * displaced by the shared wobble pipeline, tier color fill + ink outline —
- * rasterized through Graphics.generateTexture exactly like BallBaker):
- *
- *   9.5   tier fill quad      (sprite, scale = liveR / BAKE_TEXTURE_RADIUS)
- *   9.6   wobble overlay      (shared Graphics — ONLY impact balls, ≤3/frame)
- *   10    live Graphics       (faces fallback: easter eggs / panic / tier 8-9)
- *   10.5  tier outline quad   (sprite)
- *   11    face sprites        (sclera ×2, pupil ×2, mouth — pooled per ball)
- *
- * DEFORM = TRANSFORM-ONLY (steady state): the ball's live particle-ring
- * aspect (h/w, computed from the particle bounds — the same measure the
- * old contour path fed the face) drives scaleX/scaleY on the fill quad,
- * and the aspect's principal axis drives rotation. The measured 27%-of-
- * radius dent reads as wobble through squash/stretch — no per-frame
- * contour re-tessellation for the 20+ resting balls. While a ball's
- * amplitude exceeds WobbleOverlay.AMP_GATE (a genuine impact transient),
- * its LIVE contour additionally draws through the shared overlay Graphics
- * (bounded ≤3 balls) and the outline quad hides for those frames — the
- * dent/bulge contour look is preserved exactly where it matters.
- *
- * FACES: pooled sprites per ball (FacePool — 5 quads off a tiny per-ball
- * baked atlas). Gaze (glance timeline) repositions the pupil quads per
- * frame — cheap transforms. EASTER-EGG expressions, the panic morph, and
- * sweat fall back to the live Graphics face draw for that ball only
- * (transient, at most a few balls at once).
- *
- * TIERS 8/9 (rainbow shimmer / fantasy procedural extras) keep their live
- * contour path through the live Graphics — rare end-chain balls, accepted
- * cost. When asleep they bake PER BALL via TierBaker.bakeLiveContour into
- * a per-ball texture pair (the BallBaker approach survives for exactly
- * these two tiers).
- *
- * PRESERVED API: register/unregister/clear/size/drawnSize/isDrawn — and
- * the baked-rendering diagnostics (bakedSize/isBaked now report SPRITE
- * quad counts: a ball counts as baked when it rendered via its tier
- * textures) — plus dropBake/suspendBaking/resumeBaking/destroy no-ops/
- * equivalents so PlaygroundScene wiring is unchanged (acceptance §5: the
- * WALL line reports sprite counts through bakedSize).
+ * Sprite renderer for the ordinary tiers. Tiers 1-7 use one shared combined
+ * body texture per tier plus pooled face sprites; RGB and collectible tiers
+ * keep their procedural live drawing. Strong impacts temporarily use a live
+ * contour so localized jelly deformation remains visible.
  */
 export class SoftBallRenderer {
   /** Live entities — the entity (not a snapshot) so the lifecycle state is
@@ -108,14 +57,6 @@ export class SoftBallRenderer {
   private readonly faces: FacePool
   /** Per-ball sprite views (body quads + face sprites). */
   private readonly spriteViews = new Map<number, SpriteBallView>()
-  /** Per-ball texture override for tiers 8/9 (per-ball live-contour bakes). */
-  private readonly specialTextures = new Map<number, TierTextures>()
-  /** Suspension flag (Raise Walls) — kept for API compatibility; sprites
-   * need no baking suspension (textures are shared and immutable), the
-   * flag only pauses NEW tier-8/9 per-ball bakes. */
-  private bakingSuspended = false
-  /** Consecutive sleeping frames per ball — the tier 8/9 bake debounce. */
-  private readonly sleepHold = new Map<number, number>()
   /** IDs drawn as SPRITE quads in the LAST update() — QA evidence
    * (acceptance §5: the WALL line reports sprite counts through this). */
   private readonly bakeSweep = new Set<number>()
@@ -126,11 +67,6 @@ export class SoftBallRenderer {
   private readonly centroidScratch = { x: 0, y: 0 }
   /** Pooled per-ball aspect measurement (zero-allocation). */
   private readonly aspectScratch = { minX: 0, maxX: 0, minY: 0, maxY: 0 }
-  /** Overlay gate hysteresis: enter below 0.955, exit above 0.975 — the
-   * damped deform oscillates across a single threshold 2-4×/impact and
-   * the two render modes have different silhouettes (baked circle vs
-   * wobbled poly) = the 'squished↔normal' flicker. */
-  private readonly overlayOn = new Map<number, boolean>()
   /** Per-ball jelly deform spring (dent + bulge, fed by collision events). */
   private readonly deforms = new Map<number, DeformState>()
   /** Per-ball ACCUMULATED impact for the current frame: the strength-weighted
@@ -139,15 +75,9 @@ export class SoftBallRenderer {
    * same frame — they are summed here and applied ONCE per ball per frame
    * (flushImpacts) so the dent points at the real contact side and its
    * strength scales with the approach speed instead of the event count. */
-  private readonly pendingImpacts = new Map<
-    number,
-    { x: number; y: number; speed: number }
-  >()
-  /** Scene ref for texture removal (tier-8/9 per-ball bakes). */
-  private readonly scene: Phaser.Scene
+  private readonly pendingImpacts = new Map<number, { x: number; y: number; speed: number }>()
 
   constructor(scene: Phaser.Scene) {
-    this.scene = scene
     this.layer = scene.add.graphics().setDepth(10)
     this.tierBaker = new TierBaker(scene)
     this.faces = new FacePool(scene)
@@ -221,24 +151,20 @@ export class SoftBallRenderer {
     this.renderables.delete(ballId)
     this.looks.delete(ballId)
     this.contourPool.delete(ballId)
-    this.overlayOn.delete(ballId)
     this.deforms.delete(ballId)
     this.pendingImpacts.delete(ballId)
     this.faces.drop(ballId)
     this.spriteViews.delete(ballId)
-    this.dropSpecialTextures(ballId)
   }
 
   clear(): void {
     this.renderables.clear()
     this.looks.clear()
     this.contourPool.clear()
-    this.overlayOn.clear()
     this.deforms.clear()
     this.pendingImpacts.clear()
     this.faces.clear()
     this.spriteViews.clear()
-    for (const id of [...this.specialTextures.keys()]) this.dropSpecialTextures(id)
   }
 
   /** Diagnostics: number of live renderer entries (Phase 2.10.2 stale-renderer checks). */
@@ -278,20 +204,6 @@ export class SoftBallRenderer {
     return { scaleX: view.fill.scaleX, scaleY: view.fill.scaleY, rotation: view.fill.rotation, visible: view.fill.visible }
   }
 
-  /** Legacy bake invalidation — sprites need no texture drops (shared
-   * immutable tier textures); tier-8/9 per-ball bakes drop on wake. */
-  dropBake(ballId: number): void {
-    this.dropSpecialTextures(ballId)
-  }
-
-  /** Kept for API compatibility (see field doc). */
-  suspendBaking(): void {
-    this.bakingSuspended = true
-  }
-
-  resumeBaking(): void {
-    this.bakingSuspended = false
-  }
 
   /** Destroy the pooled display objects (scene shutdown). */
   destroy(): void {
@@ -357,85 +269,51 @@ export class SoftBallRenderer {
         continue
       }
 
-      // ---- LIVE CONTOUR PATH (tiers 1–7): EVERY ball draws the live
-      // particle-ring contour, awake or asleep — one render path, so
-      // there is no sleep/wake mode switch and no sticker/contour snap.
-      // (The contour is rebuilt from the physics every frame; the vertex
-      // arrays are pooled, not cached.)
-      //
-      // TIER 8 (the cycling RGB ball) uses this SAME path: it is a plain
-      // ball that only differs in its COLOUR, so it needs no special
-      // procedural body, no per-ball texture bake and no second render
-      // path. That is also why it can no longer lose its body (the old
-      // rainbow had no ink outline and its own baked-texture path, which
-      // is where the "colour disappears, only the face stays" symptom
-      // came from).
-      if (!this.isCollectibleTier(r.tier)) {
+      // Tiers 1-7 use a single cached body texture per tier.
+      if (r.tier <= 7) {
         const view = this.spriteViews.get(r.id)
-        if (view) {
-          const { poly } = this.liveContour(r, look, drawR)
-          g.fillStyle(color, 1)
-          g.fillPoints(poly, true)
-          g.lineStyle(ballOutlineWidth(drawR), INK, 1)
-          g.strokePoints(poly, true, true)
-          this.bakeSweep.add(r.id)
+        const tier = getTier(r.tier)
+        if (view && tier) {
+          const tex = this.tierBaker.ensure(r.tier, color, tier.radius)
+          const s = drawR / tex.textureRadius
+          const deforming = (this.deforms.get(r.id)?.lastStrength ?? 0) > 0.001
+          const overlayEligible = deforming && aspect < 0.975
+
+          view.fill
+            .setTexture(tex.fillKey)
+            .setVisible(!overlayEligible)
+            .setPosition(c.x, c.y)
+            .setScale(s)
+          view.outline.setVisible(false)
+
+          if (overlayEligible) {
+            const { poly } = this.liveContour(r, look, drawR)
+            g.fillStyle(color, 1)
+            g.fillPoints(poly, true)
+            g.lineStyle(ballOutlineWidth(drawR), INK, 1)
+            g.strokePoints(poly, true, true)
+          }
           this.drawSpriteFace(view, r, drawR, aspect, now)
+          this.bakeSweep.add(r.id)
           continue
         }
       }
-
-      // ---- SLEEP BAKE (plain tiers 1–7 only): a ball that has been
-      // CONTINUOUSLY asleep for the debounce window switches to its baked
-      // contour texture. Tiers 8/9 NEVER bake: tier 8's colour animates,
-      // and the tier 9 shark's procedural body (fins, aura, mouth, face)
-      // cannot survive a plain-contour bake — plus with several sharks on
-      // screen the baked-sprite ↔ live-Graphics alternation (Matter sleep
-      // flags oscillating around the threshold + sprite-vs-graphics depth
-      // ordering) read as disappearing, glitching sharks. They always
-      // draw through the live Graphics path below.
-      const sleeping = softBallSleeping(r.soft)
-      const sleepKey = r.id
-      const held = (this.sleepHold.get(sleepKey) ?? 0) + 1
-      if (sleeping) this.sleepHold.set(sleepKey, held)
-      else this.sleepHold.delete(sleepKey)
-      const sleepStable = sleeping && held >= SLEEP_DEBOUNCE_FRAMES
-      const bakeable = r.tier <= 7
-      const special = bakeable && sleepStable && !this.bakingSuspended ? this.specialTextures.get(r.id) : undefined
-      if (special) {
-        const s = drawR / special.textureRadius
-        this.drawSpecialQuads(r.id, special, c.x, c.y, s)
-        this.bakeSweep.add(r.id)
-        this.drawSpriteFace(this.spriteViews.get(r.id)!, r, drawR, aspect, now)
-        continue
-      }
-
-      const { poly, cx, cy } = this.liveContour(r, look, drawR)
-      if (bakeable && sleepStable && !this.bakingSuspended && !this.specialTextures.has(r.id)) {
-        // Bake ONCE per ball, after the debounce. Re-baking every sleeping
-        // frame removed the ball's live texture out from under its own
-        // body quad, which nulled the texture source and threw during the
-        // next render — killing the game loop and the whole UI.
-        this.bakeSpecial(r, poly, color)
-      }
-      this.drawLiveBody(g, r, look, drawR, color, poly, cx, cy)
+      const polyResult = this.liveContour(r, look, drawR)
+      this.drawLiveBody(g, r, look, drawR, color, polyResult.poly, polyResult.cx, polyResult.cy)
       if (!this.isCollectibleTier(r.tier)) {
-        // The tier 9 shark paints its own face (part of the design);
-        // every other tier gets the standard face on top.
-        this.drawLiveFace(g, r, look, drawR, aspect, now, cx, cy)
+        this.drawLiveFace(g, r, look, drawR, aspect, now, polyResult.cx, polyResult.cy)
       }
     }
   }
 
+  /** Tiers 9-12 use their themed procedural live path. */
+  private isCollectibleTier(tier: number): boolean {
+    return (COLLECTIBLE_TIERS as readonly number[]).includes(tier)
+  }
   // -------------------------------------------------------------------------
   // Internals
   // -------------------------------------------------------------------------
 
-  /** The collectible tiers (9: shark/pig, 10: crab) draw through
-   *  drawCollectibleBall — the procedural live path — never the plain
-   *  sprite-quad path. */
-  private isCollectibleTier(tier: number): boolean {
-    return tier === 9 || tier === 10
-  }
 
   /** Particle-bounds aspect (h/w, clamped exactly like the old face path). */
   private ballAspect(r: SoftBallEntity): number {
@@ -634,45 +512,6 @@ export class SoftBallRenderer {
     const fear = this.gameOverSequence?.panicOverride ?? this.emotion.panicOf(r.id)
     const level = this.gameOverSequence?.panicOverride ? 'panic' : this.emotion.levelOf(r.id)
     this.faces.layoutFace(view, atlas, c.x, c.y, drawR, aspect, gazeAt(r.seed, now), fear, level)
-  }
-
-  /** Per-ball bake for tiers 8/9 at first frozen frame. */
-  private bakeSpecial(r: SoftBallEntity, poly: Phaser.Math.Vector2[], color: number): void {
-    const tex = this.tierBaker.bakeLiveContour(r.tier, r.id, r.soft, poly, color, variantIdFor(r.tier))
-    this.specialTextures.set(r.id, tex)
-  }
-
-  /** Position the special (tier 8/9) quads for a frozen ball.
-   *
-   * The tier 8/9 bake is drawn in LOCAL space: the texture is sized to the
-   * procedural body's extents and the ball's centre is at the texture's
-   * MIDDLE. The sprite is origin-centred (0.5/0.5), so it is placed
-   * directly on the ball's centroid.
-   */
-  private drawSpecialQuads(ballId: number, tex: TierTextures, cx: number, cy: number, s: number): void {
-    const view = this.spriteViews.get(ballId)
-    if (!view) return
-    view.fill.setTexture(tex.fillKey).setVisible(true).setPosition(cx, cy).setScale(s)
-    view.outline.setVisible(false)
-  }
-
-  private dropSpecialTextures(ballId: number): void {
-    const tex = this.specialTextures.get(ballId)
-    if (!tex) return
-    // HIDE the body quad FIRST. Removing a texture that a visible sprite
-    // still references nulls the texture source, and the next WebGL
-    // render of that sprite throws "Cannot read properties of null
-    // (reading 'resolution')" — which kills the Phaser game loop and
-    // takes the whole UI with it. Hiding first means the sprite is not
-    // rendered at all, so the removal is safe.
-    const view = this.spriteViews.get(ballId)
-    if (view) {
-      view.fill.setVisible(false)
-      view.outline.setVisible(false)
-    }
-    this.scene.textures.remove(tex.fillKey)
-    this.scene.textures.remove(tex.outlineKey)
-    this.specialTextures.delete(ballId)
   }
 
   /** Hide a ball's sprite set (removed / popped / live-path frames). */

@@ -1,77 +1,67 @@
 import { bootGame, frameCount, report } from './lib-game.mjs'
 
 /**
- * Guards the tier 8/9 bake invariant.
+ * Guards the live-render contract for tiers 8 and 9.
  *
- * A tier 8/9 ball that falls asleep bakes a frozen texture of its
- * procedural body. Two bugs lived there:
+ * Tiers 1–7 use shared per-tier baked body sprites. Tiers 8 and 9 are
+ * deliberately different: tier 8 must keep its clock-driven colour cycle,
+ * while tier 9 draws its collectible body procedurally. Both therefore stay
+ * on the live Graphics path, including after they settle.
  *
- *  - the bake REMOVED the texture the ball's own body sprite was bound
- *    to, which nulls the frame's source and makes the next WebGL render
- *    throw inside Phaser's unguarded render pass — and because Phaser's
- *    requestAnimationFrame re-arms the next frame AFTER the callback
- *    returns, that throw permanently stops the game loop (the whole
- *    canvas UI vanishes with it);
- *  - the texture was sized from the WORLD-space contour while the body
- *    was DRAWN in local space, so the body was rasterized outside the
- *    canvas and clipped away (an empty texture) and the sprite was
- *    placed ~350px away from the ball.
- *
- * This script asserts: no page error, the loop keeps advancing, and the
- * baked sprite sits ON the ball.
+ * This script asserts that both balls remain registered and drawn, neither
+ * enters the sprite-bake path, and the game loop survives their presence.
  */
 const { browser, page, errors } = await bootGame()
 
 const failures = []
 
-// Spawn a tier 8 and a tier 9 and force their bakes.
-for (const tier of [8, 9]) {
-  await page.evaluate((t) => window.__brScene.spawnAt(360, t, 600, true), tier)
+// Spawn a tier 8 and a tier 9 apart from one another. They are both live
+// tiers, so settling must not move either one into the sprite-bake path.
+const spawned = []
+for (const [tier, x] of [[8, 250], [9, 470]]) {
+  const ball = await page.evaluate(
+    ({ t, xx }) => window.__brScene.spawnAt(xx, t, 600, true),
+    { t: tier, xx: x },
+  )
+  spawned.push(ball)
   await page.waitForTimeout(2000)
 }
 
-const baked = await page.evaluate(() => {
+const live = await page.evaluate((ids) => {
   const scene = window.__brGame.scene.getScene('playground')
-  const r = scene.ballRenderer
-  const out = []
-  for (const ball of scene.balls.getBalls()) {
-    if (ball.tier !== 8 && ball.tier !== 9) continue
-    const look = r.lookFor(ball)
-    const built = r.liveContour(ball, look, ball.soft.radius)
-    r.bakeSpecial(ball, built.poly, 0xff9800)
-    const tex = r.specialTextures.get(ball.id)
-    if (!tex) {
-      out.push({ tier: ball.tier, error: 'no special texture' })
-      continue
-    }
-    r.drawSpecialQuads(ball.id, tex, built.cx, built.cy, 1)
-    const view = r.spriteViews.get(ball.id)
-    out.push({
-      tier: ball.tier,
-      ballCx: built.cx,
-      ballCy: built.cy,
-      spriteX: view.fill.x,
-      spriteY: view.fill.y,
-      visible: view.fill.visible,
-      texSize: tex.size,
-    })
+  const qa = window.__brScene
+  const balls = scene.balls.getBalls()
+  return {
+    bakedSize: qa.bakedSize(),
+    balls: ids.map(({ id, tier }) => {
+      const ball = balls.find((candidate) => candidate.id === id)
+      if (!ball) return { id, tier, error: 'ball disappeared' }
+      const view = qa.spriteView(id)
+      return {
+        id,
+        tier: ball.tier,
+        state: ball.state,
+        drawn: qa.isDrawn(id),
+        baked: qa.isBaked(id),
+        spriteVisible: view?.visible ?? null,
+      }
+    }),
   }
-  return out
-})
+}, spawned)
 
-for (const b of baked) {
+for (const b of live.balls) {
   if (b.error) {
     failures.push(`tier ${b.tier}: ${b.error}`)
     continue
   }
-  const dx = b.spriteX - b.ballCx
-  const dy = b.spriteY - b.ballCy
-  if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
-    failures.push(
-      `tier ${b.tier}: the baked sprite is ${dx.toFixed(1)},${dy.toFixed(1)}px from the ball (must be 0,0)`,
-    )
+  if (!b.drawn) failures.push(`tier ${b.tier}: the live renderer did not draw the ball`)
+  if (b.baked) failures.push(`tier ${b.tier}: entered the sprite-bake path`)
+  if (b.spriteVisible !== false) {
+    failures.push(`tier ${b.tier}: its body sprite is visible; the tier must use the live path`)
   }
-  if (!b.visible) failures.push(`tier ${b.tier}: the baked sprite is not visible`)
+}
+if (live.bakedSize !== 0) {
+  failures.push(`the live tier 8/9 scene rendered ${live.bakedSize} baked sprite(s)`)
 }
 
 // The loop must keep running.
@@ -84,7 +74,7 @@ if (errors.length) failures.push(`page errors: ${errors.slice(0, 3).join(' | ')}
 
 await browser.close()
 report(
-  'tier 8/9 bake: the baked body sits on the ball and the loop survives',
+  'tier 8/9 live rendering: both bodies stay live and the loop survives',
   failures,
-  `baked: ${JSON.stringify(baked)}\nloop: ${f0} -> ${f1}`,
+  `live: ${JSON.stringify(live)}\nloop: ${f0} -> ${f1}`,
 )

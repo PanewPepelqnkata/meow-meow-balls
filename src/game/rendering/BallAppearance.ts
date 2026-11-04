@@ -1518,6 +1518,9 @@ export function drawCollectibleBall(
     drawCrabBall(g, cx, cy, r, variant, poly, panic, gaze, seed)
     return
   }
+  if (tier !== 9) {
+    throw new Error(`No collectible art implemented for tier ${tier}`)
+  }
   drawTier9Ball(g, cx, cy, r, variant, poly, panic, gaze, seed,
     theme === 'shark' || theme === 'pig' ? theme : tier9Theme())
 }

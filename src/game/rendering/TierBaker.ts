@@ -1,42 +1,31 @@
 import Phaser from 'phaser'
-import { INK, ballOutlineWidth, wobbleContour, ballLookFor, drawCollectibleBall } from './BallAppearance'
-import { isSpecialBakeTier, specialBakeExtent, specialBakeGeometry } from './bakeGeometry'
+import { INK, ballOutlineWidth, wobbleContour, ballLookFor } from './BallAppearance'
 
 /**
- * PER-TIER BAKED SLIME TEXTURES (SpriteBalls, Phase 2.24) — the follow-up
- * to the per-ball bake experiment. Measured on device: per-ball bakes cost
- * two texture uploads per bake churn cycle and the live Graphics layer
- * still re-tessellated every awake ball each frame (fillPoints + strokePoints
- * streams ~1,150 triangles per ball straight into the main WebGL buffer at
- * 60 Hz — the iPhone 14 Pro's 42 fps bottleneck).
+ * PER-TIER BAKED SLIME BODY (SpriteBalls, Phase 2.24) — the follow-up to
+ * the per-ball bake experiment. Measured on device: per-ball bakes cost two
+ * texture uploads per churn cycle and the live Graphics layer re-tessellated
+ * every awake ball each frame.
  *
- * THIS module bakes ONE fill+outline texture pair PER TIER at rest geometry
- * (a circle displaced by the exact same `wobbleContour` pipeline the live
- * renderer applies — identical character silhouette), rasterized once
- * through Graphics.generateTexture and reused by EVERY ball of that tier as
- * a single batched Image each:
+ * THIS module bakes ONE combined body texture PER TIER at the tier's own
+ * rest radius (a circle displaced by the exact same `wobbleContour` pipeline
+ * the live renderer applies), rasterized once through Graphics.generateTexture
+ * and reused by EVERY ball of that tier as a single batched Image:
  *
- *   - fill quad  depth 9.5 (pass 1, alongside other fills)
- *   - outline quad depth 10.5 (pass 2, above every fill incl. awake)
+ *   - body quad depth 9.5
  *
- * The two-quad split reproduces the two-pass draw-order guarantee: adjacent
- * balls' outlines both stay visible at contact points.
+ * The combined texture keeps each ball's outline attached to its own fill;
+ * y-sorted rendering then preserves contact ordering.
  *
- * TEXTURE SPACE: textures are baked at a generous fixed radius
- * (BAKE_TEXTURE_RADIUS px, stage units) and DISPLAYED scaled by
- * liveRadius / BAKE_TEXTURE_RADIUS. Baking big-and-downscaling beats
- * baking per-radius: one texture serves every ball of the tier (there are
- * only 7 real tiers), downscale filtering smooths the ink edge, and the
- * on-screen texel density at gameplay sizes (radius 44..165) stays ≥ the
- * live Graphics antialiasing quality.
+ * TEXTURE SPACE: textures are baked at the tier's own radius and displayed at
+ * liveRadius / tierRadius. That keeps the baked ink stroke width aligned with
+ * the live path.
  *
- * MEMORY: 2 textures × 12 tiers ≤ ~1 MB total on device — bounded, created
- * lazily at first use, kept for the scene's lifetime.
+ * MEMORY: 1 texture × 7 ordinary tiers, bounded, created lazily at first use,
+ * kept for the scene's lifetime.
  *
- * TIERS 8/9 keep their live path (rainbow shimmers with Date.now(); the
- * tier-9 theme ball — shark or pig, rolled per run — has dorsal fin/ears
- * + tail extending beyond the contour). Their steady-state cost is
- * accepted: they are rare end-chain balls.
+ * Tier 8 keeps its live path (the clock colour cycles), and collectible tiers
+ * keep their themed procedural live path.
  */
 
 /** Radius (stage px) at which tier textures are rasterized. */
@@ -141,161 +130,14 @@ export class TierBaker {
     return tex
   }
 
-  /**
-   * Bake a LIVE ball's current wobbled contour into the tier texture set.
-   * Called ONCE per (tier, ball) when a tier-8/9 ball first freezes: those
-   * tiers' fills are procedural (rainbow wedges / fantasy body+extras), so
-   * they cannot share the round per-tier texture. The result REPLACES the
-   * tier pair for that ball id only (per-ball override texture keys).
-   */
-  bakeLiveContour(
-    tier: number,
-    ballId: number,
-    soft: { radius: number },
-    poly: Phaser.Math.Vector2[],
-    color: number,
-    variant: number,
-  ): TierTextures {
-    const fillKey = `br-ball-fill-${ballId}`
-    const outlineKey = `br-ball-out-${ballId}`
-    // The old textures are NOT removed here. A sprite may still reference
-    // them (the ball's body quad is bound to `fillKey`): Phaser's
-    // TextureManager.remove() destroys the texture and nulls its source,
-    // and the next WebGL render of that sprite throws
-    // "Cannot read properties of null (reading 'resolution')" — which
-    // kills the whole Phaser game loop, so the entire UI vanishes with
-    // it. generateTexture() OVERWRITES an existing key in place, so the
-    // old texture does not need to be removed at all: the sprite keeps a
-    // valid texture and simply displays the new bake. The stale texture
-    // is released in dropSpecialTextures() when the ball is gone.
-    void fillKey
-    void outlineKey
-
-    const r = soft.radius
-    const isSpecial = isSpecialBakeTier(tier)
-    const specialGeo = isSpecial ? specialBakeGeometry(tier, r) : null
-    const pad = specialGeo ? specialGeo.pad : ballOutlineWidth(r) / 2 + 3
-    // TWO coordinate spaces, and mixing them is what broke the tier 8/9
-    // bake (the ball vanished):
-    //
-    //  - The tier 8/9 procedural fills (drawRainbowInto / drawFantasyInto)
-    //    are drawn in LOCAL space, centred on (0,0) with the ball radius r.
-    //  - The contour polygon is in WORLD space.
-    //
-    // The old code sized the texture from the WORLD contour but drew the
-    // fill at LOCAL (0,0) while tempG was offset to (-originX, -originY) —
-    // so the body was rasterized at texture coordinates far outside the
-    // canvas and clipped away (an EMPTY texture, measured: 0 painted
-    // pixels), and `center: -originX` returned a negated world coordinate
-    // instead of the ball centre's offset inside the texture. The sprite
-    // was then placed ~350px away from the ball (measured: tier 8 at ball
-    // x=355, sprite at x=707 — off the 720-wide stage).
-    //
-    // For tiers 8/9 the whole bake is therefore done in LOCAL space: the
-    // texture is sized from the local drawing's extents and the ball centre
-    // sits at the middle of it.
-    let minX: number
-    let maxX: number
-    let minY: number
-    let maxY: number
-    if (specialGeo) {
-      // Local extents of the procedural drawing. They are SYMMETRIC about
-      // the ball centre so the ball lands at the texture's middle (the
-      // sprite is origin-centred, so it is placed at the ball's centroid).
-      const ex = specialBakeExtent(tier, r)
-      minX = -ex
-      maxX = ex
-      minY = -ex
-      maxY = ex
-    } else {
-      minX = Infinity
-      maxX = -Infinity
-      minY = Infinity
-      maxY = -Infinity
-      for (const p of poly) {
-        if (p.x < minX) minX = p.x
-        if (p.x > maxX) maxX = p.x
-        if (p.y < minY) minY = p.y
-        if (p.y > maxY) maxY = p.y
-      }
-    }
-    const originX = minX - pad
-    const originY = minY - pad
-    const w = specialGeo ? specialGeo.w : Math.ceil(maxX - minX) + pad * 2
-    const h = specialGeo ? specialGeo.h : Math.ceil(maxY - minY) + pad * 2
-
-    // Draw contour-relative (contour is absolute world coords; the temp
-    // Graphics is positioned at −origin so world (originX, originY) → (0,0)).
-    // `import` of draw functions happens in the renderer (passed via bake
-    // callbacks) — here we only need fill/stroke of the given poly; the
-    // renderer draws tier-8/9 specials into a Graphics and we rasterize it.
-    this.tempG.clear()
-    const g = this.tempG
-    if (isSpecial) {
-      // LOCAL space: the procedural fill is centred on the texture.
-      // TIER 9 ONLY: the tier 8 cycling RGB ball is a plain ball that
-      // animates its colour, so it is never baked (a baked texture would
-      // freeze one colour) — it draws through the live Graphics path.
-      g.setPosition(pad, pad)
-      drawFantasyInto(g, 0, 0, r, variant)
-      g.generateTexture(fillKey, w, h)
-      this.tempG.clear()
-      // The ink outline: the tier 9 fantasy body strokes its own horn and
-      // mane, so the outline is a circle of the ball's radius in local
-      // space.
-      g.setPosition(pad, pad)
-      g.lineStyle(ballOutlineWidth(r), INK, 1)
-      g.strokeCircle(0, 0, r)
-      g.generateTexture(outlineKey, w, h)
-    } else {
-      g.setPosition(-originX, -originY)
-      g.fillStyle(color, 1)
-      g.fillPoints(poly, true)
-      g.generateTexture(fillKey, w, h)
-      this.tempG.clear()
-      g.setPosition(-originX, -originY)
-      g.lineStyle(ballOutlineWidth(r), INK, 1)
-      g.strokePoints(poly, true, true)
-      g.generateTexture(outlineKey, w, h)
-    }
-    this.tempG.clear()
-
-    return {
-      fillKey,
-      outlineKey,
-      size: Math.max(w, h),
-      // The ball centre's offset FROM THE TEXTURE TOP-LEFT. For the local
-      // (tier 8/9) bake that is the texture's own middle; for the
-      // world-space bake it is the ball centre's position inside it.
-      center: specialGeo ? specialGeo.center : -originX,
-      textureRadius: r,
-    }
-  }
 
   /** Drop everything (scene shutdown). Tier textures live for the scene. */
   destroy(): void {
     for (const [tier, tex] of this.baked) {
       this.scene.textures.remove(tex.fillKey)
-      this.scene.textures.remove(tex.outlineKey)
       this.baked.delete(tier)
     }
     this.tempG.destroy()
   }
 }
 
-// ---------------------------------------------------------------------------
-// Tier-9 procedural fill, re-rasterizable into the offline Graphics.
-// DELEGATES to BallAppearance.drawCollectibleBall (circle fallback — a sleeping
-// ball), so the frozen bake uses the exact same drawing code as the live
-// ball (shark OR pig — whatever the run rolled) and can never drift out
-// of sync.
-// ---------------------------------------------------------------------------
-
-function drawFantasyInto(g: Phaser.GameObjects.Graphics, cx: number, cy: number, r: number, variant: number): void {
-  // DELEGATES to the live renderer: the bake is a sleeping ball, and a
-  // sleeping ball draws as the plain circle fallback (no contour) — the
-  // exact same code path as the live theme ball with poly omitted, so
-  // the bake and the live ball can never diverge again. The theme roll
-  // (shark/pig) routes inside; the variant picks the palette within.
-  drawCollectibleBall(g, cx, cy, r, variant)
-}

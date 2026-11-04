@@ -203,13 +203,6 @@ export class PlaygroundScene extends Phaser.Scene {
     }, this.balls)
     this.shake.setClock(() => this.activeTimeMs)
     this.ballRenderer = new SoftBallRenderer(this)
-    // Baked-rendering invalidation (settled-state kill): EVERY genuine wake
-    // funnels through SoftBallManager.wakeBall (auditStuckBalls, partial
-    // wake repair, merge displacement, wall raise wakeAll, translateBall) —
-    // dropping the ball's baked textures here means stale baked pixels can
-    // never reach the screen (the renderer's draw-time softBallSleeping
-    // check is the second gate; this one fires the same frame, off-draw).
-    this.balls.onBallWake = (id) => this.ballRenderer.dropBake(id)
     // Per-substep soft-body solver passes, exactly once per Engine.update —
     // never per rendered frame: rest/pressure → contact backstop (iterates
     // internally) → positional area restoration → boundary safety net →
@@ -988,15 +981,6 @@ export class PlaygroundScene extends Phaser.Scene {
     // refuses those) or after the walls lower again are all no-ops.
     if (this.gameOver || session.menuActive || this.raiseUsed || this.discoveryBlocking()) return
     if (!this.walls.activate()) return
-    // Baked rendering: during the wall ANIMATION the danger zone sweeps
-    // through the pile and ball faces morph — suspend NEW bakes so nothing
-    // mid-animation freezes a face into a texture. Existing baked BODIES
-    // stay valid (walls don't move balls directly; wakeAll resets their
-    // rest windows and faces stay live on top — see SoftBallRenderer).
-    this.ballRenderer.suspendBaking()
-    this.time.delayedCall(this.walls.animationDurationMs() + 50, () => {
-      this.ballRenderer.resumeBaking()
-    })
     this.raiseUsed = true
     gameBus.emit('ability:raiseUsed', {})
   }
@@ -1004,10 +988,6 @@ export class PlaygroundScene extends Phaser.Scene {
   private doShake(): void {
     if (this.gameOver || session.menuActive || this.shakeUsed || this.discoveryBlocking()) return
     if (!this.shake.activate()) return
-    this.ballRenderer.suspendBaking()
-    this.time.delayedCall(10_000 + 50, () => {
-      this.ballRenderer.resumeBaking()
-    })
     this.shakeUsed = true
     gameBus.emit('ability:shakeUsed', {})
   }

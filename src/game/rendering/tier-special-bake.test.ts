@@ -8,38 +8,12 @@ import { getTier } from '../../config/ballTiers'
 import { ballOutlineWidth } from './BallAppearance'
 
 /**
- * The tier 8/9 BAKE GEOMETRY — the per-ball frozen texture a sleeping
- * tier 8/9 ball displays.
- *
- * Two bugs lived in this area, and both made the ball VANISH:
- *
- *  1. The bake REMOVED the ball's live texture (`textures.remove`) while
- *     the ball's own body sprite was still bound to it. Phaser destroys
- *     the texture and nulls its source, so the next WebGL render of that
- *     sprite throws "Cannot read properties of null (reading
- *     'resolution')" — inside the render pass, which kills the Phaser
- *     game loop permanently (RequestAnimationFrame re-arms the next frame
- *     AFTER the callback returns, so a throw stops it forever), and the
- *     ENTIRE UI disappears with the ball.
- *
- *  2. The texture was SIZED from the world-space contour while the tier
- *     8/9 procedural body was DRAWN in local space (centred on 0,0). The
- *     body was rasterized outside the canvas and clipped away — an empty
- *     texture — and the returned `center` was a negated world coordinate
- *     instead of the ball centre's offset inside the texture, so the
- *     sprite was placed ~350px away from the ball (measured: tier 8 at
- *     ball x=355, sprite at x=707 — off the 720-wide stage).
- *
- * The geometry is a pure function, so it is directly testable here.
+ * Geometry for the per-ball procedural-tier bake. Tiers 8 and 9 remain on
+ * their live path; these helpers describe dimensions if that bake is used.
  */
 describe('tier 8/9 bake geometry', () => {
-  it('NO tier is baked — every ball draws through the live Graphics path', () => {
-    // The tier 9 shark bake is RETIRED: with several sharks on screen the
-    // baked-sprite ↔ live-Graphics alternation (Matter sleep flags
-    // oscillating around the threshold + sprite-vs-graphics depth
-    // ordering) read as disappearing, glitching sharks. Tier 9 now draws
-    // live like every other tier.
-    for (const t of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]) {
+  it('does not route tiers 8 or 9 through the plain special-bake path', () => {
+    for (const t of [8, 9]) {
       expect(isSpecialBakeTier(t)).toBe(false)
     }
   })

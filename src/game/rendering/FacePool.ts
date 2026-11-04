@@ -141,11 +141,8 @@ export class FacePool {
       if (atlas) atlas.refs += 1
       this.ballLookKeys.set(ballId, lookKeyStr)
       const view: SpriteBallView = {
-        // The body quads start HIDDEN: '__DEFAULT' is an opaque 32x32 PNG,
-        // so a visible placeholder would paint a solid square at world
-        // (0,0) for every ball. Tier 8/9 re-shows `fill` explicitly
-        // (drawSpecialQuads); tier 1-7 draws its body on the shared
-        // Graphics layer and never needs these quads at all.
+        // Body sprites start hidden until the renderer assigns the tier or
+        // per-ball texture for this ball.
         fill: this.scene.add.image(0, 0, '__DEFAULT').setDepth(SPRITE_FILL_DEPTH).setVisible(false),
         outline: this.scene.add.image(0, 0, '__DEFAULT').setDepth(SPRITE_OUTLINE_DEPTH).setVisible(false),
         scleraL: this.scene.add.image(0, 0, scleraKey).setDepth(FACE_DEPTH).setVisible(false),
@@ -169,7 +166,8 @@ export class FacePool {
     this.ballLookKeys.set(ballId, lookKeyStr)
 
     const view: SpriteBallView = {
-      // Hidden at creation — see the note in ensure()'s fast path above.
+      // Body sprites start hidden until the renderer assigns the tier or
+      // per-ball texture for this ball.
       fill: this.scene.add.image(0, 0, '__DEFAULT').setDepth(SPRITE_FILL_DEPTH).setVisible(false),
       outline: this.scene.add.image(0, 0, '__DEFAULT').setDepth(SPRITE_OUTLINE_DEPTH).setVisible(false),
       scleraL: this.scene.add.image(0, 0, scleraKey).setDepth(FACE_DEPTH).setVisible(false),
