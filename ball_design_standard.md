@@ -364,3 +364,25 @@ completion report described above.
 Do not declare the character finished just because the code compiles.
 The actual in-game visual result must meet the visual acceptance
 checklist.
+
+14. Robo implementation note — casing containment
+- Robo's body fill and final body outline use the same live contour. Lower
+  casing shadow, upper-left highlight, inner-rim specular streak, screen
+  recess lips and button socket shadows are geometrically intersected with
+  that exact contour, including concave collision dents. Without a valid
+  contour, the clipping boundary is the body's radius-r circle.
+- Keep the original lower-shadow artwork (0.95r outer arc and the reversed
+  0.72r arc centered 0.56r below the body center); containment must not be
+  approximated by shrinking or disabling its shading.
+- The geometry helper retains scratch buffers and emits ordinary path
+  commands for Phaser and canvas adapters. Never mask the shared Graphics
+  object: that would also clip other balls. Screen/face geometry, the faint
+  atmospheric halo, antennae and foreground dome remain separate artwork.
+- Robo's bezel, buttons, antenna stems/tips and dome use Robo-specific ink
+  widths; the body contour and shared eye/wink/mouth widths stay unchanged.
+- Runtime review must compare gameplay-size and close-up screenshots during
+  hard squash, asymmetric dents, fear jitter and wink, plus a circular
+  preview. Check both windings and disconnected geometry in the focused
+  BodyFillClipper tests; inspect both Phaser and canvas output for seams,
+  exterior purple fill, unchanged screen placement and unchanged antenna
+  motion. The intentional low-alpha halo is not casing spill.

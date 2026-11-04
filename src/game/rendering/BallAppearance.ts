@@ -1,6 +1,7 @@
 import type Phaser from 'phaser'
 import { BALL_EMOTION } from '../../config/ballEmotion'
 import { tier9Theme, type Tier9Theme } from '../state/runVariant'
+import { BodyFillClipper } from './BodyFillClipper'
 
 /**
  * Phaser's Graphics typings demand Vector2[] but the renderer only reads
@@ -1258,6 +1259,10 @@ export const ROBO_PALETTES: readonly RoboPalette[] = [
   { body: 0x7f86c8, bodyLight: 0xaab2ee, bodyDark: 0x60669e, screen: 0x65e4ff, screenDark: 0x46c2f3, antenna: 0xdfe8ff, antennaTip: 0xffd02d, buttonRed: 0xff584e, buttonYellow: 0xffd02d, glow: 0xc8d0ff }, // 2: lighter lavender
 ]
 
+// Draw calls record their numeric paths synchronously; all Robo balls can
+// share this retained scratch without masking the shared Graphics layer.
+const roboBodyClipper = new BodyFillClipper()
+
 /**
  * Draw the Tier 9 ROBO ball — a cute retro-futuristic spherical robot with
  * a television screen for a face. Lavender/purple-blue body, cyan screen
@@ -1593,27 +1598,25 @@ export function drawRoboBall(
     g.fillStyle(pal.body, 1)
     g.fillCircle(cx, cy, r)
   }
+  roboBodyClipper.setBody(poly, cx, cy, r)
   // Lower casing shadow crescent (deeper slate-purple).
   g.fillStyle(pal.bodyDark, 0.85)
-  g.beginPath()
-  g.arc(cx, cy, r * 0.95, Math.PI * 0.10, Math.PI * 0.90, false)
-  g.arc(cx, cy + r * 0.56, r * 0.72, Math.PI * 0.90, Math.PI * 0.10, true)
-  g.closePath()
-  g.fillPath()
+  roboBodyClipper.beginPath()
+  roboBodyClipper.arc(cx, cy, r * 0.95, Math.PI * 0.10, Math.PI * 0.90, false)
+  roboBodyClipper.arc(cx, cy + r * 0.56, r * 0.72, Math.PI * 0.90, Math.PI * 0.10, true)
+  roboBodyClipper.fill(g)
   // Upper-left casing highlight band.
   g.fillStyle(pal.bodyLight, 0.85)
-  g.beginPath()
-  g.arc(cx, cy, r * 0.94, Math.PI * 0.92, Math.PI * 1.48, false)
-  g.arc(cx, cy, r * 0.78, Math.PI * 1.48, Math.PI * 0.92, true)
-  g.closePath()
-  g.fillPath()
+  roboBodyClipper.beginPath()
+  roboBodyClipper.arc(cx, cy, r * 0.94, Math.PI * 0.92, Math.PI * 1.48, false)
+  roboBodyClipper.arc(cx, cy, r * 0.78, Math.PI * 1.48, Math.PI * 0.92, true)
+  roboBodyClipper.fill(g)
   // Crisp bright inner-rim specular streak.
   g.fillStyle(0xd0d7fa, 0.85)
-  g.beginPath()
-  g.arc(cx, cy, r * 0.92, Math.PI * 1.04, Math.PI * 1.34, false)
-  g.arc(cx, cy, r * 0.85, Math.PI * 1.34, Math.PI * 1.04, true)
-  g.closePath()
-  g.fillPath()
+  roboBodyClipper.beginPath()
+  roboBodyClipper.arc(cx, cy, r * 0.92, Math.PI * 1.04, Math.PI * 1.34, false)
+  roboBodyClipper.arc(cx, cy, r * 0.85, Math.PI * 1.34, Math.PI * 1.04, true)
+  roboBodyClipper.fill(g)
 
   // ---- THE SCREEN — recessed television face. ----
   const scrW = r * 1.18 * scaleX
@@ -1626,9 +1629,11 @@ export function drawRoboBall(
   // Outer casing recess bevel: light lip bottom-right, dark lip top-left.
   const pad = r * 0.055
   g.fillStyle(pal.bodyLight, 0.55)
-  g.fillRoundedRect(scrX - pad + r * 0.02, scrY - pad + r * 0.02, scrW + pad * 2, scrH + pad * 2, scrR + pad * 0.5)
+  roboBodyClipper.roundedRect(scrX - pad + r * 0.02, scrY - pad + r * 0.02, scrW + pad * 2, scrH + pad * 2, scrR + pad * 0.5)
+  roboBodyClipper.fill(g)
   g.fillStyle(pal.bodyDark, 0.75)
-  g.fillRoundedRect(scrX - pad - r * 0.02, scrY - pad - r * 0.02, scrW + pad * 2, scrH + pad * 2, scrR + pad * 0.5)
+  roboBodyClipper.roundedRect(scrX - pad - r * 0.02, scrY - pad - r * 0.02, scrW + pad * 2, scrH + pad * 2, scrR + pad * 0.5)
+  roboBodyClipper.fill(g)
   // Screen base fill (darker cyan for bottom/right shading).
   g.fillStyle(pal.screenDark, 1)
   g.fillRoundedRect(scrX, scrY, scrW, scrH, scrR)
@@ -1648,7 +1653,7 @@ export function drawRoboBall(
   g.closePath()
   g.fillPath()
   // Thick dark bezel outline.
-  const bezelW = out * 0.92
+  const bezelW = Math.max(2, ink * 1.15)
   g.lineStyle(bezelW, INK, 1)
   g.strokeRoundedRect(scrX, scrY, scrW, scrH, scrR)
 
@@ -1662,13 +1667,16 @@ export function drawRoboBall(
   // ---- SIDE BUTTONS — two physical controls on the right casing. ----
   const btnX = cx + r * 0.71 * scaleX
   const btnR = r * 0.115 * Math.min(scaleX, scaleY)
-  const btnOut = out * 0.72
+  const btnOut = Math.max(2, ink * 0.8)
   const btn1Y = cy - r * 0.07 * scaleY
   const btn2Y = cy + r * 0.23 * scaleY
   // Socket shadows behind buttons.
   g.fillStyle(pal.bodyDark, 0.5)
-  g.fillCircle(btnX, btn1Y + r * 0.01, btnR + r * 0.015)
-  g.fillCircle(btnX, btn2Y + r * 0.01, btnR + r * 0.015)
+  roboBodyClipper.circle(btnX, btn1Y + r * 0.01, btnR + r * 0.015)
+  roboBodyClipper.fill(g)
+  g.fillStyle(pal.bodyDark, 0.5)
+  roboBodyClipper.circle(btnX, btn2Y + r * 0.01, btnR + r * 0.015)
+  roboBodyClipper.fill(g)
   // Upper: red.
   g.fillStyle(pal.buttonRed, 1)
   g.fillCircle(btnX, btn1Y, btnR)
@@ -1776,14 +1784,14 @@ export function drawRoboBall(
     quadFrom(g, tipX + stemW1, tipY, ctrlX + stemW0 * 0.6, ctrlY, baseX + stemW0, baseY)
     g.closePath()
     g.fillPath()
-    g.lineStyle(out * 0.82, INK, 1)
+    g.lineStyle(Math.max(2, ink * 0.85), INK, 1)
     g.strokePath()
     // Yellow tip: round ball at stem end.
     g.fillStyle(pal.antennaTip, 1)
     g.fillCircle(tipX, tipY, tipR)
     g.fillStyle(0xffe268, 0.7)
     g.fillCircle(tipX - tipR * 0.25, tipY - tipR * 0.25, tipR * 0.5)
-    g.lineStyle(out * 0.85, INK, 1)
+    g.lineStyle(Math.max(2, ink * 0.85), INK, 1)
     g.strokeCircle(tipX, tipY, tipR)
   }
 
@@ -1808,7 +1816,7 @@ export function drawRoboBall(
   g.fillStyle(pal.bodyDark, 0.5)
   g.fillRoundedRect(domeCx - domeW * 0.38, domeBaseY - r * 0.02, domeW * 0.76, r * 0.04, r * 0.02)
   // Dome outline.
-  g.lineStyle(out * 0.92, INK, 1)
+  g.lineStyle(Math.max(2, ink * 1.05), INK, 1)
   g.beginPath()
   g.moveTo(domeCx - domeW / 2, domeBaseY)
   quadFrom(g, domeCx - domeW / 2, domeBaseY, domeCx - domeW * 0.28, domeBaseY - domeH * 0.92, domeCx, domeBaseY - domeH)
