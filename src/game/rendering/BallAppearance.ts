@@ -1664,13 +1664,13 @@ export function drawDrunkoBall(
     handPos.x + r * 0.05, handPos.y - r * 0.04, handPos.x + r * 0.04, handPos.y + r * 0.05)
   g.strokePath()
 
-  // ---- THE CAP — a low fabric flat-cap hugging the head, tilted slightly.
-  // Crown is asymmetric with a curved top; the band is a thin curved strip;
-  // the brim projects forward as a curved visor. ----
-  const capTilt = -0.14 + bodyAngle
-  const capW = r * 1.5
-  const capH = r * 0.52
-  const capBase = -r * 0.34
+  // ---- THE CAP — a proper baseball cap: tall rounded crown, front panel
+  // seam, and a thick curved visor projecting forward over the forehead.
+  // Rebuilt from scratch to match the original reference. ----
+  const capTilt = -0.12 + bodyAngle
+  const capW = r * 1.42
+  const capH = r * 0.72
+  const capBase = -r * 0.3
   // Keep the cap attached to the LIVE contour so squash/rotation stay glued.
   let capAnchorY = -r * 0.58
   if (poly && poly.length >= 3) {
@@ -1681,9 +1681,9 @@ export function drawDrunkoBall(
       const localY = -dx * sinA + dy * cosA
       if (localY < topLocalY) topLocalY = localY
     }
-    if (Number.isFinite(topLocalY)) capAnchorY = topLocalY - r * 0.06 - capBase
+    if (Number.isFinite(topLocalY)) capAnchorY = topLocalY - r * 0.04 - capBase
   }
-  const capPos = rot(r * 0.04, capAnchorY)
+  const capPos = rot(r * 0.02, capAnchorY)
   const capCx = capPos.x
   const capCy = capPos.y
   const cosC = Math.cos(capTilt)
@@ -1692,23 +1692,23 @@ export function drawDrunkoBall(
     x: capCx + u * cosC - v * sinC,
     y: capCy + u * sinC + v * cosC,
   })
-  // Crown: asymmetric, gently curved top, slight forward (right) lean.
+  // Crown: tall, rounded, slightly asymmetric dome.
   g.fillStyle(pal.cap, 1)
   g.beginPath()
   {
-    const p0 = cp(-capW * 0.52, capBase)
+    const p0 = cp(-capW * 0.48, capBase)
     g.moveTo(p0.x, p0.y)
-    const a = cp(-capW * 0.5, capBase - capH * 0.55)
-    quadFrom(g, p0.x, p0.y, a.x, a.y, cp(-capW * 0.3, capBase - capH * 0.86).x, cp(-capW * 0.3, capBase - capH * 0.86).y)
-    const b0 = cp(-capW * 0.3, capBase - capH * 0.86)
-    const b1 = cp(-capW * 0.05, capBase - capH * 1.02)
-    const b2 = cp(capW * 0.22, capBase - capH * 0.9)
-    quadFrom(g, b0.x, b0.y, b1.x, b1.y, b2.x, b2.y)
-    const c1 = cp(capW * 0.46, capBase - capH * 0.62)
-    const c2 = cp(capW * 0.52, capBase)
+    const a1 = cp(-capW * 0.52, capBase - capH * 0.5)
+    const a2 = cp(-capW * 0.38, capBase - capH * 0.88)
+    quadFrom(g, p0.x, p0.y, a1.x, a1.y, a2.x, a2.y)
+    const b1 = cp(-capW * 0.1, capBase - capH * 1.06)
+    const b2 = cp(capW * 0.18, capBase - capH * 0.98)
+    quadFrom(g, a2.x, a2.y, b1.x, b1.y, b2.x, b2.y)
+    const c1 = cp(capW * 0.44, capBase - capH * 0.72)
+    const c2 = cp(capW * 0.48, capBase)
     quadFrom(g, b2.x, b2.y, c1.x, c1.y, c2.x, c2.y)
-    // Lower edge follows the head curve back to the left side.
-    const d1 = cp(capW * 0.1, capBase + capH * 0.12)
+    // Lower edge curves down to follow the forehead.
+    const d1 = cp(capW * 0.1, capBase + capH * 0.14)
     quadFrom(g, c2.x, c2.y, d1.x, d1.y, p0.x, p0.y)
   }
   g.closePath()
@@ -1716,42 +1716,51 @@ export function drawDrunkoBall(
   g.lineStyle(out * 0.85, INK, 1)
   g.strokePath()
 
-  // Thin curved band hugging the crown's lower edge (not a thick bar).
-  g.lineStyle(Math.max(1.5, ink * 0.8), pal.capBrim, 1)
+  // Subtle lighter highlight on the upper-left crown.
+  g.fillStyle(0xffffff, 0.14)
+  {
+    const h = cp(-capW * 0.18, capBase - capH * 0.62)
+    g.fillEllipse(h.x, h.y, capW * 0.38, capH * 0.36)
+  }
+
+  // Front panel seam: a gentle curved line down the crown's center-left.
+  g.lineStyle(Math.max(1.2, ink * 0.6), pal.capBrim, 0.7)
   g.beginPath()
   {
-    const e0 = cp(-capW * 0.5, capBase - capH * 0.06)
-    g.moveTo(e0.x, e0.y)
-    const e1 = cp(0, capBase + capH * 0.1)
-    const e2 = cp(capW * 0.5, capBase - capH * 0.04)
-    quadFrom(g, e0.x, e0.y, e1.x, e1.y, e2.x, e2.y)
+    const s0 = cp(-capW * 0.08, capBase - capH * 0.95)
+    g.moveTo(s0.x, s0.y)
+    const s1 = cp(-capW * 0.14, capBase - capH * 0.5)
+    const s2 = cp(-capW * 0.1, capBase - capH * 0.08)
+    quadFrom(g, s0.x, s0.y, s1.x, s1.y, s2.x, s2.y)
   }
   g.strokePath()
 
-  // Curved front brim projecting forward/right, connected to the crown.
+  // Visor: thick curved projection forward/right with a darker underside.
+  const visorW = capW * 0.72
+  const visorH = capH * 0.28
   g.fillStyle(pal.capBrim, 1)
   g.beginPath()
   {
-    const f0 = cp(capW * 0.18, capBase - capH * 0.02)
-    g.moveTo(f0.x, f0.y)
-    const f1 = cp(capW * 0.62, capBase + capH * 0.02)
-    const f2 = cp(capW * 0.66, capBase + capH * 0.22)
-    quadFrom(g, f0.x, f0.y, f1.x, f1.y, f2.x, f2.y)
-    const f3 = cp(capW * 0.34, capBase + capH * 0.18)
-    quadFrom(g, f2.x, f2.y, f3.x, f3.y, f0.x, f0.y)
+    const v0 = cp(capW * 0.08, capBase + capH * 0.02)
+    g.moveTo(v0.x, v0.y)
+    const v1 = cp(capW * 0.08 + visorW * 0.55, capBase - visorH * 0.15)
+    const v2 = cp(capW * 0.08 + visorW, capBase + visorH * 0.35)
+    quadFrom(g, v0.x, v0.y, v1.x, v1.y, v2.x, v2.y)
+    const v3 = cp(capW * 0.08 + visorW * 0.5, capBase + visorH * 0.55)
+    quadFrom(g, v2.x, v2.y, v3.x, v3.y, v0.x, v0.y)
   }
   g.closePath()
   g.fillPath()
-  g.lineStyle(out * 0.65, INK, 1)
+  g.lineStyle(out * 0.7, INK, 1)
   g.strokePath()
 
-  // Small cross stitching on the crown.
+  // Cross stitching on the crown.
   g.lineStyle(Math.max(1.5, ink * 0.7), pal.capBrim, 0.95)
   {
-    const c0 = cp(-capW * 0.14, capBase - capH * 0.5)
-    const c1 = cp(capW * 0.06, capBase - capH * 0.42)
-    const c2 = cp(-capW * 0.05, capBase - capH * 0.62)
-    const c3 = cp(capW * 0.0, capBase - capH * 0.34)
+    const c0 = cp(-capW * 0.12, capBase - capH * 0.55)
+    const c1 = cp(capW * 0.04, capBase - capH * 0.48)
+    const c2 = cp(-capW * 0.06, capBase - capH * 0.68)
+    const c3 = cp(capW * 0.0, capBase - capH * 0.4)
     g.beginPath()
     g.moveTo(c0.x, c0.y)
     g.lineTo(c1.x, c1.y)
@@ -1760,11 +1769,6 @@ export function drawDrunkoBall(
     g.moveTo(c2.x, c2.y)
     g.lineTo(c3.x, c3.y)
     g.strokePath()
-  }
-  g.fillStyle(0xffffff, 0.16)
-  {
-    const h = cp(-capW * 0.2, capBase - capH * 0.6)
-    g.fillEllipse(h.x, h.y, capW * 0.36, capH * 0.32)
   }
 }
 
