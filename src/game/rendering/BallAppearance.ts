@@ -1788,18 +1788,22 @@ export function drawRoboBall(
     // rotate as rigid sticks.
     const ctrlX = baseX + restDx * 0.55 + sway * r * 0.45
     const ctrlY = baseY + restDy * 0.55 + bend * r * 0.35
-    // Stem: a uniform-thickness curved stem (NOT a tapered ribbon) so both
-    // antennae read identically thin like the right one. Same width base→tip.
-    const stemHW = Math.max(1.8, r * 0.055)
-    g.fillStyle(pal.antenna, 1)
+    // Stem: a stroked curve — constant thickness by definition, so both
+    // antennae read identically thin regardless of bend direction. (The
+    // previous filled ribbon offset only horizontally, which made the
+    // curving stem render thicker than the straight one.) The ink outline
+    // is stroked WIDER first, then the coloured core on top — a clean
+    // dark-edged stem matching the collection's outline language.
+    const stemW = Math.max(2.2, r * 0.075)
+    g.lineStyle(stemW + stemOut * 1.6, INK, 1)
     g.beginPath()
-    g.moveTo(baseX - stemHW, baseY)
-    quadFrom(g, baseX - stemHW, baseY, ctrlX - stemHW, ctrlY, tipX - stemHW, tipY)
-    g.lineTo(tipX + stemHW, tipY)
-    quadFrom(g, tipX + stemHW, tipY, ctrlX + stemHW, ctrlY, baseX + stemHW, baseY)
-    g.closePath()
-    g.fillPath()
-    g.lineStyle(stemOut, INK, 1)
+    g.moveTo(baseX, baseY)
+    quadFrom(g, baseX, baseY, ctrlX, ctrlY, tipX, tipY)
+    g.strokePath()
+    g.lineStyle(stemW, pal.antenna, 1)
+    g.beginPath()
+    g.moveTo(baseX, baseY)
+    quadFrom(g, baseX, baseY, ctrlX, ctrlY, tipX, tipY)
     g.strokePath()
     // Yellow tip: round ball at stem end (same diameter + outline both).
     g.fillStyle(pal.antennaTip, 1)
