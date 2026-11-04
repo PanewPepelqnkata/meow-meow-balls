@@ -1033,7 +1033,7 @@ export function drawPigBall(
     for (const p of poly) if (p.y < top.y) top = p
     earBaseY = top.y
   }
-  const earOut = ballOutlineWidth(r)
+  const earOut = thumbnail ? collectionOutlineWidth(r) : ballOutlineWidth(r)
   for (const s of [-1, 1]) {
     const ecx = cx + s * r * 0.42
     const ecy = earBaseY + r * 0.3

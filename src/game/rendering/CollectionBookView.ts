@@ -7,7 +7,7 @@ import { hudText } from '../../ui/Typography'
 import { loadSave } from '../state/save'
 import {
   ballLookFor,
-  ballOutlineWidth,
+  collectionOutlineWidth,
   drawBallFace,
   drawCollectibleBall,
   INK,
@@ -443,7 +443,7 @@ export class CollectionBookView {
       g.clear()
       g.fillStyle(tier === 8 ? cycleColor(Date.now()) : tierColor, 1)
       g.fillPoints(poly, true)
-      g.lineStyle(ballOutlineWidth(r), INK, 1)
+      g.lineStyle(collectionOutlineWidth(r), INK, 1)
       g.strokePoints(poly, true, true)
       drawBallFace(g, look, center, r, 1)
     }
