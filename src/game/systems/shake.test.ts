@@ -37,7 +37,7 @@ describe('ShakeManager earthquake rumble and bounce pulses', () => {
       wakeBall: (id: number) => {
         wokeBallId = id
       },
-      centroid: (id: number) => ({ x: 360, y: 800 }),
+      centroid: () => ({ x: 360, y: 800 }),
     } as unknown as Parameters<ShakeManager['bind']>[1]
 
     shake.bind(mockPhysics, mockManager)
