@@ -1,7 +1,7 @@
 import Phaser from 'phaser'
 import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK, drawCollectibleBall } from './BallAppearance'
 import { cycleColor } from './rgbCycle'
-import { variantIdFor } from '../state/runVariant'
+import { themeFor, variantIdFor } from '../state/runVariant'
 import { getTier } from '../../config/ballTiers'
 import { FONT_FAMILY } from '../../ui/Typography'
 
@@ -175,6 +175,8 @@ export class DiscoveryBanner {
   private rect: BannerRect | null = null
   private tier = 1
   private seed = 0
+  private theme: string | null = null
+  private variant: number | null = null
   private wind = 0 // wind phase clock (0..1 loops)
   /** The character's pop-in scale (0 → 1, Back-eased on arrival). */
   private ballPop = 0
@@ -190,11 +192,13 @@ export class DiscoveryBanner {
     return this.active
   }
 
-  show(tier: number, seed: number): void {
+  show(tier: number, seed: number, theme: string | null = null, variant: number | null = null): void {
     this.destroy()
     this.active = true
     this.tier = tier
     this.seed = seed
+    this.theme = theme
+    this.variant = variant
     // HiDPI: `scale.width` is the BACKING-BUFFER size (CSS px × dpr), and
     // the UIScene camera frames the CSS-px region — the same conversion
     // DiscoveryOverlay.layout() makes. Sizing from scale.width directly
@@ -399,11 +403,10 @@ export class DiscoveryBanner {
       g.fillEllipse(ball.x + 2, ball.y + radius * 0.82, pr * 1.5, pr * 0.36)
       const look = ballLookFor(this.tier, this.seed)
       const poly = restContour(look, pr, ball.x, ball.y + bob, 48)
-      if (this.tier === 9) {
-        // The theme ball paints its own face — part of the design. The
-        // run's theme roll (shark/pig) picks the renderer; the variant
-        // picks the palette within the theme.
-        drawCollectibleBall(this.ballG, ball.x, ball.y + bob, pr, this.tier, variantIdFor(this.tier), undefined, 0, undefined, this.seed)
+      if (this.tier === 9 || this.tier === 10) {
+        const theme = this.theme ?? themeFor(this.tier)
+        const variant = this.variant ?? variantIdFor(this.tier)
+        drawCollectibleBall(this.ballG, ball.x, ball.y + bob, pr, this.tier, variant, undefined, 0, undefined, this.seed, theme ?? undefined)
       } else {
         this.ballG.fillStyle(this.tier === 8 ? cycleColor(Date.now()) : color, 1)
         this.ballG.fillPoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)

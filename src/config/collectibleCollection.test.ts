@@ -23,6 +23,14 @@ describe('collection character identities', () => {
     expect(collectionDiscovery({ ...discoveries, '9:pig:2': 200 }, 9, 'pig')).toEqual({ at: 200, variant: 2 })
   })
 
+  it('recognizes a new collectible identity even when the tier was already discovered', () => {
+    const discoveries = { '9:shark:3': 100 }
+    expect(collectionDiscovery(discoveries, 9, 'shark')).toEqual({ at: 100, variant: 3 })
+    expect(collectionDiscovery(discoveries, 9, 'pig')).toBeNull()
+    expect(collectionDiscovery(discoveries, 9, 'drunko')).toBeNull()
+    expect(collectionDiscovery(discoveries, 9, 'robo')).toBeNull()
+  })
+
   it('can recover a crab from legacy numeric records without inventing other characters', () => {
     expect(collectionDiscovery({ '10:5': 150, '10:2': 100 }, 10, 'crab')).toEqual({ at: 100, variant: 2 })
     expect(collectionDiscovery({ '11:0': 100 }, 11, 'crab')).toBeNull()

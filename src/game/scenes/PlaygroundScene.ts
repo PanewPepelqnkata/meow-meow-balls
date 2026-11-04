@@ -25,7 +25,7 @@ import { DebugOverlay } from '../debug/DebugOverlay'
 import { PerfOverlay } from '../debug/PerfOverlay'
 import { session, fastbootRequested } from '../state/session'
 import { bannerForcedByVariant } from '../rendering/DiscoveryBanner'
-import { hasDiscoveredTier, recordDiscovery, recordMerge, recordRunEnd, recordRunStart, savedBest, themeSetting } from '../state/save'
+import { hasDiscoveredCollectible, hasDiscoveredTier, recordDiscovery, recordMerge, recordRunEnd, recordRunStart, savedBest, themeSetting } from '../state/save'
 import { scoreService } from '../../services/auth'
 import { isDrunkoTestRoute, rollNewRunSeed, runVariantFor, themeFor } from '../state/runVariant'
 import {
@@ -253,39 +253,36 @@ export class PlaygroundScene extends Phaser.Scene {
           this.cameras.main.shake(duration, intensity)
         }
 
-        // Phase 2.13.0 (spec §1/§7): the discovery presentation fires ONLY
-        // for first-time-this-run tiers 4+ — tiers 1–3 merge silently. The
-        // seed is the ACTUAL replacement ball's appearance seed.
+        // Progression remains tier-based; collectible presentation is keyed by character identity.
         const firstTime = !this.discoveredTiers.has(tier)
         if (firstTime) {
           this.discoveredTiers.add(tier)
           gameBus.emit('state:discovered', { tier })
-          // QA wind mode (?discovery=wind): the banner IS the discovery
-          // presentation for every discovered tier (4+), first-time or not.
-          if (bannerForcedByVariant() && tier >= PlaygroundScene.WIND_BANNER_MIN_TIER) {
-            this.runDiscoveredTiers.add(tier)
-            gameBus.emit('discovery:banner', { tier, seed })
-          }
-          // First time EVER (lifetime save has no record) → the CARD MODAL,
-          // tier 4 and up: every earned ball gets its collectible moment.
-          else if (!hasDiscoveredTier(tier) && tier >= PlaygroundScene.WIND_BANNER_MIN_TIER) {
-            gameBus.emit('discovery:show', { tier, seed })
-          }
-          // REPEAT (seen in an earlier run) → the wind card, once per tier
-          // per run so chains can't spam it. The game never pauses.
-          else if (!this.runDiscoveredTiers.has(tier)) {
-            this.runDiscoveredTiers.add(tier)
-            gameBus.emit('discovery:banner', { tier, seed })
-          }
         }
 
-        // Phase 2.14.0 (spec §2): lifetime records for the JOURNAL,
-        // COLLECTION and stats screens. Collectibles retain both their run's
-        // character theme and palette; palette changes are not new characters.
+        const theme = themeFor(tier)
+        const variant = runVariantFor(tier)
+        const collectible = (tier === 9 || tier === 10) && theme !== null && variant !== null
+        const firstCollectible = collectible && !hasDiscoveredCollectible(tier, theme)
+        const showFirstCard = tier >= PlaygroundScene.WIND_BANNER_MIN_TIER &&
+          (collectible ? firstCollectible : firstTime && !hasDiscoveredTier(tier))
+
+        if (bannerForcedByVariant() && tier >= PlaygroundScene.WIND_BANNER_MIN_TIER) {
+          this.runDiscoveredTiers.add(tier)
+          gameBus.emit('discovery:banner', { tier, seed, theme, variant })
+        } else if (showFirstCard) {
+          this.runDiscoveredTiers.add(tier)
+          gameBus.emit('discovery:show', { tier, seed, theme, variant })
+        } else if (!this.runDiscoveredTiers.has(tier) && tier >= PlaygroundScene.WIND_BANNER_MIN_TIER) {
+          this.runDiscoveredTiers.add(tier)
+          gameBus.emit('discovery:banner', { tier, seed, theme, variant })
+        }
+
         if (!isDrunkoTestRoute()) {
-          if (firstTime) recordDiscovery(tier, runVariantFor(tier), themeFor(tier))
+          if (firstTime || firstCollectible) recordDiscovery(tier, variant, theme)
           recordMerge(tier, this.score.score)
         }
+
         this.mergesThisRun++
         if (tier > this.bestTierRun) this.bestTierRun = tier
         this.syncLiveRun(false)

@@ -165,10 +165,10 @@ export class UIScene extends Phaser.Scene {
       }),
       // Phase 2.12.2: first-time tier → full-viewport discovery modal
       // (presented here in screen space; state owned by the world scene).
-      gameBus.on('discovery:show', ({ tier, seed }) => this.discoveryOverlay.show(tier, seed)),
+      gameBus.on('discovery:show', ({ tier, seed, theme, variant }) => this.discoveryOverlay.show(tier, seed, theme, variant)),
       // Repeat discovery (seen in an earlier run): the small non-blocking
       // banner — gameplay never pauses for it.
-      gameBus.on('discovery:banner', ({ tier, seed }) => this.discoveryBanner.show(tier, seed)),
+      gameBus.on('discovery:banner', ({ tier, seed, theme, variant }) => this.discoveryBanner.show(tier, seed, theme, variant)),
     )
     this.offs.push(authService.onAuthStateChange(() => this.refreshRank()))
     // Auth subscriptions are not immediate, so pull the current account on boot.

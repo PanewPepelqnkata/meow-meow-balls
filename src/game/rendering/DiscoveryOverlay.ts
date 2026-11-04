@@ -1,7 +1,7 @@
 import Phaser from 'phaser'
 import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK, drawCollectibleBall } from './BallAppearance'
 import { cycleColor } from './rgbCycle'
-import { variantIdFor } from '../state/runVariant'
+import { themeFor, variantIdFor } from '../state/runVariant'
 import { getTier } from '../../config/ballTiers'
 import { FONT_FAMILY } from '../../ui/Typography'
 import { DISCOVERY } from '../../config/presentation'
@@ -192,6 +192,8 @@ export class DiscoveryOverlay {
   private active = false
   private activeTier: number | null = null
   private activeSeed = 0
+  private activeTheme: string | null = null
+  private activeVariant: number | null = null
   private reducedMotion = false
   private dismissTimer: Phaser.Time.TimerEvent | null = null
   private resizeRegistered = false
@@ -245,12 +247,14 @@ export class DiscoveryOverlay {
     return this.activeTier
   }
 
-  /** Present the modal for a first-time tier (caller owns first-time state). */
-  show(tier: number, seed: number): void {
+  /** Present the modal for a first-time tier or collectible identity. */
+  show(tier: number, seed: number, theme: string | null = null, variant: number | null = null): void {
     this.destroyNow()
     this.active = true
     this.activeTier = tier
     this.activeSeed = seed
+    this.activeTheme = theme
+    this.activeVariant = variant
 
     // The card owns the screen: hide the HUD for its duration.
     if (this.style === 'card' || this.style === 'gib') this.setHudVisible?.(false)
@@ -2090,11 +2094,10 @@ export class DiscoveryOverlay {
     const poly = restContour(look, radius, x, y, 48)
 
     if (tier === 9 || tier === 10) {
-      // The theme ball paints its own face — part of the design. The
-      // run's theme roll (per tier, from collectibleThemes) picks the
-      // renderer; the variant picks the palette within the theme.
       const t = this.activeTier ?? tier
-      drawCollectibleBall(g, x, y, radius, t, variantIdFor(t), poly, 0, undefined, this.activeSeed)
+      const theme = this.activeTheme ?? themeFor(t)
+      const variant = this.activeVariant ?? variantIdFor(t)
+      drawCollectibleBall(g, x, y, radius, t, variant, poly, 0, undefined, this.activeSeed, theme ?? undefined)
       return
     } else {
       // Tier 8 is a plain ball whose colour cycles; the body fills the

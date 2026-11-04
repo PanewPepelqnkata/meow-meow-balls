@@ -23,6 +23,10 @@ export function collectibleDiscoveryKey(tier: number, theme: string, variant: nu
   return `${tier}:${theme}:${variant}`
 }
 
+export function isCollectibleTier(tier: number): boolean {
+  return (COLLECTIBLE_TIERS as readonly number[]).includes(tier)
+}
+
 export interface CollectibleDiscovery {
   at: number
   variant: number

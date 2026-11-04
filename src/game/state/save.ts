@@ -446,6 +446,11 @@ export function hasDiscoveredTier(tier: number): boolean {
   return loadSave().discovered[String(tier)] != null
 }
 
+export function hasDiscoveredCollectible(tier: number, theme: string | null): boolean {
+  if (tier < 9 || tier > 12 || theme == null) return hasDiscoveredTier(tier)
+  return Object.keys(loadSave().variants).some((key) => key.startsWith(`${tier}:${theme}:`))
+}
+
 /** A run genuinely started (first ball dropped): increment lifetime runs count and flush immediately. */
 export function recordRunStart(): void {
   if (isDrunkoTestRoute()) return

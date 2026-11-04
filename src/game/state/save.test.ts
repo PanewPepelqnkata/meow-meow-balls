@@ -8,6 +8,7 @@ vi.mock('phaser', () => ({ default: {} }))
 
 import {
   getSaveOwnerId,
+  hasDiscoveredCollectible,
   hasDiscoveredTier,
   loadSave,
   normalizeSave,
@@ -72,6 +73,15 @@ describe('hasDiscoveredTier (the repeat-discovery gate)', () => {
     resetSave()
     writeSave(saved, { syncCloud: false })
     expect(loadSave().variants).toEqual(saved.variants)
+  })
+
+  it('reports a new collectible identity as undiscovered even when the tier is known', () => {
+    recordDiscovery(9, 3, 'shark')
+    expect(hasDiscoveredCollectible(9, 'shark')).toBe(true)
+    expect(hasDiscoveredCollectible(9, 'pig')).toBe(false)
+    expect(hasDiscoveredCollectible(9, 'drunko')).toBe(false)
+    expect(hasDiscoveredCollectible(9, 'robo')).toBe(false)
+    expect(hasDiscoveredCollectible(10, 'crab')).toBe(false)
   })
 
   it('does not change a character’s first-discovery date when found again', () => {
