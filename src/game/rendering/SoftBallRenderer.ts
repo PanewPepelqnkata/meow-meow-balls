@@ -16,6 +16,7 @@ import {
   drawCollectibleBall,
   notifyRoboImpact,
   dropRoboAntennaState,
+  clearRoboAntennaStates,
 } from './BallAppearance'
 import type { BallLook } from './BallAppearance'
 import {
@@ -26,7 +27,7 @@ import {
   impactStrength,
 } from './deform'
 import type { DeformState } from './deform'
-import { variantIdFor } from '../state/runVariant'
+import { tier9Theme, variantIdFor } from '../state/runVariant'
 import { TierBaker } from './TierBaker'
 import { FacePool } from './FacePool'
 import type { SpriteBallView } from './FacePool'
@@ -145,7 +146,7 @@ export class SoftBallRenderer {
       }
       const bodyAngle = r.soft.center.angle ?? 0
       registerImpact(d, p.x / len, p.y / len, p.speed, r.soft.radius, bodyAngle)
-      if (r.tier === 9) {
+      if (r.tier === 9 && tier9Theme() === 'robo') {
         // Feed the robo antenna springs with the exact collision vector.
         notifyRoboImpact(r.id, p.x / len, p.y / len, impactStrength(p.speed, r.soft.radius))
       }
@@ -165,6 +166,7 @@ export class SoftBallRenderer {
   }
 
   clear(): void {
+    clearRoboAntennaStates()
     this.renderables.clear()
     this.looks.clear()
     this.contourPool.clear()

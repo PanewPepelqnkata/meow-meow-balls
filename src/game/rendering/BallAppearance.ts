@@ -1323,6 +1323,11 @@ export function dropRoboAntennaState(ballId: number): void {
   roboAntennaStates.delete(ballId)
 }
 
+/** Clear all gameplay antenna states (renderer clear/restart). */
+export function clearRoboAntennaStates(): void {
+  roboAntennaStates.clear()
+}
+
 function isReducedMotion(): boolean {
   try {
     return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
@@ -1489,7 +1494,11 @@ function stepRoboAntennaSpring(
   s.left.bend = clamp(s.left.bend, -0.16, 0.16)
   s.right.bend = clamp(s.right.bend, -0.16, 0.16)
 
-  return { swayL: s.left.sway, bendL: s.left.bend, swayR: s.right.sway, bendR: s.right.bend }
+  roboAntennaOutput.swayL = s.left.sway
+  roboAntennaOutput.bendL = s.left.bend
+  roboAntennaOutput.swayR = s.right.sway
+  roboAntennaOutput.bendR = s.right.bend
+  return roboAntennaOutput
 }
 
 /**

@@ -38,7 +38,7 @@ describe('tier9Theme route precedence', () => {
     expect(tier9Theme()).toBe('drunko')
   })
 
-  it.each(['shark', 'pig', 'drunko'] as const)('preserves the production %s override', (theme) => {
+  it.each(['shark', 'pig', 'drunko', 'robo'] as const)('preserves the production %s override', (theme) => {
     visit('/', `?theme=${theme}`)
     expect(tier9Theme()).toBe(theme)
   })
