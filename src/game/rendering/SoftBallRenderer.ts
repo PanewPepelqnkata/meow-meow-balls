@@ -14,6 +14,8 @@ import {
   gazeAt,
   wobbleContour,
   drawCollectibleBall,
+  notifyRoboImpact,
+  dropRoboAntennaState,
 } from './BallAppearance'
 import type { BallLook } from './BallAppearance'
 import {
@@ -143,11 +145,16 @@ export class SoftBallRenderer {
       }
       const bodyAngle = r.soft.center.angle ?? 0
       registerImpact(d, p.x / len, p.y / len, p.speed, r.soft.radius, bodyAngle)
+      if (r.tier === 9) {
+        // Feed the robo antenna springs with the exact collision vector.
+        notifyRoboImpact(r.id, p.x / len, p.y / len, impactStrength(p.speed, r.soft.radius))
+      }
     }
     this.pendingImpacts.clear()
   }
 
   unregister(ballId: number): void {
+    dropRoboAntennaState(ballId)
     this.renderables.delete(ballId)
     this.looks.delete(ballId)
     this.contourPool.delete(ballId)
@@ -430,7 +437,7 @@ export class SoftBallRenderer {
       // (shark/pig) picks the renderer; the variant picks the palette
       // within the theme. Fear (panic) and the gaze easter egg pass
       // straight through.
-      drawCollectibleBall(g, built.cx, built.cy, r.soft.radius, r.tier, variantIdFor(r.tier), built.poly, this.emotion.panicOf(r.id), gazeAt(r.seed, Date.now()), r.seed, undefined, r.soft.center.angle)
+      drawCollectibleBall(g, built.cx, built.cy, r.soft.radius, r.tier, variantIdFor(r.tier), built.poly, this.emotion.panicOf(r.id), gazeAt(r.seed, Date.now()), r.seed, undefined, r.soft.center.angle, r.id)
       return
     }
     // Every other tier (including the tier 8 cycling RGB ball) is a

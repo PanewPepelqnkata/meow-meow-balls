@@ -1228,19 +1228,21 @@ export function drawPigBall(
 }
 
 export interface RoboPalette {
-  /** Body (lavender/purple-blue). */
+  /** Body (lavender/purple-blue TV casing). */
   body: number
-  /** Body highlight (lighter, upper-left). */
+  /** Body highlight (lighter, upper-left casing band). */
   bodyLight: number
-  /** Screen (bright cyan). */
+  /** Body shading (deeper slate-purple, lower casing + bezel recess). */
+  bodyDark: number
+  /** Screen (bright cyan TV face). */
   screen: number
-  /** Screen shading (darker blue, lower section). */
+  /** Screen shading (darker blue, lower/right inner border). */
   screenDark: number
-  /** Antenna stem (light grey/white). */
+  /** Antenna stem (light icy blue-white). */
   antenna: number
-  /** Antenna tip (yellow). */
+  /** Antenna tip (golden yellow). */
   antennaTip: number
-  /** Upper side button (red). */
+  /** Upper side button (bright red). */
   buttonRed: number
   /** Lower side button (golden yellow). */
   buttonYellow: number
@@ -1251,9 +1253,9 @@ export interface RoboPalette {
 /** The robo palettes, exported alongside SHARK/PIG/DRUNKO (journal/QA parity).
  *  Variant picks one; the per-run THEME roll picks the family first. */
 export const ROBO_PALETTES: readonly RoboPalette[] = [
-  { body: 0x9a8fd4, bodyLight: 0xb8aee8, screen: 0x6fd8f0, screenDark: 0x4ab8d8, antenna: 0xe8e8f0, antennaTip: 0xf8d648, buttonRed: 0xe84848, buttonYellow: 0xf0c040, glow: 0xc0b8f0 }, // 0: lavender
-  { body: 0x8a7fc8, bodyLight: 0xa89ee0, screen: 0x60d0e8, screenDark: 0x40a8c8, antenna: 0xe0e0e8, antennaTip: 0xf0d040, buttonRed: 0xd84040, buttonYellow: 0xe8b838, glow: 0xb0a8e8 }, // 1: deeper purple
-  { body: 0xa89fe0, bodyLight: 0xc8bef8, screen: 0x78e0f8, screenDark: 0x50c0e0, antenna: 0xf0f0f8, antennaTip: 0xf8e050, buttonRed: 0xf05050, buttonYellow: 0xf8c848, glow: 0xd0c8f8 }, // 2: lighter lavender
+  { body: 0x6f76b8, bodyLight: 0x9aa2de, bodyDark: 0x50568e, screen: 0x55d4fa, screenDark: 0x36b2e3, antenna: 0xcfd8f8, antennaTip: 0xffc01d, buttonRed: 0xf0483e, buttonYellow: 0xffc01d, glow: 0xb8c0f8 }, // 0: periwinkle
+  { body: 0x5f66a8, bodyLight: 0x8a92ce, bodyDark: 0x40467e, screen: 0x4dc4ea, screenDark: 0x2ea2d3, antenna: 0xbfc8e8, antennaTip: 0xf0b00d, buttonRed: 0xe0382e, buttonYellow: 0xf0b00d, glow: 0xa8b0e8 }, // 1: deeper purple
+  { body: 0x7f86c8, bodyLight: 0xaab2ee, bodyDark: 0x60669e, screen: 0x65e4ff, screenDark: 0x46c2f3, antenna: 0xdfe8ff, antennaTip: 0xffd02d, buttonRed: 0xff584e, buttonYellow: 0xffd02d, glow: 0xc8d0ff }, // 2: lighter lavender
 ]
 
 /**
@@ -1272,6 +1274,241 @@ export const ROBO_PALETTES: readonly RoboPalette[] = [
  * Character-specific easter eggs: occasional screen flicker, curious
  * widened eyes, and a subtle antenna tip bounce.
  */
+// ---------------------------------------------------------------------------
+// Robo antenna spring state — zero-allocation per-seed spring physics.
+// ---------------------------------------------------------------------------
+
+/** Per-antenna spring state (lateral sway + vertical bend). */
+interface RoboAntennaSpring {
+  /** Lateral tip deflection (r units). */
+  sway: number
+  swayVel: number
+  /** Vertical/radial bend from landing impact (r units, positive = down/out). */
+  bend: number
+  bendVel: number
+}
+
+/** Per-ball robo antenna state; preview draws never create or advance it. */
+interface RoboAntennaState {
+  prevCx: number
+  prevCy: number
+  prevVx: number
+  prevVy: number
+  prevPanic: number
+  prevAspectY: number
+  prevTimeMs: number
+  initialized: boolean
+  left: RoboAntennaSpring
+  right: RoboAntennaSpring
+}
+
+const roboAntennaStates = new Map<number, RoboAntennaState>()
+
+function getRoboAntennaState(ballId: number): RoboAntennaState {
+  let s = roboAntennaStates.get(ballId)
+  if (!s) {
+    s = {
+      prevCx: 0, prevCy: 0, prevVx: 0, prevVy: 0,
+      prevPanic: 0, prevAspectY: 1, prevTimeMs: 0, initialized: false,
+      left: { sway: 0, swayVel: 0, bend: 0, bendVel: 0 },
+      right: { sway: 0, swayVel: 0, bend: 0, bendVel: 0 },
+    }
+    roboAntennaStates.set(ballId, s)
+  }
+  return s
+}
+
+/** Remove state when a gameplay ball leaves the renderer. */
+export function dropRoboAntennaState(ballId: number): void {
+  roboAntennaStates.delete(ballId)
+}
+
+function isReducedMotion(): boolean {
+  try {
+    return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+  } catch {
+    return false
+  }
+}
+
+export function notifyRoboImpact(ballId: number, nx: number, ny: number, strength: number): void {
+  if (isReducedMotion()) return
+  const s = getRoboAntennaState(ballId)
+  const vertical = Math.max(0, -ny) * strength
+  const horizontal = -nx * strength
+  const kick = 0.35 + strength * 0.65
+  s.left.bendVel += vertical * kick * 2.2
+  s.right.bendVel += vertical * kick * 2.0
+  s.left.swayVel += horizontal * kick * 1.8
+  s.right.swayVel += horizontal * kick * 1.6
+}
+
+
+/**
+ * Advance the robo antenna springs one frame.
+ * Tracks (cx, cy, poly, panic) to derive velocity, acceleration, landing,
+ * direction changes, and fear — then drives underdamped Hooke springs.
+ * Returns the current sway/bend for both antennae (in r units).
+ */
+interface RoboAntennaOutput {
+  swayL: number
+  bendL: number
+  swayR: number
+  bendR: number
+}
+
+const ROBO_REST_ANTENNA: RoboAntennaOutput = { swayL: 0, bendL: 0, swayR: 0, bendR: 0 }
+const roboAntennaOutput: RoboAntennaOutput = { swayL: 0, bendL: 0, swayR: 0, bendR: 0 }
+
+function stepRoboAntennaSpring(
+  ballId: number | undefined,
+  seed: number,
+  cx: number,
+  cy: number,
+  r: number,
+  poly: Array<{ x: number; y: number }> | undefined,
+  panic: number,
+  nowMs: number,
+): RoboAntennaOutput {
+  if (ballId === undefined) return ROBO_REST_ANTENNA
+  const s = getRoboAntennaState(ballId)
+  let aspectY = 1
+  if (poly && poly.length >= 3) {
+    let minY = poly[0]!.y, maxY = poly[0]!.y
+    for (const p of poly) {
+      if (p.y < minY) minY = p.y
+      if (p.y > maxY) maxY = p.y
+    }
+    aspectY = (maxY - minY) / (2 * r)
+  }
+  if (!s.initialized) {
+    s.prevCx = cx
+    s.prevCy = cy
+    s.prevPanic = panic
+    s.prevAspectY = aspectY
+    s.prevTimeMs = nowMs
+    s.initialized = true
+    roboAntennaOutput.swayL = s.left.sway
+    roboAntennaOutput.bendL = s.left.bend
+    roboAntennaOutput.swayR = s.right.sway
+    roboAntennaOutput.bendR = s.right.bend
+    return roboAntennaOutput
+  }
+  const dt = Math.min(0.05, Math.max(0.001, (nowMs - s.prevTimeMs) / 1000))
+  s.prevTimeMs = nowMs
+  // --- Track velocity & acceleration ---
+  const vx = (cx - s.prevCx) / (dt * r)
+  const vy = (cy - s.prevCy) / (dt * r)
+  const dvx = vx - s.prevVx
+  const dvy = vy - s.prevVy
+  s.prevCx = cx
+  s.prevCy = cy
+  s.prevVx = vx
+  s.prevVy = vy
+
+  const dAspect = aspectY - s.prevAspectY
+  s.prevAspectY = aspectY
+
+
+  // --- Track fear ---
+  const dPanic = panic - s.prevPanic
+  s.prevPanic = panic
+
+  if (isReducedMotion()) {
+    // Hold rest pose; no excitation.
+    s.left.sway = 0; s.left.swayVel = 0; s.left.bend = 0; s.left.bendVel = 0
+    s.right.sway = 0; s.right.swayVel = 0; s.right.bend = 0; s.right.bendVel = 0
+    roboAntennaOutput.swayL = 0
+    roboAntennaOutput.bendL = 0
+    roboAntennaOutput.swayR = 0
+    roboAntennaOutput.bendR = 0
+    return roboAntennaOutput
+
+  }
+  // --- Spring parameters (underdamped, slightly different per antenna) ---
+  const kL = 11.5 * 11.5, cL = 2 * 0.28 * 11.5
+  const kR = 13.2 * 13.2, cR = 2 * 0.28 * 13.2
+
+  // --- Idle wandering target (gentle multi-frequency sway) ---
+  const t = nowMs / 1000
+  const idleL = Math.sin(t * 1.7 + seed * 0.7) * 0.022 + Math.sin(t * 2.9 + 1.3) * 0.014
+  const idleR = Math.sin(t * 1.9 + seed * 0.7 + 0.9) * 0.020 + Math.sin(t * 3.1 + 2.1) * 0.012
+
+  // --- Landing impulse: strong upward deceleration + vertical squash ---
+  const landingImpulse = Math.max(0, -dvy) * 0.55 + Math.max(0, -dAspect) * 3.2
+  if (landingImpulse > 0.02) {
+    s.left.bendVel += landingImpulse * 1.9
+    s.right.bendVel += landingImpulse * 1.7
+  }
+
+  // --- Collision impulse: any sudden velocity change ---
+  const collisionImpulse = Math.hypot(dvx, dvy) * 0.35
+  if (collisionImpulse > 0.03) {
+    s.left.swayVel += -dvx * 0.9
+    s.right.swayVel += -dvx * 0.8
+    s.left.bendVel += Math.max(0, -dvy) * 0.9
+    s.right.bendVel += Math.max(0, -dvy) * 0.8
+  }
+
+  // --- Direction change: inertial lag opposite to horizontal acceleration ---
+  const dirLag = -dvx * 0.28
+  s.left.swayVel += dirLag
+  s.right.swayVel += dirLag * 0.9
+
+  // --- Fear: startled perk-up on panic rise, slight straighten while high ---
+  if (dPanic > 0.02) {
+    s.left.bendVel -= dPanic * 1.4
+    s.right.bendVel -= dPanic * 1.2
+  }
+  const fearStraighten = panic > 0.1 ? panic * 0.06 : 0
+
+  // --- Integrate springs (semi-implicit Euler) ---
+  // Left sway
+  const targetL = idleL + fearStraighten * 0.3
+  const accelSL = -kL * (s.left.sway - targetL) - cL * s.left.swayVel
+  s.left.swayVel += accelSL * dt
+  s.left.sway += s.left.swayVel * dt
+  // Left bend
+  const accelBL = -kL * s.left.bend - cL * s.left.bendVel
+  s.left.bendVel += accelBL * dt
+  s.left.bend += s.left.bendVel * dt
+  // Right sway
+  const targetR = idleR + fearStraighten * 0.25
+  const accelSR = -kR * (s.right.sway - targetR) - cR * s.right.swayVel
+  s.right.swayVel += accelSR * dt
+  s.right.sway += s.right.swayVel * dt
+  // Right bend
+  const accelBR = -kR * s.right.bend - cR * s.right.bendVel
+  s.right.bendVel += accelBR * dt
+  s.right.bend += s.right.bendVel * dt
+
+  // --- Clamp to avoid jitter/exaggeration ---
+  const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
+  s.left.sway = clamp(s.left.sway, -0.22, 0.22)
+  s.right.sway = clamp(s.right.sway, -0.22, 0.22)
+  s.left.bend = clamp(s.left.bend, -0.16, 0.16)
+  s.right.bend = clamp(s.right.bend, -0.16, 0.16)
+
+  return { swayL: s.left.sway, bendL: s.left.bend, swayR: s.right.sway, bendR: s.right.bend }
+}
+
+/**
+ * Draw the Tier 9 ROBO ball — a cute retro-futuristic spherical robot with
+ * a television screen for a face. Lavender/purple-blue body, cyan screen
+ * with rounded corners, two big expressive eyes, small smile, two antennae
+ * with yellow tips, and two side buttons (red + yellow) on the right.
+ *
+ * SAME CONTRACT as drawSharkBall/drawPigBall: the body is the ball's
+ * CONTOUR (pass `poly`; without it a circle of radius r at (cx, cy)); the
+ * FACE is part of the design (callers must NOT draw the standard face on
+ * top).
+ *
+ * FEAR: `panic` widens the eyes, pins pupils upward, and flattens the
+ * smile. The eyes are the STANDARD pair (panic morph + wink easter egg).
+ * Character-specific easter eggs: occasional screen flicker, curious
+ * widened eyes, and springy antenna physics (idle sway, landing bend,
+ * collision wobble, direction-change lag, fear straighten).
+ */
 export function drawRoboBall(
   g: Phaser.GameObjects.Graphics,
   cx: number,
@@ -1282,12 +1519,14 @@ export function drawRoboBall(
   panic = 0,
   gaze?: { x: number; y: number },
   seed = 9,
+  ballId?: number,
 ): void {
   const pal = ROBO_PALETTES[variant % ROBO_PALETTES.length]!
   const look = ballLookFor(9, seed)
   const ink = Math.max(2, r * 0.05)
   const out = ballOutlineWidth(r)
   const now = Date.now() / 1000
+  const nowMs = Date.now()
   // The easter-egg expression (wink) rides the same timeline as the
   // other balls — suppressed while panicking (fear wins).
   const exprRobo = panic > 0.45 ? 'normal' : expressionAt(seed, now * 1000)
@@ -1296,9 +1535,32 @@ export function drawRoboBall(
   cx += jx
   cy += jy
 
-  // ---- THE GLOW — the same soft radial stack as the shark/pig, tinted
-  // to the palette's lavender: 4 concentric discs, widest first, each
-  // smaller AND brighter, with a gentle ~9s breath. Drawn FIRST. ----
+  // ---- Live contour extents (for squash/stretch tracking) ----
+  let topY = cy - r
+  let scaleX = 1
+  let scaleY = 1
+  if (poly && poly.length >= 3) {
+    let minX = poly[0]!.x, maxX = poly[0]!.x, minY = poly[0]!.y, maxY = poly[0]!.y
+    for (const p of poly) {
+      if (p.x < minX) minX = p.x
+      if (p.x > maxX) maxX = p.x
+      if (p.y < minY) minY = p.y
+      if (p.y > maxY) maxY = p.y
+    }
+    scaleX = Math.max(0.78, Math.min(1.22, (maxX - minX) / (2 * r)))
+    scaleY = Math.max(0.75, Math.min(1.22, (maxY - minY) / (2 * r)))
+    // Top of the contour near x ≈ cx (for the dome mount anchor).
+    let topNear = minY
+    for (const p of poly) {
+      if (Math.abs(p.x - cx) < r * 0.45 && p.y < topNear) topNear = p.y
+    }
+    topY = topNear
+  }
+
+  // ---- Antenna spring physics ----
+  const ant = stepRoboAntennaSpring(ballId, seed, cx, cy, r, poly, panic, nowMs)
+
+  // ---- THE GLOW — soft radial stack, tinted lavender. Drawn FIRST. ----
   const glowWobble = Math.sin(now * 0.7)
   const glowLayers: ReadonlyArray<{ rr: number; alpha: number }> = [
     { rr: 1.72 + glowWobble * 0.03, alpha: 0.1 },
@@ -1311,49 +1573,7 @@ export function drawRoboBall(
     g.fillCircle(cx, cy, r * layer.rr)
   }
 
-  // ---- ANTENNAE — two identical thick stems with round yellow tips,
-  // angled slightly outward, emerging from a dark base on top of the
-  // head. Both antennae have the SAME construction and visual weight. ----
-  let topY = cy - r
-  if (poly && poly.length >= 8) {
-    let top = poly[0]!
-    for (const p of poly) if (p.y < top.y) top = p
-    topY = top.y
-  }
-  // Antenna base: a small dark mound on top of the head.
-  const antBaseW = r * 0.5
-  const antBaseH = r * 0.18
-  g.fillStyle(INK, 1)
-  g.fillEllipse(cx, topY + r * 0.02, antBaseW, antBaseH)
-  // Antenna geometry: identical for both sides, mirrored.
-  const antW = Math.max(3, r * 0.09) // stem width — thick and consistent
-  const antLen = r * 0.5
-  const tipR = r * 0.13
-  const antBounce = Math.sin(now * 8 + seed) * r * 0.02 * (0.3 + panic * 0.7)
-  for (const s of [-1, 1]) {
-    const baseX = cx + s * r * 0.22
-    const baseY = topY + r * 0.06
-    const tipX = baseX + s * r * 0.22
-    const tipY = baseY - antLen + antBounce
-    // Stem: a thick tapered quad, light grey/white fill.
-    g.fillStyle(pal.antenna, 1)
-    g.beginPath()
-    g.moveTo(baseX - antW / 2, baseY)
-    g.lineTo(tipX - antW * 0.35, tipY)
-    g.lineTo(tipX + antW * 0.35, tipY)
-    g.lineTo(baseX + antW / 2, baseY)
-    g.closePath()
-    g.fillPath()
-    g.lineStyle(out * 0.7, INK, 1)
-    g.strokePath()
-    // Yellow tip: a round circle at the stem's end.
-    g.fillStyle(pal.antennaTip, 1)
-    g.fillCircle(tipX, tipY, tipR)
-    g.lineStyle(out * 0.7, INK, 1)
-    g.strokeCircle(tipX, tipY, tipR)
-  }
-
-  // ---- THE BODY — the contour, lavender with subtle shading. ----
+  // ---- THE BODY — the contour, periwinkle TV casing with shading. ----
   if (poly && poly.length >= 3) {
     g.fillStyle(pal.body, 1)
     g.fillPoints(poly as unknown as Phaser.Math.Vector2[], true)
@@ -1361,90 +1581,112 @@ export function drawRoboBall(
     g.fillStyle(pal.body, 1)
     g.fillCircle(cx, cy, r)
   }
-  // Body highlight: subtle lighter purple upper-left crescent.
-  g.fillStyle(pal.bodyLight, 0.45)
+  // Lower casing shadow crescent (deeper slate-purple).
+  g.fillStyle(pal.bodyDark, 0.85)
   g.beginPath()
-  g.arc(cx, cy, r * 0.88, Math.PI * 1.08, Math.PI * 1.55, false)
-  g.arc(cx, cy, r * 0.62, Math.PI * 1.55, Math.PI * 1.08, true)
+  g.arc(cx, cy, r * 0.95, Math.PI * 0.10, Math.PI * 0.90, false)
+  g.arc(cx, cy + r * 0.56, r * 0.72, Math.PI * 0.90, Math.PI * 0.10, true)
   g.closePath()
   g.fillPath()
-  // Bottom shading: slightly darker toward the base.
-  g.fillStyle(pal.body, 0.55)
+  // Upper-left casing highlight band.
+  g.fillStyle(pal.bodyLight, 0.85)
   g.beginPath()
-  g.arc(cx, cy, r * 0.9, Math.PI * 0.12, Math.PI * 0.88, false)
-  g.arc(cx, cy, r * 0.68, Math.PI * 0.88, Math.PI * 0.12, true)
+  g.arc(cx, cy, r * 0.94, Math.PI * 0.92, Math.PI * 1.48, false)
+  g.arc(cx, cy, r * 0.78, Math.PI * 1.48, Math.PI * 0.92, true)
+  g.closePath()
+  g.fillPath()
+  // Crisp bright inner-rim specular streak.
+  g.fillStyle(0xd0d7fa, 0.85)
+  g.beginPath()
+  g.arc(cx, cy, r * 0.92, Math.PI * 1.04, Math.PI * 1.34, false)
+  g.arc(cx, cy, r * 0.85, Math.PI * 1.34, Math.PI * 1.04, true)
   g.closePath()
   g.fillPath()
 
-  // ---- SIDE BUTTONS — two clearly visible circles on the right side
-  // of the body: upper red, lower golden yellow. Positioned OUTSIDE the
-  // screen area, on the body's right edge, NOT clipped by the outline. ----
-  const btnX = cx + r * 0.68
-  const btnR = r * 0.11
-  const btnOut = out * 0.65
-  // Upper: red.
-  g.fillStyle(pal.buttonRed, 1)
-  g.fillCircle(btnX, cy - r * 0.22, btnR)
-  g.lineStyle(btnOut, INK, 1)
-  g.strokeCircle(btnX, cy - r * 0.22, btnR)
-  // Lower: golden yellow.
-  g.fillStyle(pal.buttonYellow, 1)
-  g.fillCircle(btnX, cy + r * 0.08, btnR)
-  g.lineStyle(btnOut, INK, 1)
-  g.strokeCircle(btnX, cy + r * 0.08, btnR)
-
-  // ---- THE SCREEN — the television face: a LARGE rounded rectangle
-  // dominating the front of the body. Bright cyan fill, darker blue
-  // shading toward the bottom, white reflection upper-left. The screen
-  // is ~70% of body width and ~60% of body height. ----
-  const scrW = r * 1.5
-  const scrH = r * 1.2
-  const scrX = cx - scrW / 2
-  const scrY = cy - r * 0.55
-  const scrR = r * 0.28 // generous corner radius
-  // Screen fill.
-  g.fillStyle(pal.screen, 1)
+  // ---- THE SCREEN — recessed television face. ----
+  const scrW = r * 1.18 * scaleX
+  const scrH = r * 1.02 * scaleY
+  const scrCx = cx - r * 0.13 * scaleX
+  const scrCy = cy + r * 0.04 * scaleY
+  const scrX = scrCx - scrW / 2
+  const scrY = scrCy - scrH / 2
+  const scrR = r * 0.24 * Math.min(scaleX, scaleY)
+  // Outer casing recess bevel: light lip bottom-right, dark lip top-left.
+  const pad = r * 0.055
+  g.fillStyle(pal.bodyLight, 0.55)
+  g.fillRoundedRect(scrX - pad + r * 0.02, scrY - pad + r * 0.02, scrW + pad * 2, scrH + pad * 2, scrR + pad * 0.5)
+  g.fillStyle(pal.bodyDark, 0.75)
+  g.fillRoundedRect(scrX - pad - r * 0.02, scrY - pad - r * 0.02, scrW + pad * 2, scrH + pad * 2, scrR + pad * 0.5)
+  // Screen base fill (darker cyan for bottom/right shading).
+  g.fillStyle(pal.screenDark, 1)
   g.fillRoundedRect(scrX, scrY, scrW, scrH, scrR)
-  // Screen lower shading: a subtle darker blue band at the bottom.
-  g.fillStyle(pal.screenDark, 0.4)
-  g.fillRoundedRect(scrX + scrW * 0.05, scrY + scrH * 0.6, scrW * 0.9, scrH * 0.35, { tl: 0, tr: 0, bl: scrR * 0.8, br: scrR * 0.8 })
-  // Screen reflection: a white curved highlight in the upper-left.
-  g.fillStyle(0xffffff, 0.4)
+  // Bright screen fill inset (creates smooth darker crescent along bottom/right).
+  g.fillStyle(pal.screen, 1)
+  g.fillRoundedRect(scrX + r * 0.01, scrY + r * 0.01, scrW * 0.92, scrH * 0.87, scrR * 0.88)
+  // Top-left cyan glow.
+  g.fillStyle(0x7be3ff, 0.45)
+  g.fillRoundedRect(scrX + scrW * 0.04, scrY + scrH * 0.04, scrW * 0.38, scrH * 0.28, scrR * 0.5)
+  // White reflection bean in the upper-left corner.
+  g.fillStyle(0xffffff, 0.95)
   g.beginPath()
-  g.moveTo(scrX + scrW * 0.1, scrY + scrH * 0.12)
-  quadFrom(g, scrX + scrW * 0.1, scrY + scrH * 0.12, scrX + scrW * 0.22, scrY + scrH * 0.04, scrX + scrW * 0.35, scrY + scrH * 0.1)
-  quadFrom(g, scrX + scrW * 0.35, scrY + scrH * 0.1, scrX + scrW * 0.28, scrY + scrH * 0.2, scrX + scrW * 0.14, scrY + scrH * 0.18)
+  g.moveTo(scrX + scrW * 0.08, scrY + scrH * 0.12)
+  quadFrom(g, scrX + scrW * 0.08, scrY + scrH * 0.12, scrX + scrW * 0.16, scrY + scrH * 0.04, scrX + scrW * 0.28, scrY + scrH * 0.06)
+  quadFrom(g, scrX + scrW * 0.28, scrY + scrH * 0.06, scrX + scrW * 0.24, scrY + scrH * 0.14, scrX + scrW * 0.12, scrY + scrH * 0.18)
+  quadFrom(g, scrX + scrW * 0.12, scrY + scrH * 0.18, scrX + scrW * 0.06, scrY + scrH * 0.16, scrX + scrW * 0.08, scrY + scrH * 0.12)
   g.closePath()
   g.fillPath()
-  // Screen outline: thick and clean.
-  g.lineStyle(ink * 1.0, INK, 1)
+  // Thick dark bezel outline.
+  const bezelW = out * 0.92
+  g.lineStyle(bezelW, INK, 1)
   g.strokeRoundedRect(scrX, scrY, scrW, scrH, scrR)
 
   // ---- SCREEN FLICKER — occasional brief alpha flicker (easter egg). ----
   const flickerSeed = Math.sin(now * 13 + seed * 7) * Math.cos(now * 7 + seed * 3)
   if (flickerSeed > 0.985 && panic < 0.3) {
-    g.fillStyle(0xffffff, 0.12)
+    g.fillStyle(0xffffff, 0.1)
     g.fillRoundedRect(scrX, scrY, scrW, scrH, scrR)
   }
 
-  // ---- THE EYES — two large, expressive eyes INSIDE the screen, with
-  // a small deliberate gap between them. White sclera, large black pupils,
-  // small white highlights. Symmetrical construction. ----
+  // ---- SIDE BUTTONS — two physical controls on the right casing. ----
+  const btnX = cx + r * 0.71 * scaleX
+  const btnR = r * 0.115 * Math.min(scaleX, scaleY)
+  const btnOut = out * 0.72
+  const btn1Y = cy - r * 0.07 * scaleY
+  const btn2Y = cy + r * 0.23 * scaleY
+  // Socket shadows behind buttons.
+  g.fillStyle(pal.bodyDark, 0.5)
+  g.fillCircle(btnX, btn1Y + r * 0.01, btnR + r * 0.015)
+  g.fillCircle(btnX, btn2Y + r * 0.01, btnR + r * 0.015)
+  // Upper: red.
+  g.fillStyle(pal.buttonRed, 1)
+  g.fillCircle(btnX, btn1Y, btnR)
+  g.fillStyle(0xff7a70, 0.7)
+  g.fillCircle(btnX - btnR * 0.25, btn1Y - btnR * 0.25, btnR * 0.45)
+  g.lineStyle(btnOut, INK, 1)
+  g.strokeCircle(btnX, btn1Y, btnR)
+  // Lower: golden yellow.
+  g.fillStyle(pal.buttonYellow, 1)
+  g.fillCircle(btnX, btn2Y, btnR)
+  g.fillStyle(0xffe066, 0.7)
+  g.fillCircle(btnX - btnR * 0.25, btn2Y - btnR * 0.25, btnR * 0.45)
+  g.lineStyle(btnOut, INK, 1)
+  g.strokeCircle(btnX, btn2Y, btnR)
+
+  // ---- THE EYES — two large expressive eyes inside the screen. ----
   const L = faceLayoutFor(look, r, 1, gaze)
   const em = Math.min(1, panic)
   const up = 0.45 * em
-  // Eyes positioned inside the screen, centered vertically with a slight
-  // upward bias, spaced with a small gap between their outer edges.
-  const eyeY = scrY + scrH * 0.42
-  const eyeDx = r * 0.28 // half the distance between eye centers
-  // Curious expression: occasionally widen eyes slightly (easter egg).
+  const faceCx = scrX + scrW * 0.52
+  const eyeY = scrY + scrH * 0.46
+  const eyeDx = r * 0.238 * scaleX
+  const baseWa = r * 0.205 * scaleX
+  const baseWb = r * 0.225 * scaleY
   const curious = Math.sin(now * 0.31 + seed * 11) > 0.92 && panic < 0.2 ? 1.06 : 1
   for (const [i, e] of L.eyes.entries()) {
-    const ex = cx + eyeDx * (i === 0 ? -1 : 1)
+    const ex = faceCx + eyeDx * (i === 0 ? -1 : 1)
     const ey = eyeY + e.y * 0.3
     const closed = exprRobo === 'wink' && i === 1
     if (closed) {
-      // Closed lid: one downward ink arc across the eye.
       g.lineStyle(e.rim * 0.95, INK, 1)
       const lid: Array<{ x: number; y: number }> = []
       for (let s = 0; s <= 12; s++) {
@@ -1454,33 +1696,29 @@ export function drawRoboBall(
       g.strokePoints(lid as unknown as Phaser.Math.Vector2[], false, false)
       continue
     }
-    // Sclera + rim, widened with panic and curiosity.
-    const wa = e.a * (1 + 0.12 * em) * curious
-    const wb = e.b * (1 + 0.2 * em) * curious
+    const wa = baseWa * (1 + 0.12 * em) * curious
+    const wb = baseWb * (1 + 0.2 * em) * curious
     g.fillStyle(0xffffff, 1)
     g.fillEllipse(ex, ey, wa * 2, wb * 2)
     g.lineStyle(e.rim, INK, 1)
     g.strokeEllipse(ex, ey, wa * 2, wb * 2)
-    // Pupil: pinned up + shrunk with panic (the standard morph).
     const pb = e.pb * (1 - 0.35 * em)
     const py = e.py * (1 - em) - up * (e.b - pb - e.rim * 0.5) * em
     g.fillStyle(INK, 1)
     g.fillEllipse(ex + e.px, ey + py, e.pa * 2, pb * 2)
-    // Main highlight + tiny secondary dot (the standard pair).
     g.fillStyle(0xffffff, 1)
     g.fillEllipse(ex + e.px - e.pa * 0.32, ey + py - pb * 0.34, e.pa * 0.6, e.pa * 0.6, 24)
     g.fillEllipse(ex + e.px - e.pa * 0.1, ey + py - pb * 0.38, e.pa * 0.24, e.pa * 0.24, 16)
   }
 
-  // ---- THE MOUTH — a small, simple curved smile centred below the
-  // eyes, INSIDE the screen. Flattens toward a tense line as panic climbs. ----
-  const mouthY = scrY + scrH * 0.72
-  const mouthW = r * 0.18
-  const dip = r * (0.06 - 0.04 * panic)
-  g.lineStyle(ink * 0.85, INK, 1)
+  // ---- THE MOUTH — small curved smile inside the screen. ----
+  const mouthY = scrY + scrH * 0.79
+  const mouthW = r * 0.085 * scaleX
+  const dip = r * (0.065 - 0.04 * panic) * scaleY
+  g.lineStyle(ink * 0.68, INK, 1)
   g.beginPath()
-  g.moveTo(cx - mouthW, mouthY)
-  quadFrom(g, cx - mouthW, mouthY, cx, mouthY + dip, cx + mouthW, mouthY)
+  g.moveTo(faceCx - mouthW, mouthY)
+  quadFrom(g, faceCx - mouthW, mouthY, faceCx, mouthY + dip, faceCx + mouthW, mouthY)
   g.strokePath()
 
   // ---- THE INK OUTLINE — the contour itself, over everything. ----
@@ -1490,6 +1728,81 @@ export function drawRoboBall(
   } else {
     g.strokeCircle(cx, cy, r)
   }
+
+  // ---- ANTENNAE — two curved stems with round yellow tips, drawn AFTER
+  // the body outline so the dome mount covers their bases cleanly. ----
+  const domeCx = cx - r * 0.01
+  const domeBaseY = topY + r * 0.11
+  const domeW = r * 0.46
+  const domeH = r * 0.24
+  const stemBaseW = Math.max(4, r * 0.125)
+  const stemTipW = Math.max(3.6, r * 0.105)
+  const tipR = r * 0.145
+
+  for (const s of [-1, 1]) {
+    const sway = s < 0 ? ant.swayL : ant.swayR
+    const bend = s < 0 ? ant.bendL : ant.bendR
+    const baseX = domeCx + s * r * 0.11
+    const baseY = domeBaseY - domeH * 0.55
+    // Rest tip offset (playful asymmetry: left tilts ~35°, right ~32°).
+    const restDx = s * r * (s < 0 ? 0.27 : 0.25)
+    const restDy = -r * (s < 0 ? 0.38 : 0.40)
+    // Apply spring deflection.
+    const tipX = baseX + restDx + sway * r
+    const tipY = baseY + restDy + bend * r
+    // Control point: bows gently outward, bends with spring.
+    const ctrlX = baseX + restDx * 0.55 + sway * r * 0.45
+    const ctrlY = baseY + restDy * 0.55 + bend * r * 0.35
+    // Stem: tapered curved ribbon.
+    const stemW0 = stemBaseW / 2
+    const stemW1 = stemTipW / 2
+    g.fillStyle(pal.antenna, 1)
+    g.beginPath()
+    g.moveTo(baseX - stemW0, baseY)
+    quadFrom(g, baseX - stemW0, baseY, ctrlX - stemW0 * 0.6, ctrlY, tipX - stemW1, tipY)
+    g.lineTo(tipX + stemW1, tipY)
+    quadFrom(g, tipX + stemW1, tipY, ctrlX + stemW0 * 0.6, ctrlY, baseX + stemW0, baseY)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(out * 0.82, INK, 1)
+    g.strokePath()
+    // Yellow tip: round ball at stem end.
+    g.fillStyle(pal.antennaTip, 1)
+    g.fillCircle(tipX, tipY, tipR)
+    g.fillStyle(0xffe268, 0.7)
+    g.fillCircle(tipX - tipR * 0.25, tipY - tipR * 0.25, tipR * 0.5)
+    g.lineStyle(out * 0.85, INK, 1)
+    g.strokeCircle(tipX, tipY, tipR)
+  }
+
+  // ---- DOME MOUNT — purple cap on top of the TV casing, drawn LAST so
+  // it covers the stem bases and the top body outline cleanly. ----
+  g.fillStyle(pal.body, 1)
+  g.beginPath()
+  g.moveTo(domeCx - domeW / 2, domeBaseY)
+  quadFrom(g, domeCx - domeW / 2, domeBaseY, domeCx - domeW * 0.28, domeBaseY - domeH * 0.92, domeCx, domeBaseY - domeH)
+  quadFrom(g, domeCx, domeBaseY - domeH, domeCx + domeW * 0.28, domeBaseY - domeH * 0.92, domeCx + domeW / 2, domeBaseY)
+  g.closePath()
+  g.fillPath()
+  // Dome highlight.
+  g.fillStyle(pal.bodyLight, 0.6)
+  g.beginPath()
+  g.moveTo(domeCx - domeW * 0.32, domeBaseY - domeH * 0.12)
+  quadFrom(g, domeCx - domeW * 0.32, domeBaseY - domeH * 0.12, domeCx - domeW * 0.18, domeBaseY - domeH * 0.78, domeCx, domeBaseY - domeH * 0.88)
+  quadFrom(g, domeCx, domeBaseY - domeH * 0.88, domeCx + domeW * 0.18, domeBaseY - domeH * 0.78, domeCx + domeW * 0.32, domeBaseY - domeH * 0.12)
+  g.closePath()
+  g.fillPath()
+  // Dome base shadow.
+  g.fillStyle(pal.bodyDark, 0.5)
+  g.fillRoundedRect(domeCx - domeW * 0.38, domeBaseY - r * 0.02, domeW * 0.76, r * 0.04, r * 0.02)
+  // Dome outline.
+  g.lineStyle(out * 0.92, INK, 1)
+  g.beginPath()
+  g.moveTo(domeCx - domeW / 2, domeBaseY)
+  quadFrom(g, domeCx - domeW / 2, domeBaseY, domeCx - domeW * 0.28, domeBaseY - domeH * 0.92, domeCx, domeBaseY - domeH)
+  quadFrom(g, domeCx, domeBaseY - domeH, domeCx + domeW * 0.28, domeBaseY - domeH * 0.92, domeCx + domeW / 2, domeBaseY)
+  g.closePath()
+  g.strokePath()
 }
 
 export interface DrunkoPalette {
@@ -2305,13 +2618,14 @@ export function drawTier9Ball(
   seed = 9,
   theme: Tier9Theme = tier9Theme(),
   bodyAngle = 0,
+  ballId?: number,
 ): void {
   if (theme === 'pig') {
     drawPigBall(g, cx, cy, r, variant, poly, panic, gaze, seed)
   } else if (theme === 'drunko') {
     drawDrunkoBall(g, cx, cy, r, variant, poly, panic, gaze, seed, bodyAngle)
   } else if (theme === 'robo') {
-    drawRoboBall(g, cx, cy, r, variant, poly, panic, gaze, seed)
+    drawRoboBall(g, cx, cy, r, variant, poly, panic, gaze, seed, ballId)
   } else {
     drawSharkBall(g, cx, cy, r, variant, poly, panic, gaze, seed)
   }
@@ -2336,6 +2650,7 @@ export function drawCollectibleBall(
   seed = 9,
   theme?: string,
   bodyAngle = 0,
+  ballId?: number,
 ): void {
   if (tier === 10) {
     drawCrabBall(g, cx, cy, r, variant, poly, panic, gaze, seed)
@@ -2346,6 +2661,6 @@ export function drawCollectibleBall(
   }
   drawTier9Ball(g, cx, cy, r, variant, poly, panic, gaze, seed,
     theme === 'shark' || theme === 'pig' || theme === 'drunko' || theme === 'robo' ? theme : tier9Theme(),
-    bodyAngle)
+    bodyAngle, ballId)
 }
 
