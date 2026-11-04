@@ -57,6 +57,8 @@ export class ShakeManager {
   private physics: { addBody: (b: Matter.Body) => void; removeBody: (b: Matter.Body) => void } | null = null
   /** Invisible extended side walls — present only while Shake is active. */
   private shakeWalls: Matter.Body[] = []
+  /** Balls already outside the container when shake activated — they pass through shake walls. */
+  private doomedBallIds = new Set<number>()
 
   // Pooled particle systems for earthquake visual effects
   private debrisPool: DebrisParticle[] = []
@@ -143,6 +145,19 @@ export class ShakeManager {
     this.nextDebrisSpawnMs = 0
     this.nextDustSpawnMs = 0
 
+    // Snapshot balls already outside the container — they will NOT be saved
+    this.doomedBallIds.clear()
+    if (this.manager) {
+      const height = CONTAINER.height
+      for (const b of this.manager.getBalls()) {
+        if (b.state === 'removed') continue
+        const c = this.manager.centroid(b.id)
+        if (c && isOutsideContainer(c, height)) {
+          this.doomedBallIds.add(b.id)
+        }
+      }
+    }
+
     this.addShakeWalls()
 
     // Immediately spawn an initial burst of debris and smoke puffs
@@ -184,7 +199,7 @@ export class ShakeManager {
       const run = innerTop.y - innerBot.y
       const len = Math.hypot(slope * run, run) || 1
       const off = (t * len) / Math.abs(run) * outward
-      return createWallBody({
+      const body = createWallBody({
         label,
         vertices: [
           { x: innerBot.x, y: innerBot.y },
@@ -193,12 +208,32 @@ export class ShakeManager {
           { x: innerBot.x + off, y: innerBot.y },
         ],
       })
+      // Shake walls use category 0x0002 — doomed balls are excluded from this
+      body.collisionFilter.category = 0x0002
+      body.collisionFilter.mask = 0xFFFF // Collide with everything by default
+      return body
     }
     this.shakeWalls = [
       mk(lBot, lTop, slopeL, -1, 'shake-wall-left'),
       mk(rBot, rTop, slopeR, 1, 'shake-wall-right'),
     ]
     for (const w of this.shakeWalls) this.physics.addBody(w)
+    // Exclude doomed balls from shake wall collisions
+    this.excludeDoomedBallsFromWalls()
+  }
+
+  /** Update collision filters so doomed balls pass through shake walls. */
+  private excludeDoomedBallsFromWalls(): void {
+    if (!this.manager) return
+    for (const id of this.doomedBallIds) {
+      const ball = this.manager.getBallById(id)
+      if (!ball) continue
+      // Remove category 0x0002 from this ball's collision mask
+      const bodies = [ball.soft.center, ...ball.soft.particles]
+      for (const body of bodies) {
+        body.collisionFilter.mask = (body.collisionFilter.mask ?? 0xFFFF) & ~0x0002
+      }
+    }
   }
 
   /** Remove the invisible extended side walls (deactivate / reset). */
@@ -388,8 +423,24 @@ export class ShakeManager {
     this.active = false
     this.startTime = 0
     this.lastRoundIndex = -1
+    // Restore collision masks for doomed balls before clearing
+    this.restoreDoomedBallMasks()
+    this.doomedBallIds.clear()
     this.removeShakeWalls()
     for (const d of this.debrisPool) d.active = false
     for (const p of this.dustPool) p.active = false
+  }
+
+  /** Restore collision masks for doomed balls (called on reset). */
+  private restoreDoomedBallMasks(): void {
+    if (!this.manager) return
+    for (const id of this.doomedBallIds) {
+      const ball = this.manager.getBallById(id)
+      if (!ball) continue
+      const bodies = [ball.soft.center, ...ball.soft.particles]
+      for (const body of bodies) {
+        body.collisionFilter.mask = 0xFFFF
+      }
+    }
   }
 }
