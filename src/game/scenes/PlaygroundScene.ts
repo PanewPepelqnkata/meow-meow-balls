@@ -83,8 +83,10 @@ export class PlaygroundScene extends Phaser.Scene {
   private discoveredTiers = new Set<number>([1, 2, 3])
   /** Tiers discovered in THIS run — a repeat discovery (a tier already in
    * the lifetime save) still gets the NON-BLOCKING banner animation once
-   * per run, but never twice for the same tier in the same run. */
-  private runDiscoveredTiers = new Set<number>()
+   * per run, but never twice for the same tier in the same run. For
+   * collectible tiers (9–10) the key includes the theme so a new identity
+   * in the same run still fires its full card. */
+  private runDiscoveredTiers = new Set<string>()
 
   private registeredIds = new Set<number>()
   /**
@@ -267,14 +269,15 @@ export class PlaygroundScene extends Phaser.Scene {
         const showFirstCard = tier >= PlaygroundScene.WIND_BANNER_MIN_TIER &&
           (collectible ? firstCollectible : firstTime && !hasDiscoveredTier(tier))
 
+        const runKey = collectible ? `${tier}:${theme}` : String(tier)
         if (bannerForcedByVariant() && tier >= PlaygroundScene.WIND_BANNER_MIN_TIER) {
-          this.runDiscoveredTiers.add(tier)
+          this.runDiscoveredTiers.add(runKey)
           gameBus.emit('discovery:banner', { tier, seed, theme, variant })
         } else if (showFirstCard) {
-          this.runDiscoveredTiers.add(tier)
+          this.runDiscoveredTiers.add(runKey)
           gameBus.emit('discovery:show', { tier, seed, theme, variant })
-        } else if (!this.runDiscoveredTiers.has(tier) && tier >= PlaygroundScene.WIND_BANNER_MIN_TIER) {
-          this.runDiscoveredTiers.add(tier)
+        } else if (!this.runDiscoveredTiers.has(runKey) && tier >= PlaygroundScene.WIND_BANNER_MIN_TIER) {
+          this.runDiscoveredTiers.add(runKey)
           gameBus.emit('discovery:banner', { tier, seed, theme, variant })
         }
 

@@ -447,7 +447,8 @@ export function hasDiscoveredTier(tier: number): boolean {
 }
 
 export function hasDiscoveredCollectible(tier: number, theme: string | null): boolean {
-  if (tier < 9 || tier > 12 || theme == null) return hasDiscoveredTier(tier)
+  if (tier < 9 || tier > 12) return hasDiscoveredTier(tier)
+  if (theme == null) return false
   return Object.keys(loadSave().variants).some((key) => key.startsWith(`${tier}:${theme}:`))
 }
 

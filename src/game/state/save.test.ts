@@ -84,6 +84,14 @@ describe('hasDiscoveredTier (the repeat-discovery gate)', () => {
     expect(hasDiscoveredCollectible(10, 'crab')).toBe(false)
   })
 
+  it('returns false for collectible tiers when theme is null', () => {
+    recordDiscovery(9, 3, 'shark')
+    expect(hasDiscoveredCollectible(9, null)).toBe(false)
+    expect(hasDiscoveredCollectible(10, null)).toBe(false)
+    expect(hasDiscoveredCollectible(11, null)).toBe(false)
+    expect(hasDiscoveredCollectible(12, null)).toBe(false)
+  })
+
   it('does not change a character’s first-discovery date when found again', () => {
     vi.spyOn(Date, 'now').mockReturnValue(1000)
     try {
