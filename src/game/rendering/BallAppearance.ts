@@ -424,6 +424,7 @@ export function drawBallFace(
   r: number,
   aspect = 1,
   live?: { gaze?: { x: number; y: number }; expr?: BallExpression; panic?: number },
+  thumbnail = false,
 ): { dx: number; dy: number } {
   const panic = Math.max(0, Math.min(1, live?.panic ?? 0))
   const E = BALL_EMOTION
@@ -448,6 +449,12 @@ export function drawBallFace(
       }
     : look
   const L = faceLayoutFor(pLook, r, aspect, live?.gaze)
+  // Thumbnail mode: scale down eye rims and mouth stroke for readability.
+  if (thumbnail) {
+    const scale = collectionInkWidth(r) / Math.max(2, r * 0.05)
+    for (const e of L.eyes) e.rim *= scale
+    L.mouth.stroke *= scale
+  }
   // Pupils pinned upward with panic (gaze.y = -1 is the top of the eye);
   // the glance timeline yields to the upward stare as panic rises.
   if (panic > 0) {

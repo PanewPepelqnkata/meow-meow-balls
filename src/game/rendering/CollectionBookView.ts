@@ -445,7 +445,7 @@ export class CollectionBookView {
       g.fillPoints(poly, true)
       g.lineStyle(collectionOutlineWidth(r), INK, 1)
       g.strokePoints(poly, true, true)
-      drawBallFace(g, look, center, r, 1)
+      drawBallFace(g, look, center, r, 1, undefined, true)
     }
     draw()
     leaf.redraws.push(draw)
