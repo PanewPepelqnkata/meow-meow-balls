@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase'
+import { getSupabase } from '../lib/supabase'
 import { isDrunkoTestRoute } from '../game/state/runVariant'
 import type { AuthChangeEvent, User, Session } from '@supabase/supabase-js'
 
@@ -383,16 +383,17 @@ export class AuthService {
   }
 
   initialize(): Promise<void> {
+    if (isDrunkoTestRoute()) return Promise.resolve()
     if (this.initializationPromise) return this.initializationPromise
     setCloudSyncHandler((save, immediate) => this.scheduleCloudSync(save, immediate))
     const revision = this.authStateRevision
 
     this.initializationPromise = (async () => {
       // Subscribe before getSession: it can itself refresh the persisted session.
-      supabase.auth.onAuthStateChange((event, nextSession) => {
+      getSupabase().auth.onAuthStateChange((event, nextSession) => {
         this.handleSdkAuthStateChange(event, nextSession)
       })
-      const { data: { session } } = await supabase.auth.getSession()
+      const { data: { session } } = await getSupabase().auth.getSession()
       if (revision !== this.authStateRevision || !this.awaitingInitialSession || this.authFlowInProgress !== null) return
 
       this.awaitingInitialSession = false
@@ -447,11 +448,12 @@ export class AuthService {
   }
 
   async signInWithEmail(email: string, password: string): Promise<{ error: Error | null }> {
+    const client = getSupabase()
     const flowRevision = this.beginAuthFlow('login')
     const stateRevision = this.authStateRevision
     let handledEvent = false
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+      const { data, error } = await client.auth.signInWithPassword({ email, password })
       if (error || !data.user) {
         return { error: error ?? new Error('Failed to sign in') }
       }
@@ -476,11 +478,12 @@ export class AuthService {
   }
 
   async signUpWithEmail(email: string, password: string, username: string): Promise<{ error: Error | null }> {
-    const guestSave = !isDrunkoTestRoute() && getSaveOwnerId() === null ? cloneSave(loadSave()) : freshSave()
-    const signupProgress = isDrunkoTestRoute() ? {} : { ballrush_progress: guestSave }
+    const client = getSupabase()
+    const guestSave = getSaveOwnerId() === null ? cloneSave(loadSave()) : freshSave()
+    const signupProgress = { ballrush_progress: guestSave }
     const flowRevision = this.beginAuthFlow('signup')
     try {
-      const { error } = await supabase.auth.signUp({
+      const { error } = await client.auth.signUp({
         email,
         password,
         options: {
@@ -510,7 +513,7 @@ export class AuthService {
     }
 
     const lookupRevision = this.accountRevision
-    const { data: profile, error: lookupError } = await supabase
+    const { data: profile, error: lookupError } = await getSupabase()
       .from('profiles')
       .select('email')
       .ilike('username', trimmed)
@@ -534,7 +537,7 @@ export class AuthService {
    */
   async signUpWithUsername(username: string, password: string, email?: string): Promise<{ error: Error | null }> {
     const lookupRevision = this.accountRevision
-    const { data: existing, error: lookupError } = await supabase
+    const { data: existing, error: lookupError } = await getSupabase()
       .from('profiles')
       .select('id')
       .eq('username', username)
@@ -552,10 +555,7 @@ export class AuthService {
       return { error: new Error('Username is already taken') }
     }
 
-    // Sandbox signup keeps authentication available without transferring or
-    // publishing the ephemeral run's progression.
-    const sandbox = isDrunkoTestRoute()
-    const hadGuestProgress = !sandbox && getSaveOwnerId() === null
+    const hadGuestProgress = getSaveOwnerId() === null
     const guestIdBeforeSignup = hadGuestProgress ? getOrCreateGuestId() : null
     const guestSave = hadGuestProgress ? cloneSave(loadSave()) : freshSave()
     const authEmail = email || `${username.toLowerCase().replace(/[^a-z0-9]/g, '')}@ballrush.local`
@@ -563,8 +563,8 @@ export class AuthService {
     const flowRevision = this.beginAuthFlow('signup')
     let handledEvent = false
     try {
-      const signupProgress = sandbox ? {} : { ballrush_progress: guestSave }
-      const { error } = await supabase.auth.signUp({
+      const signupProgress = { ballrush_progress: guestSave }
+      const { error } = await getSupabase().auth.signUp({
         email: authEmail,
         password,
         options: {
@@ -583,7 +583,7 @@ export class AuthService {
         return { error: new Error('Authentication state changed. Please try again.') }
       }
       const stateRevision = this.authStateRevision
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+      const { data: signInData, error: signInError } = await getSupabase().auth.signInWithPassword({
         email: authEmail,
         password,
       })
@@ -610,7 +610,7 @@ export class AuthService {
       // Link anonymous guest profile & copy any prior guest runs into public.scores
       if (hadGuestProgress && guestIdBeforeSignup) {
         try {
-          await supabase.rpc('link_guest_to_user', { p_guest_id: guestIdBeforeSignup })
+          await getSupabase().rpc('link_guest_to_user', { p_guest_id: guestIdBeforeSignup })
         } catch {
           // Ignore if RPC is unavailable
         }
@@ -647,14 +647,14 @@ export class AuthService {
    * Send password reset email.
    */
   async resetPassword(email: string): Promise<{ error: Error | null }> {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    const { error } = await getSupabase().auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password`,
     })
     return { error }
   }
 
   async signInWithOAuth(provider: 'google' | 'github' | 'discord'): Promise<{ error: Error | null }> {
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { error } = await getSupabase().auth.signInWithOAuth({
       provider,
       options: {
         redirectTo: window.location.origin,
@@ -664,6 +664,7 @@ export class AuthService {
   }
 
   async signOut(): Promise<void> {
+    const client = getSupabase()
     const flowRevision = this.beginAuthFlow('logout')
     try {
       // Flush the active account's current progress to cloud BEFORE signing out.
@@ -671,7 +672,7 @@ export class AuthService {
         await this.persistSaveToCloud(cloneSave(loadSave()), this.user.id)
       }
       if (flowRevision !== this.authFlowRevision) return
-      const { error } = await supabase.auth.signOut()
+      const { error } = await client.auth.signOut()
       if (error) return
       if (flowRevision !== this.authFlowRevision) return
       // Once logged out, reset progression and guest identity without queued restores.
@@ -695,8 +696,8 @@ export class AuthService {
     const localSameOwnerSave = getSaveOwnerId() === userId ? cloneSave(loadSave()) : null
 
     const [freshUserRes, scoresRes, tableRes] = await Promise.all([
-      supabase.auth.getUser().catch(() => ({ data: { user: null } })),
-      supabase
+      getSupabase().auth.getUser().catch(() => ({ data: { user: null } })),
+      getSupabase()
         .from('scores')
         .select('*')
         .eq('user_id', userId)
@@ -704,7 +705,7 @@ export class AuthService {
         .limit(100),
       this.userProgressTableAvailable === false
         ? Promise.resolve({ data: null, error: null })
-        : supabase
+        : getSupabase()
             .from('user_progress')
             .select('*')
             .eq('user_id', userId)
@@ -797,7 +798,7 @@ export class AuthService {
     // 1. Always persist in the user's Supabase Auth metadata (works without schema migrations).
     this.isUpdatingProgressMeta = true
     try {
-      const { data } = await supabase.auth.updateUser({
+      const { data } = await getSupabase().auth.updateUser({
         data: {
           ballrush_progress: save,
         },
@@ -826,7 +827,7 @@ export class AuthService {
           settings: save.settings,
           updated_at: nowIso,
         }
-        const { error } = await supabase.from('user_progress').upsert(fullRow, { onConflict: 'user_id' })
+        const { error } = await getSupabase().from('user_progress').upsert(fullRow, { onConflict: 'user_id' })
         if (revision !== this.accountRevision || this.user?.id !== uid || getSaveOwnerId() !== uid) return
         if (error) {
           const code = error.code ?? ''
@@ -835,7 +836,7 @@ export class AuthService {
             this.userProgressTableAvailable = false
           } else if (code === 'PGRST204') {
             // Fallback if leaderboard/settings columns were not migrated yet.
-            await supabase.from('user_progress').upsert(
+            await getSupabase().from('user_progress').upsert(
               {
                 user_id: uid,
                 best_score: save.best,
@@ -865,7 +866,7 @@ export class AuthService {
     const guestId = getOrCreateGuestId()
     const save = normalizeSave(saveData ?? loadSave())
     try {
-      await supabase.rpc('upsert_guest_progress', {
+      await getSupabase().rpc('upsert_guest_progress', {
         p_guest_id: guestId,
         p_best_score: save.best,
         p_discovered: save.discovered,
@@ -884,7 +885,7 @@ export class AuthService {
     const revision = this.accountRevision
     const requestRevision = ++this.profileRequestRevision
 
-    const { data, error } = await supabase
+    const { data, error } = await getSupabase()
       .from('profiles')
       .select('*')
       .eq('id', userId)
@@ -904,7 +905,7 @@ export class AuthService {
   async updateProfile(updates: Partial<Profile>): Promise<{ error: Error | null }> {
     if (!this.user) return { error: new Error('Not authenticated') }
 
-    const { error } = await supabase
+    const { error } = await getSupabase()
       .from('profiles')
       .update({ ...updates, updated_at: new Date().toISOString() })
       .eq('id', this.user.id)
@@ -922,7 +923,7 @@ export class AuthService {
   async updateDisplayName(displayName: string): Promise<{ error: Error | null }> {
     if (!this.user) return { error: new Error('Not authenticated') }
 
-    const { error } = await supabase
+    const { error } = await getSupabase()
       .from('profiles')
       .update({ display_name: displayName, updated_at: new Date().toISOString() })
       .eq('id', this.user.id)
@@ -1014,7 +1015,7 @@ export class ScoreService {
     const performRpc = async (scoreIdToUpdate: number | null): Promise<number | null> => {
       if (!user) {
         const guestId = getOrCreateGuestId()
-        const { data, error } = await supabase.rpc('record_guest_score', {
+        const { data, error } = await getSupabase().rpc('record_guest_score', {
           p_guest_id: guestId,
           p_score: cleanScore,
           p_tier_reached: cleanTier,
@@ -1025,7 +1026,7 @@ export class ScoreService {
         if (error) throw new Error(error.message)
         return typeof data === 'number' ? data : data != null ? Number(data) : scoreIdToUpdate
       } else {
-        const { data, error } = await supabase.rpc('record_user_score', {
+        const { data, error } = await getSupabase().rpc('record_user_score', {
           p_score: cleanScore,
           p_tier_reached: cleanTier,
           p_balls_merged: cleanMerges,
@@ -1108,7 +1109,7 @@ export class ScoreService {
     let offset = 0
 
     while (uniqueScores.length < limit) {
-      const { data, error } = await supabase
+      const { data, error } = await getSupabase()
         .from('scores')
         .select(`
           *,
@@ -1150,7 +1151,7 @@ export class ScoreService {
 
     if (!user) return null
 
-    const { data, error } = await supabase
+    const { data, error } = await getSupabase()
       .from('scores')
       .select('*')
       .eq('user_id', user.id)
@@ -1171,7 +1172,7 @@ export class ScoreService {
 
     if (!user) return []
 
-    const { data, error } = await supabase
+    const { data, error } = await getSupabase()
       .from('scores')
       .select('*')
       .eq('user_id', user.id)

@@ -1,29 +1,36 @@
-import { createClient } from '@supabase/supabase-js'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { isDrunkoTestRoute } from '../game/state/runVariant'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables')
-}
-
-// On the /drunko sandbox route, disable Supabase auth storage entirely so
-// the SDK's localStorage probe (lswt-*) never fires and no session persists.
 const isSandbox = isDrunkoTestRoute()
 
-// No-op storage: the Supabase SDK probes storage on init; this swallows it.
-const noopStorage = {
-  getItem: () => null,
-  setItem: () => {},
-  removeItem: () => {},
-}
+const supabasePromise: Promise<SupabaseClient | null> = isSandbox
+  ? Promise.resolve(null)
+  : (async () => {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+      if (!supabaseUrl || !supabaseAnonKey) {
+        throw new Error('Missing Supabase environment variables')
+      }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: !isSandbox,
-    autoRefreshToken: !isSandbox,
-    detectSessionInUrl: !isSandbox,
-    storage: isSandbox ? noopStorage : undefined,
-  },
-})
+      // Runtime loading keeps supabase-js unevaluated on the isolated /drunko route.
+      const { createClient } = await import('@supabase/supabase-js')
+      return createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+        },
+      })
+    })()
+
+const supabaseClient = await supabasePromise
+
+export function getSupabase(): SupabaseClient {
+  if (isDrunkoTestRoute()) {
+    throw new Error('Supabase is unavailable on the /drunko sandbox route')
+  }
+  if (!supabaseClient) {
+    throw new Error('Supabase client is unavailable')
+  }
+  return supabaseClient
+}

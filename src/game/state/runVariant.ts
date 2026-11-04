@@ -58,7 +58,7 @@ export function variantIdFor(tier: number): number {
 // family), so players collect sharks some runs and pigs the next.
 // ---------------------------------------------------------------------------
 
-export type Tier9Theme = 'shark' | 'pig' | 'drunko'
+export type Tier9Theme = 'shark' | 'pig' | 'drunko' | 'robo'
 
 /** The /drunko test route: every drop is a tier-9 Drunk'o Ball and the run
  *  leaves no trace (no leaderboard submit, no save writes). */
@@ -70,13 +70,13 @@ export function isDrunkoTestRoute(): boolean {
 
 /** The tier-9 animal theme this run rolled — a weighted roll from
  *  `COLLECTIBLE_THEMES[9]` in config/collectibleThemes.ts (equal weights
- *  today). URL overrides: `?theme=pig|shark|drunko` for QA, and the
+ *  today). URL overrides: `?theme=pig|shark|drunko|robo` for QA, and the
  *  /drunko test route pins the theme to the drunkard. */
 export function tier9Theme(): Tier9Theme {
   if (typeof window !== 'undefined') {
     if (isDrunkoTestRoute()) return 'drunko'
     const p = new URLSearchParams(window.location.search).get('theme')
-    if (p === 'pig' || p === 'shark' || p === 'drunko') return p
+    if (p === 'pig' || p === 'shark' || p === 'drunko' || p === 'robo') return p
   }
   return rollCollectibleTheme(9, runSeed, hash) as Tier9Theme
 }

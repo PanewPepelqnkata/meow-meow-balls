@@ -3,6 +3,7 @@ import { GameCanvas } from './react/GameCanvas'
 import { gameBus } from './game/events/gameBus'
 import { authService } from './services/auth'
 import { BossDashboard } from './boss/BossDashboard'
+import { isDrunkoTestRoute } from './game/state/runVariant'
 
 function isBossRoute(): boolean {
   if (typeof window === 'undefined') return false
@@ -21,6 +22,7 @@ export default function App() {
   // Restore any persisted Supabase session so the game-over SAVE YOUR
   // SCORE CTA only shows for genuinely signed-out players.
   useEffect(() => {
+    if (isDrunkoTestRoute()) return
     void authService.initialize()
   }, [])
 

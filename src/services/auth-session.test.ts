@@ -129,10 +129,12 @@ const sdk = vi.hoisted(() => {
     assertUnlocked('rpc')
     return { data: null, error: null }
   })
-  return { state, auth, from, rpc, queryResult, defaultQuery, emit }
+  const client = { auth, from, rpc }
+  const getSupabase = vi.fn(() => client)
+  return { state, auth, from, rpc, getSupabase, queryResult, defaultQuery, emit }
 })
 
-vi.mock('../lib/supabase', () => ({ supabase: { auth: sdk.auth, from: sdk.from, rpc: sdk.rpc } }))
+vi.mock('../lib/supabase', () => ({ getSupabase: sdk.getSupabase }))
 vi.mock('phaser', () => ({ default: {} }))
 
 function deferred<T>() {
@@ -210,6 +212,16 @@ describe('persistent browser auth lifecycle', () => {
     expect(sdk.auth.getUser).toHaveBeenCalledTimes(1)
     expect(sdk.auth.onAuthStateChange).toHaveBeenCalledTimes(1)
     expect(sdk.state.nestedCalls).toEqual([])
+  })
+
+  it('skips the Supabase client on the isolated sandbox route', async () => {
+    vi.stubGlobal('window', { location: { pathname: '/drunko', search: '' } })
+
+    await expect(auth.initialize()).resolves.toBeUndefined()
+
+    expect(sdk.getSupabase).not.toHaveBeenCalled()
+    expect(sdk.auth.onAuthStateChange).not.toHaveBeenCalled()
+    expect(sdk.auth.getSession).not.toHaveBeenCalled()
   })
 
   it('announces the restored user before profile and progress requests finish', async () => {

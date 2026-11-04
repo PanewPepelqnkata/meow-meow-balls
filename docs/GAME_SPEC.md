@@ -101,6 +101,10 @@ points and triggering chain reactions. The run ends when a ball escapes the cont
   refill and Swap stay Tier 9 Drunk'o Ball, regardless of query overrides.
   Local saves, collection progress, leaderboards, analytics and production
   statistics remain untouched; in-run score and merges still work normally.
+  The sandbox skips the Supabase runtime import and auth initialization entirely:
+  even the SDK's module-level storage probe must not run. Browser QA requires
+  zero attempted localStorage mutations, with no key exemptions, from title boot
+  through drops, Swap, merges, game over, restarts and lifecycle flushes.
 
 ## 10. Visual Direction (summary — details in ART_DIRECTION.md)
 

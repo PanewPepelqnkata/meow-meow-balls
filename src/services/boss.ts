@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase'
+import { getSupabase } from '../lib/supabase'
 import { authService } from './auth'
 import type { SaveDataV1 } from '../game/state/save'
 export interface BossProfileRow {
@@ -750,7 +750,7 @@ export function buildBossAnalytics(
 
 export class BossService {
   async fetchDashboard(): Promise<BossAnalyticsSummary> {
-    const { data, error } = await supabase.rpc('boss_get_dashboard_data')
+    const { data, error } = await getSupabase().rpc('boss_get_dashboard_data')
 
     if (!error && data && typeof data === 'object') {
       const payload = data as {
@@ -774,11 +774,11 @@ export class BossService {
     // Fallback to direct table queries if RPC is unavailable
     const [profilesRes, scoresRes, progressRes, guestProfilesRes, guestScoresRes] =
       await Promise.all([
-        supabase.from('profiles').select('*').order('created_at', { ascending: false }),
-        supabase.from('scores').select('*').order('created_at', { ascending: false }),
-        supabase.from('user_progress').select('*'),
-        supabase.from('guest_profiles').select('*').order('last_seen_at', { ascending: false }),
-        supabase.from('guest_scores').select('*').order('created_at', { ascending: false }),
+        getSupabase().from('profiles').select('*').order('created_at', { ascending: false }),
+        getSupabase().from('scores').select('*').order('created_at', { ascending: false }),
+        getSupabase().from('user_progress').select('*'),
+        getSupabase().from('guest_profiles').select('*').order('last_seen_at', { ascending: false }),
+        getSupabase().from('guest_scores').select('*').order('created_at', { ascending: false }),
       ])
 
     if (profilesRes.error) throw new Error(profilesRes.error.message)
@@ -809,7 +809,7 @@ export class BossService {
     ballsMerged: number,
     durationMs: number,
   ): Promise<void> {
-    const { error } = await supabase.rpc('boss_update_score', {
+    const { error } = await getSupabase().rpc('boss_update_score', {
       target_score_id: scoreId,
       new_score: Math.max(0, Math.round(score)),
       new_tier: Math.max(1, Math.min(12, Math.round(tierReached))),
@@ -827,7 +827,7 @@ export class BossService {
     ballsMerged: number,
     durationMs: number,
   ): Promise<number> {
-    const { data, error } = await supabase.rpc('boss_create_score', {
+    const { data, error } = await getSupabase().rpc('boss_create_score', {
       target_user_id: userId,
       new_score: Math.max(0, Math.round(score)),
       new_tier: Math.max(1, Math.min(12, Math.round(tierReached))),
@@ -840,7 +840,7 @@ export class BossService {
   }
 
   async deleteScore(scoreId: number): Promise<void> {
-    const { error } = await supabase.rpc('boss_delete_score', {
+    const { error } = await getSupabase().rpc('boss_delete_score', {
       target_score_id: scoreId,
     })
     if (error) throw new Error(error.message)
@@ -856,7 +856,7 @@ export class BossService {
     merges: number
     bestTier: number
   }): Promise<void> {
-    const { error } = await supabase.rpc('boss_update_user', {
+    const { error } = await getSupabase().rpc('boss_update_user', {
       target_user_id: params.userId,
       new_username: params.username.trim(),
       new_display_name: params.displayName.trim(),
@@ -870,7 +870,7 @@ export class BossService {
   }
 
   async resetUserProgress(userId: string): Promise<void> {
-    const { error } = await supabase.rpc('boss_reset_user_progress', {
+    const { error } = await getSupabase().rpc('boss_reset_user_progress', {
       target_user_id: userId,
     })
     if (error) throw new Error(error.message)
@@ -878,7 +878,7 @@ export class BossService {
   }
 
   async deleteUser(userId: string): Promise<void> {
-    const { error } = await supabase.rpc('boss_delete_user', {
+    const { error } = await getSupabase().rpc('boss_delete_user', {
       target_user_id: userId,
     })
     if (error) throw new Error(error.message)
@@ -891,7 +891,7 @@ export class BossService {
     ballsMerged: number,
     durationMs: number,
   ): Promise<void> {
-    const { error } = await supabase.rpc('boss_update_guest_score', {
+    const { error } = await getSupabase().rpc('boss_update_guest_score', {
       target_score_id: scoreId,
       new_score: Math.max(0, Math.round(score)),
       new_tier: Math.max(1, Math.min(12, Math.round(tierReached))),
@@ -908,7 +908,7 @@ export class BossService {
     ballsMerged: number,
     durationMs: number,
   ): Promise<number> {
-    const { data, error } = await supabase.rpc('boss_create_guest_score', {
+    const { data, error } = await getSupabase().rpc('boss_create_guest_score', {
       target_guest_id: guestId,
       new_score: Math.max(0, Math.round(score)),
       new_tier: Math.max(1, Math.min(12, Math.round(tierReached))),
@@ -920,7 +920,7 @@ export class BossService {
   }
 
   async deleteGuestScore(scoreId: number): Promise<void> {
-    const { error } = await supabase.rpc('boss_delete_guest_score', {
+    const { error } = await getSupabase().rpc('boss_delete_guest_score', {
       target_score_id: scoreId,
     })
     if (error) throw new Error(error.message)
@@ -933,7 +933,7 @@ export class BossService {
     merges: number
     bestTier: number
   }): Promise<void> {
-    const { error } = await supabase.rpc('boss_update_guest', {
+    const { error } = await getSupabase().rpc('boss_update_guest', {
       target_guest_id: params.guestId,
       new_best_score: Math.max(0, Math.round(params.bestScore)),
       new_runs: Math.max(0, Math.round(params.runs)),
@@ -944,14 +944,14 @@ export class BossService {
   }
 
   async resetGuestProgress(guestId: string): Promise<void> {
-    const { error } = await supabase.rpc('boss_reset_guest_progress', {
+    const { error } = await getSupabase().rpc('boss_reset_guest_progress', {
       target_guest_id: guestId,
     })
     if (error) throw new Error(error.message)
   }
 
   async deleteGuest(guestId: string): Promise<void> {
-    const { error } = await supabase.rpc('boss_delete_guest', {
+    const { error } = await getSupabase().rpc('boss_delete_guest', {
       target_guest_id: guestId,
     })
     if (error) throw new Error(error.message)

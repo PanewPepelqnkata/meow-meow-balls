@@ -1227,6 +1227,264 @@ export function drawPigBall(
   }
 }
 
+export interface RoboPalette {
+  /** Body (lavender/purple-blue). */
+  body: number
+  /** Body highlight (lighter, upper-left). */
+  bodyLight: number
+  /** Screen (bright cyan). */
+  screen: number
+  /** Screen shading (darker blue, lower section). */
+  screenDark: number
+  /** Antenna stem (light grey/white). */
+  antenna: number
+  /** Antenna tip (yellow). */
+  antennaTip: number
+  /** Upper side button (red). */
+  buttonRed: number
+  /** Lower side button (golden yellow). */
+  buttonYellow: number
+  /** The reward halo's colour (behind the whole ball). */
+  glow: number
+}
+
+/** The robo palettes, exported alongside SHARK/PIG/DRUNKO (journal/QA parity).
+ *  Variant picks one; the per-run THEME roll picks the family first. */
+export const ROBO_PALETTES: readonly RoboPalette[] = [
+  { body: 0x9a8fd4, bodyLight: 0xb8aee8, screen: 0x6fd8f0, screenDark: 0x4ab8d8, antenna: 0xe8e8f0, antennaTip: 0xf8d648, buttonRed: 0xe84848, buttonYellow: 0xf0c040, glow: 0xc0b8f0 }, // 0: lavender
+  { body: 0x8a7fc8, bodyLight: 0xa89ee0, screen: 0x60d0e8, screenDark: 0x40a8c8, antenna: 0xe0e0e8, antennaTip: 0xf0d040, buttonRed: 0xd84040, buttonYellow: 0xe8b838, glow: 0xb0a8e8 }, // 1: deeper purple
+  { body: 0xa89fe0, bodyLight: 0xc8bef8, screen: 0x78e0f8, screenDark: 0x50c0e0, antenna: 0xf0f0f8, antennaTip: 0xf8e050, buttonRed: 0xf05050, buttonYellow: 0xf8c848, glow: 0xd0c8f8 }, // 2: lighter lavender
+]
+
+/**
+ * Draw the Tier 9 ROBO ball — a cute retro-futuristic spherical robot with
+ * a television screen for a face. Lavender/purple-blue body, cyan screen
+ * with rounded corners, two big expressive eyes, small smile, two antennae
+ * with yellow tips, and two side buttons (red + yellow) on the right.
+ *
+ * SAME CONTRACT as drawSharkBall/drawPigBall: the body is the ball's
+ * CONTOUR (pass `poly`; without it a circle of radius r at (cx, cy)); the
+ * FACE is part of the design (callers must NOT draw the standard face on
+ * top).
+ *
+ * FEAR: `panic` widens the eyes, pins pupils upward, and flattens the
+ * smile. The eyes are the STANDARD pair (panic morph + wink easter egg).
+ * Character-specific easter eggs: occasional screen flicker, curious
+ * widened eyes, and a subtle antenna tip bounce.
+ */
+export function drawRoboBall(
+  g: Phaser.GameObjects.Graphics,
+  cx: number,
+  cy: number,
+  r: number,
+  variant = 0,
+  poly?: Array<{ x: number; y: number }>,
+  panic = 0,
+  gaze?: { x: number; y: number },
+  seed = 9,
+): void {
+  const pal = ROBO_PALETTES[variant % ROBO_PALETTES.length]!
+  const look = ballLookFor(9, seed)
+  const ink = Math.max(2, r * 0.05)
+  const now = Date.now() / 1000
+  // The easter-egg expression (wink) rides the same timeline as the
+  // other balls — suppressed while panicking (fear wins).
+  const exprRobo = panic > 0.45 ? 'normal' : expressionAt(seed, now * 1000)
+  const jx = Math.sin(now * 43) * r * 0.02 * panic * panic
+  const jy = Math.cos(now * 37) * r * 0.015 * panic * panic
+  cx += jx
+  cy += jy
+
+  // ---- THE GLOW — the same soft radial stack as the shark/pig, tinted
+  // to the palette's lavender: 4 concentric discs, widest first, each
+  // smaller AND brighter, with a gentle ~9s breath. Drawn FIRST. ----
+  const glowWobble = Math.sin(now * 0.7)
+  const glowLayers: ReadonlyArray<{ rr: number; alpha: number }> = [
+    { rr: 1.72 + glowWobble * 0.03, alpha: 0.1 },
+    { rr: 1.5, alpha: 0.16 },
+    { rr: 1.3, alpha: 0.24 },
+    { rr: 1.12, alpha: 0.3 },
+  ]
+  for (const layer of glowLayers) {
+    g.fillStyle(pal.glow, layer.alpha + glowWobble * 0.02)
+    g.fillCircle(cx, cy, r * layer.rr)
+  }
+
+  // ---- ANTENNAE — two thin stems with round yellow tips, anchored to
+  // the top of the body. Slight natural angle differences (left tilts
+  // left, right tilts right). They track the contour top so they stay
+  // glued during squash/rotation. ----
+  let topY = cy - r
+  if (poly && poly.length >= 8) {
+    let top = poly[0]!
+    for (const p of poly) if (p.y < top.y) top = p
+    topY = top.y
+  }
+  const antOut = ballOutlineWidth(r) * 0.7
+  const antW = Math.max(2, r * 0.06)
+  const antLen = r * 0.55
+  const tipR = r * 0.11
+  // Antenna tip bounce: subtle vertical wiggle during reactions.
+  const antBounce = Math.sin(now * 8 + seed) * r * 0.02 * (0.3 + panic * 0.7)
+  for (const s of [-1, 1]) {
+    const baseX = cx + s * r * 0.28
+    const baseY = topY + r * 0.08
+    const tipX = baseX + s * r * 0.18
+    const tipY = baseY - antLen + antBounce
+    // Stem.
+    g.fillStyle(pal.antenna, 1)
+    g.beginPath()
+    g.moveTo(baseX - antW / 2, baseY)
+    g.lineTo(tipX - antW / 2, tipY)
+    g.lineTo(tipX + antW / 2, tipY)
+    g.lineTo(baseX + antW / 2, baseY)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(antOut, INK, 1)
+    g.strokePath()
+    // Yellow tip.
+    g.fillStyle(pal.antennaTip, 1)
+    g.fillCircle(tipX, tipY, tipR)
+    g.lineStyle(antOut, INK, 1)
+    g.strokeCircle(tipX, tipY, tipR)
+  }
+
+  // ---- THE BODY — the contour, lavender with subtle shading. ----
+  if (poly && poly.length >= 3) {
+    g.fillStyle(pal.body, 1)
+    g.fillPoints(poly as unknown as Phaser.Math.Vector2[], true)
+  } else {
+    g.fillStyle(pal.body, 1)
+    g.fillCircle(cx, cy, r)
+  }
+  // Body highlight: subtle lighter purple upper-left.
+  g.fillStyle(pal.bodyLight, 0.5)
+  g.beginPath()
+  g.arc(cx, cy, r * 0.82, Math.PI * 1.05, Math.PI * 1.65, false)
+  g.arc(cx, cy, r * 0.55, Math.PI * 1.65, Math.PI * 1.05, true)
+  g.closePath()
+  g.fillPath()
+  // Bottom shading: slightly darker toward the base.
+  g.fillStyle(pal.body, 0.6)
+  g.beginPath()
+  g.arc(cx, cy, r * 0.88, Math.PI * 0.15, Math.PI * 0.85, false)
+  g.arc(cx, cy, r * 0.65, Math.PI * 0.85, Math.PI * 0.15, true)
+  g.closePath()
+  g.fillPath()
+
+  // ---- SIDE BUTTONS — two small circles on the right side of the body:
+  // upper red, lower golden yellow. Properly integrated into the body. ----
+  const btnX = cx + r * 0.72
+  const btnR = r * 0.09
+  const btnOut = ballOutlineWidth(r) * 0.6
+  // Upper: red.
+  g.fillStyle(pal.buttonRed, 1)
+  g.fillCircle(btnX, cy - r * 0.18, btnR)
+  g.lineStyle(btnOut, INK, 1)
+  g.strokeCircle(btnX, cy - r * 0.18, btnR)
+  // Lower: golden yellow.
+  g.fillStyle(pal.buttonYellow, 1)
+  g.fillCircle(btnX, cy + r * 0.12, btnR)
+  g.lineStyle(btnOut, INK, 1)
+  g.strokeCircle(btnX, cy + r * 0.12, btnR)
+
+  // ---- THE SCREEN — the television face: a large rounded rectangle
+  // centred on the front of the body. Bright cyan fill, darker blue
+  // shading toward the bottom, small white reflection upper-left. ----
+  const scrW = r * 1.35
+  const scrH = r * 1.1
+  const scrX = cx - scrW / 2
+  const scrY = cy - r * 0.52
+  const scrR = r * 0.22 // corner radius
+  // Screen fill.
+  g.fillStyle(pal.screen, 1)
+  g.fillRoundedRect(scrX, scrY, scrW, scrH, scrR)
+  // Screen lower shading.
+  g.fillStyle(pal.screenDark, 0.5)
+  g.fillRoundedRect(scrX, scrY + scrH * 0.55, scrW, scrH * 0.45, { tl: 0, tr: 0, bl: scrR, br: scrR })
+  // Screen reflection: small white curved highlight upper-left.
+  g.fillStyle(0xffffff, 0.35)
+  g.beginPath()
+  g.moveTo(scrX + scrW * 0.12, scrY + scrH * 0.08)
+  quadFrom(g, scrX + scrW * 0.12, scrY + scrH * 0.08, scrX + scrW * 0.28, scrY + scrH * 0.02, scrX + scrW * 0.38, scrY + scrH * 0.12)
+  quadFrom(g, scrX + scrW * 0.38, scrY + scrH * 0.12, scrX + scrW * 0.3, scrY + scrH * 0.22, scrX + scrW * 0.15, scrY + scrH * 0.2)
+  g.closePath()
+  g.fillPath()
+  // Screen outline.
+  g.lineStyle(ink * 0.9, INK, 1)
+  g.strokeRoundedRect(scrX, scrY, scrW, scrH, scrR)
+
+  // ---- SCREEN FLICKER — occasional brief alpha flicker (easter egg).
+  // Deterministic per-ball, rare, and subtle. ----
+  const flickerSeed = Math.sin(now * 13 + seed * 7) * Math.cos(now * 7 + seed * 3)
+  if (flickerSeed > 0.985 && panic < 0.3) {
+    g.fillStyle(0xffffff, 0.15)
+    g.fillRoundedRect(scrX, scrY, scrW, scrH, scrR)
+  }
+
+  // ---- THE EYES — the standard pair (white sclera, chunky ink rim,
+  // one dark oval pupil, main + secondary glints, wink easter egg),
+  // seated on the screen. Panic widens them and pins pupils upward. ----
+  const L = faceLayoutFor(look, r, 1, gaze)
+  const em = Math.min(1, panic)
+  const up = 0.45 * em
+  const eyeY = cy - r * 0.18
+  const eyeDx = r * 0.32
+  // Curious expression: occasionally widen eyes slightly (easter egg).
+  const curious = Math.sin(now * 0.31 + seed * 11) > 0.92 && panic < 0.2 ? 1.08 : 1
+  for (const [i, e] of L.eyes.entries()) {
+    const ex = cx + eyeDx * (i === 0 ? -1 : 1)
+    const ey = eyeY + e.y * 0.5
+    const closed = exprRobo === 'wink' && i === 1
+    if (closed) {
+      // Closed lid: one downward ink arc across the eye.
+      g.lineStyle(e.rim * 0.95, INK, 1)
+      const lid: Array<{ x: number; y: number }> = []
+      for (let s = 0; s <= 12; s++) {
+        const u = -1 + (2 * s) / 12
+        lid.push({ x: ex + u * e.a * 0.85, y: ey - e.b * 0.05 + (1 - u * u) * e.b * 0.4 })
+      }
+      g.strokePoints(lid as unknown as Phaser.Math.Vector2[], false, false)
+      continue
+    }
+    // Sclera + rim, widened with panic and curiosity.
+    const wa = e.a * (1 + 0.12 * em) * curious
+    const wb = e.b * (1 + 0.2 * em) * curious
+    g.fillStyle(0xffffff, 1)
+    g.fillEllipse(ex, ey, wa * 2, wb * 2)
+    g.lineStyle(e.rim, INK, 1)
+    g.strokeEllipse(ex, ey, wa * 2, wb * 2)
+    // Pupil: pinned up + shrunk with panic (the standard morph).
+    const pb = e.pb * (1 - 0.35 * em)
+    const py = e.py * (1 - em) - up * (e.b - pb - e.rim * 0.5) * em
+    g.fillStyle(INK, 1)
+    g.fillEllipse(ex + e.px, ey + py, e.pa * 2, pb * 2)
+    // Main highlight + tiny secondary dot (the standard pair).
+    g.fillStyle(0xffffff, 1)
+    g.fillEllipse(ex + e.px - e.pa * 0.32, ey + py - pb * 0.34, e.pa * 0.6, e.pa * 0.6, 24)
+    g.fillEllipse(ex + e.px - e.pa * 0.1, ey + py - pb * 0.38, e.pa * 0.24, e.pa * 0.24, 16)
+  }
+
+  // ---- THE MOUTH — a small, simple curved smile centred below the
+  // eyes. Flattens toward a tense line as panic climbs. ----
+  const mouthY = cy + r * 0.28
+  const mouthW = r * 0.22
+  const dip = r * (0.08 - 0.05 * panic)
+  g.lineStyle(ink * 0.9, INK, 1)
+  g.beginPath()
+  g.moveTo(cx - mouthW, mouthY)
+  quadFrom(g, cx - mouthW, mouthY, cx, mouthY + dip, cx + mouthW, mouthY)
+  g.strokePath()
+
+  // ---- THE INK OUTLINE — the contour itself, over everything. ----
+  g.lineStyle(ballOutlineWidth(r), INK, 1)
+  if (poly && poly.length >= 3) {
+    g.strokePoints(poly as unknown as Phaser.Math.Vector2[], true, true)
+  } else {
+    g.strokeCircle(cx, cy, r)
+  }
+}
+
 export interface DrunkoPalette {
   /** Skin (the main body colour — warm orange/peach). */
   skin: number
@@ -2045,6 +2303,8 @@ export function drawTier9Ball(
     drawPigBall(g, cx, cy, r, variant, poly, panic, gaze, seed)
   } else if (theme === 'drunko') {
     drawDrunkoBall(g, cx, cy, r, variant, poly, panic, gaze, seed, bodyAngle)
+  } else if (theme === 'robo') {
+    drawRoboBall(g, cx, cy, r, variant, poly, panic, gaze, seed)
   } else {
     drawSharkBall(g, cx, cy, r, variant, poly, panic, gaze, seed)
   }
@@ -2078,7 +2338,7 @@ export function drawCollectibleBall(
     throw new Error(`No collectible art implemented for tier ${tier}`)
   }
   drawTier9Ball(g, cx, cy, r, variant, poly, panic, gaze, seed,
-    theme === 'shark' || theme === 'pig' || theme === 'drunko' ? theme : tier9Theme(),
+    theme === 'shark' || theme === 'pig' || theme === 'drunko' || theme === 'robo' ? theme : tier9Theme(),
     bodyAngle)
 }
 

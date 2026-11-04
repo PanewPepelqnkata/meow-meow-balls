@@ -3,7 +3,7 @@ import type { Score } from './auth'
 
 const transport = vi.hoisted(() => ({ rows: [] as Score[], failFrom: Infinity }))
 vi.mock('../lib/supabase', () => ({
-  supabase: {
+  getSupabase: () => ({
     from: () => {
       const orders: Array<{ column: string; ascending: boolean }> = []
       const query = {
@@ -26,7 +26,7 @@ vi.mock('../lib/supabase', () => ({
       }
       return query
     },
-  },
+  }),
 }))
 
 import { scoreService } from './auth'
