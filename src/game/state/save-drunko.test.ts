@@ -79,7 +79,7 @@ describe('/drunko save isolation', () => {
       save.recordDiscovery(9, 3, 'drunko')
       save.recordRunStart()
       save.recordMerge(10, 5000)
-      expect(save.recordRunEnd(5000, 10, true)).toBe(1200)
+      expect(save.recordRunEnd(5000, 10, 1)).toBe(1200)
       vi.runAllTimers()
 
       expect(save.loadSave()).toBe(cached)
@@ -162,7 +162,7 @@ describe('/drunko save isolation', () => {
       save.recordDiscovery(9, 3, 'drunko')
       save.recordRunStart()
       save.recordMerge(10, 5000)
-      expect(save.recordRunEnd(5000, 10, true)).toBe(5000)
+      expect(save.recordRunEnd(5000, 10, 1)).toBe(5000)
       vi.runAllTimers()
 
       const current = save.loadSave()
@@ -174,7 +174,7 @@ describe('/drunko save isolation', () => {
       expect(JSON.parse(store.get(SAVE_KEY)!)).toEqual(current)
       expect(store.get(OWNER_KEY)).toBe('account-a')
       expect(store.get(GUEST_KEY)).toBe(GUEST_ID)
-      expect(cloudSync).toHaveBeenCalledTimes(2)
+      expect(cloudSync).toHaveBeenCalledTimes(1)
       expect(cloudSync).toHaveBeenLastCalledWith(current, true)
     },
   )

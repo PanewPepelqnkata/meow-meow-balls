@@ -452,13 +452,10 @@ export function hasDiscoveredCollectible(tier: number, theme: string | null): bo
   return Object.keys(loadSave().variants).some((key) => key.startsWith(`${tier}:${theme}:`))
 }
 
-/** A run genuinely started (first ball dropped): increment lifetime runs count and flush immediately. */
+/** A run genuinely started (first ball dropped): prepare for tracking. */
 export function recordRunStart(): void {
   if (isDrunkoTestRoute()) return
-  const save = loadSave()
-  save.stats.runs++
-  if (save.stats.bestTier < 1) save.stats.bestTier = 1
-  writeNow(true)
+  // Run counting moved to recordRunEnd — we only count valid runs (0 merges AND 0 score = invalid)
 }
 
 /** One merge happened (lifetime stat). */
@@ -475,7 +472,6 @@ export function recordMerge(tier: number, currentRunScore = 0): void {
 export function recordRunEnd(
   score: number,
   bestTier: number,
-  alreadyCountedRun = false,
   mergesThisRun = 0,
 ): number {
   const save = loadSave()
@@ -486,7 +482,7 @@ export function recordRunEnd(
   const isValidRun = mergesThisRun > 0 || score > 0
   if (!isValidRun) return save.best
   const now = Date.now()
-  if (!alreadyCountedRun) save.stats.runs++
+  save.stats.runs++
   if (score > save.best) save.best = score
   if (bestTier > save.stats.bestTier) save.stats.bestTier = bestTier
   for (let t = 1; t <= Math.min(12, bestTier); t++) {

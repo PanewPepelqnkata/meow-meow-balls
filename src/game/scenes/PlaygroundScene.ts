@@ -1180,7 +1180,7 @@ export class PlaygroundScene extends Phaser.Scene {
 
   private finalizeActiveRunIfIncomplete(reason?: string): void {
     if (!this.runStarted || this.gameOver || isDrunkoTestRoute()) return
-    this.registry.set('best', recordRunEnd(this.score.score, this.bestTierRun, true, this.mergesThisRun))
+    this.registry.set('best', recordRunEnd(this.score.score, this.bestTierRun, this.mergesThisRun))
     gameBus.emit('state:best', { best: this.best() })
     void scoreService.submitScore(
       this.score.score,
@@ -1199,7 +1199,7 @@ export class PlaygroundScene extends Phaser.Scene {
     // reached) and the persisted best score. Sandbox runs keep the existing
     // best but leave no saved progression or leaderboard record.
     if (!isDrunkoTestRoute()) {
-      this.registry.set('best', recordRunEnd(this.score.score, this.bestTierRun, this.runStarted, this.mergesThisRun))
+      this.registry.set('best', recordRunEnd(this.score.score, this.bestTierRun, this.mergesThisRun))
     }
     gameBus.emit('state:best', { best: this.best() })
     // Submit immediately at Game Over trigger so the run is recorded even before the pop animation ends.
@@ -1209,6 +1209,7 @@ export class PlaygroundScene extends Phaser.Scene {
         this.bestTierRun,
         this.mergesThisRun,
         Math.round(this.activeTimeMs),
+        'completed',
       )
     }
     // GAME OVER SEQUENCE: balls realize they're doomed, panic, then pop in
