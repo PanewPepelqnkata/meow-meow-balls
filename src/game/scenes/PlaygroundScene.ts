@@ -967,9 +967,10 @@ export class PlaygroundScene extends Phaser.Scene {
   private doSwap(): void {
     if (this.gameOver || session.menuActive || this.swapUsed || this.discoveryBlocking()) return
     this.swapUsed = true
-    // Swap rerolls the CURRENT (held) ball only — the preview slot is
-    // untouched, keeping the queue consistent (Phase 2.13.0).
-    this.currentBall = { tier: isDrunkoTestRoute() ? 9 : randomSpawnTier(), seed: randomSeed() }
+    // Swap discards the held ball as if it had been dropped: the claw
+    // immediately holds the previously-NEXT ball and a fresh ball enters the
+    // next slot (the same queue rotation a real drop performs).
+    this.advanceQueue()
     this.publishQueue()
     gameBus.emit('ability:swapUsed', {})
   }
@@ -1035,6 +1036,19 @@ export class PlaygroundScene extends Phaser.Scene {
     // frame (the update-loop flip would otherwise lag one frame).
     this.lastDropHolding = false
     gameBus.emit('state:dropHolding', { holding: false })
+    this.advanceQueue()
+    // Phase 2.14.0: leaderboard bookkeeping — spawned tiers count too.
+    if (tier.tier > this.bestTierRun) this.bestTierRun = tier.tier
+    this.publishQueue()
+  }
+
+  /**
+   * Advance the two-slot queue by one: the held ball becomes what was next,
+   * and a fresh ball enters the next slot. Shared by the drop (the held ball
+   * is consumed) and the Swap ability (the held ball is discarded as if used,
+   * so the claw immediately holds the previously-next ball).
+   */
+  private advanceQueue(): void {
     // Queue rotation: previous next becomes current; a fresh ball enters next.
     this.currentBall = { ...this.nextBallState }
     const drunkoTestRoute = isDrunkoTestRoute()
@@ -1056,9 +1070,6 @@ export class PlaygroundScene extends Phaser.Scene {
     this.time.delayedCall(1, () =>
       this.ballRenderer.prewarmFace(this.nextBallState.tier, this.nextBallState.seed),
     )
-    // Phase 2.14.0: leaderboard bookkeeping — spawned tiers count too.
-    if (tier.tier > this.bestTierRun) this.bestTierRun = tier.tier
-    this.publishQueue()
   }
 
   /**

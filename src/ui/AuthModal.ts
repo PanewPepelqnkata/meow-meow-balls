@@ -208,7 +208,7 @@ export class AuthModal {
               autocomplete="off"
               required
               minlength="2"
-              maxlength="20"
+              maxlength="16"
             />
           </div>
           <button type="button" class="auth-submit auth-nickname-submit">
@@ -338,6 +338,13 @@ export class AuthModal {
       this.showError('Username must be at least 2 characters')
       return
     }
+    // New accounts: letters, numbers and underscore only — no spaces or other
+    // symbols. This gate is SIGNUP-ONLY: the login path stays permissive so
+    // legacy accounts created with spaces can still sign in.
+    if (els.mode === 'signup' && !/^[A-Za-z0-9_]+$/.test(username)) {
+      this.showError('Username can only use letters, numbers and _ (no spaces)')
+      return
+    }
     if (!password || password.length < 6) {
       this.showError('Password must be at least 6 characters')
       return
@@ -433,8 +440,8 @@ export class AuthModal {
       this.showError('Nickname must be at least 2 characters')
       return
     }
-    if (nickname.length > 20) {
-      this.showError('Nickname must be 20 characters or less')
+    if (nickname.length > 16) {
+      this.showError('Nickname must be 16 characters or less')
       return
     }
 

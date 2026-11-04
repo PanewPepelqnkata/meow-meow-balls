@@ -6,7 +6,7 @@ import { SoftBallManager } from './SoftBallManager'
 import { getTier } from '../../config/ballTiers'
 
 describe('ShakeManager earthquake rumble and bounce pulses', () => {
-  it('activates for 10s duration, triggers bounce pulses, and uses no physical walls', () => {
+  it('activates for 10s duration, triggers bounce pulses, and adds invisible extended side walls (no lid)', () => {
     let now = 1000
     const shake = new ShakeManager()
     shake.setClock(() => now)
@@ -46,8 +46,9 @@ describe('ShakeManager earthquake rumble and bounce pulses', () => {
     expect(activated).toBe(true)
     expect(shake.isActive).toBe(true)
     expect(shake.remainingMs).toBe(10000)
-    // No physical bodies added (no lid, no side walls)
-    expect(addedBodies.length).toBe(0)
+    // Two invisible extended side walls are added (left + right); no lid.
+    expect(addedBodies.length).toBe(2)
+    expect(addedBodies.map((b) => b.label).sort()).toEqual(['shake-wall-left', 'shake-wall-right'])
     expect(wokeBallId).toBe(2)
 
     // Initial update produces seismic rumble
@@ -72,8 +73,8 @@ describe('ShakeManager earthquake rumble and bounce pulses', () => {
     const end = shake.update(now, 16)
     expect(end.active).toBe(false)
     expect(shake.isActive).toBe(false)
-    // No physical bodies removed
-    expect(removedBodies.length).toBe(0)
+    // Both extended side walls are removed on expiration.
+    expect(removedBodies.length).toBe(2)
   })
 
   it('resets cleanly when reset() is called mid-ability', () => {
@@ -90,11 +91,11 @@ describe('ShakeManager earthquake rumble and bounce pulses', () => {
 
     shake.activate()
     expect(shake.isActive).toBe(true)
-    expect(addedBodies.length).toBe(0)
+    expect(addedBodies.length).toBe(2)
 
     shake.reset()
     expect(shake.isActive).toBe(false)
-    expect(removedBodies.length).toBe(0)
+    expect(removedBodies.length).toBe(2)
   })
 
   it('does not clamp or bounce balls vertically against an invisible top lid during Shake', () => {

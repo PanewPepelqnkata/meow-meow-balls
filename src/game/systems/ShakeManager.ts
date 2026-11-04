@@ -1,6 +1,8 @@
 import Matter from 'matter-js'
 import { SHAKE_ABILITY } from '../../config/shakeAbility'
 import { STAGE } from '../../config/stage'
+import { CONTAINER, containerBounds } from '../../config/container'
+import { createWallBody } from './ContainerBodies'
 import type { SoftBallManager } from './SoftBallManager'
 
 export interface DebrisParticle {
@@ -51,6 +53,9 @@ export class ShakeManager {
   private clock: (() => number) | null = null
   private manager: SoftBallManager | null = null
   private lastRoundIndex = -1
+  private physics: { addBody: (b: Matter.Body) => void; removeBody: (b: Matter.Body) => void } | null = null
+  /** Invisible extended side walls — present only while Shake is active. */
+  private shakeWalls: Matter.Body[] = []
 
   // Pooled particle systems for earthquake visual effects
   private debrisPool: DebrisParticle[] = []
@@ -97,9 +102,10 @@ export class ShakeManager {
   }
 
   bind(
-    _physicsWorld: { addBody: (b: Matter.Body) => void; removeBody: (b: Matter.Body) => void },
+    physicsWorld: { addBody: (b: Matter.Body) => void; removeBody: (b: Matter.Body) => void },
     manager: SoftBallManager | null = null,
   ): void {
+    this.physics = physicsWorld
     this.manager = manager
   }
 
@@ -122,8 +128,11 @@ export class ShakeManager {
 
   /**
    * Activate the earthquake shake ability for 10 seconds.
-   * No physical lid or side walls — the top stays completely open so dropping
-   * balls during the ability does not glitch or teleport.
+   * Adds INVISIBLE extended side walls that continue the container's sloped
+   * walls straight upward, so balls physically cannot escape left/right —
+   * they are blocked by a real collider, never teleported back. The top
+   * stays completely open (no lid), so dropping balls during the ability
+   * does not glitch against an invisible ceiling.
    */
   activate(): boolean {
     if (this.active) return false
@@ -133,6 +142,8 @@ export class ShakeManager {
     this.nextDebrisSpawnMs = 0
     this.nextDustSpawnMs = 0
 
+    this.addShakeWalls()
+
     // Immediately spawn an initial burst of debris and smoke puffs
     for (let i = 0; i < 6; i++) this.spawnDebris()
     for (let i = 0; i < 5; i++) this.spawnDust()
@@ -140,6 +151,59 @@ export class ShakeManager {
     this.triggerBounceRound(0)
 
     return true
+  }
+
+  /**
+   * Build + add the two invisible extended side walls. Each continues the
+   * sloped inner wall line from the wall top straight up past the top of the
+   * stage, with the same perpendicular band thickness as the real walls, so
+   * a ball bounced high still meets a solid side boundary. They share the
+   * wall-top corner with the visible wall collider, so there is no gap or
+   * step at the rim.
+   */
+  private addShakeWalls(): void {
+    if (!this.physics) return
+    this.removeShakeWalls()
+    const b = containerBounds()
+    const t = CONTAINER.frameThickness
+    // Extend the sloped wall lines far above the stage top (y can go
+    // negative — the camera never sees it, and it must outrun any bounce).
+    const extTopY = b.top - STAGE.height * 2
+    const slopeL = (b.innerLeftAt(b.floorY) - b.innerLeftAt(b.top)) / (b.floorY - b.top)
+    const slopeR = (b.innerRightAt(b.floorY) - b.innerRightAt(b.top)) / (b.floorY - b.top)
+    // Inner edge points at the wall top and at the extended top.
+    const lBot = { x: b.innerLeftAt(b.top), y: b.top }
+    const lTop = { x: b.innerLeftAt(b.top) + slopeL * (extTopY - b.top), y: extTopY }
+    const rBot = { x: b.innerRightAt(b.top), y: b.top }
+    const rTop = { x: b.innerRightAt(b.top) + slopeR * (extTopY - b.top), y: extTopY }
+    // Perpendicular outward offset for the band thickness. The wall direction
+    // is (dx, dy) = (slope*run, run); the outward normal (left wall points
+    // -x, right wall +x) scaled to thickness t.
+    const mk = (innerBot: { x: number; y: number }, innerTop: { x: number; y: number }, slope: number, outward: number, label: string) => {
+      const run = innerTop.y - innerBot.y
+      const len = Math.hypot(slope * run, run) || 1
+      const off = (t * len) / Math.abs(run) * outward
+      return createWallBody({
+        label,
+        vertices: [
+          { x: innerBot.x, y: innerBot.y },
+          { x: innerTop.x, y: innerTop.y },
+          { x: innerTop.x + off, y: innerTop.y },
+          { x: innerBot.x + off, y: innerBot.y },
+        ],
+      })
+    }
+    this.shakeWalls = [
+      mk(lBot, lTop, slopeL, -1, 'shake-wall-left'),
+      mk(rBot, rTop, slopeR, 1, 'shake-wall-right'),
+    ]
+    for (const w of this.shakeWalls) this.physics.addBody(w)
+  }
+
+  /** Remove the invisible extended side walls (deactivate / reset). */
+  private removeShakeWalls(): void {
+    if (this.physics) for (const w of this.shakeWalls) this.physics.removeBody(w)
+    this.shakeWalls = []
   }
 
 
@@ -319,6 +383,7 @@ export class ShakeManager {
     this.active = false
     this.startTime = 0
     this.lastRoundIndex = -1
+    this.removeShakeWalls()
     for (const d of this.debrisPool) d.active = false
     for (const p of this.dustPool) p.active = false
   }
