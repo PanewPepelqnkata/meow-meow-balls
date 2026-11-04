@@ -134,6 +134,8 @@ export class PlaygroundScene extends Phaser.Scene {
   private bestTierRun = 1
   /** Merges this run (leaderboard flavor for the auth score submission). */
   private mergesThisRun = 0
+  /** Interruption reason — set once by the first event (beforeunload/pagehide/error). */
+  private interruptionReason: string | null = null
   /** Whether the player has dropped at least one ball in the current run. */
   private runStarted = false
   /** Throttle timestamp for live run score syncing during gameplay. */
@@ -400,15 +402,18 @@ export class PlaygroundScene extends Phaser.Scene {
       }),
     )
     const onPageHide = () => {
-      this.finalizeActiveRunIfIncomplete('page_hidden')
+      if (!this.interruptionReason) this.interruptionReason = 'page_hidden'
+      this.finalizeActiveRunIfIncomplete(this.interruptionReason)
     }
     const onBeforeUnload = () => {
-      this.finalizeActiveRunIfIncomplete('page_refresh')
+      if (!this.interruptionReason) this.interruptionReason = 'page_refresh'
+      this.finalizeActiveRunIfIncomplete(this.interruptionReason)
     }
     const onError = (event: ErrorEvent) => {
       // Detect WebKit crashes and other fatal errors
       const isWebKitCrash = event.message?.includes('webkit') || event.message?.includes('WebKit')
-      this.finalizeActiveRunIfIncomplete(isWebKitCrash ? 'webkit_crash' : 'error')
+      if (!this.interruptionReason) this.interruptionReason = isWebKitCrash ? 'webkit_crash' : 'error'
+      this.finalizeActiveRunIfIncomplete(this.interruptionReason)
     }
     window.addEventListener('pagehide', onPageHide)
     window.addEventListener('beforeunload', onBeforeUnload)
