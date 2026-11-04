@@ -255,7 +255,6 @@ export class SoftBallRenderer {
 
       // Live transform measurement: centroid + particle-bounds aspect
       // (h/w — the same squash signal the face layout consumed before).
-      const c = softBallCentroid(r.soft, this.centroidScratch)
       const aspect = this.ballAspect(r)
 
       // Game-over pop frames draw through the live path entirely (the
@@ -269,38 +268,17 @@ export class SoftBallRenderer {
         continue
       }
 
-      // Tiers 1-7 use a single cached body texture per tier.
-      if (r.tier <= 7) {
-        const view = this.spriteViews.get(r.id)
-        const tier = getTier(r.tier)
-        if (view && tier) {
-          const tex = this.tierBaker.ensure(r.tier, color, tier.radius)
-          const s = drawR / tex.textureRadius
-          const deforming = (this.deforms.get(r.id)?.lastStrength ?? 0) > 0.001
-          const overlayEligible = deforming && aspect < 0.975
-
-          view.fill
-            .setTexture(tex.fillKey)
-            .setVisible(!overlayEligible)
-            .setPosition(c.x, c.y)
-            .setScale(s)
-          view.outline.setVisible(false)
-
-          if (overlayEligible) {
-            const { poly } = this.liveContour(r, look, drawR)
-            g.fillStyle(color, 1)
-            g.fillPoints(poly, true)
-            g.lineStyle(ballOutlineWidth(drawR), INK, 1)
-            g.strokePoints(poly, true, true)
-          }
-          this.drawSpriteFace(view, r, drawR, aspect, now)
-          this.bakeSweep.add(r.id)
-          continue
-        }
-      }
+      // Tiers 1-7 draw the live particle-ring contour every frame (the
+      // pre-SpriteBalls path). The contour is rebuilt from the physics
+      // every frame; the vertex arrays are pooled, not cached. The deform
+      // spring's localized dent is applied on top of the live contour.
+      this.hideSprites(r.id)
       const polyResult = this.liveContour(r, look, drawR)
       this.drawLiveBody(g, r, look, drawR, color, polyResult.poly, polyResult.cx, polyResult.cy)
-      if (!this.isCollectibleTier(r.tier)) {
+      const view = this.spriteViews.get(r.id)
+      if (view && !this.isCollectibleTier(r.tier)) {
+        this.drawSpriteFace(view, r, drawR, aspect, now)
+      } else if (!this.isCollectibleTier(r.tier)) {
         this.drawLiveFace(g, r, look, drawR, aspect, now, polyResult.cx, polyResult.cy)
       }
     }

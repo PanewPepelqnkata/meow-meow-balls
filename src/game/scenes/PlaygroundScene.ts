@@ -882,6 +882,7 @@ export class PlaygroundScene extends Phaser.Scene {
         diagnostics: this.devDiagnostics,
         areas: this.balls.getBalls().slice(0, 6).map((b) => +this.balls.areaRatio(b.id).toFixed(2)),
         speeds: this.balls.getBalls().slice(0, 6).map((b) => +this.balls.speed(b.id).toFixed(2)),
+        frameTimings: { ...this.frameTimings },
       }
     }
     if (this.devScorePre && this.devDeformPre) {
