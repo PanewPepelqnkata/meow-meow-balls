@@ -1676,7 +1676,7 @@ export function drawRoboBall(
   g.closePath()
   g.fillPath()
   // Thick dark bezel outline.
-  const bezelW = Math.max(2, ink * 1.15)
+  const bezelW = thumbnail ? collectionInkWidth(r) * 1.1 : Math.max(2, ink * 1.15)
   g.lineStyle(bezelW, INK, 1)
   g.strokeRoundedRect(scrX, scrY, scrW, scrH, scrR)
 
@@ -1690,7 +1690,7 @@ export function drawRoboBall(
   // ---- SIDE BUTTONS — two physical controls on the right casing. ----
   const btnX = cx + r * 0.71 * scaleX
   const btnR = r * 0.115 * Math.min(scaleX, scaleY)
-  const btnOut = Math.max(2, ink * 0.8)
+  const btnOut = thumbnail ? collectionInkWidth(r) * 0.9 : Math.max(2, ink * 0.8)
   const btn1Y = cy - r * 0.07 * scaleY
   const btn2Y = cy + r * 0.23 * scaleY
   // Socket shadows behind buttons.
@@ -1797,7 +1797,7 @@ export function drawRoboBall(
   const domeW = r * 0.46
   const domeH = r * 0.24
   const tipR = r * 0.145
-  const stemOut = Math.max(2, ink * 0.85)
+  const stemOut = thumbnail ? collectionInkWidth(r) * 0.9 : Math.max(2, ink * 0.85)
 
   for (const s of [-1, 1]) {
     const sway = s < 0 ? ant.swayL : ant.swayR
@@ -1863,7 +1863,7 @@ export function drawRoboBall(
   g.fillStyle(pal.bodyDark, 0.5)
   g.fillRoundedRect(domeCx - domeW * 0.38, domeBaseY - r * 0.02, domeW * 0.76, r * 0.04, r * 0.02)
   // Dome outline.
-  g.lineStyle(Math.max(2, ink * 1.05), INK, 1)
+  g.lineStyle(thumbnail ? collectionInkWidth(r) * 1.05 : Math.max(2, ink * 1.05), INK, 1)
   g.beginPath()
   g.moveTo(domeCx - domeW / 2, domeBaseY)
   quadFrom(g, domeCx - domeW / 2, domeBaseY, domeCx - domeW * 0.28, domeBaseY - domeH * 0.92, domeCx, domeBaseY - domeH)
