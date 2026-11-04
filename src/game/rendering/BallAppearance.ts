@@ -1722,6 +1722,11 @@ export function drawRoboBall(
   // pupil shrunk relative to the old blobby pair so the white stays
   // clearly visible — the same readable ratio the standard face uses.
   const L = faceLayoutFor(look, r, 1, gaze)
+  // Thumbnail mode: scale down eye rims for readability.
+  if (thumbnail) {
+    const scale = collectionInkWidth(r) / Math.max(2, r * 0.05)
+    for (const e of L.eyes) e.rim *= scale
+  }
   const em = Math.min(1, panic)
   const up = 0.45 * em
   const faceCx = scrX + scrW * 0.52
@@ -1817,7 +1822,7 @@ export function drawRoboBall(
     // curving stem render thicker than the straight one.) The ink outline
     // is stroked WIDER first, then the coloured core on top — a clean
     // dark-edged stem matching the collection's outline language.
-    const stemW = Math.max(2.2, r * 0.075)
+    const stemW = thumbnail ? collectionInkWidth(r) * 1.2 : Math.max(2.2, r * 0.075)
     g.lineStyle(stemW + stemOut * 1.6, INK, 1)
     g.beginPath()
     g.moveTo(baseX, baseY)
