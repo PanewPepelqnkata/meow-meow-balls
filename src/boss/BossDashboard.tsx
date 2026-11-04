@@ -201,6 +201,9 @@ export function BossDashboard() {
         : runFilter === 'guest'
           ? data.guestRuns
           : data.allRuns
+    // Filter out invalid runs: 0 score AND 0 merges means the player never
+    // actually played (accidental drop, immediate game over, etc.)
+    list = list.filter((r) => r.score > 0 || r.balls_merged > 0)
     if (q) {
       list = list.filter(
         (r) =>
@@ -1155,6 +1158,7 @@ export function BossDashboard() {
                     <th>Tier</th>
                     <th>Merges</th>
                     <th>Duration</th>
+                    <th>Status</th>
                     <th>Score/Merge</th>
                     <th>Actions</th>
                   </tr>
@@ -1181,6 +1185,15 @@ export function BossDashboard() {
                       </td>
                       <td>{fmtNum(r.balls_merged)}</td>
                       <td className="boss-muted">{fmtDuration(r.duration_ms)}</td>
+                      <td>
+                        {r.interruption_reason ? (
+                          <span className="boss-badge boss-badge-warning" title={r.interruption_reason}>
+                            {r.interruption_reason}
+                          </span>
+                        ) : (
+                          <span className="boss-muted">Completed</span>
+                        )}
+                      </td>
                       <td className="boss-mono">{r.scorePerMerge}</td>
                       <td>
                         <div className="boss-actions-cell">

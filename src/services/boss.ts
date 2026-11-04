@@ -19,6 +19,7 @@ export interface BossScoreRow {
   tier_reached: number
   balls_merged: number
   duration_ms: number
+  interruption_reason: string | null
   created_at: string
 }
 
@@ -75,6 +76,7 @@ export interface BossGuestScoreRow {
   tier_reached: number
   balls_merged: number
   duration_ms: number
+  interruption_reason: string | null
   created_at: string
 }
 
@@ -363,6 +365,7 @@ export function buildBossAnalytics(
       tier_reached: gs.tier_reached,
       balls_merged: gs.balls_merged,
       duration_ms: gs.duration_ms,
+      interruption_reason: gs.interruption_reason ?? null,
       created_at: gs.created_at,
     })
     guestRunsByGuest.set(gs.guest_id, list)
@@ -418,6 +421,7 @@ export function buildBossAnalytics(
             tier_reached: Math.max(1, Math.min(12, Math.round(item.bestTier || gp.stats?.bestTier || 1))),
             balls_merged: lb.length === 1 ? Math.max(0, gp.stats?.merges ?? 0) : 0,
             duration_ms: 0,
+            interruption_reason: null,
             created_at: createdIso,
           }
           gRuns.push(synRow)
@@ -428,6 +432,7 @@ export function buildBossAnalytics(
             tier_reached: synRow.tier_reached,
             balls_merged: synRow.balls_merged,
             duration_ms: synRow.duration_ms,
+            interruption_reason: null,
             created_at: synRow.created_at,
           })
         }
@@ -441,6 +446,7 @@ export function buildBossAnalytics(
           tier_reached: Math.max(1, Math.min(12, gp.stats?.bestTier || 1)),
           balls_merged: Math.max(0, gp.stats?.merges ?? 0),
           duration_ms: 0,
+          interruption_reason: null,
           created_at: gp.last_seen_at || gp.updated_at || gp.created_at,
         }
         gRuns = [synRow]
@@ -452,6 +458,7 @@ export function buildBossAnalytics(
           tier_reached: synRow.tier_reached,
           balls_merged: synRow.balls_merged,
           duration_ms: synRow.duration_ms,
+          interruption_reason: null,
           created_at: synRow.created_at,
         })
       }
@@ -549,6 +556,7 @@ export function buildBossAnalytics(
         tier_reached: gs.tier_reached,
         balls_merged: gs.balls_merged,
         duration_ms: gs.duration_ms,
+        interruption_reason: gs.interruption_reason ?? null,
         created_at: gs.created_at,
         username: g?.username ?? `guest_${gs.guest_id.slice(0, 6)}`,
         displayName: g?.displayName ?? `Guest #${gs.guest_id.slice(0, 6)}`,

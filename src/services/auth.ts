@@ -988,6 +988,7 @@ export class ScoreService {
     tierReached: number,
     ballsMerged: number,
     durationMs: number,
+    interruptionReason?: string,
   ): Promise<{ scoreId: number | null; error: Error | null }> {
     // /drunko is a real gameplay sandbox, but its run rows must never reach
     // guest_scores or scores, including when a caller bypasses scene guards.
@@ -1023,6 +1024,7 @@ export class ScoreService {
           p_balls_merged: cleanMerges,
           p_duration_ms: cleanDuration,
           p_score_id: scoreIdToUpdate,
+          p_interruption_reason: interruptionReason ?? null,
         })
         if (error) throw new Error(error.message)
         return typeof data === 'number' ? data : data != null ? Number(data) : scoreIdToUpdate
@@ -1033,6 +1035,7 @@ export class ScoreService {
           p_balls_merged: cleanMerges,
           p_duration_ms: cleanDuration,
           p_score_id: scoreIdToUpdate,
+          p_interruption_reason: interruptionReason ?? null,
         })
         if (error) throw new Error(error.message)
         return typeof data === 'number' ? data : data != null ? Number(data) : scoreIdToUpdate
@@ -1069,6 +1072,7 @@ export class ScoreService {
     tierReached: number,
     ballsMerged: number,
     durationMs: number,
+    interruptionReason?: string,
   ): Promise<{ error: Error | null }> {
     // Keep direct post-game callers harmless on the isolated test route.
     if (isDrunkoTestRoute()) return { error: null }
@@ -1085,12 +1089,12 @@ export class ScoreService {
       now - this.lastSubmitted.at < 5_000 &&
       this.activeScoreId !== null
     ) {
-      const res = await this.syncActiveRun(score, tierReached, ballsMerged, durationMs)
+      const res = await this.syncActiveRun(score, tierReached, ballsMerged, durationMs, interruptionReason)
       return { error: res.error }
     }
     this.lastSubmitted = { userId: actorId, score, tierReached, at: now }
 
-    const res = await this.syncActiveRun(score, tierReached, ballsMerged, durationMs)
+    const res = await this.syncActiveRun(score, tierReached, ballsMerged, durationMs, interruptionReason)
     if (res.error) {
       this.lastSubmitted = null
       return { error: res.error }

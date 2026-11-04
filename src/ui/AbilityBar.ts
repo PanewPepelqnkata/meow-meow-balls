@@ -3,6 +3,8 @@ import type { UiLayout } from './ResponsiveLayout'
 import { CartoonButton, Icons } from './CartoonButton'
 import { UI_COLORS } from './DesignSystem'
 import { hudText } from './Typography'
+import { FloatingTextNotification } from './FloatingTextNotification'
+import { authService } from '../services/auth'
 
 /**
  * Phase 2.11.0 ability bar (spec §5): a row of chunky blue cartoon buttons
@@ -31,6 +33,8 @@ export class AbilityBar {
   private readonly scene: Phaser.Scene
   private readonly handlers: AbilityHandlers
   private l: UiLayout | null = null
+  private guestNotification: FloatingTextNotification | null = null
+  private isGuest = false
   /** Hide the ability bar (the collectible card owns the screen). */
   setVisible(visible: boolean): void {
     for (const b of this.buttons) b.containerObj?.setVisible(visible)
@@ -40,6 +44,7 @@ export class AbilityBar {
   constructor(scene: Phaser.Scene, handlers: AbilityHandlers) {
     this.scene = scene
     this.handlers = handlers
+    this.isGuest = !authService.getUser()
   }
 
   layout(l: UiLayout): void {
@@ -49,24 +54,39 @@ export class AbilityBar {
     const n = 4
     const rowW = n * l.abilities.size + (n - 1) * l.abilities.gap
     const startX = l.abilities.centerX ? (l.vw - rowW) / 2 : l.abilities.startX
+
+    // Initialize guest notification system (positioned above the ability bar)
+    if (!this.guestNotification) {
+      this.guestNotification = new FloatingTextNotification(this.scene, l.abilities.startY - 20)
+    } else {
+      this.guestNotification.setBaseY(l.abilities.startY - 20)
+    }
+
+    // Guests can't use abilities - show notification on press
+    const guestPress = () => {
+      if (this.guestNotification) {
+        this.guestNotification.show('You need an account to use abilities', l.vw / 2)
+      }
+    }
+
     const defs: Array<{ fill: number; icon: typeof Icons.raise; hotkey?: string; qty?: string; disabled?: boolean; label?: string; press?: () => void }> = [
       {
         fill: UI_COLORS.BTN_BLUE,
         icon: Icons.swap,
         hotkey: 'Q',
         qty: '1',
-        disabled: this.swapUsed || !this.abilitiesEnabled,
+        disabled: this.isGuest || this.swapUsed || !this.abilitiesEnabled,
         label: this.swapUsed ? 'USED' : 'SWAP',
-        press: () => this.handlers.onSwap(),
+        press: this.isGuest ? guestPress : () => this.handlers.onSwap(),
       },
       {
         fill: UI_COLORS.BTN_BLUE,
         icon: Icons.shake,
         hotkey: 'W',
         qty: this.shakeUsed ? undefined : '1',
-        disabled: this.shakeUsed || !this.abilitiesEnabled,
+        disabled: this.isGuest || this.shakeUsed || !this.abilitiesEnabled,
         label: this.shakeUsed ? 'USED' : 'SHAKE',
-        press: () => this.handlers.onShake(),
+        press: this.isGuest ? guestPress : () => this.handlers.onShake(),
       },
       {
         fill: UI_COLORS.BTN_BLUE,
@@ -75,9 +95,9 @@ export class AbilityBar {
         // Phase 2.13.1: one-use — the button flips to USED/disabled the
         // moment activation succeeds and stays that way for the whole run.
         qty: this.raiseUsed ? undefined : '1',
-        disabled: this.raiseUsed || !this.abilitiesEnabled,
+        disabled: this.isGuest || this.raiseUsed || !this.abilitiesEnabled,
         label: this.raiseUsed ? 'USED' : 'RAISE',
-        press: () => this.handlers.onRaise(),
+        press: this.isGuest ? guestPress : () => this.handlers.onRaise(),
       },
       { fill: UI_COLORS.BTN_BLUE, icon: Icons.soon, disabled: true, label: 'SOON' },
     ]

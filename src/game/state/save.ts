@@ -476,9 +476,15 @@ export function recordRunEnd(
   score: number,
   bestTier: number,
   alreadyCountedRun = false,
+  mergesThisRun = 0,
 ): number {
   const save = loadSave()
   if (isDrunkoTestRoute()) return save.best
+  // Skip invalid runs: 0 merges AND 0 score means the player never actually
+  // played (e.g. accidental drop, immediate game over). Don't count these
+  // toward stats or leaderboard.
+  const isValidRun = mergesThisRun > 0 || score > 0
+  if (!isValidRun) return save.best
   const now = Date.now()
   if (!alreadyCountedRun) save.stats.runs++
   if (score > save.best) save.best = score

@@ -42,6 +42,7 @@ describe('buildBossAnalytics', () => {
       tier_reached: 9,
       balls_merged: 450,
       duration_ms: 120000,
+      interruption_reason: null,
       created_at: '2026-11-02T19:30:00.000Z',
     },
     {
@@ -51,6 +52,7 @@ describe('buildBossAnalytics', () => {
       tier_reached: 7,
       balls_merged: 31,
       duration_ms: 60000,
+      interruption_reason: null,
       created_at: '2026-11-02T16:40:00.000Z',
     },
     {
@@ -60,6 +62,7 @@ describe('buildBossAnalytics', () => {
       tier_reached: 9,
       balls_merged: 2866,
       duration_ms: 240000,
+      interruption_reason: null,
       created_at: '2026-11-02T20:09:00.000Z',
     },
   ]
@@ -159,6 +162,7 @@ describe('buildBossAnalytics', () => {
         tier_reached: 6,
         balls_merged: 60,
         duration_ms: 90000,
+        interruption_reason: null,
         created_at: '2026-11-02T15:20:00.000Z',
       },
       {
@@ -168,6 +172,7 @@ describe('buildBossAnalytics', () => {
         tier_reached: 5,
         balls_merged: 40,
         duration_ms: 45000,
+        interruption_reason: null,
         created_at: '2026-11-02T18:05:00.000Z',
       },
     ]

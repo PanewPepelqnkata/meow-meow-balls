@@ -400,11 +400,23 @@ export class PlaygroundScene extends Phaser.Scene {
       }),
     )
     const onPageHide = () => {
-      this.finalizeActiveRunIfIncomplete()
+      this.finalizeActiveRunIfIncomplete('page_hidden')
+    }
+    const onBeforeUnload = () => {
+      this.finalizeActiveRunIfIncomplete('page_refresh')
+    }
+    const onError = (event: ErrorEvent) => {
+      // Detect WebKit crashes and other fatal errors
+      const isWebKitCrash = event.message?.includes('webkit') || event.message?.includes('WebKit')
+      this.finalizeActiveRunIfIncomplete(isWebKitCrash ? 'webkit_crash' : 'error')
     }
     window.addEventListener('pagehide', onPageHide)
+    window.addEventListener('beforeunload', onBeforeUnload)
+    window.addEventListener('error', onError)
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       window.removeEventListener('pagehide', onPageHide)
+      window.removeEventListener('beforeunload', onBeforeUnload)
+      window.removeEventListener('error', onError)
     })
     this.events.once(
       Phaser.Scenes.Events.SHUTDOWN,
@@ -1166,15 +1178,16 @@ export class PlaygroundScene extends Phaser.Scene {
     )
   }
 
-  private finalizeActiveRunIfIncomplete(): void {
+  private finalizeActiveRunIfIncomplete(reason?: string): void {
     if (!this.runStarted || this.gameOver || isDrunkoTestRoute()) return
-    this.registry.set('best', recordRunEnd(this.score.score, this.bestTierRun, true))
+    this.registry.set('best', recordRunEnd(this.score.score, this.bestTierRun, true, this.mergesThisRun))
     gameBus.emit('state:best', { best: this.best() })
     void scoreService.submitScore(
       this.score.score,
       this.bestTierRun,
       this.mergesThisRun,
       Math.round(this.activeTimeMs),
+      reason,
     )
   }
 
@@ -1186,7 +1199,7 @@ export class PlaygroundScene extends Phaser.Scene {
     // reached) and the persisted best score. Sandbox runs keep the existing
     // best but leave no saved progression or leaderboard record.
     if (!isDrunkoTestRoute()) {
-      this.registry.set('best', recordRunEnd(this.score.score, this.bestTierRun, this.runStarted))
+      this.registry.set('best', recordRunEnd(this.score.score, this.bestTierRun, this.runStarted, this.mergesThisRun))
     }
     gameBus.emit('state:best', { best: this.best() })
     // Submit immediately at Game Over trigger so the run is recorded even before the pop animation ends.
