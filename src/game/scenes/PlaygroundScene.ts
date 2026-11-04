@@ -886,8 +886,13 @@ export class PlaygroundScene extends Phaser.Scene {
       }
     }
     if (this.devScorePre && this.devDeformPre) {
-      this.devScorePre.textContent = `score=${this.score.score} best=${this.best()} steps=${this.physicsWorld.stepCount} balls=${this.balls.count}`
-      this.devDeformPre.textContent = JSON.stringify(this.devDiagnostics)
+      // Throttle DOM updates to every 10 frames — the overlays are for
+      // human reading, not per-frame telemetry. This avoids forcing
+      // re-layout and re-compositing on every frame.
+      if (this.physicsWorld.stepCount % 10 === 0) {
+        this.devScorePre.textContent = `score=${this.score.score} best=${this.best()} steps=${this.physicsWorld.stepCount} balls=${this.balls.count}`
+        this.devDeformPre.textContent = JSON.stringify(this.devDiagnostics)
+      }
     }
     void time
   }

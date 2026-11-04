@@ -708,12 +708,14 @@ export class DiscoveryOverlay {
     const cam = this.scene.cameras.main
     const bufW = cam ? cam.width : vw
     const bufH = cam ? cam.height : vh
-    const dimTex = this.scene.textures.createCanvas('br-discovery-dim', 2, 2)
-    if (dimTex) {
-      const c = dimTex.getContext()
-      c.fillStyle = '#000000'
-      c.fillRect(0, 0, 2, 2)
-      dimTex.refresh()
+    if (!this.scene.textures.exists('br-discovery-dim')) {
+      const dimTex = this.scene.textures.createCanvas('br-discovery-dim', 2, 2)
+      if (dimTex) {
+        const c = dimTex.getContext()
+        c.fillStyle = '#000000'
+        c.fillRect(0, 0, 2, 2)
+        dimTex.refresh()
+      }
     }
     this.dimImage = this.scene.add
       .image(0, 0, 'br-discovery-dim')
