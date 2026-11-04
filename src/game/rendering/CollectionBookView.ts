@@ -395,15 +395,17 @@ export class CollectionBookView {
     const status = known ? this.discoveryDate(at) : collectible && theme == null ? 'LOCKED • UNIMPLEMENTED' : 'UNDISCOVERED'
     const compact = h < 72
     if (compact) {
-      const r = collectible ? Math.min(14, (h - 8) / 3) : Math.min(14, (h - 8) / 2)
+      const r = Math.min(18, (h - 8) / 2)
       this.addBall(leaf, x + 24, y + h / 2, r, tier, palette, known, theme)
       this.paperText(leaf, x + 46, y + h / 2 - 14, w - 52, title, 11, known ? '#2d241e' : '#7a6f62', 14)
       this.paperText(leaf, x + 46, y + h / 2 + 3, w - 52, status, 10, known ? '#2563eb' : '#8c7d6b', 12)
     } else {
       this.paperText(leaf, x + 6, y + 6, w - 12, title, 12, known ? '#2d241e' : '#7a6f62', 16)
-      const extent = collectible ? 2 : 1.1
-      const r = Math.min(30, w / (extent * 3), (h - (collectible ? 54 : 50)) / (extent * 2))
-      const centerY = collectible ? y + 26 + (h - 54) / 2 : y + 24 + (h - 46) / 2
+      // Collectible art draws its own details inside the radius; use the
+      // same extent as core tiers so the character fills the card.
+      const extent = 1.1
+      const r = Math.min(34, w / (extent * 3), (h - 50) / (extent * 2))
+      const centerY = y + 24 + (h - 46) / 2
       this.addBall(leaf, x + w / 2, centerY, r, tier, palette, known, theme)
       if (known) this.drawInkStamp(leaf, x + w / 2, y + h - 17, status, CHAPTERS[collectible ? tier - 8 : 0]!.color, Math.min(w - 12, 88))
       else this.paperText(leaf, x + 4, y + h - 21, w - 8, status, 10, '#8c7d6b', 14)
