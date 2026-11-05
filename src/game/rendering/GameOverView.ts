@@ -11,11 +11,18 @@ const BLUE = 0x2d74c9
 const RED = 0xf44336
 const INK_COLOR = '#1a1a1a'
 
+interface RunStats {
+  tierReached: number
+  ballsMerged: number
+  durationMs: number
+}
+
 interface RunPresentation {
   score: number
   best: number
   isNewBest: boolean
   saveScore?: { onSave: () => void }
+  stats?: RunStats
   saved: boolean
 }
 
@@ -25,6 +32,7 @@ export class GameOverView {
   private tweens: Phaser.Tweens.Tween[] = []
   private run: RunPresentation | null = null
   private reducedMotion = false
+  private restarting = false
   private lastButtonCenter = { x: 0, y: 0 }
   private saveRow: {
     icon: Phaser.GameObjects.Graphics
@@ -52,14 +60,14 @@ export class GameOverView {
     return this.lastButtonCenter
   }
 
-  show(score: number, best: number, isNewBest: boolean, saveScore?: { onSave: () => void }): void {
+  show(score: number, best: number, isNewBest: boolean, saveScore?: { onSave: () => void }, stats?: RunStats): void {
     this.hide()
     try {
       this.reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
     } catch {
       this.reducedMotion = false
     }
-    this.run = { score, best, isNewBest, saveScore, saved: false }
+    this.run = { score, best, isNewBest, saveScore, stats, saved: false }
     this.scene.scale.on(Phaser.Scale.Events.RESIZE, this.onResize, this)
     this.scene.game.events.on('br:dpr', this.onResize, this)
     this.scene.events.once(Phaser.Scenes.Events.SHUTDOWN, this.hide, this)
@@ -67,7 +75,7 @@ export class GameOverView {
   }
 
   private onResize(): void {
-    if (!this.run) return
+    if (!this.run || this.restarting) return
     this.clearObjects()
     this.draw(this.run, false)
   }
@@ -85,7 +93,7 @@ export class GameOverView {
     const newBest = run.isNewBest && run.score > 0
     const strongRun = run.score > 0 && run.best > 0 && run.score >= run.best * 0.75
 
-    const dim = scene.add.rectangle(vw / 2, vh / 2, vw, vh, INK, 0.46).setDepth(60)
+    const dim = scene.add.rectangle(vw / 2, vh / 2, vw, vh, INK, 0.32).setDepth(60)
     // The scrim owns pointer input; the completed pile remains visible behind it.
     dim.setInteractive()
     const panel = scene.add.container(vw / 2, vh / 2).setDepth(61)
@@ -147,11 +155,12 @@ export class GameOverView {
     const title = text(crewX, wide ? 167 : 111, run.score > 0 ? 'NICE RUN!' : 'ONE MORE?', 29, '#f44336', 2)
     if (wide) text(crewX, title.y + title.height + 5, 'The crew is on your side.', 13, INK_COLOR)
 
-    const labelY = wide ? 20 : title.y + title.height + 5
+    const labelY = wide ? 20 : title.y + title.height + 12
     const scoreLabel = text(columnX, labelY, 'YOUR SCORE', 12, INK_COLOR)
-    const scoreText = text(columnX, scoreLabel.y + scoreLabel.height - 1, run.score.toLocaleString(), 72, '#2d74c9', 3)
+    const scoreText = text(columnX, scoreLabel.y + scoreLabel.height + 3, run.score.toLocaleString(), 84, '#2d74c9', 3)
+      .setShadow(0, 3, '#1a1a1a26', 2, true, true)
     scoreText.setScale(Math.min(1, (columnW - 12) / scoreText.width))
-    const reactionY = scoreText.y + scoreText.displayHeight + 1
+    const reactionY = scoreText.y + scoreText.displayHeight + 5
     const reaction = text(
       columnX,
       reactionY,
@@ -160,32 +169,203 @@ export class GameOverView {
       newBest ? '#f44336' : INK_COLOR,
     )
 
-    const primaryY = reaction.y + reaction.height + 12 + 32
+    const statsY = reaction.y + reaction.height + 22
+    const statsH = 84
+    const cellW = columnW / 4
+    const statsLeft = columnX - columnW / 2
+    const formatDuration = (totalSeconds: number): string => {
+      const hours = Math.floor(totalSeconds / 3600)
+      const minutes = Math.floor(totalSeconds / 60) % 60
+      const seconds = String(totalSeconds % 60).padStart(2, '0')
+      return hours > 0 ? `${hours}:${String(minutes).padStart(2, '0')}:${seconds}` : `${minutes}:${seconds}`
+    }
+    const metrics = [
+      { label: 'BEST', icon: 'trophy', value: run.best, accent: 0xe5ad32, color: '#976208' },
+      { label: 'TIER', icon: 'layers', value: run.stats?.tierReached ?? null, accent: 0x9662d2, color: '#7945b3' },
+      { label: 'MERGES', icon: 'git-merge', value: run.stats?.ballsMerged ?? null, accent: 0x36a66c, color: '#257c4c' },
+      { label: 'TIME', icon: 'clock', value: run.stats ? Math.floor(run.stats.durationMs / 1000) : null, accent: 0xef913b, color: '#b65b16' },
+    ]
+    metrics.forEach((metric, i) => {
+      const x = statsLeft + cellW * (i + 0.5)
+      const cell = scene.add.container(x, statsY)
+      const tile = scene.add.graphics()
+      tile.fillStyle(metric.accent, 0.08)
+      tile.fillRoundedRect(-cellW / 2 + 3, 0, cellW - 6, statsH, 12)
+      tile.lineStyle(1, metric.accent, 0.24)
+      tile.strokeRoundedRect(-cellW / 2 + 3, 0, cellW - 6, statsH, 12)
+      tile.fillStyle(metric.accent, 0.22)
+      tile.fillCircle(0, 18, 12)
+      tile.lineStyle(1, metric.accent, 0.4)
+      tile.strokeCircle(0, 18, 12)
+      const icon = scene.add.graphics()
+      drawLucide(icon, metric.icon, 0, 18, 13, darkenFill(metric.accent, 0.72), 2.2)
+      const formatValue = (value: number): string => metric.label === 'TIME' ? formatDuration(value) : value.toLocaleString()
+      const value = text(0, 47, metric.value === null ? '—' : formatValue(metric.value), 26, metric.color).setOrigin(0.5)
+      value.setScale(Math.min(1, (cellW - 12) / value.width))
+      const label = text(0, 71, metric.label, 10, INK_COLOR).setOrigin(0.5)
+      cell.add([tile, icon, value, label])
+      content.add(cell)
+      if (newBest && i === 0) {
+        tile.fillStyle(metric.accent, 1)
+        tile.fillRoundedRect(-26, -10, 52, 14, 5)
+        const badge = text(0, -3, 'NEW BEST', 8, INK_COLOR).setOrigin(0.5)
+        cell.add(badge)
+      }
+      if (motion) {
+        const delay = 160 + i * 65
+        cell.setY(statsY + 6).setAlpha(0)
+        this.tweens.push(scene.tweens.add({
+          targets: cell,
+          y: statsY,
+          alpha: 1,
+          duration: 280,
+          delay,
+          ease: 'Cubic.easeOut',
+        }))
+        if (metric.value !== null && metric.value > 0) {
+          const counter = { value: 0 }
+          value.setText(formatValue(0))
+          this.tweens.push(scene.tweens.add({
+            targets: counter,
+            value: metric.value,
+            duration: SEQ.scoreCountMs,
+            delay,
+            ease: 'Cubic.easeOut',
+            onUpdate: () => value.setText(formatValue(Math.round(counter.value))),
+          }))
+        }
+      }
+    })
+
+    const primaryY = statsY + statsH + 12 + 32
     const primary = scene.add.container(columnX, primaryY)
-    content.add(primary)
-    this.drawPlate(primary, columnW, 64, BLUE, 16, 17, 5)
+    const replayGlow = scene.add.graphics().setPosition(columnX, primaryY).setAlpha(0.15)
+    for (let spread = 14; spread >= 2; spread -= 4) {
+      replayGlow.fillStyle(0x1689e8, 0.2)
+      replayGlow.fillEllipse(0, 0, columnW + spread * 2, 64 + spread * 1.5)
+    }
+    const replayShadow = scene.add.graphics().setPosition(columnX, primaryY).setAlpha(0)
+    replayShadow.fillStyle(INK, 0.14)
+    replayShadow.fillPoints(doodleSilhouette(columnW, 64, 16, 17, 2.5).map((p) => new Phaser.Math.Vector2(p.x, p.y + 12)), true)
+    const replayContour = doodleSilhouette(columnW, 64, 16, 17, 2.5).map((p) => new Phaser.Math.Vector2(p.x, p.y))
+    const addReplayLayer = (offsetY: number, fill: number): void => {
+      const points = replayContour.map((p) => new Phaser.Math.Vector2(p.x, p.y + offsetY))
+      const layer = scene.add.graphics()
+      layer.fillStyle(INK, 0.3)
+      layer.fillPoints(points.map((p) => new Phaser.Math.Vector2(p.x, p.y + 3)), true)
+      layer.fillStyle(fill, 1)
+      layer.fillPoints(points, true)
+      layer.lineStyle(3, INK, 1)
+      layer.strokePoints(points, true, true)
+      primary.add(layer)
+    }
+    addReplayLayer(8, 0x0b3974)
+    addReplayLayer(4, 0x145eaa)
+    const replayFace = scene.add.container(0, 0)
+    primary.add(replayFace)
+    this.drawPlate(replayFace, columnW, 64, 0x1689e8, 16, 17, 5)
+    const replayBorder = scene.add.graphics()
+    replayFace.add(replayBorder)
+    const borderCycle = { phase: 0 }
+    const blendColor = (from: number, to: number, amount: number): number => {
+      const r = Math.round(((from >> 16) & 0xff) + (((to >> 16) & 0xff) - ((from >> 16) & 0xff)) * amount)
+      const g = Math.round(((from >> 8) & 0xff) + (((to >> 8) & 0xff) - ((from >> 8) & 0xff)) * amount)
+      const b = Math.round((from & 0xff) + ((to & 0xff) - (from & 0xff)) * amount)
+      return (r << 16) | (g << 8) | b
+    }
+    const paintReplayBorder = (): void => {
+      replayBorder.clear()
+      for (let i = 0; i < replayContour.length; i++) {
+        const a = replayContour[i]!
+        const b = replayContour[(i + 1) % replayContour.length]!
+        const mix = 0.5 + 0.5 * Math.sin((i / replayContour.length) * Math.PI * 2 + borderCycle.phase)
+        replayBorder.lineStyle(2.8, blendColor(BLUE, 0x45d8ff, mix), 1)
+        replayBorder.lineBetween(a.x, a.y, b.x, b.y)
+      }
+    }
+    paintReplayBorder()
+    if (!this.reducedMotion) {
+      this.tweens.push(scene.tweens.add({
+        targets: borderCycle,
+        phase: Math.PI * 2,
+        duration: 2400,
+        repeat: -1,
+        ease: 'Linear',
+        onUpdate: paintReplayBorder,
+      }))
+    }
     const replayIcon = scene.add.graphics()
     drawLucide(replayIcon, 'rotate-ccw', 0, 0, 23, CREAM, 2.6)
     const replayLabel = text(0, 0, 'PLAY AGAIN', 26, '#fff8ec', 2)
-    primary.add([replayIcon, replayLabel])
+    replayFace.add([replayIcon, replayLabel])
     const replayUnitW = 23 + 10 + replayLabel.width
     replayIcon.setPosition(-replayUnitW / 2 + 23 / 2, 0)
     replayLabel.setPosition(-replayUnitW / 2 + 23 + 10, -replayLabel.height / 2)
     replayLabel.setOrigin(0, 0)
     const replayHit = scene.add.rectangle(0, 0, columnW, 64, CREAM, 0.001).setInteractive({ useHandCursor: true })
     primary.add(replayHit)
-    this.bindAction(primary, replayHit, this.onRestart)
+    const orbitDots = Array.from({ length: 6 }, (_, i) => scene.add.circle(
+      columnX,
+      primaryY,
+      i % 2 === 0 ? 2.5 : 2,
+      [0x45d8ff, CREAM, 0x7ab8ff, 0x45d8ff, CREAM, 0x7ab8ff][i]!,
+      0.72,
+    ))
+    content.add([replayGlow, replayShadow, ...orbitDots, primary])
+    this.bindAction(primary, replayHit, this.onRestart, true, replayShadow)
+    if (!this.reducedMotion) {
+      const orbit = { angle: 0 }
+      const placeOrbitDots = (): void => {
+        for (let i = 0; i < orbitDots.length; i++) {
+          const angle = orbit.angle + (i / orbitDots.length) * Math.PI * 2
+          orbitDots[i]!.setPosition(
+            columnX + Math.cos(angle) * (columnW / 2 + 12),
+            primaryY + Math.sin(angle) * 42,
+          )
+          orbitDots[i]!.setAlpha(0.48 + (Math.sin(angle * 1.7) + 1) * 0.16)
+        }
+      }
+      placeOrbitDots()
+      this.tweens.push(scene.tweens.add({
+        targets: orbit,
+        angle: Math.PI * 2,
+        duration: 3800,
+        repeat: -1,
+        ease: 'Linear',
+        onUpdate: placeOrbitDots,
+      }))
+      const releaseFace = (): void => {
+        scene.tweens.killTweensOf(replayFace)
+        this.tweens.push(scene.tweens.add({
+          targets: replayFace,
+          scaleX: 1,
+          scaleY: 1,
+          angle: 0,
+          duration: 300,
+          ease: 'Elastic.easeOut',
+        }))
+      }
+      replayHit.on('pointerdown', () => {
+        scene.tweens.killTweensOf(replayFace)
+        replayFace.setScale(1.02, 0.96).setAngle(-1.4)
+      })
+      replayHit.on('pointerup', releaseFace)
+      replayHit.on('pointerout', releaseFace)
+    }
+    if (!this.reducedMotion) {
+      this.tweens.push(scene.tweens.add({ targets: replayGlow, alpha: 0.25, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }))
+    }
 
     // Home has a quieter cream plate. Guest saving remains a tertiary action,
     // never a second primary button or a requirement for another run.
-    const footerY = primaryY + 32 + 6 + 29
+    const footerY = primaryY + 32 + 14 + 29
     const homeX = wide && run.saveScore ? columnX - 78 : columnX
     const home = scene.add.container(homeX, footerY)
     content.add(home)
     const homeW = wide && run.saveScore ? 100 : 144
     const homeBody = scene.add.graphics()
-    homeBody.fillStyle(CREAM, 1)
-    homeBody.lineStyle(2, RED, 1)
+    homeBody.fillStyle(0xfffdf7, 1)
+    homeBody.lineStyle(2.5, RED, 1)
     homeBody.fillRoundedRect(-homeW / 2, -20, homeW, 40, 13)
     homeBody.strokeRoundedRect(-homeW / 2, -20, homeW, 40, 13)
     const homeIcon = scene.add.graphics()
@@ -232,10 +412,11 @@ export class GameOverView {
 
     if (motion) {
       dim.setAlpha(0)
-      panel.setAlpha(0).setScale(fit * 0.96)
+      panel.setAlpha(0).setScale(fit * 0.92).setY(vh / 2 + 12)
       this.tweens.push(
-        scene.tweens.add({ targets: dim, alpha: 1, duration: 160, ease: 'Quad.easeOut' }),
-        scene.tweens.add({ targets: panel, alpha: 1, scale: fit, duration: 220, ease: 'Cubic.easeOut' }),
+        scene.tweens.add({ targets: dim, alpha: 1, duration: 240, ease: 'Quad.easeOut' }),
+        scene.tweens.add({ targets: panel, alpha: 1, duration: 220, ease: 'Quad.easeOut' }),
+        scene.tweens.add({ targets: panel, y: vh / 2, scale: fit, duration: 380, ease: 'Back.easeOut.config(1.15)' }),
       )
       const counter = { value: 0 }
       scoreText.setText('0')
@@ -269,20 +450,72 @@ export class GameOverView {
     parent.add(g)
   }
 
-  private bindAction(container: Phaser.GameObjects.Container, hit: Phaser.GameObjects.Rectangle, onPress: () => void): void {
-    const feedback = (scale: number, alpha = 1): void => {
-      this.scene.tweens.killTweensOf(container)
-      container.setAlpha(alpha)
-      if (this.reducedMotion) return
-      this.tweens.push(this.scene.tweens.add({ targets: container, scale, duration: 90, ease: 'Quad.easeOut' }))
+  private bindAction(
+    container: Phaser.GameObjects.Container,
+    hit: Phaser.GameObjects.Rectangle,
+    onPress: () => void,
+    replay = false,
+    shadow?: Phaser.GameObjects.Graphics,
+  ): void {
+    const scene = this.scene
+    const baseY = container.y
+    let hovered = false
+    let pressed = false
+    const idle = (): void => {
+      if (!replay || this.reducedMotion || hovered || pressed || this.restarting) return
+      this.tweens.push(scene.tweens.add({ targets: container, scale: 1.03, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' }))
     }
-    hit.on('pointerover', () => feedback(1.025))
-    hit.on('pointerout', () => feedback(1))
-    hit.on('pointerdown', () => feedback(0.97, 0.88))
-    hit.on('pointerup', () => {
-      feedback(1)
-      onPress()
+    const feedback = (scale: number, lift = 0, bounce = false, onComplete?: () => void): void => {
+      scene.tweens.killTweensOf(container)
+      container.setAlpha(pressed ? 0.88 : 1)
+      shadow?.setAlpha(hovered && !pressed ? 1 : 0)
+      if (this.reducedMotion) {
+        container.setScale(scale).setY(baseY + lift)
+        onComplete?.()
+        return
+      }
+      this.tweens.push(scene.tweens.add({
+        targets: container,
+        scale,
+        y: baseY + lift,
+        duration: bounce ? 320 : 90,
+        ease: bounce ? 'Elastic.easeOut' : 'Quad.easeOut',
+        onComplete: () => {
+          if (onComplete) onComplete()
+          else idle()
+        },
+      }))
+    }
+    hit.on('pointerover', () => {
+      if (this.restarting) return
+      hovered = true
+      feedback(pressed ? 0.95 : 1.05, pressed ? 0 : -2)
     })
+    hit.on('pointerout', () => {
+      if (this.restarting) return
+      hovered = false
+      const wasPressed = pressed
+      pressed = false
+      feedback(1, 0, wasPressed)
+    })
+    hit.on('pointerdown', () => {
+      if (this.restarting) return
+      pressed = true
+      feedback(0.95)
+    })
+    hit.on('pointerup', () => {
+      if (this.restarting || !pressed) return
+      pressed = false
+      if (replay) {
+        this.restarting = true
+        hit.disableInteractive()
+        // Keep even a quick tap's spring visible before replacing the view.
+        container.setScale(0.95)
+      }
+      feedback(1, 0, true, replay ? onPress : undefined)
+      if (!replay) onPress()
+    })
+    idle()
   }
 
   private layoutSaveRow(saved: boolean): void {
@@ -322,5 +555,6 @@ export class GameOverView {
     this.scene.events.off(Phaser.Scenes.Events.SHUTDOWN, this.hide, this)
     this.clearObjects()
     this.run = null
+    this.restarting = false
   }
 }

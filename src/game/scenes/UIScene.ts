@@ -153,6 +153,7 @@ export class UIScene extends Phaser.Scene {
           best,
           !drunkoTestRoute && score >= best && score > 0,
           saveScore,
+          { tierReached, ballsMerged, durationMs },
         )
       }),
       gameBus.on('run:started', () => {
