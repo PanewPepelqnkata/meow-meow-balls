@@ -591,12 +591,13 @@ export class TitleScene extends Phaser.Scene {
       // Centered flow, bottom-anchored so the stats chip always sits in the
       // safe area: chip -> 2x2 nav grid -> PLAY + LOGIN side-by-side -> machine -> logo.
       const isAuthed = authService.isAuthenticated()
-      const rowGap = 48
+      const playNavGap = 12
+      const chipNavGap = 26
       const chipY = vh - bottomInset - chipH / 2
       const navRowGap = 8
-      const navY = chipY - chipH / 2 - rowGap - navH - navRowGap / 2
+      const navY = chipY - chipH / 2 - chipNavGap - navH - navRowGap - navH / 2
       const navY2 = navY + navH + navRowGap
-      const playY = navY2 - navH / 2 - rowGap - playH / 2
+      const playY = navY - navH / 2 - playNavGap - playH / 2
       const bandTop = logoCY + logoH / 2 + 10
       const bandBottom = playY - playH / 2 - 10
       this.buildMachine(
@@ -1265,15 +1266,6 @@ export class TitleScene extends Phaser.Scene {
     score.setScale(Math.min(1, (sectionW * 0.54) / Math.max(1, score.width)))
     this.menuLayer.add(score)
 
-    const dotLeft = hudText(this, 0, 0, '·', 1, {
-      color: '#565a72',
-      size: h * 0.55,
-      stroke: 1,
-      origin: [0.5, 0.5],
-      shadow: false,
-    })
-    dotLeft.setPosition(cx - w / 6, cy)
-    this.menuLayer.add(dotLeft)
 
     drawBallIcon(this, g, bestTier, collectionCenter - h * 0.24, cy, h * 0.28, {
       seed: 991 * bestTier,
@@ -1290,15 +1282,6 @@ export class TitleScene extends Phaser.Scene {
     collection.setScale(Math.min(1, (sectionW * 0.6) / Math.max(1, collection.width)))
     this.menuLayer.add(collection)
 
-    const dotRight = hudText(this, 0, 0, '·', 1, {
-      color: '#565a72',
-      size: h * 0.55,
-      stroke: 1,
-      origin: [0.5, 0.5],
-      shadow: false,
-    })
-    dotRight.setPosition(cx + w / 6, cy)
-    this.menuLayer.add(dotRight)
 
     const coinG = this.add.graphics()
     drawCoin(coinG, coinsCenter - h * 0.24, cy, h * 0.28)

@@ -26,7 +26,7 @@ import { PerfOverlay } from '../debug/PerfOverlay'
 import { session, fastbootRequested } from '../state/session'
 import { bannerForcedByVariant } from '../rendering/DiscoveryBanner'
 import { hasDiscoveredCollectible, hasDiscoveredTier, recordDiscovery, recordMerge, recordRunEnd, recordRunStart, savedBest, themeSetting } from '../state/save'
-import { scoreService } from '../../services/auth'
+import { authService, scoreService } from '../../services/auth'
 import { isDrunkoTestRoute, rollNewRunSeed, runVariantFor, themeFor } from '../state/runVariant'
 import { addRunCollectible, type RunCollectibles } from '../state/collectibleMetadata'
 import { isCollectibleTier } from '../../config/collectibleCollection'
@@ -994,7 +994,7 @@ export class PlaygroundScene extends Phaser.Scene {
   }
 
   private doSwap(): void {
-    if (this.gameOver || session.menuActive || this.swapUsed || this.discoveryBlocking()) return
+    if (this.gameOver || session.menuActive || this.swapUsed || this.discoveryBlocking() || this.guestAbilityBlocked()) return
     this.swapUsed = true
     // Swap discards the held ball as if it had been dropped: the claw
     // immediately holds the previously-NEXT ball and a fresh ball enters the
@@ -1011,20 +1011,24 @@ export class PlaygroundScene extends Phaser.Scene {
     return this.ui()?.discoveryState().visible ?? false
   }
 
+  private guestAbilityBlocked(): boolean {
+    return !authService.isAuthenticated()
+  }
+
   private doRaise(): void {
     // Phase 2.13.1 (spec §7): Raise Walls is ONE-USE per run. The single
     // gate for BOTH keyboard ('E') and the button ('ui:raise'): once the
     // activation succeeds, raiseUsed latches for the whole run — repeated
     // presses while raising/raised/lowering (walls.activate() already
     // refuses those) or after the walls lower again are all no-ops.
-    if (this.gameOver || session.menuActive || this.raiseUsed || this.discoveryBlocking()) return
+    if (this.gameOver || session.menuActive || this.raiseUsed || this.discoveryBlocking() || this.guestAbilityBlocked()) return
     if (!this.walls.activate()) return
     this.raiseUsed = true
     gameBus.emit('ability:raiseUsed', {})
   }
 
   private doShake(): void {
-    if (this.gameOver || session.menuActive || this.shakeUsed || this.discoveryBlocking()) return
+    if (this.gameOver || session.menuActive || this.shakeUsed || this.discoveryBlocking() || this.guestAbilityBlocked()) return
     if (!this.shake.activate()) return
     this.shakeUsed = true
     gameBus.emit('ability:shakeUsed', {})
