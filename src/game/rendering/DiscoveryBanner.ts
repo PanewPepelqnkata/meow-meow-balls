@@ -15,11 +15,16 @@ const YELLOW = 0xffc400
 const YELLOW_LIGHT = 0xffe36b
 const SHADOW = 0x080914
 
-/** Local pop-art bounds, expressed in units of `halfThick`. */
-const ART_LEFT = -2.75
-const ART_RIGHT = 10.05
-const ART_TOP = -3.15
-const ART_BOTTOM = 2.85
+interface ArtProfile {
+  left: number
+  right: number
+  top: number
+  bottom: number
+  contentScale: number
+}
+
+const LANDSCAPE_ART: ArtProfile = { left: -2.75, right: 10.05, top: -3.15, bottom: 2.85, contentScale: 1 }
+const PORTRAIT_ART: ArtProfile = { left: -2.75, right: 8.6, top: -2.95, bottom: 2.45, contentScale: 0.84 }
 
 export interface BannerRect {
   cx: number
@@ -27,6 +32,7 @@ export interface BannerRect {
   halfLen: number
   halfThick: number
   angle: number
+  portrait: boolean
 }
 
 /** `?discovery=wind` remains the isolated QA route for the repeat banner. */
@@ -47,14 +53,18 @@ export function makeRng(seed: number): () => number {
   }
 }
 
-function transformedBounds(angle: number, unit: number): { left: number; right: number; top: number; bottom: number } {
+function artProfile(portrait: boolean): ArtProfile {
+  return portrait ? PORTRAIT_ART : LANDSCAPE_ART
+}
+
+function transformedBounds(angle: number, unit: number, profile: ArtProfile): { left: number; right: number; top: number; bottom: number } {
   const cos = Math.cos(angle)
   const sin = Math.sin(angle)
   const corners = [
-    { x: ART_LEFT * unit, y: ART_TOP * unit },
-    { x: ART_RIGHT * unit, y: ART_TOP * unit },
-    { x: ART_RIGHT * unit, y: ART_BOTTOM * unit },
-    { x: ART_LEFT * unit, y: ART_BOTTOM * unit },
+    { x: profile.left * unit, y: profile.top * unit },
+    { x: profile.right * unit, y: profile.top * unit },
+    { x: profile.right * unit, y: profile.bottom * unit },
+    { x: profile.left * unit, y: profile.bottom * unit },
   ]
   const xs = corners.map((p) => cos * p.x - sin * p.y)
   const ys = corners.map((p) => sin * p.x + cos * p.y)
@@ -68,7 +78,7 @@ function transformedBounds(angle: number, unit: number): { left: number; right: 
 
 /** Exact painted footprint after the banner's root rotation and translation. */
 export function bannerArtworkBounds(rect: BannerRect): { left: number; right: number; top: number; bottom: number } {
-  const bounds = transformedBounds(rect.angle, rect.halfThick)
+  const bounds = transformedBounds(rect.angle, rect.halfThick, artProfile(rect.portrait))
   return {
     left: rect.cx + bounds.left,
     right: rect.cx + bounds.right,
@@ -84,19 +94,20 @@ export function bannerArtworkBounds(rect: BannerRect): { left: number; right: nu
 export function bannerRect(vw: number, vh: number): BannerRect {
   const portrait = vh > vw
   const halfThick = portrait
-    ? Math.min(vw * 0.041, vh * 0.021, 16)
+    ? Math.min(vw * 0.044, vh * 0.021, 17)
     : Math.min(vh * 0.032, vw * 0.018, 26)
-  const halfLen = halfThick * 5.25
-  const angle = portrait ? -0.045 : -0.065
-  const bounds = transformedBounds(angle, halfThick)
+  const halfLen = halfThick * (portrait ? 4.5 : 5.25)
+  const angle = portrait ? -0.04 : -0.065
+  const bounds = transformedBounds(angle, halfThick, artProfile(portrait))
   const rightMargin = portrait ? Math.max(14, vw * 0.04) : Math.max(44, vw * 0.056)
-  const topMargin = portrait ? Math.max(142, vh * 0.17) : Math.max(28, vh * 0.04)
+  const topMargin = portrait ? Math.max(132, vh * 0.156) : Math.max(28, vh * 0.04)
   return {
     cx: vw - rightMargin - bounds.right,
     cy: topMargin - bounds.top,
     halfLen,
     halfThick,
     angle,
+    portrait,
   }
 }
 
@@ -183,24 +194,25 @@ export class DiscoveryBanner {
     const rect = bannerRect(vw, vh)
     this.clampToHud(rect, layout)
     const unit = rect.halfThick
+    const profile = artProfile(rect.portrait)
 
     const holder = this.scene.add.container(rect.cx, rect.cy).setRotation(rect.angle).setDepth(78.6)
     this.holder = holder
 
-    this.railsC = this.makeGraphicsLayer(holder, (g) => this.drawRails(g, unit, seed))
-    this.panelC = this.makeGraphicsLayer(holder, (g) => this.drawPanel(g, unit, seed))
-    this.accentC = this.makeGraphicsLayer(holder, (g) => this.drawAccents(g, unit, seed))
+    this.railsC = this.makeGraphicsLayer(holder, (g) => this.drawRails(g, unit, seed), profile.contentScale)
+    this.panelC = this.makeGraphicsLayer(holder, (g) => this.drawPanel(g, unit, seed), profile.contentScale)
+    this.accentC = this.makeGraphicsLayer(holder, (g) => this.drawAccents(g, unit, seed), profile.contentScale)
     this.flashC = this.makeGraphicsLayer(holder, (g) => this.drawFlash(g, unit))
     this.burstC = this.makeGraphicsLayer(holder, (g) => this.drawBurst(g, unit, seed))
     this.cloudC = this.makeGraphicsLayer(holder, (g) => this.drawCloud(g, unit))
 
     this.ballG = this.scene.add.graphics()
-    this.drawBall(this.ballG, unit)
+    this.drawBall(this.ballG, unit, rect.portrait)
     this.ballC = this.scene.add.container(0, 0, [this.ballG]).setRotation(-rect.angle)
     holder.add(this.ballC)
 
-    this.duplicateC = this.buildDuplicateTab(holder, unit)
-    this.tierC = this.buildTierLabel(holder, unit, tier)
+    this.duplicateC = this.buildDuplicateTab(holder, unit, rect.portrait)
+    this.tierC = this.buildTierLabel(holder, unit, tier, rect.portrait)
 
     if (tier === 8 && !this.reducedMotion) {
       this.rgbTimer = this.scene.time.addEvent({
@@ -209,7 +221,7 @@ export class DiscoveryBanner {
         callback: () => {
           if (!this.ballG) return
           this.ballG.clear()
-          this.drawBall(this.ballG, unit)
+          this.drawBall(this.ballG, unit, rect.portrait)
         },
       })
     }
@@ -221,7 +233,7 @@ export class DiscoveryBanner {
 
   private clampToHud(rect: BannerRect, layout: UiLayout | undefined): void {
     if (!layout) return
-    const bounds = transformedBounds(rect.angle, rect.halfThick)
+    const bounds = transformedBounds(rect.angle, rect.halfThick, artProfile(rect.portrait))
     if (layout.composition === 'portrait') {
       rect.cy += Math.max(0, layout.stack.hudBottom - 4 - (rect.cy + bounds.top))
       return
@@ -235,8 +247,9 @@ export class DiscoveryBanner {
   private makeGraphicsLayer(
     holder: Phaser.GameObjects.Container,
     draw: (g: Phaser.GameObjects.Graphics) => void,
+    contentScale = 1,
   ): Phaser.GameObjects.Container {
-    const g = this.scene.add.graphics()
+    const g = this.scene.add.graphics().setScale(contentScale)
     draw(g)
     const container = this.scene.add.container(0, 0, [g])
     holder.add(container)
@@ -345,8 +358,8 @@ export class DiscoveryBanner {
     g.strokePoints(vectors(cream), true, true)
   }
 
-  private drawBall(g: Phaser.GameObjects.Graphics, s: number): void {
-    const radius = 1.02 * s
+  private drawBall(g: Phaser.GameObjects.Graphics, s: number, portrait: boolean): void {
+    const radius = (portrait ? 1.08 : 1.02) * s
     const color = getTier(this.tier)?.color ?? 0xffffff
     if (this.tier === 9 || this.tier === 10) {
       const theme = this.theme ?? themeFor(this.tier)
@@ -425,7 +438,7 @@ export class DiscoveryBanner {
     }
   }
 
-  private buildDuplicateTab(holder: Phaser.GameObjects.Container, s: number): Phaser.GameObjects.Container {
+  private buildDuplicateTab(holder: Phaser.GameObjects.Container, s: number, portrait: boolean): Phaser.GameObjects.Container {
     const g = this.scene.add.graphics()
     const shadow = [
       { x: -2.65 * s, y: -0.62 * s }, { x: 2.65 * s, y: -0.95 * s },
@@ -437,7 +450,7 @@ export class DiscoveryBanner {
     g.lineStyle(Math.max(1.5, s * 0.065), SHADOW, 1)
     g.strokePoints(vectors(plate), true, true)
 
-    const size = Math.max(12, Math.round(s * 0.72))
+    const size = Math.max(12, Math.round(s * (portrait ? 0.78 : 0.72)))
     const text = this.scene.add.text(-0.1 * s, -0.03 * s, 'DUPLICATE!', {
       fontFamily: FONT_FAMILY,
       fontStyle: 'italic',
@@ -445,13 +458,14 @@ export class DiscoveryBanner {
       color: '#111111',
       resolution: Math.max(2, Math.min(window.devicePixelRatio || 1, 2)),
     }).setOrigin(0.5)
-    const container = this.scene.add.container(4.55 * s, -2.06 * s, [g, text])
+    const container = this.scene.add.container((portrait ? 3.75 : 4.55) * s, (portrait ? -1.82 : -2.06) * s, [g, text])
     holder.add(container)
     return container
   }
 
-  private buildTierLabel(holder: Phaser.GameObjects.Container, s: number, tier: number): Phaser.GameObjects.Container {
-    const size = Math.max(24, Math.round(s * (tier >= 10 ? 1.56 : 1.84)))
+  private buildTierLabel(holder: Phaser.GameObjects.Container, s: number, tier: number, portrait: boolean): Phaser.GameObjects.Container {
+    const scale = portrait ? (tier >= 10 ? 1.75 : 1.95) : (tier >= 10 ? 1.56 : 1.84)
+    const size = Math.max(24, Math.round(s * scale))
     const resolution = Math.max(2, Math.min(window.devicePixelRatio || 1, 2))
     const style: Phaser.Types.GameObjects.Text.TextStyle = {
       fontFamily: FONT_FAMILY,
@@ -468,7 +482,7 @@ export class DiscoveryBanner {
       stroke: '#111111',
     }).setOrigin(0.5).setAlpha(0.7)
     const text = this.scene.add.text(0, 0, `TIER ${tier}`, style).setOrigin(0.5)
-    const container = this.scene.add.container(5.2 * s, -0.12 * s, [shadow, text])
+    const container = this.scene.add.container((portrait ? 4.35 : 5.2) * s, (portrait ? -0.05 : -0.12) * s, [shadow, text])
     holder.add(container)
     return container
   }

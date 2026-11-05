@@ -13,7 +13,7 @@ describe('the discovery banner geometry', () => {
     const phoneBounds = bannerArtworkBounds(bannerRect(390, 844))
     expect(phoneBounds.left).toBeGreaterThan(0)
     expect(phoneBounds.right).toBeCloseTo(390 - 390 * 0.04, 0)
-    expect(phoneBounds.top).toBeGreaterThanOrEqual(142)
+    expect(phoneBounds.top).toBeGreaterThanOrEqual(132)
 
     const desktopBounds = bannerArtworkBounds(bannerRect(1280, 720))
     expect(desktopBounds.left).toBeGreaterThan(1280 * 0.65)
@@ -49,12 +49,21 @@ describe('the discovery banner geometry', () => {
     expect(bounds.top).toBeCloseTo(770 * 0.04, 0)
   })
 
-  it('keeps the portrait artwork compact and below the top-right HUD', () => {
-    const bounds = bannerArtworkBounds(bannerRect(390, 844))
-    expect(bounds.right - bounds.left).toBeLessThan(285)
-    expect(bounds.left).toBeGreaterThan(0)
-    expect(bounds.right).toBeLessThanOrEqual(390 - 390 * 0.04)
-    expect(bounds.top).toBeGreaterThanOrEqual(142)
+  it('uses a readable dedicated portrait footprint at 390 and 320 widths', () => {
+    const phone = bannerArtworkBounds(bannerRect(390, 844))
+    expect(phone.right - phone.left).toBeGreaterThan(190)
+    expect(phone.right - phone.left).toBeLessThan(205)
+    expect(phone.bottom - phone.top).toBeGreaterThan(90)
+    expect(phone.bottom - phone.top).toBeLessThan(100)
+    expect(phone.left).toBeGreaterThan(0)
+    expect(phone.right).toBeLessThanOrEqual(390 - 390 * 0.04)
+    expect(phone.top).toBeGreaterThanOrEqual(132)
+
+    const compact = bannerArtworkBounds(bannerRect(320, 844))
+    expect(compact.right - compact.left).toBeGreaterThan(155)
+    expect(compact.right - compact.left).toBeLessThan(170)
+    expect(compact.left).toBeGreaterThan(0)
+    expect(compact.right).toBeLessThanOrEqual(320 - 14)
   })
 })
 
