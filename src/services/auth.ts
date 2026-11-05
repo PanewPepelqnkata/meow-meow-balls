@@ -893,7 +893,7 @@ export class AuthService {
 
     const canonicalCoins = cloudCoinState?.coins ?? finalSave.coins
     this.coinRevision = cloudCoinState?.coinRevision ?? 0
-    this.coinLocalBaseline = tableSave ? canonicalCoins : metaSave ? 0 : canonicalCoins
+    this.coinLocalBaseline = canonicalCoins
 
     // If scores, same-owner local data, or earned coins healed missing cloud metadata,
     // route the write through the guarded RPC only.
@@ -937,6 +937,10 @@ export class AuthService {
     const coinsEarned = positiveCoinDelta(liveSaveAtStart.coins, localBaseline)
     const expectedCoinRevision = this.coinRevision ?? 0
 
+    if (this.userProgressTableAvailable === false) {
+      console.error('Failed to sync user progress: user_progress table unavailable')
+      return
+    }
     try {
       const { data, error } = await getSupabase().rpc('sync_user_progress', {
         p_save: save,
