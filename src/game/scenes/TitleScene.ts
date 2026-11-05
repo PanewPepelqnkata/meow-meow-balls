@@ -28,6 +28,7 @@ import { StartIntroScene } from './StartIntroScene'
 import { readSafeArea } from '../../ui/ResponsiveLayout'
 import { UI_COLORS, buildScreenHeader, ChunkyButton } from '../../ui/DesignSystem'
 import { CollectionBookView } from '../rendering/CollectionBookView'
+import { StoreView } from '../rendering/StoreView'
 import { AuthModal } from '../../ui/AuthModal'
 import { authService, resolveDisplayName, scoreService } from '../../services/auth'
 /**
@@ -76,7 +77,7 @@ const YELLOW = '#ffeb3b'
 const LEADERBOARD_TEXT = '#25283a'
 const LEADERBOARD_SECONDARY = '#555467'
 const LEADERBOARD_FONT = 'Nunito, ui-rounded, system-ui, sans-serif'
-type ScreenName = 'menu' | 'leaderboard' | 'settings' | 'collection'
+type ScreenName = 'menu' | 'leaderboard' | 'settings' | 'collection' | 'store'
 
 interface CastBall {
   c: Phaser.GameObjects.Container
@@ -103,6 +104,7 @@ export class TitleScene extends Phaser.Scene {
   /** Panel chrome survives viewport rebuilds; each screen owns fresh content. */
   private panelContent!: Phaser.GameObjects.Container
   private collectionBook: CollectionBookView | null = null
+  private storeView: StoreView | null = null
   private cast: CastBall[] = []
   private logoC!: Phaser.GameObjects.Container
   private logoBaseY = 0
@@ -413,7 +415,7 @@ export class TitleScene extends Phaser.Scene {
     this.coinRect = null
 
     if (!this.returnToPause) {
-      const isDesktop = vw >= 768 && vw > vh
+      const isDesktop = vw >= 768 && vw > vh && vh >= 500
       if (isDesktop) {
         this.buildDesktopLayout(vw, vh)
       } else {
@@ -506,6 +508,7 @@ export class TitleScene extends Phaser.Scene {
       { x: buttonX, y: firstNavY },
       { x: buttonX, y: firstNavY + step },
       { x: buttonX, y: firstNavY + 2 * step },
+      { x: buttonX, y: firstNavY + 3 * step },
     ]
     if (!authService.isAuthenticated()) {
       const sideGap = 16
@@ -585,16 +588,18 @@ export class TitleScene extends Phaser.Scene {
       : Math.round(Math.max(38, Math.min(52, vh * 0.055)))
     const navGap = portrait ? 12 : 16
     const navW = portrait
-      ? Math.floor((vw - 2 * m - 2 * navGap) / 3)
-      : Math.round(Math.max(120, Math.min(170, (vw - 2 * m - 2 * 16) / 3)))
+      ? Math.floor((vw - 2 * m - navGap) / 2)
+      : Math.round(Math.max(90, Math.min(150, (vw - 2 * m - 3 * 14) / 4)))
     if (portrait) {
       // Centered flow, bottom-anchored so the stats chip always sits in the
-      // safe area: chip -> balanced 3 nav buttons row -> PLAY + LOGIN side-by-side -> machine -> logo.
+      // safe area: chip -> 2x2 nav grid -> PLAY + LOGIN side-by-side -> machine -> logo.
       const isAuthed = authService.isAuthenticated()
       const rowGap = 20
       const chipY = vh - bottomInset - chipH / 2
-      const navY = chipY - chipH / 2 - rowGap - navH / 2
-      const playY = navY - navH / 2 - rowGap - playH / 2
+      const navRowGap = 8
+      const navY = chipY - chipH / 2 - rowGap - navH - navRowGap / 2
+      const navY2 = navY + navH + navRowGap
+      const playY = navY2 - navH / 2 - rowGap - playH / 2
       const bandTop = logoCY + logoH / 2 + 10
       const bandBottom = playY - playH / 2 - 10
       this.buildMachine(
@@ -604,9 +609,10 @@ export class TitleScene extends Phaser.Scene {
         Math.min(vw * 0.6, 340),
       )
       const navPos: Array<{ x: number; y: number; w?: number; h?: number }> = [
-        { x: vw / 2 - (navW + navGap), y: navY },
-        { x: vw / 2, y: navY },
-        { x: vw / 2 + (navW + navGap), y: navY },
+        { x: vw / 2 - (navW + navGap) / 2, y: navY },
+        { x: vw / 2 + (navW + navGap) / 2, y: navY },
+        { x: vw / 2 - (navW + navGap) / 2, y: navY2 },
+        { x: vw / 2 + (navW + navGap) / 2, y: navY2 },
       ]
       if (!isAuthed) {
         // PLAY + LOGIN share one row, splitting the full width evenly.
@@ -636,11 +642,12 @@ export class TitleScene extends Phaser.Scene {
         bandBottom - bandTop,
         Math.min(vw * 0.45, 420),
       )
-      const gap = 20
+      const gap = 14
       const navPos: Array<{ x: number; y: number; w?: number; h?: number }> = [
-        { x: vw / 2 - (navW + gap), y: navY },
-        { x: vw / 2, y: navY },
-        { x: vw / 2 + (navW + gap), y: navY },
+        { x: vw / 2 - 1.5 * (navW + gap), y: navY },
+        { x: vw / 2 - 0.5 * (navW + gap), y: navY },
+        { x: vw / 2 + 0.5 * (navW + gap), y: navY },
+        { x: vw / 2 + 1.5 * (navW + gap), y: navY },
       ]
       if (!isAuthed) {
         // PLAY + LOGIN share one row, splitting the full width evenly.
@@ -1156,10 +1163,11 @@ export class TitleScene extends Phaser.Scene {
       { x: playX, y: playY, w: playW, h: playH, label: 'PLAY', tier: 1, seed: 4242, screen: 'menu' },
       { x: navPos[0]!.x, y: navPos[0]!.y, w: navW, h: navH, label: 'LEADERBOARD', tier: 2, seed: 4242 + 2 * 7, screen: 'leaderboard' },
       { x: navPos[1]!.x, y: navPos[1]!.y, w: navW, h: navH, label: 'COLLECTION', tier: 3, seed: 4242 + 3 * 7, screen: 'collection' },
-      { x: navPos[2]!.x, y: navPos[2]!.y, w: navW, h: navH, label: 'SETTINGS', tier: 4, seed: 4242 + 4 * 7, screen: 'settings' },
+      { x: navPos[2]!.x, y: navPos[2]!.y, w: navW, h: navH, label: 'STORE', tier: 6, seed: 4242 + 6 * 7, screen: 'store' },
+      { x: navPos[3]!.x, y: navPos[3]!.y, w: navW, h: navH, label: 'SETTINGS', tier: 4, seed: 4242 + 4 * 7, screen: 'settings' },
     ]
-    if (!authService.isAuthenticated() && navPos[3]) {
-      const p = navPos[3]
+    if (!authService.isAuthenticated() && navPos[4]) {
+      const p = navPos[4]
       specs.push({ x: p.x, y: p.y, w: p.w ?? navW, h: p.h ?? navH, label: 'LOGIN', tier: 5, seed: 4242 + 5 * 7, screen: 'login' })
     }
     if (!this.uiverseDom) this.uiverseDom = new UiverseDomButtons(this)
@@ -1371,12 +1379,14 @@ export class TitleScene extends Phaser.Scene {
     const subs: Partial<Record<ScreenName, string>> = {
       collection: 'COLLECTION ALBUM & DISCOVERY LOG',
       settings: 'BACKGROUND THEME & SAVED PROGRESS',
+      store: 'MERCHANT\'S BAG — COMING SOON',
     }
 
     const titles: Partial<Record<ScreenName, string>> = {
       collection: 'COLLECTION BOOK',
       leaderboard: 'LEADERBOARD',
       settings: 'SETTINGS',
+      store: 'STORE',
     }
 
     const { contentTopY } = this.screen === 'leaderboard'
@@ -1398,6 +1408,9 @@ export class TitleScene extends Phaser.Scene {
         break
       case 'settings':
         this.buildSettings(vw, vh, contentTopY)
+        break
+      case 'store':
+        this.buildStore(vw, vh, contentTopY)
         break
     }
   }
@@ -1495,10 +1508,16 @@ export class TitleScene extends Phaser.Scene {
     this.collectionBook = null
   }
 
+  private destroyStoreView(): void {
+    this.storeView?.destroy()
+    this.storeView = null
+  }
+
   private clearPanelContent(): void {
     this.lbModalCleanup?.()
     this.lbModalCleanup = null
     this.destroyCollectionBook()
+    this.destroyStoreView()
     this.teardownLeaderboardScroll()
     this.panelContent.removeAll(true)
     this.panelRects.length = 0
@@ -2548,6 +2567,10 @@ export class TitleScene extends Phaser.Scene {
 
   private buildCollection(vw: number, vh: number, topY: number): void {
     this.collectionBook = new CollectionBookView(this, this.panelContent, vw, vh, topY)
+  }
+
+  private buildStore(vw: number, vh: number, topY: number): void {
+    this.storeView = new StoreView(this, this.panelContent, vw, vh, topY)
   }
 
   // -------------------------------------------------------------------------
