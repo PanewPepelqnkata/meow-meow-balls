@@ -10,6 +10,7 @@ import {
   restContour,
 } from '../rendering/BallAppearance'
 import { BALL_TIERS, getTier } from '../../config/ballTiers'
+import { COLLECTIBLE_SLOT_COUNT, COLLECTIBLE_TIERS, collectionSlotsFor, collectionDiscovery } from '../../config/collectibleCollection'
 import { MAX_RENDER_DPR } from '../../config/stage'
 import type { BackgroundScene } from './BackgroundScene'
 import type { ThemeName } from '../rendering/BackgroundTheme'
@@ -54,7 +55,7 @@ import { authService, resolveDisplayName, scoreService } from '../../services/au
  *   · A large, pulsing PLAY button below the machine (the primary action).
  * · LEADERBOARD / COLLECTION / SETTINGS as chunky outlined Uiverse buttons
  *   balanced cleanly below PLAY.
- * · A compact stats chip: lifetime best score + discovered tiers.
+ * · A compact stats chip: lifetime best score, full ball collection count + coin balance.
  *
  * The composition adapts intentionally: portrait (vw ≤ vh or narrow) is a
  * centered flow (logo → machine → PLAY → grid → stats chip); landscape
@@ -109,7 +110,6 @@ export class TitleScene extends Phaser.Scene {
   private logoC!: Phaser.GameObjects.Container
   private logoBaseY = 0
   private logoImg: Phaser.GameObjects.Image | null = null
-  private coinRect: { x: number; y: number; w: number; h: number } | null = null
   private chipRect: { x: number; y: number; w: number; h: number } | null = null
   /** The PLAY button's container — pulsed gently every frame. */
   private playC: Phaser.GameObjects.Container | null = null
@@ -314,7 +314,7 @@ export class TitleScene extends Phaser.Scene {
         cast: () =>
           this.cast.map((b) => ({ x: Math.round(b.c.x), y: Math.round(b.c.y), tier: b.tier })),
         chip: () => (this.chipRect ? { ...this.chipRect } : null),
-        coins: () => (this.coinRect ? { ...this.coinRect } : null),
+        coins: () => (this.chipRect ? { ...this.chipRect } : null),
         logoBox: () =>
           this.logoImg && this.logoImg.texture.key === 'br-wordmark'
             ? {
@@ -412,7 +412,6 @@ export class TitleScene extends Phaser.Scene {
     this.machineC = null
     this.logoImg = null
     this.chipRect = null
-    this.coinRect = null
 
     if (!this.returnToPause) {
       const isDesktop = vw >= 768 && vw > vh && vh >= 500
@@ -532,15 +531,15 @@ export class TitleScene extends Phaser.Scene {
     const { logoCY, logoH } = this.buildLogo(vw / 2, topInset, vw, vh)
 
     const chipH = Math.round(Math.max(30, Math.min(44, vh * 0.052)))
-    const chipW = Math.round(Math.max(170, Math.min(310, Math.min(vw * 0.86, chipH * 7.2))))
+    const chipW = Math.round(Math.max(280, Math.min(420, Math.min(vw * 0.86, chipH * 9))))
     const chipY = logoCY + logoH / 2 + 8 + chipH / 2
 
     // Buttons on left side (25% from left edge), arranged vertically
     const buttonX = vw * 0.25
     const playH = Math.round(Math.max(44, Math.min(64, vh * 0.075)))
-    const playW = Math.round(Math.max(200, Math.min(320, vw * 0.26)))
+    const playW = Math.round(Math.max(200, Math.min(360, vw * 0.28)))
     const navH = Math.round(Math.max(34, Math.min(48, vh * 0.055)))
-    const navW = Math.round(Math.max(180, Math.min(280, playW * 0.9)))
+    const navW = Math.round(Math.max(180, Math.min(300, playW * 0.95)))
     const bandTop = Math.max(logoCY + logoH / 2 + 14, chipY + chipH / 2 + 10)
     const bandBottom = vh - bottomInset - m
     const navCount = 3
@@ -564,9 +563,7 @@ export class TitleScene extends Phaser.Scene {
       Math.min(vw * 0.38, 420),
     )
 
-    this.buildStatsChip(vw / 2 - 42, chipY, Math.max(120, chipW - 92), chipH)
-    const rightMargin = Math.max(m, safe.right)
-    this.buildCoinChip(vw - rightMargin - 56, topInset + 25, 112, 50)
+    this.buildStatsChip(vw / 2, chipY, chipW, chipH)
   }
 
   private buildMobileLayout(vw: number, vh: number): void {
@@ -578,10 +575,10 @@ export class TitleScene extends Phaser.Scene {
 
     const { logoCY, logoH } = this.buildLogo(vw / 2, topInset, vw, vh)
     const chipH = Math.round(Math.max(30, Math.min(44, vh * 0.052)))
-    const chipW = Math.round(Math.max(170, Math.min(310, Math.min(vw * 0.86, chipH * 7.2))))
+    const chipW = Math.round(Math.max(280, Math.min(420, Math.min(vw * 0.86, chipH * 9))))
     const playH = Math.round(Math.max(44, Math.min(64, vh * 0.075)))
     const playW = portrait
-      ? Math.round(Math.max(180, Math.min(300, vw * 0.68)))
+      ? Math.round(Math.max(180, Math.min(320, vw * 0.72)))
       : Math.round(Math.max(200, Math.min(340, vw * 0.28)))
     const navH = portrait
       ? Math.round(Math.max(32, Math.min(44, vh * 0.048)))
@@ -594,7 +591,7 @@ export class TitleScene extends Phaser.Scene {
       // Centered flow, bottom-anchored so the stats chip always sits in the
       // safe area: chip -> 2x2 nav grid -> PLAY + LOGIN side-by-side -> machine -> logo.
       const isAuthed = authService.isAuthenticated()
-      const rowGap = 20
+      const rowGap = 48
       const chipY = vh - bottomInset - chipH / 2
       const navRowGap = 8
       const navY = chipY - chipH / 2 - rowGap - navH - navRowGap / 2
@@ -623,10 +620,7 @@ export class TitleScene extends Phaser.Scene {
       } else {
         this.buildPlayAndNav(vw, playY, playW, playH, navW, navH, navPos)
       }
-      const rightMargin = Math.max(m, safe.right)
-      const coinPillW = 92
-      this.buildStatsChip(vw / 2 - 39, chipY, Math.max(120, Math.min(chipW - 82, vw - 2 * rightMargin - coinPillW - 16)), chipH)
-      this.buildCoinChip(vw - rightMargin - coinPillW / 2, chipY, coinPillW, chipH)
+      this.buildStatsChip(vw / 2, chipY, Math.min(chipW, vw - 2 * m), chipH)
     } else {
       // Compact landscape layout for narrow (< 768px) viewports.
       const isAuthed = authService.isAuthenticated()
@@ -659,8 +653,6 @@ export class TitleScene extends Phaser.Scene {
         this.buildPlayAndNav(vw, playY, playW, playH, navW, navH, navPos)
       }
       this.buildStatsChip(vw / 2, chipY, chipW, chipH)
-      const rightMargin = Math.max(m, safe.right)
-      this.buildCoinChip(vw - rightMargin - 54, topInset + 24, 108, 48)
     }
   }
 
@@ -1215,34 +1207,53 @@ export class TitleScene extends Phaser.Scene {
     })
   }
 
-  /** Compact lifetime stats: best score + discovered tiers (a progress
-   * pill with the highest discovered ball as its icon). */
+  /** Compact lifetime stats: best score, discovered balls and coin balance. */
   private buildStatsChip(cx: number, cy: number, w: number, h: number): void {
     const save = loadSave()
-    const TOTAL_TIERS = BALL_TIERS.length
-    const discovered = Object.keys(save.discovered)
+    const CORE_TOTAL = 8
+    const COLLECTIBLE_TOTAL = COLLECTIBLE_TIERS.length * COLLECTIBLE_SLOT_COUNT
+    const TOTAL_COLLECTION = CORE_TOTAL + COLLECTIBLE_TOTAL
+
+    const coreTiers = Object.keys(save.discovered)
       .map(Number)
-      .filter((t) => t >= 1 && t <= TOTAL_TIERS)
-    const got = discovered.length
-    const bestTier = discovered.length ? Math.max(...discovered) : 1
+      .filter((t) => t >= 1 && t <= CORE_TOTAL)
+    const coreDiscovered = coreTiers.length
+
+    let collectibleDiscovered = 0
+    for (const tier of COLLECTIBLE_TIERS) {
+      const slots = collectionSlotsFor(tier)
+      for (const slot of slots) {
+        if (slot.theme && collectionDiscovery(save.variants, tier, slot.theme)) {
+          collectibleDiscovered++
+        }
+      }
+    }
+    const got = coreDiscovered + collectibleDiscovered
+    const bestTier = coreDiscovered > 0 ? Math.max(...coreTiers) : 1
+
     this.chipRect = { x: cx - w / 2, y: cy - h / 2, w, h }
     const g = this.add.graphics()
-    this.menuLayer.add(g)
     g.fillStyle(0x292524, 0.92)
     g.fillRoundedRect(cx - w / 2, cy - h / 2, w, h, h / 2)
-    // Clean vector ink outline.
     g.lineStyle(3, 0x111111, 1)
     g.strokeRoundedRect(cx - w / 2, cy - h / 2, w, h, h / 2)
+    this.menuLayer.add(g)
 
-    const label = hudText(this, 0, 0, 'BEST', 1, {
+    const sectionW = w / 3
+    const bestCenter = cx - sectionW
+    const collectionCenter = cx
+    const coinsCenter = cx + sectionW
+
+    const bestLabel = hudText(this, 0, 0, 'BEST', 1, {
       color: YELLOW,
       size: Math.max(10, h * 0.34),
       stroke: 2,
       origin: [1, 0.5],
       shadow: false,
     })
-    label.setPosition(cx - w * 0.24, cy)
-    this.menuLayer.add(label)
+    bestLabel.setPosition(bestCenter - h * 0.04, cy)
+    this.menuLayer.add(bestLabel)
+
     const score = hudText(this, 0, 0, `${save.best}`, 1, {
       color: '#ffffff',
       size: Math.max(13, h * 0.5),
@@ -1250,67 +1261,57 @@ export class TitleScene extends Phaser.Scene {
       origin: [0, 0.5],
       shadow: false,
     })
-    score.setPosition(cx - w * 0.2, cy)
-    score.setScale(Math.min(1, (w * 0.17) / Math.max(1, score.width)))
+    score.setPosition(bestCenter + h * 0.04, cy)
+    score.setScale(Math.min(1, (sectionW * 0.54) / Math.max(1, score.width)))
     this.menuLayer.add(score)
 
-    const dot = hudText(this, 0, 0, '·', 1, {
+    const dotLeft = hudText(this, 0, 0, '·', 1, {
       color: '#565a72',
       size: h * 0.55,
-      stroke: 0,
+      stroke: 1,
       origin: [0.5, 0.5],
       shadow: false,
     })
-    dot.setPosition(cx + w * 0.02, cy)
-    this.menuLayer.add(dot)
+    dotLeft.setPosition(cx - w / 6, cy)
+    this.menuLayer.add(dotLeft)
 
-    drawBallIcon(this, g, bestTier, cx + w * 0.13, cy, h * 0.3, { seed: 991 * bestTier, layer: this.menuLayer })
-    const tiers = hudText(this, 0, 0, `${got}/${TOTAL_TIERS}`, 1, {
+    drawBallIcon(this, g, bestTier, collectionCenter - h * 0.24, cy, h * 0.28, {
+      seed: 991 * bestTier,
+      layer: this.menuLayer,
+    })
+    const collection = hudText(this, 0, 0, `${got}/${TOTAL_COLLECTION}`, 1, {
       color: CREAM,
       size: Math.max(13, h * 0.5),
       stroke: 3,
       origin: [0, 0.5],
       shadow: false,
     })
-    tiers.setPosition(cx + w * 0.2, cy)
-    this.menuLayer.add(tiers)
+    collection.setPosition(collectionCenter + h * 0.02, cy)
+    collection.setScale(Math.min(1, (sectionW * 0.6) / Math.max(1, collection.width)))
+    this.menuLayer.add(collection)
 
-  }
-
-  private buildCoinChip(cx: number, cy: number, w: number, h: number): void {
-    const save = loadSave()
-    this.coinRect = { x: cx - w / 2, y: cy - h / 2, w, h }
-    const g = this.add.graphics()
-    g.fillStyle(0x161b2e, 0.96)
-    g.fillRoundedRect(cx - w / 2, cy - h / 2, w, h, h / 2)
-    g.lineStyle(3, 0x111111, 1)
-    g.strokeRoundedRect(cx - w / 2, cy - h / 2, w, h, h / 2)
-    this.menuLayer.add(g)
-
-    const coinR = h * 0.32
-    const coinX = cx - w * 0.31
-    const coinG = this.add.graphics()
-    drawCoin(coinG, coinX, cy, coinR)
-    this.menuLayer.add(coinG)
-
-    const label = hudText(this, 0, 0, 'COINS', 1, {
-      color: '#ffe08a',
-      size: Math.max(9, h * 0.25),
-      stroke: 2,
-      origin: [0, 0.5],
+    const dotRight = hudText(this, 0, 0, '·', 1, {
+      color: '#565a72',
+      size: h * 0.55,
+      stroke: 1,
+      origin: [0.5, 0.5],
       shadow: false,
     })
-    label.setPosition(cx - w * 0.11, cy - h * 0.2)
+    dotRight.setPosition(cx + w / 6, cy)
+    this.menuLayer.add(dotRight)
+
+    const coinG = this.add.graphics()
+    drawCoin(coinG, coinsCenter - h * 0.24, cy, h * 0.28)
+    this.menuLayer.add(coinG)
     const balance = hudText(this, 0, 0, formatCoins(save.coins), 1, {
       color: '#ffffff',
-      size: Math.max(12, h * 0.39),
+      size: Math.max(13, h * 0.5),
       stroke: 3,
       origin: [0, 0.5],
       shadow: false,
     })
-    balance.setPosition(cx - w * 0.11, cy + h * 0.18)
-    balance.setScale(Math.min(1, (w * 0.57) / Math.max(1, balance.width)))
-    this.menuLayer.add(label)
+    balance.setPosition(coinsCenter + h * 0.02, cy)
+    balance.setScale(Math.min(1, (sectionW * 0.6) / Math.max(1, balance.width)))
     this.menuLayer.add(balance)
   }
 
