@@ -104,12 +104,12 @@
   - Optimize responsive layout DOM probe to eliminate resize layout thrashing.
   - Fix manifest theme color consistency and standalone meta tags.
 - [ ] **PHASE 5: Game Feel & Impact Tuning**
-  - Enhance merge juice: subtle screen shake on combo $\ge 2$, tier-scaled impact feedback.
+  - Enhance merge juice: subtle screen shake on combo $\\ge 2$, tier-scaled impact feedback.
   - Add optional synthetic Web Audio sound effects for drop, bounce, merge, and ability.
 - [ ] **PHASE 6: UI/UX & Touch Envelopes**
   - Enforce minimum 44px touch targets across Settings, Navigation, and Game Over.
   - Fix blurry text resolution in `ScoreFeedback.ts` and UI text surfaces.
-  - Improve Game Over responsive scaling on small devices.
+  - Improve Game Over responsive scaling on small mobile displays.
 - [ ] **PHASE 7: Dead Code & Architecture Cleanup**
   - Prune `BallRenderer.ts`, `MenuButton.ts`, and legacy rigid body references.
   - Clean up type casts and assert clean test suites across all 39 test files.
@@ -149,3 +149,8 @@
 - Flat chamfered caps use `tipCollidersAt()` vertices for both rendering and Matter collision. Cached cap graphics and sleeves translate with every live animator update instead of trailing the old 24-unit repaint quantization. Combo glow rebuilds its geometry only while active after the wall height changes.
 - Browser smoke completed raise→hold→lower on 1280×800 desktop and 390×844 DPR-3 emulation. Floor drift was zero; rendered cap vertices agreed with live Matter vertices within floating-point tolerance; sleeve dimensions stayed fixed; container texture update/refresh calls remained zero. Physical-iPhone smoothness is not claimed from emulation.
 
+## Coin balance and token polish — 2026-11-05
+
+- The home screen separates the saved coin balance from lifetime score and collection progress. The balance uses a dedicated outlined pill in the top-right safe area on desktop and compact landscape, and beside the stats pill in portrait; the two portrait bounds reserve a gap.
+- Replaced the generic layered coin circles with a bold arcade token: dark offset edge, warm gold rim, inset face, and compact Ball Rush face emblem. `drawCoin` remains shared by the menu balance and game-over earnings row.
+- Browser verification is pending for 390×844 DPR 3, 844×390, and 1280×800. Compare the coin/stats bounds with the viewport and logo, and check coin-face readability at menu and game-over sizes.

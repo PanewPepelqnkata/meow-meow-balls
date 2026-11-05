@@ -107,6 +107,7 @@ export class TitleScene extends Phaser.Scene {
   private logoC!: Phaser.GameObjects.Container
   private logoBaseY = 0
   private logoImg: Phaser.GameObjects.Image | null = null
+  private coinRect: { x: number; y: number; w: number; h: number } | null = null
   private chipRect: { x: number; y: number; w: number; h: number } | null = null
   /** The PLAY button's container — pulsed gently every frame. */
   private playC: Phaser.GameObjects.Container | null = null
@@ -311,6 +312,7 @@ export class TitleScene extends Phaser.Scene {
         cast: () =>
           this.cast.map((b) => ({ x: Math.round(b.c.x), y: Math.round(b.c.y), tier: b.tier })),
         chip: () => (this.chipRect ? { ...this.chipRect } : null),
+        coins: () => (this.coinRect ? { ...this.coinRect } : null),
         logoBox: () =>
           this.logoImg && this.logoImg.texture.key === 'br-wordmark'
             ? {
@@ -408,6 +410,7 @@ export class TitleScene extends Phaser.Scene {
     this.machineC = null
     this.logoImg = null
     this.chipRect = null
+    this.coinRect = null
 
     if (!this.returnToPause) {
       const isDesktop = vw >= 768 && vw > vh
@@ -558,7 +561,9 @@ export class TitleScene extends Phaser.Scene {
       Math.min(vw * 0.38, 420),
     )
 
-    this.buildStatsChip(vw / 2, chipY, chipW, chipH)
+    this.buildStatsChip(vw / 2 - 42, chipY, Math.max(120, chipW - 92), chipH)
+    const rightMargin = Math.max(m, safe.right)
+    this.buildCoinChip(vw - rightMargin - 56, topInset + 25, 112, 50)
   }
 
   private buildMobileLayout(vw: number, vh: number): void {
@@ -612,7 +617,10 @@ export class TitleScene extends Phaser.Scene {
       } else {
         this.buildPlayAndNav(vw, playY, playW, playH, navW, navH, navPos)
       }
-      this.buildStatsChip(vw / 2, chipY, chipW, chipH)
+      const rightMargin = Math.max(m, safe.right)
+      const coinPillW = 92
+      this.buildStatsChip(vw / 2 - 39, chipY, Math.max(120, Math.min(chipW - 82, vw - 2 * rightMargin - coinPillW - 16)), chipH)
+      this.buildCoinChip(vw - rightMargin - coinPillW / 2, chipY, coinPillW, chipH)
     } else {
       // Compact landscape layout for narrow (< 768px) viewports.
       const isAuthed = authService.isAuthenticated()
@@ -644,6 +652,8 @@ export class TitleScene extends Phaser.Scene {
         this.buildPlayAndNav(vw, playY, playW, playH, navW, navH, navPos)
       }
       this.buildStatsChip(vw / 2, chipY, chipW, chipH)
+      const rightMargin = Math.max(m, safe.right)
+      this.buildCoinChip(vw - rightMargin - 54, topInset + 24, 108, 48)
     }
   }
 
@@ -1257,23 +1267,43 @@ export class TitleScene extends Phaser.Scene {
     tiers.setPosition(cx + w * 0.2, cy)
     this.menuLayer.add(tiers)
 
-    // Coins display (right side of chip)
-    const coinX = cx + w * 0.32
+  }
+
+  private buildCoinChip(cx: number, cy: number, w: number, h: number): void {
+    const save = loadSave()
+    this.coinRect = { x: cx - w / 2, y: cy - h / 2, w, h }
+    const g = this.add.graphics()
+    g.fillStyle(0x161b2e, 0.96)
+    g.fillRoundedRect(cx - w / 2, cy - h / 2, w, h, h / 2)
+    g.lineStyle(3, 0x111111, 1)
+    g.strokeRoundedRect(cx - w / 2, cy - h / 2, w, h, h / 2)
+    this.menuLayer.add(g)
+
+    const coinR = h * 0.32
+    const coinX = cx - w * 0.31
     const coinG = this.add.graphics()
-    drawCoin(coinG, coinX, cy, h * 0.24)
+    drawCoin(coinG, coinX, cy, coinR)
     this.menuLayer.add(coinG)
-    const coinText = hudText(this, 0, 0, formatCoins(save.coins), 1, {
-      color: '#e5ad32',
-      size: Math.max(11, h * 0.38),
+
+    const label = hudText(this, 0, 0, 'COINS', 1, {
+      color: '#ffe08a',
+      size: Math.max(9, h * 0.25),
       stroke: 2,
       origin: [0, 0.5],
       shadow: false,
     })
-    coinText.setPosition(coinX + h * 0.32, cy)
-    // Clamp coin text width so it doesn't overflow the pill's right edge
-    const maxCoinW = Math.max(10, (cx + w * 0.5) - (coinX + h * 0.32) - 6)
-    coinText.setScale(Math.min(1, maxCoinW / Math.max(1, coinText.width)))
-    this.menuLayer.add(coinText)
+    label.setPosition(cx - w * 0.11, cy - h * 0.2)
+    const balance = hudText(this, 0, 0, formatCoins(save.coins), 1, {
+      color: '#ffffff',
+      size: Math.max(12, h * 0.39),
+      stroke: 3,
+      origin: [0, 0.5],
+      shadow: false,
+    })
+    balance.setPosition(cx - w * 0.11, cy + h * 0.18)
+    balance.setScale(Math.min(1, (w * 0.57) / Math.max(1, balance.width)))
+    this.menuLayer.add(label)
+    this.menuLayer.add(balance)
   }
 
 
