@@ -13,7 +13,7 @@ describe('the discovery banner geometry', () => {
     // Phone portrait
     const phone = bannerRect(390, 844)
     expect(phone.cx).toBeGreaterThan(390 * 0.5)
-    expect(phone.cy).toBeLessThan(844 * 0.2)
+    expect(phone.cy).toBeLessThan(844 * 0.3)
 
     // Desktop landscape
     const desktop = bannerRect(1280, 720)
@@ -35,6 +35,27 @@ describe('the discovery banner geometry', () => {
     // Both should have reasonable thickness
     expect(phone.halfThick).toBeGreaterThan(30)
     expect(desktop.halfThick).toBeGreaterThan(30)
+  })
+
+  it('matches the approved 1380x1140 reference footprint and right anchor', () => {
+    const rect = bannerRect(1380, 1140)
+    const xExtent = Math.cos(rect.angle) * rect.halfLen + Math.sin(rect.angle) * rect.halfThick
+    const yExtent = Math.sin(rect.angle) * rect.halfLen + Math.cos(rect.angle) * rect.halfThick
+
+    expect(rect.halfLen * 2).toBeCloseTo(720, 0)
+    expect(rect.halfThick * 2).toBeCloseTo(136, 0)
+    expect(rect.cx + xExtent).toBeCloseTo(1380 - 1380 * 0.018, 0)
+    expect(rect.cy - yExtent).toBeCloseTo(1140 * 0.07, 0)
+  })
+
+  it('keeps the portrait banner compact and below the top-right HUD', () => {
+    const rect = bannerRect(390, 844)
+    const xExtent = Math.cos(rect.angle) * rect.halfLen + Math.sin(rect.angle) * rect.halfThick
+    const yExtent = Math.sin(rect.angle) * rect.halfLen + Math.cos(rect.angle) * rect.halfThick
+
+    expect(rect.halfLen * 2).toBeLessThan(300)
+    expect(rect.cx + xExtent).toBeLessThanOrEqual(390 - 14)
+    expect(rect.cy - yExtent).toBeGreaterThanOrEqual(142)
   })
 })
 
