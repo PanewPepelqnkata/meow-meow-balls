@@ -304,35 +304,33 @@ export class GameOverView {
     replayLabel.setOrigin(0, 0)
     const replayHit = scene.add.rectangle(0, 0, columnW, 64, CREAM, 0.001).setInteractive({ useHandCursor: true })
     primary.add(replayHit)
-    const orbitDots = Array.from({ length: 6 }, (_, i) => scene.add.circle(
-      columnX,
-      primaryY,
-      i % 2 === 0 ? 2.5 : 2,
-      [0x45d8ff, CREAM, 0x7ab8ff, 0x45d8ff, CREAM, 0x7ab8ff][i]!,
-      0.72,
-    ))
-    content.add([replayGlow, replayShadow, ...orbitDots, primary])
+    const orbitLine = scene.add.graphics().setPosition(columnX, primaryY)
+    content.add([replayGlow, replayShadow, orbitLine, primary])
     this.bindAction(primary, replayHit, this.onRestart, true, replayShadow)
     if (!this.reducedMotion) {
-      const orbit = { angle: 0 }
-      const placeOrbitDots = (): void => {
-        for (let i = 0; i < orbitDots.length; i++) {
-          const angle = orbit.angle + (i / orbitDots.length) * Math.PI * 2
-          orbitDots[i]!.setPosition(
-            columnX + Math.cos(angle) * (columnW / 2 + 12),
-            primaryY + Math.sin(angle) * 42,
-          )
-          orbitDots[i]!.setAlpha(0.48 + (Math.sin(angle * 1.7) + 1) * 0.16)
+      const sweep = { angle: 0 }
+      const paintOrbitLine = (): void => {
+        orbitLine.clear()
+        const n = replayContour.length
+        const head = Math.floor(sweep.angle / (Math.PI * 2) * n) % n
+        const trail = 28
+        for (let i = 0; i < trail; i++) {
+          const idx = (head - i + n) % n
+          const a = replayContour[idx]!
+          const b = replayContour[(idx + 1) % n]!
+          const fade = 1 - i / trail
+          orbitLine.lineStyle(2.2, blendColor(0x45d8ff, CREAM, fade), fade * 0.9)
+          orbitLine.lineBetween(a.x, a.y, b.x, b.y)
         }
       }
-      placeOrbitDots()
+      paintOrbitLine()
       this.tweens.push(scene.tweens.add({
-        targets: orbit,
+        targets: sweep,
         angle: Math.PI * 2,
-        duration: 3800,
+        duration: 2400,
         repeat: -1,
         ease: 'Linear',
-        onUpdate: placeOrbitDots,
+        onUpdate: paintOrbitLine,
       }))
       const releaseFace = (): void => {
         scene.tweens.killTweensOf(replayFace)
