@@ -1270,6 +1270,9 @@ export class TitleScene extends Phaser.Scene {
       shadow: false,
     })
     coinText.setPosition(coinX + h * 0.32, cy)
+    // Clamp coin text width so it doesn't overflow the pill's right edge
+    const maxCoinW = Math.max(10, (cx + w * 0.5) - (coinX + h * 0.32) - 6)
+    coinText.setScale(Math.min(1, maxCoinW / Math.max(1, coinText.width)))
     this.menuLayer.add(coinText)
   }
 

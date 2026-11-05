@@ -5,7 +5,7 @@ import { doodleSilhouette, darkenFill } from '../../ui/CartoonButton'
 import { getTier } from '../../config/ballTiers'
 import { GAME_OVER_SEQUENCE as SEQ } from '../../config/gameOverSequence'
 import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK, type BallExpression } from './BallAppearance'
-import { drawCoin, formatCoins } from './Coin'
+import { drawCoin, formatCoins, coinsForScore } from './Coin'
 import { loadSave } from '../state/save'
 
 const CREAM = 0xfff8ec
@@ -173,7 +173,7 @@ export class GameOverView {
     )
 
     // Coins earned this run (score / 1000)
-    const coinsEarned = Math.round((run.score / 1000) * 10) / 10
+    const coinsEarned = coinsForScore(run.score)
     const totalCoins = loadSave().coins
     const coinY = reaction.y + reaction.height + 14
     const coinG = scene.add.graphics()
@@ -182,7 +182,7 @@ export class GameOverView {
     const coinTotal = text(columnX + 30, coinY + 4, `(${formatCoins(totalCoins)} total)`, 12, INK_COLOR)
     content.add([coinG, coinText, coinTotal])
 
-    const statsY = coinY + 22
+    const statsY = coinY + 30
     const statsH = 84
     const cellW = columnW / 4
     const statsLeft = columnX - columnW / 2

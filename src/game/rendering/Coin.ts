@@ -50,6 +50,13 @@ export function drawCoin(g: Phaser.GameObjects.Graphics, x: number, y: number, r
 }
 
 /**
+ * Calculate coins earned for a given score: score / 1000, rounded to 1 decimal place.
+ */
+export function coinsForScore(score: number): number {
+  return Math.round((score / 1000) * 10) / 10
+}
+
+/**
  * Format coin count for display: 15.8, 142.0, etc.
  * Always shows one decimal place.
  */
