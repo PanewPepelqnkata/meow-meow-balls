@@ -3,6 +3,7 @@ import { authService } from '../services/auth'
 import {
   bossService,
   type BossAnalyticsSummary,
+  type BossCoinOperation,
   type BossPlayerRecord,
   type BossRunEnriched,
 } from '../services/boss'
@@ -37,6 +38,14 @@ interface PlayerFormState {
   bestTier: number
 }
 
+interface CoinFormState {
+  userId: string
+  displayName: string
+  currentCoins: number
+  operation: BossCoinOperation
+  amount: number
+}
+
 const TIER_COLORS = BALL_TIERS.map(
   (t) => `#${t.color.toString(16).padStart(6, '0')}`,
 )
@@ -47,6 +56,11 @@ function tierColor(tier: number): string {
 
 function fmtNum(n: number): string {
   return n.toLocaleString('en-US')
+}
+
+function fmtCoins(value: number | string | null | undefined): string {
+  const coins = Number(value)
+  return Number.isFinite(coins) ? Math.max(0, coins).toFixed(1) : '0.0'
 }
 
 function fmtDate(iso: string | number | null | undefined): string {
@@ -116,6 +130,7 @@ export function BossDashboard() {
   const [runSort, setRunSort] = useState<'recent' | 'score' | 'tier' | 'merges'>('recent')
   const [runForm, setRunForm] = useState<RunFormState | null>(null)
   const [playerForm, setPlayerForm] = useState<PlayerFormState | null>(null)
+  const [coinForm, setCoinForm] = useState<CoinFormState | null>(null)
   const [confirmDeleteUser, setConfirmDeleteUser] = useState<BossPlayerRecord | null>(null)
   const [confirmResetUser, setConfirmResetUser] = useState<BossPlayerRecord | null>(null)
   const [confirmDeleteRun, setConfirmDeleteRun] = useState<BossRunEnriched | null>(null)
@@ -292,6 +307,17 @@ export function BossDashboard() {
     })
   }
 
+  const openEditCoins = (player: BossPlayerRecord) => {
+    if (player.isGuest) return
+    setCoinForm({
+      userId: player.id,
+      displayName: player.displayName,
+      currentCoins: Number(player.coins ?? 0),
+      operation: 'increase',
+      amount: 1,
+    })
+  }
+
   const submitRunForm = async () => {
     if (!runForm) return
     setBusy(true)
@@ -380,6 +406,30 @@ export function BossDashboard() {
       setNotice({
         type: 'error',
         text: err instanceof Error ? err.message : 'Failed to update player',
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const submitCoinForm = async () => {
+    if (!coinForm) return
+    const amount = Number(coinForm.amount)
+    if (!Number.isFinite(amount) || amount < 0) {
+      setNotice({ type: 'error', text: 'Coin amount must be a non-negative number.' })
+      return
+    }
+    setBusy(true)
+    setNotice(null)
+    try {
+      await bossService.updateUserCoins(coinForm.userId, coinForm.operation, amount)
+      setCoinForm(null)
+      setNotice({ type: 'success', text: `${coinForm.displayName}'s coin balance was updated.` })
+      await loadData()
+    } catch (err) {
+      setNotice({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to update coins',
       })
     } finally {
       setBusy(false)
@@ -863,6 +913,7 @@ export function BossDashboard() {
                     <tr>
                       <th>#</th>
                       <th>Player</th>
+                      <th>Coins</th>
                       <th>Best Score</th>
                       <th>Career Runs</th>
                       <th>Total Merges</th>
@@ -878,6 +929,7 @@ export function BossDashboard() {
                           <strong>{p.displayName}</strong>
                           <div className="boss-muted">@{p.username}</div>
                         </td>
+                        <td className="boss-mono boss-coins">{fmtCoins(p.coins)}</td>
                         <td className="boss-mono">{fmtNum(p.bestScore)}</td>
                         <td>{p.careerRuns}</td>
                         <td>{fmtNum(p.totalMerges)}</td>
@@ -906,7 +958,7 @@ export function BossDashboard() {
               <div>
                 <h2 className="boss-card-title">Player Management</h2>
                 <p className="boss-card-subtitle">
-                  Edit progression, add runs, reset accounts, or delete players
+                  View coin balances, edit progression, add runs, reset accounts, or delete players
                 </p>
               </div>
             </div>
@@ -924,6 +976,7 @@ export function BossDashboard() {
                   <tr>
                     <th>Player</th>
                     <th>Email</th>
+                    <th>Coins</th>
                     <th>Best Score</th>
                     <th>Career Runs</th>
                     <th>Total Merges</th>
@@ -941,6 +994,7 @@ export function BossDashboard() {
                         <div className="boss-muted">@{p.username}</div>
                       </td>
                       <td className="boss-muted">{p.email}</td>
+                      <td className="boss-mono boss-coins">{fmtCoins(p.coins)}</td>
                       <td className="boss-mono">{fmtNum(p.bestScore)}</td>
                       <td>{p.careerRuns}</td>
                       <td>{fmtNum(p.totalMerges)}</td>
@@ -974,6 +1028,12 @@ export function BossDashboard() {
                             onClick={() => openEditPlayer(p)}
                           >
                             Edit
+                          </button>
+                          <button
+                            className="boss-btn boss-btn-sm boss-btn-primary"
+                            onClick={() => openEditCoins(p)}
+                          >
+                            Coins
                           </button>
                           <button
                             className="boss-btn boss-btn-sm boss-btn-secondary"
@@ -1449,6 +1509,82 @@ export function BossDashboard() {
                 disabled={busy}
               >
                 {busy ? 'Saving…' : 'Save Player'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---- Coin Adjustment Modal ---- */}
+      {coinForm && (
+        <div className="boss-modal-backdrop" onClick={() => !busy && setCoinForm(null)}>
+          <div className="boss-modal" onClick={(e) => e.stopPropagation()}>
+            <h3 className="boss-modal-title">Adjust Coins</h3>
+            <p className="boss-modal-sub">
+              Update <strong>{coinForm.displayName}</strong>'s persisted balance. Current balance:{' '}
+              <strong className="boss-coins">{fmtCoins(coinForm.currentCoins)}</strong>
+            </p>
+            <div className="boss-form-grid">
+              <div className="boss-field">
+                <label htmlFor="coin-operation">Coin action</label>
+                <select
+                  id="coin-operation"
+                  className="boss-select"
+                  value={coinForm.operation}
+                  onChange={(e) =>
+                    setCoinForm({
+                      ...coinForm,
+                      operation: e.target.value as BossCoinOperation,
+                    })
+                  }
+                >
+                  <option value="increase">Increase balance</option>
+                  <option value="decrease">Decrease balance</option>
+                  <option value="set">Set exact balance</option>
+                </select>
+              </div>
+              <div className="boss-field">
+                <label htmlFor="coin-amount">
+                  {coinForm.operation === 'set' ? 'Exact balance' : 'Amount'}
+                </label>
+                <input
+                  id="coin-amount"
+                  className="boss-input"
+                  type="number"
+                  min={0}
+                  max={99999999999.9}
+                  step={0.1}
+                  value={coinForm.amount}
+                  onChange={(e) =>
+                    setCoinForm({
+                      ...coinForm,
+                      amount: Math.max(0, Number(e.target.value) || 0),
+                    })
+                  }
+                />
+              </div>
+            </div>
+            <p className="boss-muted">
+              {coinForm.operation === 'increase'
+                ? `New balance: ${fmtCoins(coinForm.currentCoins + coinForm.amount)}`
+                : coinForm.operation === 'decrease'
+                  ? `New balance: ${fmtCoins(Math.max(0, coinForm.currentCoins - coinForm.amount))}`
+                  : `New balance: ${fmtCoins(coinForm.amount)}`}
+            </p>
+            <div className="boss-modal-footer">
+              <button
+                className="boss-btn boss-btn-secondary"
+                onClick={() => setCoinForm(null)}
+                disabled={busy}
+              >
+                Cancel
+              </button>
+              <button
+                className="boss-btn boss-btn-primary"
+                onClick={() => void submitCoinForm()}
+                disabled={busy}
+              >
+                {busy ? 'Saving…' : 'Save Coin Balance'}
               </button>
             </div>
           </div>

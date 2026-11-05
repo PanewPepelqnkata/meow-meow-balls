@@ -71,6 +71,7 @@ describe('buildBossAnalytics', () => {
     {
       user_id: 'u1',
       best_score: 20512,
+      coins: 12.5,
       discovered: { '1': 1, '2': 1, '3': 1, '4': 1, '5': 1, '6': 1, '7': 1, '8': 1, '9': 1 },
       variants: { '9:1': 1 },
       stats: { runs: 2, merges: 481, bestTier: 9 },
@@ -112,6 +113,7 @@ describe('buildBossAnalytics', () => {
     expect(tier10Stat?.playersUnlocked).toBe(0)
 
     expect(summary.players[0]?.username).toBe('paneww')
+    expect(summary.players[0]?.coins).toBe(12.5)
     expect(summary.players[0]?.bestScore).toBe(20512)
     expect(summary.players[1]?.username).toBe('gopeto')
     expect(summary.players[1]?.bestScore).toBe(17444)

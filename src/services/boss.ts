@@ -29,6 +29,8 @@ export interface BossScoreRow {
 export interface BossUserProgressRow {
   user_id: string
   best_score: number
+  /** Coin balances are optional for compatibility with pre-coins dashboard payloads. */
+  coins?: number | string
   discovered: Record<string, number>
   variants: Record<string, number>
   stats: {
@@ -45,6 +47,37 @@ export interface BossUserProgressRow {
     theme: SaveDataV1['settings']['theme']
   }
   updated_at: string
+}
+
+export type BossCoinOperation = 'increase' | 'decrease' | 'set'
+export interface BossPlayerRecord {
+  id: string
+  username: string
+  displayName: string
+  email: string
+  isGuest?: boolean
+  convertedUserId?: string | null
+  convertedUsername?: string | null
+  convertedAt?: string | null
+  createdAt: string
+  updatedAt: string
+  lastSignInAt: string | null
+  bestScore: number
+  /** Registered users expose their persisted coin balance; guests do not. */
+  coins?: number
+  careerRuns: number
+  recordedRuns: number
+  totalMerges: number
+  bestTier: number
+  avgScore: number
+  avgMerges: number
+  avgDurationMs: number
+  totalDurationMs: number
+  scorePerMerge: number
+  discoveredTiers: number[]
+  variantKeys: string[]
+  theme: string
+  runs: BossScoreRow[]
 }
 
 export interface BossGuestProfileRow {
@@ -83,34 +116,6 @@ export interface BossGuestScoreRow {
   /** null/missing: legacy run without recorded identities; []: no collectible discovered. */
   collectibles?: RunCollectibles | null
   created_at: string
-}
-
-export interface BossPlayerRecord {
-  id: string
-  username: string
-  displayName: string
-  email: string
-  isGuest?: boolean
-  convertedUserId?: string | null
-  convertedUsername?: string | null
-  convertedAt?: string | null
-  createdAt: string
-  updatedAt: string
-  lastSignInAt: string | null
-  bestScore: number
-  careerRuns: number
-  recordedRuns: number
-  totalMerges: number
-  bestTier: number
-  avgScore: number
-  avgMerges: number
-  avgDurationMs: number
-  totalDurationMs: number
-  scorePerMerge: number
-  discoveredTiers: number[]
-  variantKeys: string[]
-  theme: string
-  runs: BossScoreRow[]
 }
 
 export interface BossRunEnriched extends BossScoreRow {
@@ -269,6 +274,8 @@ export function buildBossAnalytics(
     const runsWithDuration = userRuns.filter((r) => (r.duration_ms || 0) > 0)
 
     const bestScore = Math.max(maxScoreFromRuns, prog?.best_score ?? 0)
+    const rawCoins = Number(prog?.coins ?? 0)
+    const coins = Number.isFinite(rawCoins) ? Math.max(0, Math.round(rawCoins * 10) / 10) : 0
     const careerRuns = Math.max(userRuns.length, prog?.stats?.runs ?? 0)
     const totalMerges = Math.max(mergesFromRuns, prog?.stats?.merges ?? 0)
     const bestTier = Math.max(maxTierFromRuns, prog?.stats?.bestTier ?? 0)
@@ -317,6 +324,7 @@ export function buildBossAnalytics(
       updatedAt: prog?.updated_at || profile.updated_at,
       lastSignInAt: profile.last_sign_in_at ?? null,
       bestScore,
+      coins,
       careerRuns,
       recordedRuns: userRuns.length,
       totalMerges,
@@ -767,45 +775,29 @@ export class BossService {
   async fetchDashboard(): Promise<BossAnalyticsSummary> {
     const { data, error } = await getSupabase().rpc('boss_get_dashboard_data')
 
-    if (!error && data && typeof data === 'object') {
-      const payload = data as {
-        profiles?: BossProfileRow[]
-        scores?: BossScoreRow[]
-        progress?: BossUserProgressRow[]
-        guest_profiles?: BossGuestProfileRow[]
-        guest_scores?: BossGuestScoreRow[]
-        generated_at?: string
-      }
-      return buildBossAnalytics(
-        payload.profiles ?? [],
-        payload.scores ?? [],
-        payload.progress ?? [],
-        payload.generated_at ?? new Date().toISOString(),
-        payload.guest_profiles ?? [],
-        payload.guest_scores ?? [],
-      )
+    if (error) {
+      throw new Error(error.message)
     }
 
-    // Fallback to direct table queries if RPC is unavailable
-    const [profilesRes, scoresRes, progressRes, guestProfilesRes, guestScoresRes] =
-      await Promise.all([
-        getSupabase().from('profiles').select('*').order('created_at', { ascending: false }),
-        getSupabase().from('scores').select('*').order('created_at', { ascending: false }),
-        getSupabase().from('user_progress').select('*'),
-        getSupabase().from('guest_profiles').select('*').order('last_seen_at', { ascending: false }),
-        getSupabase().from('guest_scores').select('*').order('created_at', { ascending: false }),
-      ])
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+      throw new Error('Dashboard RPC returned no data')
+    }
 
-    if (profilesRes.error) throw new Error(profilesRes.error.message)
-    if (scoresRes.error) throw new Error(scoresRes.error.message)
-
+    const payload = data as {
+      profiles?: BossProfileRow[]
+      scores?: BossScoreRow[]
+      progress?: BossUserProgressRow[]
+      guest_profiles?: BossGuestProfileRow[]
+      guest_scores?: BossGuestScoreRow[]
+      generated_at?: string
+    }
     return buildBossAnalytics(
-      (profilesRes.data as BossProfileRow[]) ?? [],
-      (scoresRes.data as BossScoreRow[]) ?? [],
-      (progressRes.data as BossUserProgressRow[]) ?? [],
-      new Date().toISOString(),
-      (guestProfilesRes.data as BossGuestProfileRow[]) ?? [],
-      (guestScoresRes.data as BossGuestScoreRow[]) ?? [],
+      payload.profiles ?? [],
+      payload.scores ?? [],
+      payload.progress ?? [],
+      payload.generated_at ?? new Date().toISOString(),
+      payload.guest_profiles ?? [],
+      payload.guest_scores ?? [],
     )
   }
 
@@ -882,6 +874,30 @@ export class BossService {
     })
     if (error) throw new Error(error.message)
     await this.refreshLocalIfCurrentUser(params.userId)
+  }
+
+  async updateUserCoins(
+    userId: string,
+    operation: BossCoinOperation,
+    amount: number,
+  ): Promise<void> {
+    if (operation !== 'increase' && operation !== 'decrease' && operation !== 'set') {
+      throw new Error('Invalid coin operation')
+    }
+    if (!Number.isFinite(amount) || amount < 0) {
+      throw new Error('Coin amount must be a non-negative finite number')
+    }
+    const normalizedAmount = Math.min(
+      99_999_999_999.9,
+      Math.max(0, Math.round(amount * 10) / 10),
+    )
+    const { error } = await getSupabase().rpc('boss_update_user_coins', {
+      target_user_id: userId,
+      operation,
+      amount: normalizedAmount,
+    })
+    if (error) throw new Error(error.message)
+    await this.refreshLocalIfCurrentUser(userId)
   }
 
   async resetUserProgress(userId: string): Promise<void> {

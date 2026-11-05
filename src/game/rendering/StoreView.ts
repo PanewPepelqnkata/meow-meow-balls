@@ -193,8 +193,8 @@ export class StoreView {
     const rows = Math.ceil(TEST_ITEMS.length / cols)
     const inset = clamp(this.bagW * 0.065, 10, 30)
     const gap = clamp(Math.min(this.bagW, this.bagH) * 0.025, 5, 12)
-    const gridTop = this.bagTopY + Math.max(8, this.bagOpeningH * 0.16)
-    const gridBottom = this.bagTopY + this.bagH - Math.max(14, this.bagH * 0.045)
+    const gridTop = this.bagTopY - Math.min(18, this.bagOpeningH * 0.32)
+    const gridBottom = this.bagTopY + this.bagH - Math.max(24, this.bagH * 0.1)
     const gridW = Math.max(1, this.bagW - inset * 2)
     const gridH = Math.max(1, gridBottom - gridTop)
     const cardW = Math.max(1, (gridW - gap * (cols - 1)) / cols)
@@ -211,8 +211,7 @@ export class StoreView {
 
   private renderItemCard(x: number, y: number, w: number, h: number, item: TestItem, index: number): void {
     const card = this.scene.add.container(x + w / 2, y + h / 2).setName(`merchant-item-${index + 1}`)
-    const tilt = ((item.seed / 100) % 7 - 3) * (Math.PI / 180)
-    card.setRotation(tilt)
+    card.setAngle(Phaser.Math.FloatBetween(-3, 3))
     this.itemContainer.add(card)
 
     const g = this.scene.add.graphics().setName('merchant-item-card')
@@ -334,6 +333,5 @@ export class StoreView {
     })
     status.container.setName('merchant-coming-soon')
     this.navContainer.add(status.container)
-
   }
 }

@@ -46,4 +46,5 @@ describe('BossService run editing', () => {
     })
     expect(transport.restoreAccountProgress).not.toHaveBeenCalled()
   })
+
 })

@@ -125,9 +125,10 @@ const sdk = vi.hoisted(() => {
       return { error: null }
     }),
   }
-  const rpc = vi.fn(async () => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const rpc = vi.fn(async (..._args: unknown[]) => {
     assertUnlocked('rpc')
-    return { data: null, error: null }
+    return { data: null as unknown, error: null }
   })
   const client = { auth, from, rpc }
   const getSupabase = vi.fn(() => client)
@@ -254,13 +255,13 @@ describe('persistent browser auth lifecycle', () => {
     expect(sdk.state.nestedCalls).toEqual([])
   })
 
-  it('restores coins from user progress and keeps them in the auth metadata sync', async () => {
+  it('restores canonical coins and sends earned deltas through the guarded sync RPC', async () => {
     sdk.state.session = sessionFor('account-coins')
     await auth.initialize()
     await vi.advanceTimersByTimeAsync(0)
     sdk.queryResult.mockImplementation((table, column, value, operation) => {
       if (table === 'user_progress' && operation === 'maybeSingle') {
-        return Promise.resolve({ data: { best_score: 42, coins: '123.5' }, error: null })
+        return Promise.resolve({ data: { best_score: 42, coins: '123.5', coin_revision: 4 }, error: null })
       }
       return sdk.defaultQuery(table, column, value, operation)
     })
@@ -268,11 +269,54 @@ describe('persistent browser auth lifecycle', () => {
     await auth.restoreAccountProgress()
 
     expect(saves.loadSave().coins).toBe(123.5)
+    sdk.rpc.mockResolvedValue({ data: { coins: 124.5, coin_revision: 4 }, error: null })
     saves.recordRunEnd(1000, 3, 1)
-    await vi.advanceTimersByTimeAsync(3000)
-    expect(sdk.auth.updateUser).toHaveBeenCalledWith({
-      data: { ballrush_progress: expect.objectContaining({ coins: 124.5 }) },
+    await auth.persistSaveToCloud()
+
+    const firstSync = sdk.rpc.mock.calls.find((call) => call[0] === 'sync_user_progress') as
+      | [string, { p_save?: Record<string, unknown>; p_coins_earned?: number; p_coin_revision?: number }]
+      | undefined
+    expect(firstSync?.[1]).toEqual(expect.objectContaining({
+      p_coins_earned: 1,
+      p_coin_revision: 4,
+    }))
+    expect(firstSync?.[1]?.p_save).not.toHaveProperty('coins')
+    expect(firstSync?.[1]?.p_save).not.toHaveProperty('coinRevision')
+  })
+
+  it('does not send a stale pre-admin balance and preserves a later earned delta', async () => {
+    sdk.state.session = sessionFor('account-coins')
+    await auth.initialize()
+    await vi.advanceTimersByTimeAsync(0)
+    sdk.queryResult.mockImplementation((table, column, value, operation) => {
+      if (table === 'user_progress' && operation === 'maybeSingle') {
+        return Promise.resolve({ data: { coins: 50, coin_revision: 7 }, error: null })
+      }
+      return sdk.defaultQuery(table, column, value, operation)
     })
+    await auth.restoreAccountProgress()
+    expect(saves.loadSave().coins).toBe(50)
+
+    sdk.rpc.mockResolvedValue({ data: { coins: 50, coin_revision: 7 }, error: null })
+    await auth.persistSaveToCloud({ coins: 100 }, 'account-coins')
+    const staleSync = sdk.rpc.mock.calls.at(-1) as
+      | [string, { p_save?: Record<string, unknown>; p_coins_earned?: number; p_coin_revision?: number }]
+      | undefined
+    expect(staleSync?.[0]).toBe('sync_user_progress')
+    expect(staleSync?.[1]).toEqual(expect.objectContaining({
+      p_coins_earned: 0,
+      p_coin_revision: 7,
+    }))
+    expect(staleSync?.[1]?.p_save).not.toHaveProperty('coins')
+    expect(staleSync?.[1]?.p_save).not.toHaveProperty('coinRevision')
+
+    sdk.rpc.mockResolvedValue({ data: { coins: 51, coin_revision: 7 }, error: null })
+    saves.recordRunEnd(1000, 3, 1)
+    await auth.persistSaveToCloud()
+    expect(sdk.rpc).toHaveBeenCalledWith('sync_user_progress', expect.objectContaining({
+      p_coins_earned: 1,
+      p_coin_revision: 7,
+    }))
   })
 
   it('keeps finds earned during hydration without resurrecting its stale local baseline', async () => {
@@ -292,7 +336,7 @@ describe('persistent browser auth lifecycle', () => {
     saves.recordDiscovery(9, 2, 'robo')
     // Queue an upload from the pre-hydration save; it must not later erase the table's pig.
     await vi.advanceTimersByTimeAsync(1000)
-    expect(sdk.auth.updateUser).not.toHaveBeenCalled()
+    expect(sdk.rpc).not.toHaveBeenCalled()
 
     progress.resolve({ data: { best_score: 42, variants: { '9:pig:2': 50 } }, error: null })
     await restoring
@@ -307,10 +351,10 @@ describe('persistent browser auth lifecycle', () => {
     expect(saves.hasDiscoveredCollectible(9, 'drunko')).toBe(true)
     expect(saves.hasDiscoveredCollectible(9, 'robo')).toBe(true)
     expect(saves.hasDiscoveredCollectible(9, 'shark')).toBe(false)
-    expect(sdk.auth.updateUser).toHaveBeenCalledTimes(1)
-    expect(sdk.auth.updateUser).toHaveBeenLastCalledWith({
-      data: { ballrush_progress: expect.objectContaining({ variants: saves.loadSave().variants }) },
-    })
+    expect(sdk.rpc).toHaveBeenCalledWith('sync_user_progress', expect.objectContaining({
+      p_coins_earned: 0,
+      p_save: expect.objectContaining({ variants: saves.loadSave().variants }),
+    }))
   })
 
   it('does not restore a cloud collection snapshot over an explicit reset made while it was pending', async () => {
@@ -382,7 +426,7 @@ describe('persistent browser auth lifecycle', () => {
     await vi.advanceTimersByTimeAsync(0)
 
     expect(saves.loadSave().variants).toEqual({})
-    expect(sdk.auth.updateUser).not.toHaveBeenCalled()
+    expect(sdk.rpc).not.toHaveBeenCalled()
   })
 
   it('handles INITIAL_SESSION without nested SDK calls and ignores an older getSession result', async () => {
@@ -469,7 +513,7 @@ describe('persistent browser auth lifecycle', () => {
     await auth.initialize()
     await auth.signOut()
     await vi.advanceTimersByTimeAsync(0)
-    expect(sdk.auth.updateUser).toHaveBeenCalledTimes(1)
+    expect(sdk.rpc).toHaveBeenCalledWith('sync_user_progress', expect.anything())
     expect(sdk.auth.signOut).toHaveBeenCalledTimes(1)
     expect(sdk.auth.getUser).not.toHaveBeenCalled()
     expect(auth.getSession()).toBeNull()
@@ -580,7 +624,12 @@ describe('persistent browser auth lifecycle', () => {
     sdk.queryResult.mockImplementation((table, column, value, operation) => {
       if (holdOldQueries && table === 'profiles') return oldProfile.promise
       if (holdOldQueries && table === 'user_progress' && operation === 'maybeSingle') return oldProgress.promise
-      if (table === 'user_progress' && operation === 'maybeSingle') return Promise.resolve({ data: { best_score: 7, variants: { '9:robo:1': 100 } }, error: null })
+      if (table === 'user_progress' && operation === 'maybeSingle') return Promise.resolve({ data: {
+        best_score: 7,
+        coins: 3,
+        coin_revision: 2,
+        variants: { '9:robo:1': 100 },
+      }, error: null })
       return sdk.defaultQuery(table, column, value, operation)
     })
     sdk.state.session = sessionFor('account-a')
@@ -594,14 +643,14 @@ describe('persistent browser auth lifecycle', () => {
     expect(await auth.signInWithEmail('next@example.com', 'password')).toEqual({ error: null })
     const notificationCount = notifications.mock.calls.length
     oldProfile.resolve({ data: { id: 'account-a', username: 'Stale profile' }, error: null })
-    oldProgress.resolve({ data: { best_score: 999, variants: { '9:pig:1': 50 } }, error: null })
+    oldProgress.resolve({ data: { best_score: 999, coins: 80, coin_revision: 1, variants: { '9:pig:1': 50 } }, error: null })
     await vi.advanceTimersByTimeAsync(0)
     expect(auth.getUser()?.id).toBe(nextId)
     expect(auth.getSession()?.access_token).toBe('new-login')
     expect(auth.getProfile()?.username).toBe(nextId)
     expect(saves.getSaveOwnerId()).toBe(nextId)
     expect(saves.savedBest()).toBe(7)
-    expect(saves.hasDiscoveredCollectible(9, 'robo')).toBe(true)
+    expect(saves.loadSave().coins).toBe(3)
     expect(saves.hasDiscoveredCollectible(9, 'pig')).toBe(false)
     expect(notifications).toHaveBeenCalledTimes(notificationCount)
     expect(sdk.state.nestedCalls).toEqual([])

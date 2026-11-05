@@ -46,6 +46,8 @@ export interface SaveDataV1 {
   version: 1
   best: number
   coins: number
+  /** Last server coin revision accepted for this account. */
+  coinRevision: number
   leaderboard: LeaderboardEntry[]
   /** tier → first-discovered-at (ms epoch). */
   discovered: Record<string, number>
@@ -55,12 +57,18 @@ export interface SaveDataV1 {
   stats: { runs: number; merges: number; bestTier: number }
 }
 
+export interface CloudCoinState {
+  balance: number
+  revision: number
+}
+
 export function freshSave(): SaveDataV1 {
   const now = Date.now()
   return {
     version: 1,
     best: 0,
     coins: 0,
+    coinRevision: 0,
     leaderboard: [],
     // Tiers 1–3 are known from the first run — pre-seeded as discovered.
     // Tier 4+ unlock PROGRESSIVELY (each fires its discovery: the card
@@ -120,6 +128,9 @@ export function normalizeSave(raw: Partial<SaveDataV1> | null | undefined): Save
   }
 
   const rawBest = typeof raw.best === 'number' && Number.isFinite(raw.best) && raw.best >= 0 ? Math.floor(raw.best) : 0
+  const coinRevision = typeof raw.coinRevision === 'number' && Number.isFinite(raw.coinRevision) && raw.coinRevision >= 0
+    ? Math.floor(raw.coinRevision)
+    : 0
   const topLbScore = leaderboard[0]?.score ?? 0
   const best = Math.max(rawBest, topLbScore)
 
@@ -150,6 +161,7 @@ export function normalizeSave(raw: Partial<SaveDataV1> | null | undefined): Save
     version: 1,
     best,
     coins: typeof raw.coins === 'number' && Number.isFinite(raw.coins) && raw.coins >= 0 ? Math.round(raw.coins * 10) / 10 : 0,
+    coinRevision,
     leaderboard: leaderboard.slice(0, MAX_LEADERBOARD),
     discovered,
     variants,
@@ -167,6 +179,7 @@ export function cloneSave(save: SaveDataV1 = loadSave()): SaveDataV1 {
     version: 1,
     best: save.best,
     coins: save.coins,
+    coinRevision: save.coinRevision,
     leaderboard: save.leaderboard.map((e) => ({ ...e })),
     discovered: { ...save.discovered },
     variants: { ...save.variants },
@@ -179,10 +192,27 @@ let cache: SaveDataV1 | null = null
 let saveReplacementRevision = 0
 let ownerCache: string | null | undefined = undefined
 let guestIdCache: string | null = null
+let cloudCoinState: CloudCoinState | null = null
 let cloudSyncHandler: ((save: SaveDataV1, immediate: boolean) => void) | null = null
 
 export function setCloudSyncHandler(handler: ((save: SaveDataV1, immediate: boolean) => void) | null): void {
   cloudSyncHandler = handler
+}
+
+/** The canonical account coin balance/revision used to turn local earnings into a delta. */
+export function getCloudCoinState(): CloudCoinState | null {
+  return cloudCoinState ? { ...cloudCoinState } : null
+}
+
+export function setCloudCoinState(state: CloudCoinState | null): void {
+  if (!state || !Number.isFinite(state.balance) || !Number.isFinite(state.revision)) {
+    cloudCoinState = null
+    return
+  }
+  cloudCoinState = {
+    balance: Math.max(0, Math.round(state.balance * 10) / 10),
+    revision: Math.max(0, Math.floor(state.revision)),
+  }
 }
 
 /** Full restores/resets supersede any older in-flight account hydration. Gameplay mutations do not. */
