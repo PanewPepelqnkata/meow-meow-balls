@@ -169,6 +169,7 @@ describe('hasDiscoveredTier (the repeat-discovery gate)', () => {
       {
         version: 1,
         best: 20512,
+        coins: 0,
         discovered: { 1: 100, 2: 100, 3: 100, 9: 200 },
         variants: { '9:1': 200 },
         stats: { runs: 2, merges: 481, bestTier: 9 },
@@ -182,5 +183,24 @@ describe('hasDiscoveredTier (the repeat-discovery gate)', () => {
     expect(hasDiscoveredTier(8)).toBe(true)
     expect(hasDiscoveredTier(9)).toBe(true)
     expect(ref.variants['9:1']).toBe(200)
+  })
+
+  it('awards coins as score / 1000 rounded to 1 decimal', () => {
+    // 15849 score → 15.8 coins
+    recordRunEnd(15849, 5, 10)
+    expect(loadSave().coins).toBe(15.8)
+
+    // 10000 score → 10.0 coins (total 25.8)
+    recordRunEnd(10000, 4, 5)
+    expect(loadSave().coins).toBe(25.8)
+
+    // 500 score → 0.5 coins (total 26.3)
+    recordRunEnd(500, 2, 1)
+    expect(loadSave().coins).toBe(26.3)
+  })
+
+  it('does not award coins for invalid runs (0 score AND 0 merges)', () => {
+    recordRunEnd(0, 1, 0)
+    expect(loadSave().coins).toBe(0)
   })
 })

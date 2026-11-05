@@ -44,6 +44,7 @@ export interface LeaderboardEntry {
 export interface SaveDataV1 {
   version: 1
   best: number
+  coins: number
   leaderboard: LeaderboardEntry[]
   /** tier → first-discovered-at (ms epoch). */
   discovered: Record<string, number>
@@ -58,6 +59,7 @@ export function freshSave(): SaveDataV1 {
   return {
     version: 1,
     best: 0,
+    coins: 0,
     leaderboard: [],
     // Tiers 1–3 are known from the first run — pre-seeded as discovered.
     // Tier 4+ unlock PROGRESSIVELY (each fires its discovery: the card
@@ -146,6 +148,7 @@ export function normalizeSave(raw: Partial<SaveDataV1> | null | undefined): Save
   return {
     version: 1,
     best,
+    coins: typeof raw.coins === 'number' && Number.isFinite(raw.coins) && raw.coins >= 0 ? Math.round(raw.coins * 10) / 10 : 0,
     leaderboard: leaderboard.slice(0, MAX_LEADERBOARD),
     discovered,
     variants,
@@ -162,6 +165,7 @@ export function cloneSave(save: SaveDataV1 = loadSave()): SaveDataV1 {
   return normalizeSave({
     version: 1,
     best: save.best,
+    coins: save.coins,
     leaderboard: save.leaderboard.map((e) => ({ ...e })),
     discovered: { ...save.discovered },
     variants: { ...save.variants },
@@ -499,6 +503,9 @@ export function recordRunEnd(
   save.stats.runs++
   if (score > save.best) save.best = score
   if (bestTier > save.stats.bestTier) save.stats.bestTier = bestTier
+  // Coins: score / 1000, rounded to 1 decimal (e.g. 15849 → 15.8)
+  const coinsEarned = Math.round((score / 1000) * 10) / 10
+  save.coins = Math.round((save.coins + coinsEarned) * 10) / 10
   for (let t = 1; t <= Math.min(12, bestTier); t++) {
     if (save.discovered[String(t)] == null) save.discovered[String(t)] = now
   }

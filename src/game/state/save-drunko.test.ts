@@ -13,6 +13,7 @@ function existingSave(): SaveDataV1 {
   return {
     version: 1,
     best: 1200,
+    coins: 0,
     leaderboard: [{ score: 1200, bestTier: 5, at: 1000 }],
     discovered: { 1: 100, 2: 100, 3: 100, 4: 200, 5: 300 },
     variants: {},

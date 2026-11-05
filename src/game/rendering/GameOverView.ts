@@ -5,11 +5,14 @@ import { doodleSilhouette, darkenFill } from '../../ui/CartoonButton'
 import { getTier } from '../../config/ballTiers'
 import { GAME_OVER_SEQUENCE as SEQ } from '../../config/gameOverSequence'
 import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK, type BallExpression } from './BallAppearance'
+import { drawCoin, formatCoins } from './Coin'
+import { loadSave } from '../state/save'
 
 const CREAM = 0xfff8ec
 const BLUE = 0x2d74c9
 const RED = 0xf44336
 const INK_COLOR = '#1a1a1a'
+
 
 interface RunStats {
   tierReached: number
@@ -169,7 +172,17 @@ export class GameOverView {
       newBest ? '#f44336' : INK_COLOR,
     )
 
-    const statsY = reaction.y + reaction.height + 22
+    // Coins earned this run (score / 1000)
+    const coinsEarned = Math.round((run.score / 1000) * 10) / 10
+    const totalCoins = loadSave().coins
+    const coinY = reaction.y + reaction.height + 14
+    const coinG = scene.add.graphics()
+    drawCoin(coinG, columnX - 52, coinY + 11, 14)
+    const coinText = text(columnX - 30, coinY, `+${formatCoins(coinsEarned)}`, 22, '#b8860b', 2)
+    const coinTotal = text(columnX + 30, coinY + 4, `(${formatCoins(totalCoins)} total)`, 12, INK_COLOR)
+    content.add([coinG, coinText, coinTotal])
+
+    const statsY = coinY + 22
     const statsH = 84
     const cellW = columnW / 4
     const statsLeft = columnX - columnW / 2
@@ -304,8 +317,9 @@ export class GameOverView {
     replayLabel.setOrigin(0, 0)
     const replayHit = scene.add.rectangle(0, 0, columnW, 64, CREAM, 0.001).setInteractive({ useHandCursor: true })
     primary.add(replayHit)
-    const orbitLine = scene.add.graphics().setPosition(columnX, primaryY)
-    content.add([replayGlow, replayShadow, orbitLine, primary])
+    const orbitLine = scene.add.graphics()
+    primary.add(orbitLine)
+    content.add([replayGlow, replayShadow, primary])
     this.bindAction(primary, replayHit, this.onRestart, true, replayShadow)
     if (!this.reducedMotion) {
       const sweep = { angle: 0 }

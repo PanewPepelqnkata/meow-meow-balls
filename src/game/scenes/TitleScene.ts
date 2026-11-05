@@ -14,6 +14,7 @@ import { MAX_RENDER_DPR } from '../../config/stage'
 import type { BackgroundScene } from './BackgroundScene'
 import type { ThemeName } from '../rendering/BackgroundTheme'
 import { loadSave, resetProgress, setThemeSetting } from '../state/save'
+import { drawCoin, formatCoins } from '../rendering/Coin'
 import { tier9Theme, variantIdFor } from '../state/runVariant'
 import { session } from '../state/session'
 import { bakeCanvas, roundedRectPath } from '../rendering/RoughArt'
@@ -1255,6 +1256,21 @@ export class TitleScene extends Phaser.Scene {
     })
     tiers.setPosition(cx + w * 0.2, cy)
     this.menuLayer.add(tiers)
+
+    // Coins display (right side of chip)
+    const coinX = cx + w * 0.32
+    const coinG = this.add.graphics()
+    drawCoin(coinG, coinX, cy, h * 0.24)
+    this.menuLayer.add(coinG)
+    const coinText = hudText(this, 0, 0, formatCoins(save.coins), 1, {
+      color: '#e5ad32',
+      size: Math.max(11, h * 0.38),
+      stroke: 2,
+      origin: [0, 0.5],
+      shadow: false,
+    })
+    coinText.setPosition(coinX + h * 0.32, cy)
+    this.menuLayer.add(coinText)
   }
 
 

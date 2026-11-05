@@ -1212,6 +1212,9 @@ export class PlaygroundScene extends Phaser.Scene {
       reason,
       this.runCollectibles,
     )
+    // Prevent double-award: if page is restored from bfcache and later reaches
+    // game over, triggerGameOver would call recordRunEnd again for the same run.
+    this.runStarted = false
   }
 
   private triggerGameOver(): void {
