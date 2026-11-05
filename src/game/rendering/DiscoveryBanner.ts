@@ -23,8 +23,8 @@ interface ArtProfile {
   contentScale: number
 }
 
-const LANDSCAPE_ART: ArtProfile = { left: -2.75, right: 10.05, top: -3.15, bottom: 2.85, contentScale: 1 }
-const PORTRAIT_ART: ArtProfile = { left: -2.75, right: 8.6, top: -2.95, bottom: 2.45, contentScale: 0.84 }
+const LANDSCAPE_ART: ArtProfile = { left: -2.75, right: 9.45, top: -3.05, bottom: 2.75, contentScale: 1 }
+const PORTRAIT_ART: ArtProfile = { left: -2.75, right: 8.15, top: -2.85, bottom: 2.4, contentScale: 0.84 }
 
 export interface BannerRect {
   cx: number
@@ -87,6 +87,12 @@ export function bannerArtworkBounds(rect: BannerRect): { left: number; right: nu
   }
 }
 
+/** Holder x that places the transformed artwork wholly beyond the right edge. */
+export function bannerOffscreenX(rect: BannerRect, viewportWidth: number, clearance = 18): number {
+  const finalBounds = bannerArtworkBounds(rect)
+  return rect.cx + Math.max(rect.halfThick * 6, viewportWidth - finalBounds.left + clearance)
+}
+
 /**
  * Compact pop-art geometry. `cx/cy` is the unlocked character's impact
  * centre, not the panel centre; everything else uses stable local units.
@@ -111,21 +117,54 @@ export function bannerRect(vw: number, vh: number): BannerRect {
   }
 }
 
+function pointInsidePolygon(point: { x: number; y: number }, polygon: Array<{ x: number; y: number }>): boolean {
+  let inside = false
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const a = polygon[i]
+    const b = polygon[j]
+    if (!a || !b) continue
+    const crosses = (a.y > point.y) !== (b.y > point.y) &&
+      point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x
+    if (crosses) inside = !inside
+  }
+  return inside
+}
+
+function pointSegmentDistanceSquared(
+  point: { x: number; y: number },
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+): number {
+  const dx = b.x - a.x
+  const dy = b.y - a.y
+  const lengthSquared = dx * dx + dy * dy
+  if (lengthSquared === 0) return (point.x - a.x) ** 2 + (point.y - a.y) ** 2
+  const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared))
+  const nearestX = a.x + t * dx
+  const nearestY = a.y + t * dy
+  return (point.x - nearestX) ** 2 + (point.y - nearestY) ** 2
+}
+
+/** True only when the complete circle fits inside the polygon. */
+export function circleInsidePolygon(
+  center: { x: number; y: number },
+  radius: number,
+  polygon: Array<{ x: number; y: number }>,
+): boolean {
+  if (radius < 0 || !pointInsidePolygon(center, polygon)) return false
+  const radiusSquared = radius * radius
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i]
+    const b = polygon[(i + 1) % polygon.length]
+    if (!a || !b || pointSegmentDistanceSquared(center, a, b) < radiusSquared) return false
+  }
+  return true
+}
+
 function vectors(points: Array<{ x: number; y: number }>): Phaser.Math.Vector2[] {
   return points.map((p) => new Phaser.Math.Vector2(p.x, p.y))
 }
 
-function impactPoints(radius: number, seed: number, count = 14): Array<{ x: number; y: number }> {
-  const rng = makeRng(seed)
-  const result: Array<{ x: number; y: number }> = []
-  for (let i = 0; i < count * 2; i++) {
-    const outer = i % 2 === 0
-    const angle = (i / (count * 2)) * Math.PI * 2 - Math.PI / 2 + (rng() - 0.5) * 0.045
-    const profile = outer ? 0.82 + rng() * 0.34 : 0.46 + rng() * 0.11
-    result.push({ x: Math.cos(angle) * radius * profile, y: Math.sin(angle) * radius * profile })
-  }
-  return result
-}
 
 function fillPolygon(g: Phaser.GameObjects.Graphics, color: number, points: Array<{ x: number; y: number }>, alpha = 1): void {
   g.fillStyle(color, alpha)
@@ -159,12 +198,12 @@ export class DiscoveryBanner {
   private variant: number | null = null
   private active = false
   private reducedMotion = false
+  private offscreenX = 0
 
   constructor(scene: Phaser.Scene, hudLayout?: () => UiLayout) {
     this.scene = scene
     this.hudLayout = hudLayout ?? null
   }
-
   get objsCount(): number {
     return this.holder ? this.holder.list.length + 1 : 0
   }
@@ -172,7 +211,6 @@ export class DiscoveryBanner {
   isShowing(): boolean {
     return this.active
   }
-
   show(tier: number, seed: number, theme: string | null = null, variant: number | null = null): void {
     // Fast consecutive duplicates cannot retain the previous character.
     this.destroy()
@@ -195,15 +233,16 @@ export class DiscoveryBanner {
     this.clampToHud(rect, layout)
     const unit = rect.halfThick
     const profile = artProfile(rect.portrait)
+    this.offscreenX = bannerOffscreenX(rect, vw)
 
     const holder = this.scene.add.container(rect.cx, rect.cy).setRotation(rect.angle).setDepth(78.6)
     this.holder = holder
 
-    this.railsC = this.makeGraphicsLayer(holder, (g) => this.drawRails(g, unit, seed), profile.contentScale)
-    this.panelC = this.makeGraphicsLayer(holder, (g) => this.drawPanel(g, unit, seed), profile.contentScale)
-    this.accentC = this.makeGraphicsLayer(holder, (g) => this.drawAccents(g, unit, seed), profile.contentScale)
+    this.railsC = this.makeGraphicsLayer(holder, (g) => this.drawRails(g, unit), profile.contentScale)
+    this.panelC = this.makeGraphicsLayer(holder, (g) => this.drawPanel(g, unit), profile.contentScale)
+    this.accentC = this.makeGraphicsLayer(holder, (g) => this.drawAccents(g, unit), profile.contentScale)
     this.flashC = this.makeGraphicsLayer(holder, (g) => this.drawFlash(g, unit))
-    this.burstC = this.makeGraphicsLayer(holder, (g) => this.drawBurst(g, unit, seed))
+    this.burstC = this.makeGraphicsLayer(holder, (g) => this.drawBurst(g, unit))
     this.cloudC = this.makeGraphicsLayer(holder, (g) => this.drawCloud(g, unit))
 
     this.ballG = this.scene.add.graphics()
@@ -235,7 +274,7 @@ export class DiscoveryBanner {
     if (!layout) return
     const bounds = transformedBounds(rect.angle, rect.halfThick, artProfile(rect.portrait))
     if (layout.composition === 'portrait') {
-      rect.cy += Math.max(0, layout.stack.hudBottom - 4 - (rect.cy + bounds.top))
+      rect.cy += Math.max(0, layout.stack.hudBottom - 12 - (rect.cy + bounds.top))
       return
     }
     const safe = readSafeArea()
@@ -256,30 +295,30 @@ export class DiscoveryBanner {
     return container
   }
 
-  private drawRails(g: Phaser.GameObjects.Graphics, s: number, seed: number): void {
+  private drawRails(g: Phaser.GameObjects.Graphics, s: number): void {
     const topShadow = [
-      { x: 1.2 * s, y: -2.05 * s }, { x: 10.05 * s, y: -3.02 * s },
-      { x: 9.75 * s, y: -2.5 * s }, { x: 1.45 * s, y: -1.62 * s },
+      { x: 1.2 * s, y: -2.05 * s }, { x: 9.35 * s, y: -2.74 * s },
+      { x: 8.98 * s, y: -2.33 * s }, { x: 1.45 * s, y: -1.62 * s },
     ]
     const topCream = [
-      { x: 1.45 * s, y: -1.97 * s }, { x: 9.88 * s, y: -2.86 * s },
-      { x: 9.48 * s, y: -2.57 * s }, { x: 1.58 * s, y: -1.72 * s },
+      { x: 1.45 * s, y: -1.97 * s }, { x: 9.12 * s, y: -2.59 * s },
+      { x: 8.84 * s, y: -2.36 * s }, { x: 1.58 * s, y: -1.72 * s },
     ]
     const topYellow = [
-      { x: 6.15 * s, y: -2.64 * s }, { x: 10.02 * s, y: -3.12 * s },
-      { x: 9.42 * s, y: -2.74 * s }, { x: 6.05 * s, y: -2.34 * s },
+      { x: 6.25 * s, y: -2.42 * s }, { x: 9.3 * s, y: -2.82 * s },
+      { x: 8.84 * s, y: -2.46 * s }, { x: 6.05 * s, y: -2.17 * s },
     ]
     const bottomShadow = [
-      { x: 1.1 * s, y: 1.6 * s }, { x: 9.75 * s, y: 0.53 * s },
-      { x: 9.05 * s, y: 1.42 * s }, { x: 1.35 * s, y: 2.25 * s },
+      { x: 1.1 * s, y: 1.6 * s }, { x: 9.3 * s, y: 0.66 * s },
+      { x: 8.86 * s, y: 1.34 * s }, { x: 1.35 * s, y: 2.25 * s },
     ]
     const bottomCream = [
-      { x: 1.32 * s, y: 1.52 * s }, { x: 9.42 * s, y: 0.58 * s },
-      { x: 8.92 * s, y: 1.12 * s }, { x: 1.5 * s, y: 2.02 * s },
+      { x: 1.32 * s, y: 1.52 * s }, { x: 9.08 * s, y: 0.75 * s },
+      { x: 8.75 * s, y: 1.15 * s }, { x: 1.5 * s, y: 2.02 * s },
     ]
     const bottomYellow = [
-      { x: 5.85 * s, y: 1.67 * s }, { x: 9.95 * s, y: 1.03 * s },
-      { x: 9.14 * s, y: 1.61 * s }, { x: 5.55 * s, y: 2.08 * s },
+      { x: 5.9 * s, y: 1.68 * s }, { x: 9.32 * s, y: 1.02 * s },
+      { x: 8.78 * s, y: 1.56 * s }, { x: 5.62 * s, y: 2.06 * s },
     ]
     fillPolygon(g, SHADOW, topShadow)
     fillPolygon(g, CREAM, topCream)
@@ -292,22 +331,26 @@ export class DiscoveryBanner {
     g.lineStyle(Math.max(1.5, s * 0.075), SHADOW, 0.95)
     for (let i = 0; i < 3; i++) {
       g.beginPath()
-      g.moveTo((6.9 + i * 0.42) * s, (1.9 + i * 0.16) * s)
-      g.lineTo((9.65 - i * 0.08) * s, (1.45 + i * 0.06) * s)
+      g.moveTo((6.75 + i * 0.38) * s, (1.88 + i * 0.14) * s)
+      g.lineTo((9.05 - i * 0.08) * s, (1.47 + i * 0.05) * s)
       g.strokePath()
     }
 
-    const rng = makeRng(seed + 811)
-    g.fillStyle(YELLOW_LIGHT, 0.92)
-    for (let i = 0; i < 38; i++) {
-      const x = (6.8 + rng() * 3.1) * s
-      const y = (-3.02 + rng() * 0.62) * s
-      g.fillCircle(x, y, s * (0.025 + rng() * 0.035))
+    // Deliberate print hatches replace the old random spray of dots.
+    g.lineStyle(Math.max(1, s * 0.045), SHADOW, 0.72)
+    for (let i = 0; i < 5; i++) {
+      const x = (7.05 + i * 0.48) * s
+      g.beginPath()
+      g.moveTo(x, -2.68 * s)
+      g.lineTo(x + 0.22 * s, -2.48 * s)
+      g.strokePath()
     }
-    for (let i = 0; i < 38; i++) {
-      const x = (6.75 + rng() * 3.15) * s
-      const y = (1.78 + rng() * 0.58) * s
-      g.fillCircle(x, y, s * (0.025 + rng() * 0.035))
+    for (let i = 0; i < 4; i++) {
+      const x = (7.05 + i * 0.55) * s
+      g.beginPath()
+      g.moveTo(x, 1.72 * s)
+      g.lineTo(x + 0.25 * s, 1.92 * s)
+      g.strokePath()
     }
   }
 
@@ -321,42 +364,47 @@ export class DiscoveryBanner {
     ]
   }
 
-  private drawPanel(g: Phaser.GameObjects.Graphics, s: number, seed: number): void {
+  private drawPanel(g: Phaser.GameObjects.Graphics, s: number): void {
     const shadow = this.panelPolygon(s).map((p) => ({ x: p.x + 0.18 * s, y: p.y + 0.2 * s }))
     fillPolygon(g, 0x000000, shadow, 0.5)
     fillPolygon(g, SHADOW, this.panelPolygon(s))
     fillPolygon(g, CREAM, this.panelPolygon(s, 0.13 * s))
     fillPolygon(g, SHADOW, this.panelPolygon(s, 0.26 * s))
-    fillPolygon(g, RED, this.panelPolygon(s, 0.38 * s))
+    const redPanel = this.panelPolygon(s, 0.38 * s)
+    fillPolygon(g, RED, redPanel)
 
-    const rng = makeRng(seed + 313)
-    g.fillStyle(SHADOW, 0.92)
-    for (let col = 0; col < 24; col++) {
-      const x = (0.9 + col * 0.32) * s
-      const top = (-1.22 - (x / s) * 0.075) * s
-      const bottom = (1.55 - (x / s) * 0.12) * s
-      for (let row = 0; row < 7; row++) {
-        const y = top + (row / 6) * (bottom - top)
-        if ((col + row) % 2 === 0 || rng() > 0.4) g.fillCircle(x, y, s * 0.055)
+    // A strict offset grid gives a deliberate screen-print halftone. Every
+    // dot is geometrically contained inside the red wedge.
+    g.fillStyle(SHADOW, 0.72)
+    const dotRadius = s * 0.045
+    const edgeClearance = dotRadius + Math.max(0.5, s * 0.01)
+    for (let row = 0; row < 8; row++) {
+      const y = (-1.32 + row * 0.41) * s
+      for (let col = 0; col < 24; col++) {
+        const x = (0.78 + col * 0.36 + (row % 2) * 0.18) * s
+        if (circleInsidePolygon({ x, y }, edgeClearance, redPanel)) g.fillCircle(x, y, dotRadius)
       }
     }
 
-    // Small red highlight strip keeps the panel from reading as a flat sticker.
-    g.lineStyle(Math.max(1.25, s * 0.055), 0xff5a70, 0.72)
+    // One clean highlight line adds print depth without spray or noise.
+    g.lineStyle(Math.max(1.25, s * 0.055), 0xff6a7e, 0.75)
     g.beginPath()
     g.moveTo(1.05 * s, -0.98 * s)
     g.lineTo(7.85 * s, -1.5 * s)
     g.strokePath()
   }
 
-  private drawBurst(g: Phaser.GameObjects.Graphics, s: number, seed: number): void {
-    const shadow = impactPoints(2.15 * s, seed + 17)
-    fillPolygon(g, SHADOW, shadow)
-    const cream = impactPoints(1.92 * s, seed + 17)
-    fillPolygon(g, CREAM, cream)
+  private drawBurst(g: Phaser.GameObjects.Graphics, s: number): void {
+    // A clean inked medallion replaces the old radial sunburst. The cream
+    // rim separates every dynamic character cleanly from the red panel.
+    g.fillStyle(SHADOW, 1)
+    g.fillCircle(0, 0, 1.5 * s)
+    g.fillStyle(CREAM, 1)
+    g.fillCircle(0, 0, 1.32 * s)
     g.lineStyle(Math.max(2.5, s * 0.1), SHADOW, 1)
-    g.strokePoints(vectors(cream), true, true)
+    g.strokeCircle(0, 0, 1.32 * s)
   }
+
 
   private drawBall(g: Phaser.GameObjects.Graphics, s: number, portrait: boolean): void {
     const radius = (portrait ? 1.08 : 1.02) * s
@@ -377,64 +425,58 @@ export class DiscoveryBanner {
   }
 
   private drawCloud(g: Phaser.GameObjects.Graphics, s: number): void {
-    const cx = -1.48 * s
-    const cy = 1.12 * s
-    const lobes = [
-      { x: -0.45, y: 0.08, r: 0.48 }, { x: -0.1, y: -0.28, r: 0.58 },
-      { x: 0.34, y: -0.12, r: 0.52 }, { x: 0.48, y: 0.28, r: 0.48 },
-      { x: 0, y: 0.38, r: 0.62 },
+    // A single attached impact tail replaces the old hand-like cloud lobes.
+    const shadow = [
+      { x: -1.1 * s, y: 0.72 * s },
+      { x: -1.8 * s, y: 1.3 * s },
+      { x: -0.98 * s, y: 1.22 * s },
     ]
-    for (const l of lobes) {
-      g.fillStyle(SHADOW, 1)
-      g.fillCircle(cx + l.x * s, cy + l.y * s, (l.r + 0.11) * s)
-    }
-    for (const l of lobes) {
-      g.fillStyle(CREAM, 1)
-      g.fillCircle(cx + l.x * s, cy + l.y * s, l.r * s)
-    }
-    g.lineStyle(Math.max(1.25, s * 0.06), SHADOW, 0.9)
-    for (const mark of [
-      { x1: -0.45, y1: 0.05, x2: -0.66, y2: 0.34 },
-      { x1: 0.06, y1: 0.18, x2: -0.12, y2: 0.51 },
-      { x1: 0.35, y1: -0.05, x2: 0.58, y2: 0.12 },
-    ]) {
-      g.beginPath()
-      g.moveTo(cx + mark.x1 * s, cy + mark.y1 * s)
-      g.lineTo(cx + mark.x2 * s, cy + mark.y2 * s)
-      g.strokePath()
-    }
+    const cream = [
+      { x: -1.13 * s, y: 0.83 * s },
+      { x: -1.58 * s, y: 1.19 * s },
+      { x: -1.04 * s, y: 1.12 * s },
+    ]
+    fillPolygon(g, SHADOW, shadow)
+    fillPolygon(g, CREAM, cream)
+    g.lineStyle(Math.max(1.25, s * 0.055), SHADOW, 1)
+    g.strokePoints(vectors(cream), true, true)
   }
 
-  private drawAccents(g: Phaser.GameObjects.Graphics, s: number, seed: number): void {
-    const rng = makeRng(seed + 991)
-    g.fillStyle(YELLOW_LIGHT, 0.95)
-    for (let i = 0; i < 28; i++) {
-      const a = -Math.PI * 0.9 + rng() * Math.PI * 1.5
-      const r = (1.95 + rng() * 0.72) * s
-      g.fillCircle(Math.cos(a) * r, Math.sin(a) * r, s * (0.025 + rng() * 0.04))
-    }
-    // Three tiny impact diamonds add the flashy comic punctuation.
-    for (const p of [{ x: -2.2, y: -0.9 }, { x: 1.5, y: -2.15 }, { x: 1.95, y: 1.55 }]) {
+  private drawAccents(g: Phaser.GameObjects.Graphics, s: number): void {
+    // Restrained punctuation only: three diamonds and four short motion cuts.
+    for (const p of [{ x: -1.95, y: -1.15 }, { x: 1.45, y: -1.8 }, { x: 1.78, y: 1.38 }]) {
       fillPolygon(g, YELLOW, [
-        { x: p.x * s, y: (p.y - 0.14) * s },
-        { x: (p.x + 0.09) * s, y: p.y * s },
-        { x: p.x * s, y: (p.y + 0.14) * s },
-        { x: (p.x - 0.09) * s, y: p.y * s },
+        { x: p.x * s, y: (p.y - 0.15) * s },
+        { x: (p.x + 0.1) * s, y: p.y * s },
+        { x: p.x * s, y: (p.y + 0.15) * s },
+        { x: (p.x - 0.1) * s, y: p.y * s },
       ])
+    }
+    g.lineStyle(Math.max(1.25, s * 0.055), YELLOW_LIGHT, 0.92)
+    for (const cut of [
+      { x1: -2.3, y1: -0.45, x2: -2.65, y2: -0.62 },
+      { x1: -2.28, y1: 0.02, x2: -2.72, y2: 0.02 },
+      { x1: -2.15, y1: 0.5, x2: -2.52, y2: 0.68 },
+      { x1: 1.55, y1: -1.52, x2: 1.85, y2: -1.78 },
+    ]) {
+      g.beginPath()
+      g.moveTo(cut.x1 * s, cut.y1 * s)
+      g.lineTo(cut.x2 * s, cut.y2 * s)
+      g.strokePath()
     }
   }
 
   private drawFlash(g: Phaser.GameObjects.Graphics, s: number): void {
-    g.fillStyle(0xffffff, 0.95)
-    g.fillCircle(0, 0, 0.46 * s)
-    const rays = 10
-    g.lineStyle(Math.max(2, s * 0.075), YELLOW_LIGHT, 1)
-    for (let i = 0; i < rays; i++) {
-      const a = (i / rays) * Math.PI * 2
-      g.beginPath()
-      g.moveTo(Math.cos(a) * 1.45 * s, Math.sin(a) * 1.45 * s)
-      g.lineTo(Math.cos(a) * 2.25 * s, Math.sin(a) * 2.25 * s)
-      g.strokePath()
+    // A compact ring/diamond flash avoids reintroducing radial sun rays.
+    g.lineStyle(Math.max(2, s * 0.08), YELLOW_LIGHT, 0.95)
+    g.strokeCircle(0, 0, 1.65 * s)
+    for (const p of [{ x: 0, y: -1.95 }, { x: 1.92, y: 0 }, { x: 0, y: 1.95 }, { x: -1.92, y: 0 }]) {
+      fillPolygon(g, CREAM, [
+        { x: p.x * s, y: (p.y - 0.18) * s },
+        { x: (p.x + 0.12) * s, y: p.y * s },
+        { x: p.x * s, y: (p.y + 0.18) * s },
+        { x: (p.x - 0.12) * s, y: p.y * s },
+      ])
     }
   }
 
@@ -499,37 +541,38 @@ export class DiscoveryBanner {
     const tabBase = { x: this.duplicateC.x, y: this.duplicateC.y }
     const tierBase = { x: this.tierC.x, y: this.tierC.y }
 
-    this.holder.setAlpha(1)
+    // The complete card—not a persistent connector—slides in from off-screen right.
+    this.holder.setPosition(this.offscreenX, rect.cy).setAlpha(0.2)
     this.railsC.setAlpha(0).setPosition(1.8 * s, 0)
     this.panelC.setAlpha(0).setScale(0.04, 0.72)
-    this.burstC.setAlpha(0).setScale(0.08).setRotation(-0.26)
-    this.ballC.setAlpha(0).setScale(0.12).setPosition(0, 0.7 * s)
-    this.cloudC.setAlpha(0).setScale(0.15).setPosition(-0.3 * s, 0.15 * s)
-    this.duplicateC.setAlpha(0).setScale(0.25).setPosition(tabBase.x + 1.2 * s, tabBase.y - 0.8 * s)
-    this.tierC.setAlpha(0).setScale(0.18).setPosition(tierBase.x + 1.15 * s, tierBase.y)
+    this.burstC.setAlpha(0).setScale(0.2)
+    this.ballC.setAlpha(0).setScale(0.16).setPosition(0, 0.55 * s)
+    this.cloudC.setAlpha(0).setScale(0.2).setPosition(-0.2 * s, 0.12 * s)
+    this.duplicateC.setAlpha(0).setScale(0.3).setPosition(tabBase.x + 1.1 * s, tabBase.y - 0.65 * s)
+    this.tierC.setAlpha(0).setScale(0.2).setPosition(tierBase.x + 1.05 * s, tierBase.y)
     this.accentC.setAlpha(0)
-    this.flashC.setAlpha(0).setScale(0.15)
+    this.flashC.setAlpha(0).setScale(0.25)
 
-    this.addTween({ targets: this.flashC, alpha: 1, scaleX: 1, scaleY: 1, duration: 55, ease: 'Cubic.easeOut', onComplete: () => {
+    this.addTween({ targets: this.holder, x: rect.cx, alpha: 1, duration: 320, ease: 'Cubic.easeOut' })
+    this.addTween({ targets: this.flashC, alpha: 1, scaleX: 1, scaleY: 1, delay: 75, duration: 65, ease: 'Cubic.easeOut', onComplete: () => {
       if (!this.flashC) return
-      this.addTween({ targets: this.flashC, alpha: 0, scaleX: 1.9, scaleY: 1.9, duration: 130, ease: 'Cubic.easeOut' })
+      this.addTween({ targets: this.flashC, alpha: 0, scaleX: 1.5, scaleY: 1.5, duration: 120, ease: 'Cubic.easeOut' })
     } })
-    this.addTween({ targets: this.burstC, alpha: 1, scaleX: 1, scaleY: 1, rotation: 0, delay: 20, duration: 210, ease: 'Back.easeOut.config(0.75)' })
-    this.addTween({ targets: this.railsC, alpha: 1, x: 0, delay: 55, duration: 235, ease: 'Cubic.easeOut' })
-    this.addTween({ targets: this.panelC, alpha: 1, scaleX: 1, scaleY: 1, delay: 70, duration: 250, ease: 'Back.easeOut.config(0.38)' })
-    this.addTween({ targets: this.ballC, alpha: 1, scaleX: 1, scaleY: 1, y: 0, delay: 95, duration: 220, ease: 'Back.easeOut.config(0.85)' })
-    this.addTween({ targets: this.cloudC, alpha: 1, scaleX: 1, scaleY: 1, x: 0, y: 0, delay: 120, duration: 180, ease: 'Back.easeOut.config(0.7)' })
-    this.addTween({ targets: this.duplicateC, alpha: 1, scaleX: 1, scaleY: 1, x: tabBase.x, y: tabBase.y, delay: 140, duration: 210, ease: 'Back.easeOut.config(0.8)' })
-    this.addTween({ targets: this.tierC, alpha: 1, scaleX: 1, scaleY: 1, x: tierBase.x, y: tierBase.y, delay: 180, duration: 190, ease: 'Back.easeOut.config(0.95)' })
-    this.addTween({ targets: this.accentC, alpha: 1, delay: 190, duration: 150, ease: 'Cubic.easeOut' })
+    this.addTween({ targets: this.burstC, alpha: 1, scaleX: 1, scaleY: 1, delay: 70, duration: 205, ease: 'Back.easeOut.config(0.55)' })
+    this.addTween({ targets: this.railsC, alpha: 1, x: 0, delay: 95, duration: 225, ease: 'Cubic.easeOut' })
+    this.addTween({ targets: this.panelC, alpha: 1, scaleX: 1, scaleY: 1, delay: 105, duration: 245, ease: 'Back.easeOut.config(0.32)' })
+    this.addTween({ targets: this.ballC, alpha: 1, scaleX: 1, scaleY: 1, y: 0, delay: 125, duration: 215, ease: 'Back.easeOut.config(0.7)' })
+    this.addTween({ targets: this.cloudC, alpha: 1, scaleX: 1, scaleY: 1, x: 0, y: 0, delay: 145, duration: 175, ease: 'Back.easeOut.config(0.55)' })
+    this.addTween({ targets: this.duplicateC, alpha: 1, scaleX: 1, scaleY: 1, x: tabBase.x, y: tabBase.y, delay: 170, duration: 205, ease: 'Back.easeOut.config(0.7)' })
+    this.addTween({ targets: this.tierC, alpha: 1, scaleX: 1, scaleY: 1, x: tierBase.x, y: tierBase.y, delay: 205, duration: 185, ease: 'Back.easeOut.config(0.8)' })
+    this.addTween({ targets: this.accentC, alpha: 1, delay: 220, duration: 135, ease: 'Cubic.easeOut' })
 
-    // A brief aftershock sells the impact, then restrained independent motion.
-    this.addTween({ targets: this.holder, x: rect.cx + 2.4, duration: 45, delay: 250, yoyo: true, repeat: 1, ease: 'Sine.easeInOut' })
-    this.addTween({ targets: this.ballC, x: -Math.sin(rect.angle) * 1.25, y: -Math.cos(rect.angle) * 1.25, delay: 430, duration: 720, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
-    this.addTween({ targets: this.burstC, rotation: 0.018, scaleX: 1.015, scaleY: 1.015, delay: 470, duration: 880, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
-    this.addTween({ targets: this.duplicateC, y: tabBase.y - 1.2, delay: 520, duration: 760, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
-    this.addTween({ targets: this.railsC, x: 1.3, delay: 560, duration: 920, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
-    this.addTween({ targets: this.accentC, alpha: 0.62, delay: 600, duration: 620, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
+    // A short impact aftershock, followed by restrained independent motion.
+    this.addTween({ targets: this.holder, x: rect.cx + 2.2, duration: 42, delay: 365, yoyo: true, repeat: 1, ease: 'Sine.easeInOut' })
+    this.addTween({ targets: this.ballC, x: -Math.sin(rect.angle) * 1.15, y: -Math.cos(rect.angle) * 1.15, delay: 520, duration: 760, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
+    this.addTween({ targets: this.burstC, scaleX: 1.012, scaleY: 1.012, delay: 560, duration: 920, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
+    this.addTween({ targets: this.duplicateC, y: tabBase.y - 1, delay: 600, duration: 820, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
+    this.addTween({ targets: this.railsC, x: 1, delay: 620, duration: 980, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' })
   }
 
   private addTween(config: Phaser.Types.Tweens.TweenBuilderConfig): void {
@@ -555,16 +598,16 @@ export class DiscoveryBanner {
       this.destroy()
       return
     }
-    const s = this.holder ? (this.hudLayout?.().composition === 'portrait' ? 16 : 24) : 24
-    if (this.panelC) this.addTween({ targets: this.panelC, scaleX: 0.04, scaleY: 0.72, alpha: 0, duration: 180, ease: 'Cubic.easeIn' })
-    if (this.railsC) this.addTween({ targets: this.railsC, x: s * 2, alpha: 0, duration: 170, ease: 'Cubic.easeIn' })
+    const s = this.hudLayout?.().composition === 'portrait' ? 17 : 24
+    if (this.panelC) this.addTween({ targets: this.panelC, scaleX: 0.08, scaleY: 0.78, alpha: 0, duration: 190, ease: 'Cubic.easeIn' })
+    if (this.railsC) this.addTween({ targets: this.railsC, x: s * 1.8, alpha: 0, duration: 180, ease: 'Cubic.easeIn' })
     for (const layer of [this.burstC, this.ballC, this.cloudC]) {
-      if (layer) this.addTween({ targets: layer, scaleX: 0.76, scaleY: 0.76, alpha: 0, duration: 170, ease: 'Cubic.easeIn' })
+      if (layer) this.addTween({ targets: layer, scaleX: 0.8, scaleY: 0.8, alpha: 0, duration: 180, ease: 'Cubic.easeIn' })
     }
     for (const layer of [this.duplicateC, this.tierC, this.accentC]) {
-      if (layer) this.addTween({ targets: layer, x: layer.x + s, alpha: 0, duration: 145, ease: 'Cubic.easeIn' })
+      if (layer) this.addTween({ targets: layer, x: layer.x + s, alpha: 0, duration: 155, ease: 'Cubic.easeIn' })
     }
-    this.addTween({ targets: this.holder, alpha: 0, duration: 190, ease: 'Cubic.easeIn', onComplete: () => this.destroy() })
+    this.addTween({ targets: this.holder, x: this.offscreenX, alpha: 0, duration: 260, ease: 'Cubic.easeIn', onComplete: () => this.destroy() })
   }
 
   destroy(): void {
@@ -591,5 +634,6 @@ export class DiscoveryBanner {
     this.accentC = null
     this.flashC = null
     this.ballG = null
+    this.offscreenX = 0
   }
 }

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // enough; vi.mock hoists above the static imports.
 vi.mock('phaser', () => ({ default: {} }))
 
-import { bannerArtworkBounds, bannerForcedByVariant, bannerRect, makeRng } from './DiscoveryBanner'
+import { bannerArtworkBounds, bannerForcedByVariant, bannerOffscreenX, bannerRect, circleInsidePolygon, makeRng } from './DiscoveryBanner'
 
 describe('the discovery banner geometry', () => {
   it('positions the complete asymmetric artwork in the top-right area', () => {
@@ -51,8 +51,8 @@ describe('the discovery banner geometry', () => {
 
   it('uses a readable dedicated portrait footprint at 390 and 320 widths', () => {
     const phone = bannerArtworkBounds(bannerRect(390, 844))
-    expect(phone.right - phone.left).toBeGreaterThan(190)
-    expect(phone.right - phone.left).toBeLessThan(205)
+    expect(phone.right - phone.left).toBeGreaterThan(185)
+    expect(phone.right - phone.left).toBeLessThan(195)
     expect(phone.bottom - phone.top).toBeGreaterThan(90)
     expect(phone.bottom - phone.top).toBeLessThan(100)
     expect(phone.left).toBeGreaterThan(0)
@@ -64,6 +64,35 @@ describe('the discovery banner geometry', () => {
     expect(compact.right - compact.left).toBeLessThan(170)
     expect(compact.left).toBeGreaterThan(0)
     expect(compact.right).toBeLessThanOrEqual(320 - 14)
+  })
+
+
+  it('starts the entire transformed card beyond the right viewport edge', () => {
+    for (const [vw, vh] of [[1672, 770], [390, 844], [320, 844]] as const) {
+      const rect = bannerRect(vw, vh)
+      const finalBounds = bannerArtworkBounds(rect)
+      const offscreenX = bannerOffscreenX(rect, vw)
+      const localArtworkLeft = finalBounds.left - rect.cx
+      expect(offscreenX + localArtworkLeft).toBeGreaterThanOrEqual(vw + 18)
+    }
+  })
+})
+
+describe('the clipped pop-art halftone', () => {
+  const square = [
+    { x: 0, y: 0 },
+    { x: 10, y: 0 },
+    { x: 10, y: 10 },
+    { x: 0, y: 10 },
+  ]
+
+  it('rejects a dot whose center is inside but radius crosses an edge', () => {
+    expect(circleInsidePolygon({ x: 1, y: 5 }, 2, square)).toBe(false)
+  })
+
+  it('accepts a circle with full edge clearance and rejects outside centers', () => {
+    expect(circleInsidePolygon({ x: 3, y: 5 }, 2, square)).toBe(true)
+    expect(circleInsidePolygon({ x: 11, y: 5 }, 1, square)).toBe(false)
   })
 })
 
