@@ -162,6 +162,9 @@ export class UiRoot {
     this.abilities.setAbilitiesEnabled(enabled)
     this.pauseButton.setDisabled(!enabled)
   }
+  refreshAbilityAuth(): void {
+    if (this.l) this.abilities.layout(this.l)
+  }
 
   resetForNewRun(): void {
     this.abilities.resetForNewRun()

@@ -171,7 +171,11 @@ export class UIScene extends Phaser.Scene {
       // banner — gameplay never pauses for it.
       gameBus.on('discovery:banner', ({ tier, seed, theme, variant }) => this.discoveryBanner.show(tier, seed, theme, variant)),
     )
-    this.offs.push(authService.onAuthStateChange(() => this.refreshRank()))
+    this.offs.push(authService.onAuthStateChange(() => {
+      this.uiRoot.refreshAbilityAuth()
+      this.refreshRank()
+    }))
+    this.uiRoot.refreshAbilityAuth()
     // Auth subscriptions are not immediate, so pull the current account on boot.
     this.refreshRank()
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {

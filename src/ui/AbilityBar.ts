@@ -34,7 +34,6 @@ export class AbilityBar {
   private readonly handlers: AbilityHandlers
   private l: UiLayout | null = null
   private guestNotification: FloatingTextNotification | null = null
-  private isGuest = false
   /** Hide the ability bar (the collectible card owns the screen). */
   setVisible(visible: boolean): void {
     for (const b of this.buttons) b.containerObj?.setVisible(visible)
@@ -44,11 +43,11 @@ export class AbilityBar {
   constructor(scene: Phaser.Scene, handlers: AbilityHandlers) {
     this.scene = scene
     this.handlers = handlers
-    this.isGuest = !authService.getUser()
   }
 
   layout(l: UiLayout): void {
     this.l = l
+    const isGuest = !authService.isAuthenticated()
     for (const b of this.buttons) b.objects().forEach((o) => o.destroy())
     this.buttons = []
     const n = 4
@@ -83,9 +82,9 @@ export class AbilityBar {
         hotkey: isPortrait ? undefined : 'Q',
         qty: '1',
         disabled: this.swapUsed || !this.abilitiesEnabled,
-        guestDisabled: this.isGuest,
+        guestDisabled: isGuest,
         label: this.swapUsed ? 'USED' : 'SWAP',
-        press: this.isGuest ? guestPress : () => this.handlers.onSwap(),
+        press: isGuest ? guestPress : () => this.handlers.onSwap()
       },
       {
         fill: UI_COLORS.BTN_BLUE,
@@ -93,9 +92,9 @@ export class AbilityBar {
         hotkey: isPortrait ? undefined : 'W',
         qty: this.shakeUsed ? undefined : '1',
         disabled: this.shakeUsed || !this.abilitiesEnabled,
-        guestDisabled: this.isGuest,
+        guestDisabled: isGuest,
         label: this.shakeUsed ? 'USED' : 'SHAKE',
-        press: this.isGuest ? guestPress : () => this.handlers.onShake(),
+        press: isGuest ? guestPress : () => this.handlers.onShake()
       },
       {
         fill: UI_COLORS.BTN_BLUE,
@@ -105,9 +104,9 @@ export class AbilityBar {
         // moment activation succeeds and stays that way for the whole run.
         qty: this.raiseUsed ? undefined : '1',
         disabled: this.raiseUsed || !this.abilitiesEnabled,
-        guestDisabled: this.isGuest,
+        guestDisabled: isGuest,
         label: this.raiseUsed ? 'USED' : 'RAISE',
-        press: this.isGuest ? guestPress : () => this.handlers.onRaise(),
+        press: isGuest ? guestPress : () => this.handlers.onRaise()
       },
       { fill: UI_COLORS.BTN_BLUE, icon: Icons.soon, disabled: true, label: 'SOON' },
     ]
