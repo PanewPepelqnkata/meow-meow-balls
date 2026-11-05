@@ -49,7 +49,7 @@ function fmtNum(n: number): string {
   return n.toLocaleString('en-US')
 }
 
-function fmtDate(iso: string | null | undefined): string {
+function fmtDate(iso: string | number | null | undefined): string {
   if (!iso) return '—'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '—'
@@ -68,6 +68,31 @@ function fmtDuration(ms: number): string {
   const s = totalSec % 60
   if (m > 0) return `${m}m ${s}s`
   return `${s}s`
+}
+
+export function BossRunCollectibles({
+  collectibles,
+}: {
+  collectibles: BossRunEnriched['collectibles']
+}) {
+  if (collectibles == null) return <span className="boss-muted">Not recorded</span>
+  if (collectibles.length === 0) return <span className="boss-muted">None discovered</span>
+
+  return (
+    <ul className="boss-collectibles" aria-label="Collectibles discovered in this run">
+      {collectibles.map((item) => (
+        <li key={`${item.tier}:${item.theme}:${item.variant}`}>
+          <strong>T{item.tier} — {item.theme.toUpperCase()}</strong>
+          <span
+            className="boss-muted"
+            title={`Palette ${item.variant} (0-based) · Discovered ${new Date(item.discoveredAt).toLocaleString('en-US')}`}
+          >
+            Palette {item.variant} · {fmtDate(item.discoveredAt)}
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
 }
 
 export function BossDashboard() {
@@ -1156,6 +1181,7 @@ export function BossDashboard() {
                     <th>Player</th>
                     <th>Score</th>
                     <th>Tier</th>
+                    <th>Collectibles</th>
                     <th>Merges</th>
                     <th>Duration</th>
                     <th>Status</th>
@@ -1183,6 +1209,7 @@ export function BossDashboard() {
                           T{r.tier_reached}
                         </span>
                       </td>
+                      <td><BossRunCollectibles collectibles={r.collectibles} /></td>
                       <td>{fmtNum(r.balls_merged)}</td>
                       <td className="boss-muted">{fmtDuration(r.duration_ms)}</td>
                       <td>

@@ -637,6 +637,29 @@
   border-color: rgba(79, 195, 247, 0.45);
 }
 
+.boss-collectibles {
+  display: grid;
+  gap: 8px;
+  min-width: 210px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.boss-collectibles strong,
+.boss-collectibles .boss-muted {
+  display: block;
+}
+
+.boss-collectibles strong {
+  font-size: 12px;
+}
+
+.boss-collectibles .boss-muted {
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
 /* ---- Modal ---- */
 .boss-modal-backdrop {
   position: fixed;

@@ -43,7 +43,7 @@ points and triggering chain reactions. The run ends when a ball escapes the cont
 - Ordinary Tier 9 balls draw the run's theme, including Drunko in normal play; shark, pig and Drunko currently have equal roll weights. Character and palette are fixed for the run, not rerolled per ball.
 - Drunko has a tilted stitched cap, grey beard, sleepy half-closed eyes, drool and a green bottle. Shared idle expressions include blink, wink, grin and tongue; fear opens the eyes, lowers the bottle, hides the drool and adds sweat.
 - Collection history stores `${tier}:${character}:${palette}` in the existing variants map. The book renders the recorded character and first-discovered palette independently of the current run.
-- Older Tier 9 numeric records contain only a palette, not a character identity; they are preserved as unidentified finds rather than arbitrarily assigned a character. Legacy crab records can be recovered because Tier 10 had only crab.
+- Older numeric collectible records preserve palette and discovery history but do not establish a character identity; the collection book reports them as unidentified rather than guessing.
 
 ## 4. Spawning Rules
 

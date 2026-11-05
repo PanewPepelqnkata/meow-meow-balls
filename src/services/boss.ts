@@ -1,6 +1,7 @@
 import { getSupabase } from '../lib/supabase'
 import { authService } from './auth'
 import type { SaveDataV1 } from '../game/state/save'
+import type { RunCollectibles } from '../game/state/collectibleMetadata'
 export interface BossProfileRow {
   id: string
   username: string | null
@@ -20,6 +21,8 @@ export interface BossScoreRow {
   balls_merged: number
   duration_ms: number
   interruption_reason: string | null
+  /** null/missing: legacy run without recorded identities; []: no collectible discovered. */
+  collectibles?: RunCollectibles | null
   created_at: string
 }
 
@@ -77,6 +80,8 @@ export interface BossGuestScoreRow {
   balls_merged: number
   duration_ms: number
   interruption_reason: string | null
+  /** null/missing: legacy run without recorded identities; []: no collectible discovered. */
+  collectibles?: RunCollectibles | null
   created_at: string
 }
 
@@ -366,6 +371,7 @@ export function buildBossAnalytics(
       balls_merged: gs.balls_merged,
       duration_ms: gs.duration_ms,
       interruption_reason: gs.interruption_reason ?? null,
+      collectibles: gs.collectibles,
       created_at: gs.created_at,
     })
     guestRunsByGuest.set(gs.guest_id, list)
@@ -557,6 +563,7 @@ export function buildBossAnalytics(
         balls_merged: gs.balls_merged,
         duration_ms: gs.duration_ms,
         interruption_reason: gs.interruption_reason ?? null,
+        collectibles: gs.collectibles,
         created_at: gs.created_at,
         username: g?.username ?? `guest_${gs.guest_id.slice(0, 6)}`,
         displayName: g?.displayName ?? `Guest #${gs.guest_id.slice(0, 6)}`,

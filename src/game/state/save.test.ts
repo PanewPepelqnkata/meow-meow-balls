@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('phaser', () => ({ default: {} }))
 
 import {
+  getOrCreateGuestId,
   getSaveOwnerId,
   hasDiscoveredCollectible,
   hasDiscoveredTier,
@@ -15,6 +16,7 @@ import {
   recordDiscovery,
   recordMerge,
   recordRunEnd,
+  resetProgress,
   resetSave,
   savedBest,
   writeSave,
@@ -63,12 +65,13 @@ describe('hasDiscoveredTier (the repeat-discovery gate)', () => {
     expect(hasDiscoveredTier(8)).toBe(false)
   })
 
-  it('stores pig and shark discoveries separately across runs and save roundtrips', () => {
-    recordDiscovery(9, 3, 'pig')
-    recordDiscovery(9, 3, 'shark')
+  it('stores every tier-nine character separately across runs and save roundtrips', () => {
+    for (const theme of ['pig', 'shark', 'drunko', 'robo']) recordDiscovery(9, 3, theme)
     const saved = normalizeSave(loadSave())
     expect(saved.variants['9:pig:3']).toBeGreaterThan(0)
     expect(saved.variants['9:shark:3']).toBeGreaterThan(0)
+    expect(saved.variants['9:drunko:3']).toBeGreaterThan(0)
+    expect(saved.variants['9:robo:3']).toBeGreaterThan(0)
     expect(saved.variants['9:3']).toBeUndefined()
     resetSave()
     writeSave(saved, { syncCloud: false })
@@ -82,6 +85,17 @@ describe('hasDiscoveredTier (the repeat-discovery gate)', () => {
     expect(hasDiscoveredCollectible(9, 'drunko')).toBe(false)
     expect(hasDiscoveredCollectible(9, 'robo')).toBe(false)
     expect(hasDiscoveredCollectible(10, 'crab')).toBe(false)
+  })
+
+  it('uses the same verified identity lookup for banners and the collection book', () => {
+    writeSave({ variants: { '10:0': 100, '9:pig:8': 100, '9:shark:': 100 } }, { syncCloud: false })
+    expect(hasDiscoveredCollectible(10, 'crab')).toBe(false)
+    expect(hasDiscoveredCollectible(9, 'pig')).toBe(false)
+    expect(hasDiscoveredCollectible(9, 'shark')).toBe(false)
+    recordDiscovery(10, 4, 'crab')
+    recordDiscovery(9, 3, 'pig')
+    expect(hasDiscoveredCollectible(10, 'crab')).toBe(true)
+    expect(hasDiscoveredCollectible(9, 'pig')).toBe(true)
   })
 
   it('returns false for collectible tiers when theme is null', () => {
@@ -102,6 +116,24 @@ describe('hasDiscoveredTier (the repeat-discovery gate)', () => {
     } finally {
       vi.mocked(Date.now).mockRestore()
     }
+  })
+
+  it('starts a new guest identity when Settings resets progression', () => {
+    const previousGuestId = getOrCreateGuestId()
+    recordDiscovery(9, 2, 'pig')
+    resetProgress()
+    expect(getOrCreateGuestId()).not.toBe(previousGuestId)
+    expect(getSaveOwnerId()).toBeNull()
+    expect(loadSave().variants).toEqual({})
+  })
+
+  it('keeps the account owner and unrelated guest identity when Settings resets an account', () => {
+    const guestId = getOrCreateGuestId()
+    writeSave({ variants: { '9:pig:2': 100 } }, { syncCloud: false, ownerId: 'account-a' })
+    resetProgress()
+    expect(getSaveOwnerId()).toBe('account-a')
+    expect(getOrCreateGuestId()).toBe(guestId)
+    expect(loadSave().variants).toEqual({})
   })
 
   it('isolates account progression on logout and restores account save on login', () => {

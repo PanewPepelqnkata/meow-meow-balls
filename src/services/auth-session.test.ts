@@ -254,6 +254,116 @@ describe('persistent browser auth lifecycle', () => {
     expect(sdk.state.nestedCalls).toEqual([])
   })
 
+  it('keeps finds earned during hydration without resurrecting its stale local baseline', async () => {
+    sdk.state.session = sessionFor('account-a')
+    await auth.initialize()
+    await vi.advanceTimersByTimeAsync(0)
+    saves.writeSave({ variants: { '9:shark:2': 100 } }, { syncCloud: false, ownerId: 'account-a' })
+    sdk.state.session!.user.user_metadata.ballrush_progress = { variants: { '9:shark:2': 100 } }
+
+    const progress = deferred<QueryResult>()
+    sdk.queryResult.mockImplementation((table, column, value, operation) => {
+      if (table === 'user_progress' && operation === 'maybeSingle') return progress.promise
+      return sdk.defaultQuery(table, column, value, operation)
+    })
+    const restoring = auth.restoreAccountProgress()
+    saves.recordDiscovery(9, 2, 'drunko')
+    saves.recordDiscovery(9, 2, 'robo')
+    // Queue an upload from the pre-hydration save; it must not later erase the table's pig.
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(sdk.auth.updateUser).not.toHaveBeenCalled()
+
+    progress.resolve({ data: { best_score: 42, variants: { '9:pig:2': 50 } }, error: null })
+    await restoring
+    await vi.advanceTimersByTimeAsync(3000)
+
+    expect(saves.loadSave().variants).toEqual({
+      '9:pig:2': 50,
+      '9:drunko:2': expect.any(Number),
+      '9:robo:2': expect.any(Number),
+    })
+    expect(saves.hasDiscoveredCollectible(9, 'pig')).toBe(true)
+    expect(saves.hasDiscoveredCollectible(9, 'drunko')).toBe(true)
+    expect(saves.hasDiscoveredCollectible(9, 'robo')).toBe(true)
+    expect(saves.hasDiscoveredCollectible(9, 'shark')).toBe(false)
+    expect(sdk.auth.updateUser).toHaveBeenCalledTimes(1)
+    expect(sdk.auth.updateUser).toHaveBeenLastCalledWith({
+      data: { ballrush_progress: expect.objectContaining({ variants: saves.loadSave().variants }) },
+    })
+  })
+
+  it('does not restore a cloud collection snapshot over an explicit reset made while it was pending', async () => {
+    sdk.state.session = sessionFor('account-a')
+    await auth.initialize()
+    await vi.advanceTimersByTimeAsync(0)
+    const progress = deferred<QueryResult>()
+    sdk.queryResult.mockImplementation((table, column, value, operation) => {
+      if (table === 'user_progress' && operation === 'maybeSingle') return progress.promise
+      return sdk.defaultQuery(table, column, value, operation)
+    })
+    const restoring = auth.restoreAccountProgress()
+    saves.recordDiscovery(9, 1, 'pig')
+    saves.resetSave({ syncCloud: true, clearOwner: false })
+    progress.resolve({ data: { best_score: 999, variants: { '9:shark:2': 100 } }, error: null })
+    await restoring
+    await vi.advanceTimersByTimeAsync(3000)
+
+    expect(saves.getSaveOwnerId()).toBe('account-a')
+    expect(saves.savedBest()).toBe(0)
+    expect(saves.loadSave().variants).toEqual({})
+  })
+
+  it('does not resurrect collection unlocks from historical run metadata after a collection reset', async () => {
+    sdk.state.session = sessionFor('account-a')
+    await auth.initialize()
+    await vi.advanceTimersByTimeAsync(0)
+    for (const theme of ['pig', 'shark', 'drunko', 'robo']) saves.recordDiscovery(9, 2, theme)
+    saves.resetSave({ syncCloud: true, clearOwner: false })
+    await vi.advanceTimersByTimeAsync(0)
+    const score = { user_id: 'account-a', score: 42, tier_reached: 10, balls_merged: 10,
+      duration_ms: 1000, created_at: '2026-11-01T00:00:00Z' }
+    const scores = [
+      { ...score, id: 1, collectibles: null },
+      { ...score, id: 2, collectibles: [] },
+      { ...score, id: 3, collectibles: [
+        { tier: 9, theme: 'pig', variant: 2, discoveredAt: 200 },
+        { tier: 9, theme: 'shark', variant: 2, discoveredAt: 300 },
+        { tier: 9, theme: 'drunko', variant: 2, discoveredAt: 400 },
+        { tier: 9, theme: 'robo', variant: 2, discoveredAt: 500 },
+      ] },
+    ]
+    sdk.queryResult.mockImplementation((table, column, value, operation) => {
+      if (table === 'scores') return Promise.resolve({ data: scores, error: null })
+      if (table === 'user_progress' && operation === 'maybeSingle') {
+        return Promise.resolve({ data: { variants: {} }, error: null })
+      }
+      return sdk.defaultQuery(table, column, value, operation)
+    })
+
+    await auth.restoreAccountProgress()
+
+    expect(saves.loadSave().variants).toEqual({})
+    for (const theme of ['pig', 'shark', 'drunko', 'robo']) {
+      expect(saves.hasDiscoveredCollectible(9, theme)).toBe(false)
+    }
+    expect(saves.hasDiscoveredCollectible(10, 'crab')).toBe(false)
+    saves.recordDiscovery(9, 3, 'pig')
+    expect(saves.hasDiscoveredCollectible(9, 'pig')).toBe(true)
+  })
+
+  it('keeps an authoritative empty reset instead of importing older explicit local and auth metadata finds', async () => {
+    const previous = { variants: { '9:pig:0': 100, '9:shark:0': 200, '9:drunko:0': 300, '9:robo:0': 400 } }
+    saves.writeSave(previous, { syncCloud: false, ownerId: 'account-a' })
+    sdk.state.session = sessionFor('account-a')
+    sdk.state.session.user.user_metadata.ballrush_progress = previous
+
+    await auth.initialize()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(saves.loadSave().variants).toEqual({})
+    expect(sdk.auth.updateUser).not.toHaveBeenCalled()
+  })
+
   it('handles INITIAL_SESSION without nested SDK calls and ignores an older getSession result', async () => {
     const stored = deferred<SessionResult>()
     sdk.state.sessionResponse = stored.promise
@@ -449,7 +559,7 @@ describe('persistent browser auth lifecycle', () => {
     sdk.queryResult.mockImplementation((table, column, value, operation) => {
       if (holdOldQueries && table === 'profiles') return oldProfile.promise
       if (holdOldQueries && table === 'user_progress' && operation === 'maybeSingle') return oldProgress.promise
-      if (table === 'user_progress' && operation === 'maybeSingle') return Promise.resolve({ data: { best_score: 7 }, error: null })
+      if (table === 'user_progress' && operation === 'maybeSingle') return Promise.resolve({ data: { best_score: 7, variants: { '9:robo:1': 100 } }, error: null })
       return sdk.defaultQuery(table, column, value, operation)
     })
     sdk.state.session = sessionFor('account-a')
@@ -463,13 +573,15 @@ describe('persistent browser auth lifecycle', () => {
     expect(await auth.signInWithEmail('next@example.com', 'password')).toEqual({ error: null })
     const notificationCount = notifications.mock.calls.length
     oldProfile.resolve({ data: { id: 'account-a', username: 'Stale profile' }, error: null })
-    oldProgress.resolve({ data: { best_score: 999 }, error: null })
+    oldProgress.resolve({ data: { best_score: 999, variants: { '9:pig:1': 50 } }, error: null })
     await vi.advanceTimersByTimeAsync(0)
     expect(auth.getUser()?.id).toBe(nextId)
     expect(auth.getSession()?.access_token).toBe('new-login')
     expect(auth.getProfile()?.username).toBe(nextId)
     expect(saves.getSaveOwnerId()).toBe(nextId)
     expect(saves.savedBest()).toBe(7)
+    expect(saves.hasDiscoveredCollectible(9, 'robo')).toBe(true)
+    expect(saves.hasDiscoveredCollectible(9, 'pig')).toBe(false)
     expect(notifications).toHaveBeenCalledTimes(notificationCount)
     expect(sdk.state.nestedCalls).toEqual([])
   })

@@ -4,10 +4,11 @@ import { rollCollectibleTheme } from './collectibleThemes'
 
 describe('collection character identities', () => {
   it('keeps characters separate even when their discovery palettes match', () => {
-    const discoveries = { '9:pig:2': 100, '9:shark:2': 200, '9:pig:5': 300, '9:drunko:2': 400 }
+    const discoveries = { '9:pig:2': 100, '9:shark:2': 200, '9:pig:5': 300, '9:drunko:2': 400, '9:robo:2': 500 }
     expect(collectionDiscovery(discoveries, 9, 'pig')).toEqual({ at: 100, variant: 2 })
     expect(collectionDiscovery(discoveries, 9, 'shark')).toEqual({ at: 200, variant: 2 })
     expect(collectionDiscovery(discoveries, 9, 'drunko')).toEqual({ at: 400, variant: 2 })
+    expect(collectionDiscovery(discoveries, 9, 'robo')).toEqual({ at: 500, variant: 2 })
   })
 
   it('retains a character’s first discovered palette rather than the latest run palette', () => {
@@ -31,9 +32,29 @@ describe('collection character identities', () => {
     expect(collectionDiscovery(discoveries, 9, 'robo')).toBeNull()
   })
 
-  it('can recover a crab from legacy numeric records without inventing other characters', () => {
-    expect(collectionDiscovery({ '10:5': 150, '10:2': 100 }, 10, 'crab')).toEqual({ at: 100, variant: 2 })
-    expect(collectionDiscovery({ '11:0': 100 }, 11, 'crab')).toBeNull()
+  it('keeps score-generated numeric records unidentified even when a tier has one character', () => {
+    const discoveries = { '10:5': 150, '10:0': 100, '11:0': 200, '12:0': 250 }
+    expect(collectionDiscovery(discoveries, 10, 'crab')).toBeNull()
+    for (const tier of [10, 11, 12]) {
+      expect(hasUnidentifiedCollectionFinds(discoveries, tier)).toBe(true)
+    }
+    expect(hasUnidentifiedCollectionFinds({ '8:0': 100 }, 8)).toBe(false)
+  })
+
+  it('ignores malformed palette keys and timestamps instead of hiding a rediscovery', () => {
+    const discoveries = {
+      '9:pig:': 100,
+      '9:pig:01': 100,
+      '9:pig:8': 100,
+      '9:pig:NaN': 100,
+      '9:pig:0': 0,
+      '9:pig:1': -100,
+      '9:pig:2': Number.NaN,
+      '9:pig:3': Number.POSITIVE_INFINITY,
+    }
+    expect(collectionDiscovery(discoveries, 9, 'pig')).toBeNull()
+    expect(collectionDiscovery({ ...discoveries, '9:pig:4': 300 }, 9, 'pig')).toEqual({ at: 300, variant: 4 })
+    expect(hasUnidentifiedCollectionFinds({ '9:8': 100, '9:0': 0, '9:1': Number.NaN }, 9)).toBe(false)
   })
 
   it('reserves exactly eight unrelated slots for each high tier, with unimplemented slots excluded from rolls', () => {

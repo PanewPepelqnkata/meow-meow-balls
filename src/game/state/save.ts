@@ -23,7 +23,7 @@
  * disabled, including storage probes, identity changes, and delayed cloud sync.
  */
 
-import { collectibleDiscoveryKey } from '../../config/collectibleCollection'
+import { collectibleDiscoveryKey, collectionDiscovery } from '../../config/collectibleCollection'
 import { gameBus } from '../events/gameBus'
 import { isDrunkoTestRoute } from './runVariant'
 
@@ -171,12 +171,18 @@ export function cloneSave(save: SaveDataV1 = loadSave()): SaveDataV1 {
 }
 
 let cache: SaveDataV1 | null = null
+let saveReplacementRevision = 0
 let ownerCache: string | null | undefined = undefined
 let guestIdCache: string | null = null
 let cloudSyncHandler: ((save: SaveDataV1, immediate: boolean) => void) | null = null
 
 export function setCloudSyncHandler(handler: ((save: SaveDataV1, immediate: boolean) => void) | null): void {
   cloudSyncHandler = handler
+}
+
+/** Full restores/resets supersede any older in-flight account hydration. Gameplay mutations do not. */
+export function getSaveReplacementRevision(): number {
+  return saveReplacementRevision
 }
 function storage(): Storage | null {
   try {
@@ -373,6 +379,7 @@ export function loadSave(): SaveDataV1 {
 }
 
 function assignCache(next: SaveDataV1): SaveDataV1 {
+  saveReplacementRevision++
   if (cache) {
     Object.assign(cache, next)
     return cache
@@ -422,6 +429,13 @@ export function resetSave(options?: { syncCloud?: boolean; clearOwner?: boolean 
   return current
 }
 
+/** Settings reset starts a fresh guest history; account identity and audit rows stay intact. */
+export function resetProgress(): SaveDataV1 {
+  if (isDrunkoTestRoute()) return loadSave()
+  if (getSaveOwnerId() === null) resetGuestId()
+  return resetSave({ syncCloud: true, clearOwner: false })
+}
+
 /** Record lifetime discovery; collectible themes identify characters, variant ids their palettes.
  * Without a theme, preserve the legacy numeric variant key. */
 export function recordDiscovery(tier: number, variantId: number | null, theme?: string | null): void {
@@ -449,7 +463,7 @@ export function hasDiscoveredTier(tier: number): boolean {
 export function hasDiscoveredCollectible(tier: number, theme: string | null): boolean {
   if (tier < 9 || tier > 12) return hasDiscoveredTier(tier)
   if (theme == null) return false
-  return Object.keys(loadSave().variants).some((key) => key.startsWith(`${tier}:${theme}:`))
+  return collectionDiscovery(loadSave().variants, tier, theme) !== null
 }
 
 /** A run genuinely started (first ball dropped): prepare for tracking. */

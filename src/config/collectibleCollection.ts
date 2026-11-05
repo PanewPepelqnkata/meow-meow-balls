@@ -40,23 +40,20 @@ export function collectionDiscovery(
   let first: CollectibleDiscovery | null = null
   const prefix = `${tier}:${theme}:`
   for (const [key, at] of Object.entries(variants)) {
-    if (!key.startsWith(prefix)) continue
-    const variant = Number(key.slice(prefix.length))
-    if (!Number.isInteger(variant) || variant < 0 || variant >= 8) continue
+    if (!key.startsWith(prefix) || !Number.isFinite(at) || at <= 0) continue
+    const palette = key.slice(prefix.length)
+    if (!/^[0-7]$/.test(palette)) continue
+    const variant = Number(palette)
     if (!first || at < first.at) first = { at, variant }
-  }
-  // Historical tier-10 records are unambiguous: crab was its only character.
-  // Tier-9 numeric keys did not record pig/shark; never guess their identity.
-  if (!first && tier === 10 && theme === 'crab') {
-    for (const [key, at] of Object.entries(variants)) {
-      if (!/^10:\d+$/.test(key)) continue
-      const variant = Number(key.slice(3))
-      if (variant >= 0 && variant < 8 && (!first || at < first.at)) first = { at, variant }
-    }
   }
   return first
 }
 
+/** Numeric palette records do not identify a character; older score backfills also generated them. */
 export function hasUnidentifiedCollectionFinds(variants: Readonly<Record<string, number>>, tier: number): boolean {
-  return tier === 9 && Object.keys(variants).some((key) => /^9:\d+$/.test(key))
+  if (!isCollectibleTier(tier)) return false
+  const prefix = `${tier}:`
+  return Object.entries(variants).some(([key, at]) =>
+    key.startsWith(prefix) && /^[0-7]$/.test(key.slice(prefix.length)) && Number.isFinite(at) && at > 0,
+  )
 }

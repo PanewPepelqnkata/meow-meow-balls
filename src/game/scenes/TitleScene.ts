@@ -13,7 +13,7 @@ import { BALL_TIERS, getTier } from '../../config/ballTiers'
 import { MAX_RENDER_DPR } from '../../config/stage'
 import type { BackgroundScene } from './BackgroundScene'
 import type { ThemeName } from '../rendering/BackgroundTheme'
-import { loadSave, resetSave, setThemeSetting } from '../state/save'
+import { loadSave, resetProgress, setThemeSetting } from '../state/save'
 import { tier9Theme, variantIdFor } from '../state/runVariant'
 import { session } from '../state/session'
 import { bakeCanvas, roundedRectPath } from '../rendering/RoughArt'
@@ -2329,7 +2329,7 @@ export class TitleScene extends Phaser.Scene {
       onClick: () => {
         if (this.resetArmed > Date.now()) {
           this.disarmReset()
-          resetSave({ syncCloud: true, clearOwner: false })
+          resetProgress()
           this.registry.set('best', 0)
           gameBus.emit('state:best', { best: 0 })
           const bg = this.scene.get('BackgroundScene') as BackgroundScene | undefined

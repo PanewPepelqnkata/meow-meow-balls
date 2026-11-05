@@ -101,6 +101,7 @@ describe('/drunko save isolation', () => {
 
     save.writeSave({ best: 99999 }, { syncCloud: true, ownerId: 'account-b' })
     save.resetSave({ syncCloud: true, clearOwner: true })
+    save.resetProgress()
     save.setThemeSetting('fantasy')
     save.setSaveOwnerId('account-b')
     expect(save.resetGuestId()).toBe(GUEST_ID)

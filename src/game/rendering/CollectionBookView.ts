@@ -346,7 +346,7 @@ export class CollectionBookView {
     paper.lineStyle(1, 0xc7b491, 0.7)
     paper.lineBetween(x, 35, x + w, 35)
     const bodyY = 44
-    const unidentified = chapter === 1 && hasUnidentifiedCollectionFinds(this.save.variants, tier)
+    const unidentified = chapter !== 0 && hasUnidentifiedCollectionFinds(this.save.variants, tier)
     const bodyH = this.pageH - bodyY - 24 - (unidentified ? 28 : 0)
     const slots = chapter === 0 ? null : collectionSlotsFor(tier)
     const first = side * 4
@@ -360,7 +360,7 @@ export class CollectionBookView {
       this.renderEntry(leaf, x + (slot % cols) * (cardW + gap), bodyY + Math.floor(slot / cols) * (cardH + gap), cardW, cardH, chapter === 0 ? entry + 1 : tier, 0, slots?.[entry]?.theme)
     }
     if (unidentified) {
-      this.paperText(leaf, x, this.pageH - 46, w, 'Older finds: character unknown.\nRediscover to identify.', 9, '#8a7a66', 24, true)
+      this.paperText(leaf, x, this.pageH - 46, w, 'Older records: character unknown.\nRediscover to identify.', 9, '#8a7a66', 24, true)
     }
     this.paperText(leaf, x, this.pageH - 18, w, `${chapter * 2 + side + 1}  /  ${CHAPTERS.length * 2}`, 10, '#8a7a66', 14)
     return leaf

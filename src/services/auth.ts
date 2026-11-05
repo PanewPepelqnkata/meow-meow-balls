@@ -1,5 +1,6 @@
 import { getSupabase } from '../lib/supabase'
 import { isDrunkoTestRoute } from '../game/state/runVariant'
+import { normalizeRunCollectibles, type RunCollectibles } from '../game/state/collectibleMetadata'
 import type { AuthChangeEvent, User, Session } from '@supabase/supabase-js'
 
 import {
@@ -7,6 +8,7 @@ import {
   freshSave,
   getOrCreateGuestId,
   getSaveOwnerId,
+  getSaveReplacementRevision,
   loadSave,
   normalizeSave,
   resetGuestId,
@@ -36,6 +38,7 @@ export interface Score {
   balls_merged: number
   duration_ms: number
   created_at: string
+  collectibles?: RunCollectibles | null
   profiles?: Profile
 }
 
@@ -93,7 +96,32 @@ function mergeSavesForSameUser(
   })
 }
 
-/** Restore score/tier progress only: scores contain no character or palette identity. */
+/** Keep only discoveries earned while hydration was pending, never an older reset baseline. */
+function retainDiscoveriesSinceRestore(base: SaveDataV1, before: SaveDataV1, current: SaveDataV1): boolean {
+  let changed = false
+  for (const [tier, at] of Object.entries(current.discovered)) {
+    if (before.discovered[tier] != null) continue
+    if (base.discovered[tier] == null || at < base.discovered[tier]!) {
+      base.discovered[tier] = at
+      changed = true
+    }
+  }
+  for (const [key, at] of Object.entries(current.variants)) {
+    if (before.variants[key] != null) continue
+    if (base.variants[key] == null || at < base.variants[key]!) {
+      base.variants[key] = at
+      changed = true
+    }
+    const tier = Number(key.split(':', 1)[0])
+    if (Number.isInteger(tier) && tier >= 1 && tier <= 12 && base.discovered[String(tier)] == null) {
+      base.discovered[String(tier)] = at
+      changed = true
+    }
+  }
+  return changed
+}
+
+/** Restore score/tier progress only. Run metadata audits history, not lifetime collection resets. */
 function reconcileSaveWithUserScores(
   base: SaveDataV1,
   scores: Score[],
@@ -172,6 +200,7 @@ export class AuthService {
   private authUpdateTimer: ReturnType<typeof setTimeout> | null = null
   private pendingAccountRestore = false
   private profileRequestRevision = 0
+  private progressRequestRevision = 0
 
   static getInstance(): AuthService {
     if (!AuthService.instance) {
@@ -692,6 +721,8 @@ export class AuthService {
     if (!user || this.user?.id !== user.id || getSaveOwnerId() !== user.id) return
     const userId = user.id
     const revision = this.accountRevision
+    const requestRevision = ++this.progressRequestRevision
+    const saveRevision = getSaveReplacementRevision()
 
     const localSameOwnerSave = getSaveOwnerId() === userId ? cloneSave(loadSave()) : null
 
@@ -712,7 +743,8 @@ export class AuthService {
             .maybeSingle(),
     ])
 
-    if (revision !== this.accountRevision || this.user?.id !== userId || getSaveOwnerId() !== userId) return
+    if (revision !== this.accountRevision || requestRevision !== this.progressRequestRevision ||
+        saveRevision !== getSaveReplacementRevision() || this.user?.id !== userId || getSaveOwnerId() !== userId) return
 
     if (tableRes.error) {
       const code = tableRes.error.code ?? ''
@@ -761,11 +793,20 @@ export class AuthService {
       if (localSameOwnerSave) combined = mergeSavesForSameUser(combined, localSameOwnerSave)
     }
 
+    // The title screen can start gameplay before its cloud requests finish.
+    // Replacing the save with the request's older snapshot must not erase those finds.
+    const discoveredDuringRestore = localSameOwnerSave !== null &&
+      retainDiscoveriesSinceRestore(combined, localSameOwnerSave, loadSave())
+
     const userScores = Array.isArray(scoresRes.data) ? (scoresRes.data as Score[]) : []
-    const { save: finalSave, changed: healedFromScores } = reconcileSaveWithUserScores(combined, userScores)
+    const { save: reconciledSave, changed: healedFromScores } = reconcileSaveWithUserScores(combined, userScores)
+    const finalSave = normalizeSave(reconciledSave)
 
-    if (revision !== this.accountRevision || this.user?.id !== userId || getSaveOwnerId() !== userId) return
+    if (revision !== this.accountRevision || requestRevision !== this.progressRequestRevision ||
+        saveRevision !== getSaveReplacementRevision() || this.user?.id !== userId || getSaveOwnerId() !== userId) return
 
+    const hadPendingCloudSave = this.pendingCloudSave !== null
+    this.cancelScheduledCloudSync()
     writeSave(finalSave, { syncCloud: false, ownerId: userId })
 
     // If scores or same-owner local data healed missing cloud metadata, persist back to cloud.
@@ -775,7 +816,7 @@ export class AuthService {
       finalSave.stats.runs > 0 ||
       finalSave.stats.merges > 0 ||
       Object.keys(finalSave.discovered).length > 3
-    if (healedFromScores || (!hadCloudRecord && hasProgress)) {
+    if (healedFromScores || discoveredDuringRestore || hadPendingCloudSave || (!hadCloudRecord && hasProgress)) {
       void this.persistSaveToCloud(finalSave, userId)
     }
   }
@@ -954,14 +995,10 @@ export class AuthService {
 
 export class ScoreService {
   private static instance: ScoreService
-  private activeRunKey: string | null = null
-  private activeScoreId: number | null = null
-  private activeRunCreatePromise: Promise<number | null> | null = null
-  private lastSubmitted: {
-    userId: string
-    score: number
-    tierReached: number
-    at: number
+  private activeRun: {
+    actorId: string | null
+    scoreId: number | null
+    createPromise: Promise<number | null> | null
   } | null = null
 
   static getInstance(): ScoreService {
@@ -972,10 +1009,8 @@ export class ScoreService {
   }
 
   /** Reset active run tracking when a fresh run begins. */
-  startNewRun(runKey?: string): void {
-    this.activeRunKey = runKey ?? `${Date.now()}-${Math.random()}`
-    this.activeScoreId = null
-    this.activeRunCreatePromise = null
+  startNewRun(): void {
+    this.activeRun = { actorId: null, scoreId: null, createPromise: null }
   }
 
 
@@ -989,34 +1024,31 @@ export class ScoreService {
     ballsMerged: number,
     durationMs: number,
     interruptionReason?: string,
+    collectibles: Readonly<RunCollectibles> | null = null,
   ): Promise<{ scoreId: number | null; error: Error | null }> {
     // /drunko is a real gameplay sandbox, but its run rows must never reach
     // guest_scores or scores, including when a caller bypasses scene guards.
     if (isDrunkoTestRoute()) return { scoreId: null, error: null }
     const auth = AuthService.getInstance()
     const user = auth.getUser()
+    const guestId = user ? null : getOrCreateGuestId()
+    const actorId = user?.id ?? `guest:${guestId}`
+    // Capture before any await: restart/discovery may replace or extend the
+    // scene's list while a previous row creation is still in flight.
+    const collectibleSnapshot = normalizeRunCollectibles(collectibles)
     const cleanScore = Math.max(0, Math.round(score))
     const cleanTier = Math.max(1, Math.min(12, Math.round(tierReached)))
     const cleanMerges = Math.max(0, Math.round(ballsMerged))
     const cleanDuration = Math.max(0, Math.round(durationMs))
 
-    if (!this.activeRunKey) {
+    if (!this.activeRun || (this.activeRun.actorId !== null && this.activeRun.actorId !== actorId)) {
       this.startNewRun()
     }
-    const runKeyAtCall = this.activeRunKey
-
-    // If a row creation is already in flight for this run, wait for it so we update instead of duplicating
-    if (this.activeScoreId === null && this.activeRunCreatePromise) {
-      try {
-        await this.activeRunCreatePromise
-      } catch {
-        // ignore
-      }
-    }
+    const run = this.activeRun!
+    run.actorId = actorId
 
     const performRpc = async (scoreIdToUpdate: number | null): Promise<number | null> => {
       if (!user) {
-        const guestId = getOrCreateGuestId()
         const { data, error } = await getSupabase().rpc('record_guest_score', {
           p_guest_id: guestId,
           p_score: cleanScore,
@@ -1025,6 +1057,7 @@ export class ScoreService {
           p_duration_ms: cleanDuration,
           p_score_id: scoreIdToUpdate,
           p_interruption_reason: interruptionReason ?? null,
+          p_collectibles: collectibleSnapshot,
         })
         if (error) throw new Error(error.message)
         return typeof data === 'number' ? data : data != null ? Number(data) : scoreIdToUpdate
@@ -1036,6 +1069,7 @@ export class ScoreService {
           p_duration_ms: cleanDuration,
           p_score_id: scoreIdToUpdate,
           p_interruption_reason: interruptionReason ?? null,
+          p_collectibles: collectibleSnapshot,
         })
         if (error) throw new Error(error.message)
         return typeof data === 'number' ? data : data != null ? Number(data) : scoreIdToUpdate
@@ -1043,25 +1077,31 @@ export class ScoreService {
     }
 
     try {
-      if (this.activeScoreId === null) {
-        this.activeRunCreatePromise = performRpc(null)
-        const createdId = await this.activeRunCreatePromise
-        if (this.activeRunKey === runKeyAtCall && createdId != null && Number.isFinite(createdId)) {
-          this.activeScoreId = createdId
-        }
-        this.activeRunCreatePromise = null
-        return { scoreId: this.activeScoreId, error: null }
-      } else {
-        const updatedId = await performRpc(this.activeScoreId)
-        if (this.activeRunKey === runKeyAtCall && updatedId != null && Number.isFinite(updatedId)) {
-          this.activeScoreId = updatedId
-        }
-        return { scoreId: this.activeScoreId, error: null }
+      // Keep the run context, not mutable service-wide ids, across waits. An
+      // old run finishing after restart must never adopt the new run's row.
+      if (run.scoreId === null && run.createPromise) {
+        await run.createPromise.catch(() => null)
       }
+      if (AuthService.getInstance().getUser()?.id !== user?.id) {
+        return { scoreId: run.scoreId, error: null }
+      }
+      if (run.scoreId === null) {
+        const creation = performRpc(null)
+        run.createPromise = creation
+        try {
+          const createdId = await creation
+          if (createdId != null && Number.isFinite(createdId)) run.scoreId = createdId
+        } finally {
+          if (run.createPromise === creation) run.createPromise = null
+        }
+      } else {
+        const updatedId = await performRpc(run.scoreId)
+        if (updatedId != null && Number.isFinite(updatedId)) run.scoreId = updatedId
+      }
+      return { scoreId: run.scoreId, error: null }
     } catch (err) {
-      this.activeRunCreatePromise = null
       return {
-        scoreId: this.activeScoreId,
+        scoreId: run.scoreId,
         error: err instanceof Error ? err : new Error('Failed to sync run'),
       }
     }
@@ -1073,32 +1113,14 @@ export class ScoreService {
     ballsMerged: number,
     durationMs: number,
     interruptionReason?: string,
+    collectibles: Readonly<RunCollectibles> | null = null,
   ): Promise<{ error: Error | null }> {
     // Keep direct post-game callers harmless on the isolated test route.
     if (isDrunkoTestRoute()) return { error: null }
     const auth = AuthService.getInstance()
     const user = auth.getUser()
-    const actorId = user ? user.id : `guest:${getOrCreateGuestId()}`
-
-    const now = Date.now()
-    if (
-      this.lastSubmitted &&
-      this.lastSubmitted.userId === actorId &&
-      this.lastSubmitted.score === score &&
-      this.lastSubmitted.tierReached === tierReached &&
-      now - this.lastSubmitted.at < 5_000 &&
-      this.activeScoreId !== null
-    ) {
-      const res = await this.syncActiveRun(score, tierReached, ballsMerged, durationMs, interruptionReason)
-      return { error: res.error }
-    }
-    this.lastSubmitted = { userId: actorId, score, tierReached, at: now }
-
-    const res = await this.syncActiveRun(score, tierReached, ballsMerged, durationMs, interruptionReason)
-    if (res.error) {
-      this.lastSubmitted = null
-      return { error: res.error }
-    }
+    const res = await this.syncActiveRun(score, tierReached, ballsMerged, durationMs, interruptionReason, collectibles)
+    if (res.error) return { error: res.error }
     if (!user) {
       void auth.persistGuestSaveToCloud()
     }

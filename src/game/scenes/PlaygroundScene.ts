@@ -28,6 +28,8 @@ import { bannerForcedByVariant } from '../rendering/DiscoveryBanner'
 import { hasDiscoveredCollectible, hasDiscoveredTier, recordDiscovery, recordMerge, recordRunEnd, recordRunStart, savedBest, themeSetting } from '../state/save'
 import { scoreService } from '../../services/auth'
 import { isDrunkoTestRoute, rollNewRunSeed, runVariantFor, themeFor } from '../state/runVariant'
+import { addRunCollectible, type RunCollectibles } from '../state/collectibleMetadata'
+import { isCollectibleTier } from '../../config/collectibleCollection'
 import {
   ballLookFor,
   drawBallFace,
@@ -84,9 +86,11 @@ export class PlaygroundScene extends Phaser.Scene {
   /** Tiers discovered in THIS run — a repeat discovery (a tier already in
    * the lifetime save) still gets the NON-BLOCKING banner animation once
    * per run, but never twice for the same tier in the same run. For
-   * collectible tiers (9–10) the key includes the theme so a new identity
-   * in the same run still fires its full card. */
+   * collectible tiers the key includes the theme so a new identity in the
+   * same run still fires its full card. */
   private runDiscoveredTiers = new Set<string>()
+  /** Actual identities merged this run, including lifetime repeats. */
+  private runCollectibles: RunCollectibles = []
 
   private registeredIds = new Set<number>()
   /**
@@ -160,6 +164,7 @@ export class PlaygroundScene extends Phaser.Scene {
 
   create(): void {
     this.activeTimeMs = 0
+    this.runCollectibles = []
     // Phase 2.12.1: the full-screen background lives in the dedicated
     // BackgroundScene (registered BELOW this scene) — see GameRoot. This
     // scene's camera stays transparent so the themed background shows through.
@@ -266,8 +271,15 @@ export class PlaygroundScene extends Phaser.Scene {
 
         const theme = themeFor(tier)
         const variant = runVariantFor(tier)
-        const collectible = (tier === 9 || tier === 10) && theme !== null && variant !== null
+        const collectible = isCollectibleTier(tier) && theme !== null && variant !== null
         const firstCollectible = collectible && !hasDiscoveredCollectible(tier, theme)
+        const firstRunCollectible = collectible && !this.runCollectibles.some((item) =>
+          item.tier === tier && item.theme === theme && item.variant === variant)
+        if (firstRunCollectible) {
+          this.runCollectibles = addRunCollectible(this.runCollectibles, {
+            tier, theme, variant, discoveredAt: Date.now(),
+          })
+        }
         const showFirstCard = tier >= PlaygroundScene.WIND_BANNER_MIN_TIER &&
           (collectible ? firstCollectible : firstTime && !hasDiscoveredTier(tier))
 
@@ -290,7 +302,7 @@ export class PlaygroundScene extends Phaser.Scene {
 
         this.mergesThisRun++
         if (tier > this.bestTierRun) this.bestTierRun = tier
-        this.syncLiveRun(false)
+        this.syncLiveRun(firstRunCollectible)
         // Phase 2.13.0 (spec §6): background milestones — primary trigger is
         // a first-time significant tier, secondary is an exceptional combo.
         this.themeMilestone(tier, firstTime, chainDepth)
@@ -1180,6 +1192,8 @@ export class PlaygroundScene extends Phaser.Scene {
       this.bestTierRun,
       this.mergesThisRun,
       Math.round(this.activeTimeMs),
+      undefined,
+      this.runCollectibles,
     )
   }
 
@@ -1196,6 +1210,7 @@ export class PlaygroundScene extends Phaser.Scene {
       this.mergesThisRun,
       Math.round(this.activeTimeMs),
       reason,
+      this.runCollectibles,
     )
   }
 
@@ -1220,6 +1235,7 @@ export class PlaygroundScene extends Phaser.Scene {
         this.mergesThisRun,
         Math.round(this.activeTimeMs),
         'completed',
+        this.runCollectibles,
       )
     }
     // GAME OVER SEQUENCE: balls realize they're doomed, panic, then pop in
@@ -1252,6 +1268,7 @@ export class PlaygroundScene extends Phaser.Scene {
     this.gameOver = false
     this.runStarted = false
     this.lastLiveSyncAt = 0
+    this.interruptionReason = null
     this.activeTimeMs = 0
     this.overWatch.reset()
     this.inputController.setEnabled(false)
@@ -1293,6 +1310,7 @@ export class PlaygroundScene extends Phaser.Scene {
     // (card on the first run, wind card afterwards) like every other tier.
     // A new run may show the repeat-discovery banner once per tier again.
     this.runDiscoveredTiers.clear()
+    this.runCollectibles = []
     // Phase 2.14.0: a new run is a NEW variant roll for tiers 8–9, and the
     // leaderboard's best-tier tracker restarts from the spawnable base.
     rollNewRunSeed()

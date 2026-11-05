@@ -122,6 +122,86 @@ describe('buildBossAnalytics', () => {
     ])
   })
 
+  it('retains per-run collectible identities through registered and guest enrichments', () => {
+    const collectibles: NonNullable<BossScoreRow['collectibles']> = [
+      { tier: 9, theme: 'pig', variant: 2, discoveredAt: Date.parse('2026-11-02T19:00:00.000Z') },
+      { tier: 10, theme: 'crab', variant: 5, discoveredAt: Date.parse('2026-11-02T19:05:00.000Z') },
+    ]
+    const guestCollectibles = collectibles.map((item) =>
+      item.tier === 9 ? { ...item, theme: 'shark' } : item,
+    )
+    const registeredScore: BossScoreRow = {
+      ...scores[0]!,
+      tier_reached: 10,
+      interruption_reason: 'restart',
+      collectibles,
+    }
+    const guestScore: BossGuestScoreRow = {
+      id: 101,
+      guest_id: '11111111-1111-4111-8111-111111111111',
+      score: 9000,
+      tier_reached: 10,
+      balls_merged: 300,
+      duration_ms: 120000,
+      interruption_reason: 'tab-hidden',
+      collectibles: guestCollectibles,
+      created_at: nowIso,
+    }
+
+    const summary = buildBossAnalytics(
+      profiles, [registeredScore], progressRows, nowIso, [], [guestScore],
+    )
+
+    expect(summary.runs[0]).toMatchObject({
+      username: 'paneww',
+      displayName: 'Paneww',
+      email: 'paneww@example.com',
+      isGuest: false,
+      scorePerMerge: 45.6,
+      mergesPerMinute: 225,
+      interruption_reason: 'restart',
+      collectibles,
+    })
+    expect(summary.guestRuns[0]).toMatchObject({
+      user_id: guestScore.guest_id,
+      username: 'guest_111111',
+      displayName: 'Guest #111111',
+      email: 'Anonymous Guest',
+      isGuest: true,
+      scorePerMerge: 30,
+      mergesPerMinute: 150,
+      interruption_reason: 'tab-hidden',
+      collectibles: guestCollectibles,
+    })
+    expect(summary.players.find((player) => player.id === 'u1')?.runs[0]?.collectibles).toEqual(collectibles)
+    expect(summary.guests[0]?.runs[0]?.collectibles).toEqual(guestCollectibles)
+    expect(summary.allRuns.find((run) => !run.isGuest)?.collectibles).toEqual(collectibles)
+    expect(summary.allRuns.find((run) => run.isGuest)?.collectibles).toEqual(guestCollectibles)
+  })
+
+  it('keeps absent, null, and empty snapshots distinct without inferring identities from progress', () => {
+    const runStates: BossScoreRow[] = [
+      { ...scores[0]!, tier_reached: 12 },
+      { ...scores[1]!, tier_reached: 12, collectibles: null },
+      { ...scores[2]!, tier_reached: 12, collectibles: [] },
+    ]
+    const guestStates: BossGuestScoreRow[] = runStates.map(({ user_id, ...run }) => ({
+      ...run,
+      guest_id: user_id,
+    }))
+    const knownProgress = progressRows.map((progress) => ({
+      ...progress,
+      variants: { '9:pig:7': 1, '10:crab:3': 2 },
+    }))
+    const summary = buildBossAnalytics(profiles, runStates, knownProgress, nowIso, [], guestStates)
+
+    for (const runs of [summary.runs, summary.guestRuns]) {
+      expect(runs.find((run) => run.id === 1)?.collectibles).toBeUndefined()
+      expect(runs.find((run) => run.id === 2)?.collectibles).toBeNull()
+      expect(runs.find((run) => run.id === 3)?.collectibles).toEqual([])
+    }
+  })
+
   it('computes guest session telemetry, guest runs, and conversion rate', () => {
     const guestProfiles: BossGuestProfileRow[] = [
       {
@@ -231,5 +311,32 @@ describe('buildBossAnalytics', () => {
     expect(summary.allRuns.length).toBe(5)
     expect(summary.totalRecordedRuns).toBe(5)
     expect(summary.totalCareerRuns).toBe(3 + 2)
+    expect(summary.guestRuns.every((run) => run.collectibles === undefined)).toBe(true)
+    expect(summary.guests[0]?.runs.every((run) => run.collectibles === undefined)).toBe(true)
+    expect(summary.allRuns.filter((run) => run.isGuest).every((run) => run.collectibles === undefined)).toBe(true)
+  })
+
+  it('leaves guest runs synthesized from career stats unrecorded even with known lifetime characters', () => {
+    const guestProfile: BossGuestProfileRow = {
+      guest_id: '33333333-3333-4333-8333-333333333333',
+      best_score: 6400,
+      discovered: { '9': 1, '10': 2 },
+      variants: { '9:pig:2': 1, '10:crab:5': 2 },
+      stats: { runs: 2, merges: 85, bestTier: 10 },
+      leaderboard: [],
+      settings: { theme: 'space' },
+      converted_user_id: null,
+      converted_at: null,
+      created_at: nowIso,
+      updated_at: nowIso,
+      last_seen_at: nowIso,
+    }
+
+    const summary = buildBossAnalytics([], [], [], nowIso, [guestProfile], [])
+
+    expect(summary.guestRuns).toHaveLength(1)
+    expect(summary.guestRuns[0]?.collectibles).toBeUndefined()
+    expect(summary.guests[0]?.runs[0]?.collectibles).toBeUndefined()
+    expect(summary.allRuns[0]?.collectibles).toBeUndefined()
   })
 })
