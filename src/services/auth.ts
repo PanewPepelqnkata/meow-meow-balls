@@ -82,6 +82,7 @@ function mergeSavesForSameUser(
   return normalizeSave({
     version: 1,
     best: Math.max(sa.best, sb.best),
+    coins: Math.max(sa.coins, sb.coins),
     leaderboard: leaderboard.slice(0, 10),
     discovered,
     variants,
@@ -764,6 +765,7 @@ export class AuthService {
 
     const row = tableRes.data as {
       best_score?: number
+      coins?: number | string
       discovered?: Record<string, number>
       variants?: Record<string, number>
       stats?: { runs: number; merges: number; bestTier: number }
@@ -774,6 +776,7 @@ export class AuthService {
       ? normalizeSave({
           version: 1,
           best: row.best_score ?? 0,
+          coins: Number(row.coins ?? 0),
           discovered: row.discovered ?? {},
           variants: row.variants ?? {},
           stats: row.stats ?? { runs: 0, merges: 0, bestTier: 0 },
@@ -861,6 +864,7 @@ export class AuthService {
         const fullRow = {
           user_id: uid,
           best_score: save.best,
+          coins: save.coins,
           discovered: save.discovered,
           variants: save.variants,
           stats: save.stats,
@@ -881,6 +885,7 @@ export class AuthService {
               {
                 user_id: uid,
                 best_score: save.best,
+                coins: save.coins,
                 discovered: save.discovered,
                 variants: save.variants,
                 stats: save.stats,

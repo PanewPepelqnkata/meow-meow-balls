@@ -254,6 +254,27 @@ describe('persistent browser auth lifecycle', () => {
     expect(sdk.state.nestedCalls).toEqual([])
   })
 
+  it('restores coins from user progress and keeps them in the auth metadata sync', async () => {
+    sdk.state.session = sessionFor('account-coins')
+    await auth.initialize()
+    await vi.advanceTimersByTimeAsync(0)
+    sdk.queryResult.mockImplementation((table, column, value, operation) => {
+      if (table === 'user_progress' && operation === 'maybeSingle') {
+        return Promise.resolve({ data: { best_score: 42, coins: '123.5' }, error: null })
+      }
+      return sdk.defaultQuery(table, column, value, operation)
+    })
+
+    await auth.restoreAccountProgress()
+
+    expect(saves.loadSave().coins).toBe(123.5)
+    saves.recordRunEnd(1000, 3, 1)
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(sdk.auth.updateUser).toHaveBeenCalledWith({
+      data: { ballrush_progress: expect.objectContaining({ coins: 124.5 }) },
+    })
+  })
+
   it('keeps finds earned during hydration without resurrecting its stale local baseline', async () => {
     sdk.state.session = sessionFor('account-a')
     await auth.initialize()
