@@ -4,6 +4,7 @@ import { ballOutlineWidth, drawBallFace, restContour, ballLookFor, drawCollectib
 import { themeFor, variantIdFor } from '../state/runVariant'
 import { cycleColor } from './rgbCycle'
 import { FONT_FAMILY } from '../../ui/Typography'
+import { readSafeArea, type UiLayout } from '../../ui/ResponsiveLayout'
 
 /**
  * THE REPEAT-DISCOVERY BANNER — comic-book style announcement for a
@@ -65,34 +66,24 @@ export function makeRng(seed: number): () => number {
 }
 
 /**
- * The reference is 1380×1140: its panel body is about 730×140 px, with its
- * right edge and top edge anchored to the viewport rather than to gameplay.
- * Preserve those proportions responsively and derive the centre from the
- * anchored bounds so rotation never pulls the banner into mid-screen.
+ * Responsive geometry for the approved compact reference. The source capture
+ * has a ~320×62 px panel in a ~1671×770 gameplay viewport, with enough room
+ * to its right for the pause button and the outward speed streaks.
  */
 export function bannerRect(vw: number, vh: number): BannerRect {
   const isPortrait = vw < vh
-  const halfLen = isPortrait ? Math.min(vw * 0.37, 150) : Math.min(vw * 0.265, 360)
+  const halfLen = isPortrait ? Math.min(vw * 0.31, 128) : Math.min(vw * 0.102, 160)
   const halfThick = isPortrait
-    ? Math.min(vw * 0.088, vh * 0.048, 38)
-    : Math.min(vh * 0.06, vw * 0.05, 68)
-  const angle = isPortrait ? 0.045 : 0.12
+    ? Math.min(vw * 0.06, vh * 0.034, 26)
+    : Math.min(vh * 0.04, vw * 0.023, 32)
+  const angle = isPortrait ? 0.045 : 0.07
   const xExtent = Math.cos(angle) * halfLen + Math.sin(angle) * halfThick
   const yExtent = Math.sin(angle) * halfLen + Math.cos(angle) * halfThick
-  const rightMargin = Math.max(14, vw * 0.018)
-  const topMargin = isPortrait ? Math.max(142, vh * 0.17) : Math.max(52, vh * 0.07)
+  const rightMargin = isPortrait ? Math.max(14, vw * 0.04) : Math.max(44, vw * 0.056)
+  const topMargin = isPortrait ? Math.max(142, vh * 0.17) : Math.max(36, vh * 0.065)
   const cx = vw - rightMargin - xExtent
   const cy = topMargin + yExtent
   return { cx, cy, halfLen, halfThick, angle }
-}
-
-/** A point along the band's centre line, t in 0..1 (0 = left end). */
-function bandPoint(rect: BannerRect, t: number): { x: number; y: number } {
-  const u = (t - 0.5) * rect.halfLen * 2
-  return {
-    x: rect.cx + Math.cos(rect.angle) * u,
-    y: rect.cy + Math.sin(rect.angle) * u,
-  }
 }
 
 /**
@@ -155,34 +146,34 @@ function explosionPoints(
  */
 export class DiscoveryBanner {
   private scene: Phaser.Scene
+  private readonly hudLayout: (() => UiLayout) | null
   private objs: Phaser.GameObjects.GameObject[] = []
-  get objsCount(): number {
-    return this.objs.length
-  }
-
+  private holder: Phaser.GameObjects.Container | null = null
+  private streakG: Phaser.GameObjects.Graphics | null = null
   private bandG: Phaser.GameObjects.Graphics | null = null
+  private flashG: Phaser.GameObjects.Graphics | null = null
   private burstG: Phaser.GameObjects.Graphics | null = null
   private ballG: Phaser.GameObjects.Graphics | null = null
-  private effectsG: Phaser.GameObjects.Graphics | null = null
+  private labelPlateG: Phaser.GameObjects.Graphics | null = null
+  private cloudG: Phaser.GameObjects.Graphics | null = null
   private text: Phaser.GameObjects.Text | null = null
   private textShadow: Phaser.GameObjects.Text | null = null
   private tweens: Phaser.Tweens.Tween[] = []
-  private rect: BannerRect | null = null
+  private dismissTimer: Phaser.Time.TimerEvent | null = null
+  private rgbTimer: Phaser.Time.TimerEvent | null = null
   private tier = 1
   private seed = 0
   private theme: string | null = null
   private variant: number | null = null
-  private animPhase = 0
-  private ballPop = 0
-  private burstPop = 0
-  private panelPop = 0
-  private labelPop = 0
-  private labelSize = 0
   private active = false
   private reducedMotion = false
-
-  constructor(scene: Phaser.Scene) {
+  constructor(scene: Phaser.Scene, hudLayout?: () => UiLayout) {
     this.scene = scene
+    this.hudLayout = hudLayout ?? null
+  }
+
+  get objsCount(): number {
+    return this.objs.length
   }
 
   isShowing(): boolean {
@@ -190,6 +181,8 @@ export class DiscoveryBanner {
   }
 
   show(tier: number, seed: number, theme: string | null = null, variant: number | null = null): void {
+    // A rapid second duplicate replaces every old layer/tween before new data
+    // is read, so a character from the previous banner can never linger.
     this.destroy()
     this.active = true
     this.tier = tier
@@ -201,315 +194,377 @@ export class DiscoveryBanner {
     } catch {
       this.reducedMotion = false
     }
-
     const z = this.scene.game.scale.displayScale.x || 1
-    const vw = this.scene.scale.width / z
-    const vh = this.scene.scale.height / z
-    this.rect = bannerRect(vw, vh)
-    this.ballPop = 0
-    this.burstPop = 0
-    this.panelPop = 0
-    this.labelPop = 0
-
-    // Create graphics layers
-    this.bandG = this.scene.add.graphics().setDepth(78.6)
-    this.burstG = this.scene.add.graphics().setDepth(78.7)
-    this.ballG = this.scene.add.graphics().setDepth(78.75)
-    this.effectsG = this.scene.add.graphics().setDepth(78.65)
-
-    const fontSize = Math.round(Math.max(24, Math.min(this.rect.halfThick * 0.86, 56)))
-    const textStroke = Math.max(4, Math.round(this.rect.halfThick * 0.1))
-    this.textShadow = this.scene.add
-      .text(0, 0, '', {
-        fontFamily: FONT_FAMILY,
-        fontSize: `${fontSize}px`,
-        color: '#000000',
-        resolution: Math.min(window.devicePixelRatio || 1, 2),
-      })
-      .setOrigin(0.5, 0.5)
-      .setDepth(78.79)
-      .setAlpha(0.5)
-
-    this.text = this.scene.add
-      .text(0, 0, '', {
-        fontFamily: FONT_FAMILY,
-        fontSize: `${fontSize}px`,
-        color: '#fbbf24',
-        stroke: '#1a1a1a',
-        strokeThickness: textStroke,
-        resolution: Math.min(window.devicePixelRatio || 1, 2),
-      })
-      .setOrigin(0.5, 0.5)
-      .setDepth(78.8)
-
-    this.objs.push(this.bandG, this.burstG, this.ballG, this.effectsG, this.textShadow, this.text)
-
-    // Container for all elements
-    const holder = this.scene.add.container(0, 0).setDepth(78.6)
-    holder.add([this.bandG, this.effectsG, this.burstG, this.ballG, this.textShadow, this.text])
-    this.objs.push(holder)
-    this.holder = holder
-
-    // ---- COMIC-BOOK ENTRANCE ANIMATION ----
-    // The holder remains at the viewport anchor; only its artwork pops.
-    holder.alpha = this.reducedMotion ? 1 : 0
-
-    if (this.reducedMotion) {
-      this.panelPop = 1
-      this.burstPop = 1
-      this.ballPop = 1
-      this.labelPop = 1
-      this.draw()
-      this.dismissTimer = this.scene.time.delayedCall(BANNER_MS, () => this.dismiss())
-      return
+    const layout = this.hudLayout?.()
+    const vw = layout?.vw ?? this.scene.scale.width / z
+    const vh = layout?.vh ?? this.scene.scale.height / z
+    const rect = bannerRect(vw, vh)
+    if (layout) {
+      if (layout.composition === 'portrait') {
+        const top = rect.cy - (Math.sin(rect.angle) * rect.halfLen + Math.cos(rect.angle) * rect.halfThick)
+        rect.cy += Math.max(0, layout.stack.hudBottom + 12 - top)
+      } else {
+        const safe = readSafeArea()
+        const pauseCenterX = layout.vw - Math.max(12, safe.right + 8) - 24
+        const right = rect.cx + Math.cos(rect.angle) * rect.halfLen + Math.sin(rect.angle) * rect.halfThick + rect.halfThick * 0.78
+        rect.cx -= Math.max(0, right - (pauseCenterX - 32))
+      }
     }
 
-    // Quick flash
-    this.tweens.push(
-      this.scene.tweens.add({
-        targets: holder,
-        alpha: 1,
-        duration: 60,
-        ease: 'Sine.easeOut',
-      }),
+    this.streakG = this.scene.add.graphics()
+    this.bandG = this.scene.add.graphics()
+    this.flashG = this.scene.add.graphics()
+    this.burstG = this.scene.add.graphics()
+    this.ballG = this.scene.add.graphics()
+    this.labelPlateG = this.scene.add.graphics()
+    this.cloudG = this.scene.add.graphics()
+
+    const label = `TIER ${tier}`
+    const baseFontSize = Math.max(22, Math.min(rect.halfThick * 1.18, 38))
+    const fontSize = Math.round(tier >= 10 ? baseFontSize * 0.9 : baseFontSize)
+    const textStroke = Math.max(3, Math.round(rect.halfThick * 0.13))
+    const resolution = Math.max(2, Math.min(window.devicePixelRatio || 1, 2))
+    this.textShadow = this.scene.add
+      .text(0, 0, label, {
+        fontFamily: FONT_FAMILY,
+        fontSize: `${fontSize}px`,
+        color: '#111111',
+        stroke: '#111111',
+        strokeThickness: textStroke,
+        resolution,
+      })
+      .setOrigin(0.5)
+      .setAlpha(0.55)
+    this.text = this.scene.add
+      .text(0, 0, label, {
+        fontFamily: FONT_FAMILY,
+        fontSize: `${fontSize}px`,
+        color: `#${TIER_LABEL_COLOR.toString(16).padStart(6, '0')}`,
+        stroke: '#1a1a1a',
+        strokeThickness: textStroke,
+        resolution,
+      })
+      .setOrigin(0.5)
+
+    const holder = this.scene.add.container(rect.cx, rect.cy).setRotation(rect.angle).setDepth(78.6)
+    holder.add([
+      this.streakG,
+      this.bandG,
+      this.flashG,
+      this.burstG,
+      this.ballG,
+      this.labelPlateG,
+      this.textShadow,
+      this.text,
+      this.cloudG,
+    ])
+    this.holder = holder
+    this.objs.push(
+      this.streakG,
+      this.bandG,
+      this.flashG,
+      this.burstG,
+      this.ballG,
+      this.labelPlateG,
+      this.textShadow,
+      this.text,
+      this.cloudG,
+      holder,
     )
 
-    // Panel expands
-    this.tweens.push(
-      this.scene.tweens.add({
-        targets: this,
-        panelPop: 1,
-        duration: 220,
-        delay: 35,
-        ease: 'Cubic.easeOut',
-      }),
-    )
+    this.drawStaticArtwork(rect)
+    this.placeLayers(rect)
+    if (tier === 8 && !this.reducedMotion) {
+      this.rgbTimer = this.scene.time.addEvent({
+        delay: 120,
+        loop: true,
+        callback: () => {
+          if (!this.ballG) return
+          this.ballG.clear()
+          this.drawBall(this.ballG, rect)
+        },
+      })
+    }
 
-    // Explosion pops in
-    this.tweens.push(
-      this.scene.tweens.add({
-        targets: this,
-        burstPop: 1,
-        duration: 220,
-        delay: 90,
-        ease: 'Back.easeOut.config(0.65)',
-      }),
-    )
-
-    // Ball pops into center
-    this.tweens.push(
-      this.scene.tweens.add({
-        targets: this,
-        ballPop: 1,
-        duration: 240,
-        delay: 145,
-        ease: 'Back.easeOut.config(0.75)',
-      }),
-    )
-
-    // Tier label punches in
-    this.tweens.push(
-      this.scene.tweens.add({
-        targets: this,
-        labelPop: 1,
-        duration: 190,
-        delay: 220,
-        ease: 'Back.easeOut.config(0.8)',
-      }),
-    )
-
-
-    // Animation clock
-    this.animTween = this.scene.tweens.addCounter({
-      from: 0,
-      to: 1,
-      duration: 8000,
-      repeat: -1,
-      onUpdate: (tween) => {
-        const v = tween.getValue()
-        if (v == null) return
-        this.animPhase = v
-        this.draw()
-      },
-    })
-
-    // Auto-dismiss
+    if (this.reducedMotion) {
+      this.applyFinalPose(rect)
+    } else {
+      this.playEntrance(rect)
+    }
     this.dismissTimer = this.scene.time.delayedCall(BANNER_MS, () => this.dismiss())
   }
 
-  private holder: Phaser.GameObjects.Container | null = null
-  private animTween: Phaser.Tweens.Tween | null = null
-  private dismissTimer: Phaser.Time.TimerEvent | null = null
+  /** Draw every vector exactly once. Animation below uses transforms only. */
+  private drawStaticArtwork(rect: BannerRect): void {
+    if (!this.streakG || !this.bandG || !this.flashG || !this.burstG || !this.ballG || !this.labelPlateG || !this.cloudG) return
+    const local = (u: number, v: number): { x: number; y: number } => ({ x: u, y: v })
 
-  /** Draw the complete banner. */
-  private draw(): void {
-    const rect = this.rect
-    if (!rect || !this.bandG || !this.ballG || !this.burstG || !this.effectsG) return
+    this.drawSpeedStreaks(this.streakG, rect)
 
-    const g = this.bandG
-    g.clear()
-    this.effectsG.clear()
-    this.burstG.clear()
-    this.ballG.clear()
+    const shOff = rect.halfThick * 0.11
+    this.bandG.fillStyle(0x000000, 0.38)
+    this.drawPanelShape(this.bandG, rect, local, shOff * 0.6, shOff, 1)
+    this.bandG.fillStyle(INK, 1)
+    this.drawPanelShape(this.bandG, rect, local, 0, 0, 1)
 
-    const color = getTier(this.tier)?.color ?? 0xffffff
-    const cos = Math.cos(rect.angle)
-    const sin = Math.sin(rect.angle)
-    const local = (u: number, v: number): { x: number; y: number } => ({
-      x: rect.cx + cos * u - sin * v,
-      y: rect.cy + sin * u + cos * v,
-    })
+    const outerInk = Math.max(2.5, rect.halfThick * 0.08)
+    this.bandG.fillStyle(BANNER_CREAM, 1)
+    this.drawPanelShape(this.bandG, rect, local, 0, 0, 1, outerInk)
+    const borderW = rect.halfThick * 0.19
+    this.bandG.fillStyle(INK, 1)
+    this.drawPanelShape(this.bandG, rect, local, 0, 0, 1, borderW)
+    const purpleInset = borderW + Math.max(1.5, rect.halfThick * 0.045)
+    this.bandG.fillStyle(BANNER_PURPLE, 1)
+    this.drawPanelShape(this.bandG, rect, local, 0, 0, 1, purpleInset)
 
-    const panelScale = this.panelPop
-    if (panelScale < 0.01) return
-
-    // Fixed paired accents stay tucked behind the ends, never floating loose.
-    this.drawSpeedStreaks(g, rect, local, panelScale)
-
-    // ---- OFFSET SHADOW + DARK OUTLINE + CREAM DOUBLE BORDER ----
-    const shOff = rect.halfThick * 0.1
-    g.fillStyle(0x000000, 0.42)
-    this.drawPanelShape(g, rect, local, shOff * 0.6, shOff, panelScale)
-
-    g.fillStyle(INK, 1)
-    this.drawPanelShape(g, rect, local, 0, 0, panelScale)
-
-    const outerInk = Math.max(3, rect.halfThick * 0.07)
-    g.fillStyle(BANNER_CREAM, 1)
-    this.drawPanelShape(g, rect, local, 0, 0, panelScale, outerInk)
-
-    const borderW = rect.halfThick * 0.18
-    g.fillStyle(INK, 1)
-    this.drawPanelShape(g, rect, local, 0, 0, panelScale, borderW)
-    const purpleInset = borderW + Math.max(2, rect.halfThick * 0.04)
-    g.fillStyle(BANNER_PURPLE, 1)
-    this.drawPanelShape(g, rect, local, 0, 0, panelScale, purpleInset)
-
-    // ---- SUBTLE HALFTONE DOTS ----
-    const dots = halftoneDots(rect, this.seed)
-    g.fillStyle(0x45139b, 0.54)
-    for (const d of dots) {
-      const p = local(d.x * panelScale, d.y * panelScale)
-      const insideX = Math.abs(d.x) < rect.halfLen - purpleInset * 1.6
-      if (insideX && Math.abs(d.y) < rect.halfThick - purpleInset - d.r) {
-        g.fillCircle(p.x, p.y, d.r * panelScale)
-      }
+    // Computed once per show; no per-frame halftone allocations or redraws.
+    this.bandG.fillStyle(0x45139b, 0.58)
+    for (const dot of halftoneDots(rect, this.seed)) {
+      const insideX = Math.abs(dot.x) < rect.halfLen - purpleInset * 1.6
+      const endTaper = Math.abs(dot.x) > rect.halfLen * 0.82 ? 0.72 : 1
+      const insideY = Math.abs(dot.y) < (rect.halfThick - purpleInset - dot.r) * endTaper
+      if (insideX && insideY) this.bandG.fillCircle(dot.x, dot.y, dot.r)
     }
 
-    g.lineStyle(Math.max(2, rect.halfThick * 0.055), INK, 1)
-    this.strokePanelShape(g, rect, local, 0, 0, panelScale)
-    g.lineStyle(Math.max(1.5, rect.halfThick * 0.035), BANNER_CREAM, 0.9)
-    this.strokePanelShape(g, rect, local, 0, 0, panelScale, purpleInset + rect.halfThick * 0.06)
+    this.bandG.lineStyle(Math.max(2, rect.halfThick * 0.065), INK, 1)
+    this.strokePanelShape(this.bandG, rect, local, 0, 0, 1)
+    this.bandG.lineStyle(Math.max(1.25, rect.halfThick * 0.038), BANNER_CREAM, 0.92)
+    this.strokePanelShape(this.bandG, rect, local, 0, 0, 1, purpleInset + rect.halfThick * 0.065)
 
-    // ---- CREAM LABEL PLATE + ATTACHED IMPACT CLOUDS ----
-    this.drawLabelPlate(this.effectsG, rect, local, panelScale)
-    this.drawImpactCloud(this.effectsG, local, -rect.halfLen * panelScale, 0, rect.halfThick * 0.3 * panelScale)
-    this.drawImpactCloud(this.effectsG, local, rect.halfLen * panelScale, 0, rect.halfThick * 0.3 * panelScale)
-
-    // ---- COMPACT IMPACT BURST + REAL UNLOCKED CHARACTER ----
-    const ballScale = this.ballPop
-    const burstScale = this.burstPop
-    if (ballScale > 0.01 || burstScale > 0.01) {
-      const ballCenter = bandPoint(rect, 0.38)
-      const baseBallRadius = rect.halfThick * 0.64
-      const ballRadius = baseBallRadius * ballScale
-      const bob = Math.sin(this.animPhase * Math.PI) * baseBallRadius * 0.025
-
-      if (burstScale > 0.01) {
-        const burstRadius = baseBallRadius * burstScale
-        const explosionPts = explosionPoints(ballCenter.x, ballCenter.y + bob, burstRadius, this.seed)
-        this.burstG.fillStyle(EXPLOSION_YELLOW, 1)
-        this.burstG.fillPoints(explosionPts.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)
-        // Restrained orange crescent remains mostly behind the character.
-        this.burstG.fillStyle(EXPLOSION_ORANGE, 0.42)
-        this.burstG.fillCircle(ballCenter.x + burstRadius * 0.1, ballCenter.y + bob + burstRadius * 0.12, burstRadius * 1.2)
-        this.burstG.fillStyle(EXPLOSION_YELLOW, 1)
-        this.burstG.fillCircle(ballCenter.x, ballCenter.y + bob, burstRadius * 1.08)
-        this.burstG.lineStyle(Math.max(3, rect.halfThick * 0.065), INK, 1)
-        this.burstG.strokePoints(explosionPts.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true, true)
-      }
-
-      if (ballScale > 0.01) {
-        const look = ballLookFor(this.tier, this.seed)
-        const poly = restContour(look, ballRadius, ballCenter.x, ballCenter.y + bob, 48)
-
-        if (this.tier === 9 || this.tier === 10) {
-          const theme = this.theme ?? themeFor(this.tier)
-          const variant = this.variant ?? variantIdFor(this.tier)
-          drawCollectibleBall(this.ballG, ballCenter.x, ballCenter.y + bob, ballRadius, this.tier, variant, undefined, 0, undefined, this.seed, theme ?? undefined)
-        } else {
-          this.ballG.fillStyle(this.tier === 8 ? cycleColor(Date.now()) : color, 1)
-          this.ballG.fillPoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)
-          this.ballG.lineStyle(ballOutlineWidth(ballRadius), INK, 1)
-          this.ballG.strokePoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true, true)
-          drawBallFace(this.ballG, look, { x: ballCenter.x, y: ballCenter.y + bob }, ballRadius, 1)
-        }
-      }
-    }
-
-    // ---- PROMINENT TIER LABEL ----
-    const labelScale = this.labelPop
-    if (this.text && this.textShadow && labelScale > 0.01) {
-      const p = bandPoint(rect, 0.81)
-      this.text.setText(`TIER ${this.tier}`)
-      this.textShadow.setText(`TIER ${this.tier}`)
-
-      const size = Math.round(Math.max(24, Math.min(rect.halfThick * 0.86, 56)) * labelScale)
-      if (this.labelSize !== size) {
-        this.labelSize = size
-        this.text.setFontSize(size)
-        this.textShadow.setFontSize(size)
-      }
-
-      const bounce = Math.sin(labelScale * Math.PI) * 3
-      this.text.setPosition(p.x, p.y - bounce)
-      this.textShadow.setPosition(p.x + 4, p.y + 4 - bounce)
-      this.text.setRotation(rect.angle)
-      this.textShadow.setRotation(rect.angle)
-      this.text.setColor(`#${TIER_LABEL_COLOR.toString(16).padStart(6, '0')}`)
-    }
+    this.drawFlash(this.flashG, rect)
+    this.drawBurst(this.burstG, rect)
+    this.drawBall(this.ballG, rect)
+    this.drawLabelPlate(this.labelPlateG, rect)
+    this.drawImpactCloud(this.cloudG, -rect.halfLen, 0, rect.halfThick * 0.34)
+    this.drawImpactCloud(this.cloudG, rect.halfLen, 0, rect.halfThick * 0.34)
   }
 
-  /** Fixed, symmetrical motion accents tucked behind the panel ends. */
-  private drawSpeedStreaks(
-    g: Phaser.GameObjects.Graphics,
-    rect: BannerRect,
-    local: (u: number, v: number) => { x: number; y: number },
-    scale: number,
-  ): void {
-    const lineW = Math.max(1.5, rect.halfThick * 0.035) * scale
-    const segments: Array<[number, number, number, number]> = [
-      [-rect.halfLen * 0.98, -rect.halfThick * 0.55, -rect.halfLen - rect.halfThick * 0.88, -rect.halfThick * 0.82],
-      [-rect.halfLen * 0.98, 0, -rect.halfLen - rect.halfThick * 0.72, -rect.halfThick * 0.08],
-      [-rect.halfLen * 0.98, rect.halfThick * 0.55, -rect.halfLen - rect.halfThick, rect.halfThick * 0.78],
-      [rect.halfLen * 0.62, rect.halfThick * 1.02, rect.halfLen * 0.98, rect.halfThick * 1.08],
-      [rect.halfLen * 0.68, rect.halfThick * 1.18, rect.halfLen * 0.98, rect.halfThick * 1.23],
-      [rect.halfLen * 0.76, rect.halfThick * 1.34, rect.halfLen * 0.98, rect.halfThick * 1.38],
-    ]
-    const drawPass = (width: number, color: number, alpha: number): void => {
+  private placeLayers(rect: BannerRect): void {
+    if (!this.flashG || !this.burstG || !this.ballG || !this.labelPlateG || !this.text || !this.textShadow) return
+    const ballU = (0.375 - 0.5) * rect.halfLen * 2
+    const labelU = (0.75 - 0.5) * rect.halfLen * 2
+    this.flashG.setPosition(ballU, 0)
+    this.burstG.setPosition(ballU, 0)
+    this.ballG.setPosition(ballU, 0).setRotation(-rect.angle)
+    this.labelPlateG.setPosition(labelU, 0)
+    this.textShadow.setPosition(labelU + 2.5, 2.5)
+    this.text.setPosition(labelU, 0)
+  }
+
+  private applyFinalPose(rect: BannerRect): void {
+    if (!this.holder || !this.streakG || !this.bandG || !this.flashG || !this.burstG || !this.ballG || !this.labelPlateG || !this.cloudG || !this.text || !this.textShadow) return
+    const ballU = (0.375 - 0.5) * rect.halfLen * 2
+    this.holder.setAlpha(1)
+    this.streakG.setAlpha(0.92).setScale(1)
+    this.bandG.setAlpha(1).setScale(1)
+    this.flashG.setAlpha(0).setScale(1)
+    this.burstG.setAlpha(1).setScale(1)
+    this.ballG.setAlpha(1).setScale(1).setPosition(ballU, 0)
+    this.labelPlateG.setAlpha(1).setScale(1)
+    this.cloudG.setAlpha(1).setScale(1)
+    this.textShadow.setAlpha(0.55).setScale(1)
+    this.text.setAlpha(1).setScale(1)
+  }
+
+  private playEntrance(rect: BannerRect): void {
+    if (!this.holder || !this.streakG || !this.bandG || !this.flashG || !this.burstG || !this.ballG || !this.labelPlateG || !this.cloudG || !this.text || !this.textShadow) return
+    const ballU = (0.375 - 0.5) * rect.halfLen * 2
+    const settle = rect.halfThick * 0.28
+    const localDownX = Math.sin(rect.angle) * settle
+    const localDownY = Math.cos(rect.angle) * settle
+
+    this.holder.setAlpha(1)
+    this.streakG.setAlpha(0)
+    this.bandG.setAlpha(0).setScale(0.08, 0.76)
+    this.flashG.setAlpha(0).setScale(0.2)
+    this.burstG.setAlpha(0).setScale(0.12)
+    this.ballG.setAlpha(0).setScale(0.16).setPosition(ballU + localDownX, localDownY)
+    this.labelPlateG.setAlpha(0).setScale(0.18, 0.78)
+    this.cloudG.setAlpha(0).setScale(0.35)
+    this.textShadow.setAlpha(0).setScale(0.2)
+    this.text.setAlpha(0).setScale(0.2)
+
+    const flashIn = this.scene.tweens.add({
+      targets: this.flashG,
+      alpha: 1,
+      scaleX: 1.05,
+      scaleY: 1.05,
+      duration: 55,
+      ease: 'Cubic.easeOut',
+      onComplete: () => {
+        if (!this.flashG) return
+        const flashOut = this.scene.tweens.add({
+          targets: this.flashG,
+          alpha: 0,
+          scaleX: 1.65,
+          scaleY: 1.65,
+          duration: 115,
+          ease: 'Cubic.easeOut',
+        })
+        this.tweens.push(flashOut)
+      },
+    })
+    this.tweens.push(flashIn)
+    this.tweens.push(
+      this.scene.tweens.add({
+        targets: this.burstG,
+        alpha: 1,
+        scaleX: 1,
+        scaleY: 1,
+        delay: 25,
+        duration: 180,
+        ease: 'Back.easeOut.config(0.65)',
+      }),
+      this.scene.tweens.add({
+        targets: this.ballG,
+        alpha: 1,
+        scaleX: 1,
+        scaleY: 1,
+        x: ballU,
+        y: 0,
+        delay: 70,
+        duration: 200,
+        ease: 'Back.easeOut.config(0.75)',
+      }),
+      this.scene.tweens.add({
+        targets: this.bandG,
+        alpha: 1,
+        scaleX: 1,
+        scaleY: 1,
+        delay: 75,
+        duration: 230,
+        ease: 'Back.easeOut.config(0.35)',
+      }),
+      this.scene.tweens.add({
+        targets: this.streakG,
+        alpha: 0.92,
+        delay: 125,
+        duration: 125,
+        ease: 'Cubic.easeOut',
+      }),
+      this.scene.tweens.add({
+        targets: this.cloudG,
+        alpha: 1,
+        scaleX: 1,
+        scaleY: 1,
+        delay: 135,
+        duration: 140,
+        ease: 'Back.easeOut.config(0.55)',
+      }),
+      this.scene.tweens.add({
+        targets: this.labelPlateG,
+        alpha: 1,
+        scaleX: 1,
+        scaleY: 1,
+        delay: 155,
+        duration: 155,
+        ease: 'Back.easeOut.config(0.65)',
+      }),
+      this.scene.tweens.add({
+        targets: [this.textShadow, this.text],
+        alpha: { from: 0, to: 1 },
+        scaleX: 1,
+        scaleY: 1,
+        delay: 175,
+        duration: 170,
+        ease: 'Back.easeOut.config(0.8)',
+        onComplete: () => this.textShadow?.setAlpha(0.55),
+      }),
+    )
+
+    // Screen-vertical 1.5 px bob. Root rotation is cancelled in local x/y.
+    const idle = rect.halfThick * 0.05
+    this.tweens.push(
+      this.scene.tweens.add({
+        targets: this.ballG,
+        x: ballU - Math.sin(rect.angle) * idle,
+        y: -Math.cos(rect.angle) * idle,
+        delay: 430,
+        duration: 700,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+      }),
+    )
+  }
+
+  /** Brief cream/yellow impact glint, always behind the actual character. */
+  private drawFlash(g: Phaser.GameObjects.Graphics, rect: BannerRect): void {
+    const r = rect.halfThick * 0.72
+    const rays = 8
+    const drawRays = (width: number, color: number, alpha: number): void => {
       g.lineStyle(width, color, alpha)
-      for (const [u1, v1, u2, v2] of segments) {
-        const inner = local(u1 * scale, v1 * scale)
-        const outer = local(u2 * scale, v2 * scale)
+      for (let i = 0; i < rays; i++) {
+        const a = (i / rays) * Math.PI * 2
         g.beginPath()
-        g.moveTo(inner.x, inner.y)
-        g.lineTo(outer.x, outer.y)
+        g.moveTo(Math.cos(a) * r * 1.62, Math.sin(a) * r * 1.62)
+        g.lineTo(Math.cos(a) * r * 2.12, Math.sin(a) * r * 2.12)
         g.strokePath()
       }
     }
-    drawPass(lineW + Math.max(1.5, rect.halfThick * 0.035), INK, 0.9)
+    drawRays(Math.max(3, rect.halfThick * 0.13), INK, 0.9)
+    drawRays(Math.max(1.5, rect.halfThick * 0.065), BANNER_CREAM, 1)
+    g.fillStyle(EXPLOSION_YELLOW, 0.75)
+    g.fillCircle(0, 0, r * 1.3)
+  }
+
+  private drawBurst(g: Phaser.GameObjects.Graphics, rect: BannerRect): void {
+    const radius = rect.halfThick * 0.66
+    const points = explosionPoints(0, 0, radius, this.seed)
+    const vectors = points.map((p) => new Phaser.Math.Vector2(p.x, p.y))
+    g.fillStyle(EXPLOSION_YELLOW, 1)
+    g.fillPoints(vectors, true)
+    g.fillStyle(EXPLOSION_ORANGE, 0.4)
+    g.fillCircle(radius * 0.1, radius * 0.12, radius * 1.2)
+    g.fillStyle(EXPLOSION_YELLOW, 1)
+    g.fillCircle(0, 0, radius * 1.08)
+    g.lineStyle(Math.max(3, rect.halfThick * 0.075), INK, 1)
+    g.strokePoints(vectors, true, true)
+  }
+
+  private drawBall(g: Phaser.GameObjects.Graphics, rect: BannerRect): void {
+    const radius = rect.halfThick * 0.8
+    const color = getTier(this.tier)?.color ?? 0xffffff
+    if (this.tier === 9 || this.tier === 10) {
+      const theme = this.theme ?? themeFor(this.tier)
+      const variant = this.variant ?? variantIdFor(this.tier)
+      drawCollectibleBall(g, 0, 0, radius, this.tier, variant, undefined, 0, undefined, this.seed, theme ?? undefined)
+      return
+    }
+    const look = ballLookFor(this.tier, this.seed)
+    const poly = restContour(look, radius, 0, 0, 48)
+    g.fillStyle(this.tier === 8 ? cycleColor(Date.now()) : color, 1)
+    g.fillPoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)
+    g.lineStyle(ballOutlineWidth(radius), INK, 1)
+    g.strokePoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true, true)
+    drawBallFace(g, look, { x: 0, y: 0 }, radius, 1)
+  }
+
+  /** Fixed, balanced motion accents. The right group stops before Pause. */
+  private drawSpeedStreaks(g: Phaser.GameObjects.Graphics, rect: BannerRect): void {
+    const segments: Array<[number, number, number, number]> = [
+      [-rect.halfLen * 0.97, -rect.halfThick * 0.58, -rect.halfLen - rect.halfThick * 1.2, -rect.halfThick * 0.82],
+      [-rect.halfLen * 0.98, 0, -rect.halfLen - rect.halfThick, -rect.halfThick * 0.08],
+      [-rect.halfLen * 0.97, rect.halfThick * 0.58, -rect.halfLen - rect.halfThick * 1.25, rect.halfThick * 0.82],
+      [rect.halfLen * 0.4, rect.halfThick * 0.94, rect.halfLen + rect.halfThick * 0.72, rect.halfThick * 1.22],
+      [rect.halfLen * 0.56, rect.halfThick * 1.14, rect.halfLen + rect.halfThick * 0.64, rect.halfThick * 1.42],
+      [rect.halfLen * 0.7, rect.halfThick * 1.34, rect.halfLen + rect.halfThick * 0.54, rect.halfThick * 1.58],
+    ]
+    const lineW = Math.max(1.25, rect.halfThick * 0.04)
+    const drawPass = (width: number, color: number, alpha: number): void => {
+      g.lineStyle(width, color, alpha)
+      for (const [x1, y1, x2, y2] of segments) {
+        g.beginPath()
+        g.moveTo(x1, y1)
+        g.lineTo(x2, y2)
+        g.strokePath()
+      }
+    }
+    drawPass(lineW + Math.max(1.25, rect.halfThick * 0.04), INK, 0.88)
     drawPass(lineW, BANNER_CREAM, 0.96)
   }
 
-  /** Cream comic puff attached directly to a panel tip. */
-  private drawImpactCloud(
-    g: Phaser.GameObjects.Graphics,
-    local: (u: number, v: number) => { x: number; y: number },
-    u: number,
-    v: number,
-    size: number,
-  ): void {
-    const p = local(u, v)
+  private drawImpactCloud(g: Phaser.GameObjects.Graphics, x: number, y: number, size: number): void {
     const lobes = [
       { x: -0.48, y: 0, r: 0.52 },
       { x: -0.12, y: -0.42, r: 0.5 },
@@ -519,44 +574,36 @@ export class DiscoveryBanner {
     ]
     for (const lobe of lobes) {
       g.fillStyle(INK, 1)
-      g.fillCircle(p.x + lobe.x * size, p.y + lobe.y * size, lobe.r * size + Math.max(1.5, size * 0.11))
+      g.fillCircle(x + lobe.x * size, y + lobe.y * size, lobe.r * size + Math.max(1.25, size * 0.11))
     }
     for (const lobe of lobes) {
       g.fillStyle(BANNER_CREAM, 1)
-      g.fillCircle(p.x + lobe.x * size, p.y + lobe.y * size, lobe.r * size)
+      g.fillCircle(x + lobe.x * size, y + lobe.y * size, lobe.r * size)
     }
   }
 
-  /** Cream clipped ribbon behind the tier label, as in the reference. */
-  private drawLabelPlate(
-    g: Phaser.GameObjects.Graphics,
-    rect: BannerRect,
-    local: (u: number, v: number) => { x: number; y: number },
-    scale: number,
-  ): void {
-    const centerU = rect.halfLen * 0.62 * scale
-    const halfW = Math.min(rect.halfLen * 0.25, rect.halfThick * 1.72) * scale
-    const halfH = rect.halfThick * 0.55 * scale
+  private drawLabelPlate(g: Phaser.GameObjects.Graphics, rect: BannerRect): void {
+    const halfW = Math.min(rect.halfLen * 0.34, rect.halfThick * 2.1)
+    const halfH = rect.halfThick * 0.58
     const points = (inset: number): Phaser.Math.Vector2[] => {
       const w = halfW - inset
       const h = halfH - inset
       return [
-        local(centerU - w, -h * 0.7),
-        local(centerU - w * 0.86, -h),
-        local(centerU + w * 0.82, -h * 0.9),
-        local(centerU + w, -h * 0.45),
-        local(centerU + w * 0.92, h * 0.78),
-        local(centerU - w * 0.82, h),
-        local(centerU - w, h * 0.58),
-      ].map((p) => new Phaser.Math.Vector2(p.x, p.y))
+        new Phaser.Math.Vector2(-w, -h * 0.68),
+        new Phaser.Math.Vector2(-w * 0.86, -h),
+        new Phaser.Math.Vector2(w * 0.82, -h * 0.9),
+        new Phaser.Math.Vector2(w, -h * 0.44),
+        new Phaser.Math.Vector2(w * 0.92, h * 0.78),
+        new Phaser.Math.Vector2(-w * 0.82, h),
+        new Phaser.Math.Vector2(-w, h * 0.58),
+      ]
     }
     g.fillStyle(INK, 1)
     g.fillPoints(points(0), true)
     g.fillStyle(BANNER_CREAM, 1)
-    g.fillPoints(points(Math.max(2, rect.halfThick * 0.055) * scale), true)
+    g.fillPoints(points(Math.max(1.75, rect.halfThick * 0.065)), true)
   }
 
-  /** Draw the angular comic-panel shape. */
   private drawPanelShape(
     g: Phaser.GameObjects.Graphics,
     rect: BannerRect,
@@ -566,28 +613,10 @@ export class DiscoveryBanner {
     scale: number,
     inset: number = 0,
   ): void {
-    const hl = (rect.halfLen - inset) * scale
-    const ht = (rect.halfThick - inset) * scale
-
-    // Long panel with mostly straight edges and restrained clipped corners.
-    const cut = ht * 0.34
-    const points = [
-      local(-hl, -ht * 0.52),
-      local(-hl + cut, -ht * 0.92),
-      local(-hl * 0.3, -ht),
-      local(hl - cut, -ht * 0.88),
-      local(hl, -ht * 0.52),
-      local(hl, ht * 0.5),
-      local(hl - cut, ht * 0.92),
-      local(-hl * 0.45, ht),
-      local(-hl + cut, ht * 0.86),
-      local(-hl, ht * 0.48),
-    ]
-
+    const points = this.panelPoints(rect, local, scale, inset)
     g.fillPoints(points.map((p) => new Phaser.Math.Vector2(p.x + offsetX, p.y + offsetY)), true)
   }
 
-  /** Stroke the panel shape outline. */
   private strokePanelShape(
     g: Phaser.GameObjects.Graphics,
     rect: BannerRect,
@@ -597,10 +626,20 @@ export class DiscoveryBanner {
     scale: number,
     inset: number = 0,
   ): void {
+    const points = this.panelPoints(rect, local, scale, inset)
+    g.strokePoints(points.map((p) => new Phaser.Math.Vector2(p.x + offsetX, p.y + offsetY)), true, true)
+  }
+
+  private panelPoints(
+    rect: BannerRect,
+    local: (u: number, v: number) => { x: number; y: number },
+    scale: number,
+    inset: number,
+  ): Array<{ x: number; y: number }> {
     const hl = (rect.halfLen - inset) * scale
     const ht = (rect.halfThick - inset) * scale
     const cut = ht * 0.34
-    const points = [
+    return [
       local(-hl, -ht * 0.52),
       local(-hl + cut, -ht * 0.92),
       local(-hl * 0.3, -ht),
@@ -612,63 +651,61 @@ export class DiscoveryBanner {
       local(-hl + cut, ht * 0.86),
       local(-hl, ht * 0.48),
     ]
-
-    g.strokePoints(points.map((p) => new Phaser.Math.Vector2(p.x + offsetX, p.y + offsetY)), true, true)
   }
 
-  /** Anchored comic-style exit: fade/compress in place, never sweep gameplay. */
+  /** Anchored comic compression: every layer exits around its local origin. */
   dismiss(): void {
     if (!this.active) return
-    const holder = this.holder
-    if (!holder) {
-      this.destroy()
-      return
-    }
     if (this.reducedMotion) {
       this.destroy()
       return
     }
+    this.dismissTimer?.remove()
+    this.dismissTimer = null
+    for (const tween of this.tweens) tween.stop()
+    this.tweens = []
+    if (!this.holder) {
+      this.destroy()
+      return
+    }
     this.tweens.push(
       this.scene.tweens.add({
-        targets: holder,
+        targets: this.holder,
         alpha: 0,
-        duration: 150,
+        duration: 170,
         ease: 'Cubic.easeIn',
         onComplete: () => this.destroy(),
       }),
     )
-    this.tweens.push(
-      this.scene.tweens.add({
-        targets: this,
-        panelPop: 0.86,
-        burstPop: 0.82,
-        ballPop: 0.9,
-        labelPop: 0.88,
-        duration: 150,
-        ease: 'Cubic.easeIn',
-      }),
-    )
+    if (this.bandG) this.tweens.push(this.scene.tweens.add({ targets: this.bandG, scaleX: 0.7, scaleY: 0.82, duration: 170, ease: 'Cubic.easeIn' }))
+    if (this.streakG) this.tweens.push(this.scene.tweens.add({ targets: this.streakG, alpha: 0, duration: 90 }))
+    const popLayers: Phaser.GameObjects.GameObject[] = []
+    for (const layer of [this.burstG, this.ballG, this.labelPlateG, this.textShadow, this.text, this.cloudG]) {
+      if (layer) popLayers.push(layer)
+    }
+    this.tweens.push(this.scene.tweens.add({ targets: popLayers, scaleX: 0.82, scaleY: 0.82, duration: 150, ease: 'Cubic.easeIn' }))
   }
 
-  /** Tear down every object and tween. */
   destroy(): void {
     this.active = false
     this.dismissTimer?.remove()
     this.dismissTimer = null
-    for (const t of this.tweens) t.stop()
+    this.rgbTimer?.remove()
+    this.rgbTimer = null
+    for (const tween of this.tweens) tween.stop()
     this.tweens = []
-    this.animTween?.stop()
-    this.animTween = null
     this.scene.tweens.killTweensOf(this.objs)
-    for (const o of this.objs) o.destroy()
+    for (const obj of this.objs) obj.destroy()
     this.objs = []
+    this.holder = null
+    this.streakG = null
     this.bandG = null
+    this.flashG = null
     this.burstG = null
     this.ballG = null
-    this.effectsG = null
+    this.labelPlateG = null
+    this.cloudG = null
     this.text = null
     this.textShadow = null
-    this.holder = null
-    this.rect = null
   }
 }

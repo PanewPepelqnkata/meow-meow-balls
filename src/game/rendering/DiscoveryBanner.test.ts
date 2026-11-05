@@ -32,20 +32,22 @@ describe('the discovery banner geometry', () => {
     const desktop = bannerRect(1280, 720)
     // Phone should be narrower
     expect(phone.halfLen).toBeLessThan(desktop.halfLen)
-    // Both should have reasonable thickness
-    expect(phone.halfThick).toBeGreaterThan(30)
-    expect(desktop.halfThick).toBeGreaterThan(30)
+    // Both remain readable at the smaller approved scale.
+    expect(phone.halfThick).toBeGreaterThan(20)
+    expect(desktop.halfThick).toBeGreaterThan(20)
   })
 
-  it('matches the approved 1380x1140 reference footprint and right anchor', () => {
-    const rect = bannerRect(1380, 1140)
+  it('matches the approved compact 1671x770 gameplay reference', () => {
+    const rect = bannerRect(1671, 770)
     const xExtent = Math.cos(rect.angle) * rect.halfLen + Math.sin(rect.angle) * rect.halfThick
     const yExtent = Math.sin(rect.angle) * rect.halfLen + Math.cos(rect.angle) * rect.halfThick
 
-    expect(rect.halfLen * 2).toBeCloseTo(720, 0)
-    expect(rect.halfThick * 2).toBeCloseTo(136, 0)
-    expect(rect.cx + xExtent).toBeCloseTo(1380 - 1380 * 0.018, 0)
-    expect(rect.cy - yExtent).toBeCloseTo(1140 * 0.07, 0)
+    expect(rect.halfLen * 2).toBeCloseTo(320, 0)
+    expect(rect.halfThick * 2).toBeCloseTo(62, 0)
+    expect(rect.cx + xExtent).toBeCloseTo(1671 - 1671 * 0.056, 0)
+    expect(rect.cy - yExtent).toBeCloseTo(770 * 0.065, 0)
+    // Right streaks stop before the reference pause-button slot.
+    expect(rect.cx + xExtent + rect.halfThick * 0.8).toBeLessThan(1671 - 55)
   })
 
   it('keeps the portrait banner compact and below the top-right HUD', () => {
@@ -53,8 +55,8 @@ describe('the discovery banner geometry', () => {
     const xExtent = Math.cos(rect.angle) * rect.halfLen + Math.sin(rect.angle) * rect.halfThick
     const yExtent = Math.sin(rect.angle) * rect.halfLen + Math.cos(rect.angle) * rect.halfThick
 
-    expect(rect.halfLen * 2).toBeLessThan(300)
-    expect(rect.cx + xExtent).toBeLessThanOrEqual(390 - 14)
+    expect(rect.halfLen * 2).toBeLessThan(260)
+    expect(rect.cx + xExtent).toBeLessThanOrEqual(390 - 390 * 0.04)
     expect(rect.cy - yExtent).toBeGreaterThanOrEqual(142)
   })
 })

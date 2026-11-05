@@ -92,7 +92,7 @@ export class UIScene extends Phaser.Scene {
       this.uiRoot.setHudVisible(visible)
     })
     // The repeat-discovery banner: non-blocking, owns its own lifecycle.
-    this.discoveryBanner = new DiscoveryBanner(this)
+    this.discoveryBanner = new DiscoveryBanner(this, () => this.uiRoot.layout_)
 
     // Boot-time sync (PlaygroundScene.create ran first and populated these).
     this.lastBest = Number(this.registry.get('best') ?? 0)
