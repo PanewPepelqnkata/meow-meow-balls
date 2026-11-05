@@ -4,7 +4,7 @@ update public.user_progress up
 set coins = greatest(0, coalesce((u.raw_user_meta_data->'ballrush_progress'->>'coins')::numeric, 0))
 from auth.users u
 where u.id = up.user_id and up.coins = 0
-  and (u.raw_user_meta_data->'ballrush_progress'->>'coins') ~ '^[0-9]+(\.[0-9]+)?$'
+  and (u.raw_user_meta_data->'ballrush_progress'->>'coins') ~ '^[0-9]{1,11}(\.[0-9])?$'
   and coalesce((u.raw_user_meta_data->'ballrush_progress'->>'coins')::numeric, 0) > 0;
 
 
@@ -71,7 +71,7 @@ begin
     v_variants := coalesce(v_meta_progress->'variants', '{}'::jsonb);
     v_settings := coalesce(v_meta_progress->'settings', '{"theme":"auto"}'::jsonb);
     v_coins := case
-      when (v_meta_progress->>'coins') ~ '^[0-9]+(\.[0-9]+)?$'
+      when (v_meta_progress->>'coins') ~ '^[0-9]{1,11}(\.[0-9])?$'
         then greatest(0, (v_meta_progress->>'coins')::numeric)
       else 0
     end;
