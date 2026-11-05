@@ -75,6 +75,14 @@ points and triggering chain reactions. The run ends when a ball escapes the cont
     total drops, play time)
   - Run history
 
+### End-of-run results
+
+- A 300ms ball reaction leaves the frozen pile intact behind a compact, dimmed overlay.
+- Existing blue, red, and white ball artwork reacts with playful encouragement; the game font, cream card, ink outline, and blue/red controls match the menu.
+- Final score is the focus, with a short new-best message when earned; no detailed stats or comparison row.
+- **Play Again** is the primary action; **Home** is secondary. Eligible guests retain the optional score-save action and saved confirmation.
+- Portrait and short-landscape layouts fit the viewport. Reduced motion skips shake and entrance/character animation; retry cancels pending end-of-run callbacks.
+
 ## 7. Accounts, Leaderboards, Backend
 
 - **Supabase anonymous authentication** at launch (no email/social login initially).

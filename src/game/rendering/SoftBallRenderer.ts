@@ -49,10 +49,9 @@ export class SoftBallRenderer {
   private readonly looks = new Map<number, BallLook>()
   /** Per-ball panic/danger emotion (visual only — see BallEmotionSystem). */
   readonly emotion = new BallEmotionSystem()
-  /** The game-over pop sequence (set by the scene when it starts; the
-   * renderer consults its panic override and per-ball scale). */
+  /** The end-of-run reaction overrides faces without changing the finished pile. */
   gameOverSequence: GameOverSequence | null = null
-  /** Live Graphics layer — faces fallback, tier 8/9 bodies, pop shards. */
+  /** Live Graphics layer — face fallback and procedural ball bodies. */
   private readonly layer: Phaser.GameObjects.Graphics
   /** Per-tier baked textures (tier 1–7 bodies). */
   private readonly tierBaker: TierBaker
@@ -248,34 +247,16 @@ export class SoftBallRenderer {
         this.hideSprites(r.id)
         continue
       }
-      // Game-over pop: a ball mid-pop draws at its tweened scale; popped
-      // (scale 0) balls vanish.
-      const popScale = this.gameOverSequence?.scaleOverrides.get(r.id)
-      if (popScale != null && popScale <= 0.002) {
-        this.hideSprites(r.id)
-        continue
-      }
       this.lastDrawnIds.add(r.id)
       const look = this.lookFor(r)
       // TIER 8 cycles its colour through the clock (red/blue every 0.25s);
       // every other tier uses its fixed tier colour.
       const color = r.tier === 8 ? cycleColor(now) : this.tierColor(r.tier)
-      const drawR = popScale != null ? r.soft.radius * popScale : r.soft.radius
+      const drawR = r.soft.radius
 
       // Live transform measurement: centroid + particle-bounds aspect
       // (h/w — the same squash signal the face layout consumed before).
       const aspect = this.ballAspect(r)
-
-      // Game-over pop frames draw through the live path entirely (the
-      // sprite transform path can't express the tween + shatter interplay
-      // cleanly; pops are transient, ≤ a handful of balls).
-      if (popScale != null) {
-        this.hideSprites(r.id)
-        this.faces.hideFace(this.spriteViews.get(r.id)!)
-        this.drawLiveBody(g, r, look, drawR, color)
-        this.drawLiveFace(g, r, look, drawR, aspect, now)
-        continue
-      }
 
       // Tiers 1-7 draw the live particle-ring contour every frame (the
       // pre-SpriteBalls path). The contour is rebuilt from the physics
@@ -283,7 +264,7 @@ export class SoftBallRenderer {
       // spring's localized dent is applied on top of the live contour.
       this.hideSprites(r.id)
       const polyResult = this.liveContour(r, look, drawR)
-      this.drawLiveBody(g, r, look, drawR, color, polyResult.poly, polyResult.cx, polyResult.cy)
+      this.drawLiveBody(g, r, drawR, color, polyResult.poly, polyResult.cx, polyResult.cy)
       const view = this.spriteViews.get(r.id)
       if (view && !this.isCollectibleTier(r.tier)) {
         this.drawSpriteFace(view, r, drawR, aspect, now)
@@ -420,18 +401,16 @@ export class SoftBallRenderer {
     }
   }
 
-  /** Live Graphics body draw (tiers 8/9 awake, pops, fallbacks). */
+  /** Draw the live body with the contour already measured for this frame. */
   private drawLiveBody(
     g: Phaser.GameObjects.Graphics,
     r: SoftBallEntity,
-    look: BallLook,
     drawR: number,
     color: number,
-    poly?: Phaser.Math.Vector2[],
-    cx?: number,
-    cy?: number,
+    poly: Phaser.Math.Vector2[],
+    cx: number,
+    cy: number,
   ): void {
-    const built = poly ? { poly, cx: cx!, cy: cy! } : this.liveContour(r, look, drawR)
     if (this.isCollectibleTier(r.tier)) {
       // The theme ball draws INTO the live contour (body fill, ears/tail
       // or fin, mouth all track the wobble) and paints its OWN face — no
@@ -439,7 +418,7 @@ export class SoftBallRenderer {
       // (shark/pig) picks the renderer; the variant picks the palette
       // within the theme. Fear (panic) and the gaze easter egg pass
       // straight through.
-      drawCollectibleBall(g, built.cx, built.cy, r.soft.radius, r.tier, variantIdFor(r.tier), built.poly, this.emotion.panicOf(r.id), gazeAt(r.seed, Date.now()), r.seed, undefined, r.soft.center.angle, r.id)
+      drawCollectibleBall(g, cx, cy, r.soft.radius, r.tier, variantIdFor(r.tier), poly, this.emotion.panicOf(r.id), gazeAt(r.seed, Date.now()), r.seed, undefined, r.soft.center.angle, r.id)
       return
     }
     // Every other tier (including the tier 8 cycling RGB ball) is a
@@ -447,12 +426,12 @@ export class SoftBallRenderer {
     // INK outline strokes the SAME contour, so the body can never lose
     // its colour while the face stays.
     g.fillStyle(color, 1)
-    g.fillPoints(built.poly, true)
+    g.fillPoints(poly, true)
     g.lineStyle(ballOutlineWidth(drawR), INK, 1)
-    g.strokePoints(built.poly, true, true)
+    g.strokePoints(poly, true, true)
   }
 
-  /** Live Graphics face draw (easter eggs, panic, pops, tier 8/9). */
+  /** Draw a face directly when a pooled sprite face is unavailable. */
   private drawLiveFace(
     g: Phaser.GameObjects.Graphics,
     r: SoftBallEntity,
@@ -460,12 +439,9 @@ export class SoftBallRenderer {
     drawR: number,
     aspect: number,
     now: number,
-    fcx?: number,
-    fcy?: number,
+    cx: number,
+    cy: number,
   ): void {
-    const c = softBallCentroid(r.soft, this.centroidScratch)
-    const cx = fcx ?? c.x
-    const cy = fcy ?? c.y
     const panic = this.gameOverSequence?.panicOverride ?? this.emotion.panicOf(r.id)
     drawBallFace(g, look, { x: cx, y: cy }, drawR, aspect, {
       gaze: gazeAt(r.seed, now),
@@ -501,7 +477,6 @@ export class SoftBallRenderer {
     this.faces.layoutFace(view, atlas, c.x, c.y, drawR, aspect, gazeAt(r.seed, now), fear, level)
   }
 
-  /** Hide a ball's sprite set (removed / popped / live-path frames). */
   /** Hide only the body quads — face sprites stay visible in BOTH
    * render modes (hiding them for overlay members made faces vanish
    * for the overlay's duration: the sprite face draw ran before this

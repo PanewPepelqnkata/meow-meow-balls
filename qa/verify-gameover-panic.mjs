@@ -13,8 +13,7 @@ for (let i = 0; i < 22; i++) {
   await page.evaluate((x) => window.__brScene.dropAt(x), 250 + ((i * 41) % 220))
   await page.waitForTimeout(320)
 }
-// Force the game over and sample DURING the panic window (the shatter
-// chain removes the balls a few hundred ms later).
+// Sample the brief reaction before the compact results overlay appears.
 await page.evaluate(() => {
   const pg = window.__brGame.scene.getScene('playground')
   pg.triggerGameOver()
@@ -61,6 +60,20 @@ if (s.fearedMouth === 0) failures.push('no ball got the frightened mouth at game
 if (s.panicOverride !== 1 && !s.running) {
   failures.push(`the game-over panic override was not active (${s.panicOverride})`)
 }
+const settled = await page.evaluate(async () => {
+  const pg = window.__brGame.scene.getScene('playground')
+  const ids = pg.balls.getBalls().map((b) => b.id)
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+  return {
+    before: ids,
+    after: pg.balls.getBalls().map((b) => b.id),
+    overlay: window.__brGame.scene.getScene('UIScene').overlayVisible(),
+  }
+})
+if (JSON.stringify(settled.before) !== JSON.stringify(settled.after)) {
+  failures.push('the finished pile changed while displaying results')
+}
+if (!settled.overlay) failures.push('results did not appear after the reaction')
 if (errors.length) failures.push(`page errors: ${errors.slice(0, 2).join(' | ')}`)
 
 await browser.close()

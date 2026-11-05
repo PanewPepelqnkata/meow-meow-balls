@@ -132,7 +132,7 @@ export class PlaygroundScene extends Phaser.Scene {
   /** Game-over state (Phase 2.10.0): once triggered, drops/inputs/abilities
    * stop and the physics is paused until a full restart. */
   private gameOver = false
-  /** The end-of-run panic→pop sequence (created on first game over). */
+  /** Brief end-of-run panic reaction; the finished pile remains for the overlay. */
   private gameOverSequence: GameOverSequence | null = null
   /** Phase 2.14.0: highest tier reached THIS run (leaderboard flavor). */
   private bestTierRun = 1
@@ -454,6 +454,8 @@ export class PlaygroundScene extends Phaser.Scene {
     )
     // Baked rendering: drop all baked textures + quads with the scene.
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.gameOverSequence?.destroy()
+      this.gameOverSequence = null
       this.ballRenderer?.destroy()
     })
     // Phase 2.14.0: title screen START → gameplay input unlocks (once).
@@ -885,8 +887,6 @@ export class PlaygroundScene extends Phaser.Scene {
     }
     const renderStart = performance.now()
     this.ballRenderer.update(delta)
-    // Game-over pop sequence fx (pooled particles/rings) — no-op while idle.
-    this.gameOverSequence?.update(delta)
     // Combo glow sweep (no-op unless a sweep is running).
     this.containerView.update(delta)
     // Phase 2.12.1: background animates inside BackgroundScene's own update
@@ -1227,7 +1227,7 @@ export class PlaygroundScene extends Phaser.Scene {
       this.registry.set('best', recordRunEnd(this.score.score, this.bestTierRun, this.mergesThisRun))
     }
     gameBus.emit('state:best', { best: this.best() })
-    // Submit immediately at Game Over trigger so the run is recorded even before the pop animation ends.
+    // Submit immediately so the run is recorded before the brief game-over reaction ends.
     if (!isDrunkoTestRoute() && isValidRun) {
       void scoreService.submitScore(
         this.score.score,
@@ -1238,18 +1238,10 @@ export class PlaygroundScene extends Phaser.Scene {
         this.runCollectibles,
       )
     }
-    // GAME OVER SEQUENCE: balls realize they're doomed, panic, then pop in
-    // a staggered chain. The panel springs in when the chain finishes
-    // ('run:gameover' now fires from the sequence completion, not here).
-    const doomed = this.balls.getBalls().filter((b) => b.state !== 'removed')
-    this.gameOverSequence = this.gameOverSequence ?? new GameOverSequence(this, (id) => {
-      this.balls.removeBall(id, false)
-      this.ballRenderer.unregister(id)
-      this.ballRenderer.emotion.forget(id)
-      this.registeredIds.delete(id)
-    })
+    // Briefly react, then show the overlay over the unchanged, paused pile.
+    this.gameOverSequence = this.gameOverSequence ?? new GameOverSequence(this)
     this.ballRenderer.gameOverSequence = this.gameOverSequence
-    this.gameOverSequence.start(doomed, () => {
+    this.gameOverSequence.start(() => {
       gameBus.emit('run:gameover', {
         score: this.score.score,
         best: this.best(),
@@ -1263,6 +1255,7 @@ export class PlaygroundScene extends Phaser.Scene {
   private restartRun(): void {
     // If the player restarts or leaves to menu mid-run before game over, finalize and record the run first.
     this.finalizeActiveRunIfIncomplete()
+    this.gameOverSequence?.destroy()
     // Full reset (Phase 2.10.0): gameplay state, game-over state, overlay,
     // HUD ability state, walls, physics and rendering all start clean.
     this.gameOver = false
