@@ -25,7 +25,7 @@ import { DebugOverlay } from '../debug/DebugOverlay'
 import { PerfOverlay } from '../debug/PerfOverlay'
 import { session, fastbootRequested } from '../state/session'
 import { bannerForcedByVariant } from '../rendering/DiscoveryBanner'
-import { hasDiscoveredCollectible, hasDiscoveredTier, recordDiscovery, recordMerge, recordRunEnd, recordRunStart, savedBest, themeSetting } from '../state/save'
+import { hasDiscoveredCollectible, hasDiscoveredTier, loadSave, recordDiscovery, recordMerge, recordRunEnd, recordRunStart, savedBest, themeSetting } from '../state/save'
 import { authService, scoreService } from '../../services/auth'
 import { isDrunkoTestRoute, rollNewRunSeed, runVariantFor, themeFor } from '../state/runVariant'
 import { addRunCollectible, type RunCollectibles } from '../state/collectibleMetadata'
@@ -1012,7 +1012,7 @@ export class PlaygroundScene extends Phaser.Scene {
   }
 
   private guestAbilityBlocked(): boolean {
-    return !authService.isAuthenticated()
+    return !authService.isRegisteredAccount()
   }
 
   private doRaise(): void {
@@ -1022,14 +1022,18 @@ export class PlaygroundScene extends Phaser.Scene {
     // presses while raising/raised/lowering (walls.activate() already
     // refuses those) or after the walls lower again are all no-ops.
     if (this.gameOver || session.menuActive || this.raiseUsed || this.discoveryBlocking() || this.guestAbilityBlocked()) return
-    if (!this.walls.activate()) return
+    // Upgrade levels are snapshotted at activation; changing the save while
+    // the cycle runs cannot alter its duration.
+    if (!this.walls.activate(loadSave().upgrades)) return
     this.raiseUsed = true
     gameBus.emit('ability:raiseUsed', {})
   }
 
   private doShake(): void {
+    // ShakeManager snapshots both duration and physical impulse upgrades;
     if (this.gameOver || session.menuActive || this.shakeUsed || this.discoveryBlocking() || this.guestAbilityBlocked()) return
-    if (!this.shake.activate()) return
+    // camera/debris visuals remain at their base intensity.
+    if (!this.shake.activate(loadSave().upgrades)) return
     this.shakeUsed = true
     gameBus.emit('ability:shakeUsed', {})
   }

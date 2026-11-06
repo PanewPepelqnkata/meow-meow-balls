@@ -18,7 +18,8 @@ select public.upsert_guest_progress(
 );
 insert into collectible_smoke_ids values ('guest', public.record_guest_score(
   '2fd7d674-a6ce-4a04-b8ab-22418da1a1d5', 500, 9, 4, 1000,
-  null, null, '[{"tier":9,"theme":"pig","variant":3,"discoveredAt":1800000000200}]'
+  null, null, '[{"tier":9,"theme":"pig","variant":3,"discoveredAt":1800000000200}]',
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'::uuid
 ));
 reset role;
 
@@ -28,10 +29,12 @@ declare
   actual jsonb;
 begin
   perform public.record_guest_score('2fd7d674-a6ce-4a04-b8ab-22418da1a1d5', 800, 10, 8, 2000, run_id, 'completed',
-    '[{"tier":9,"theme":"pig","variant":3,"discoveredAt":1800000000200},{"tier":10,"theme":"crab","variant":5,"discoveredAt":1800000000300}]');
+    '[{"tier":9,"theme":"pig","variant":3,"discoveredAt":1800000000200},{"tier":10,"theme":"crab","variant":5,"discoveredAt":1800000000300}]',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'::uuid);
   -- A delayed older live snapshot cannot erase the later crab discovery.
   perform public.record_guest_score('2fd7d674-a6ce-4a04-b8ab-22418da1a1d5', 500, 9, 4, 1000, run_id, null,
-    '[{"tier":9,"theme":"pig","variant":3,"discoveredAt":1800000000400}]');
+    '[{"tier":9,"theme":"pig","variant":3,"discoveredAt":1800000000400}]',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'::uuid);
   select collectibles into actual from public.guest_scores where id = run_id;
   if jsonb_array_length(actual) <> 2 or actual->0->>'discoveredAt' <> '1800000000200' then
     raise exception 'Guest snapshots lost identity or first discovery timestamp: %', actual;
@@ -75,6 +78,20 @@ begin
   if (select variants from public.user_progress where user_id = '51f39d10-6e6e-4ed9-8122-6343b718de11') <> '{}'::jsonb then
     raise exception 'Guest run metadata incorrectly rebuilt a lifetime collection';
   end if;
+  if not exists (
+    select 1 from public.scores s
+    where s.user_id = '51f39d10-6e6e-4ed9-8122-6343b718de11'
+      and s.run_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'::uuid
+  ) or not exists (
+    select 1 from public.coin_settlements cs
+    join public.scores s on s.id = cs.score_id
+    where s.user_id = '51f39d10-6e6e-4ed9-8122-6343b718de11'
+      and s.run_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'::uuid
+      and cs.settled_at is not null
+  ) then
+    raise exception 'Guest conversion lost run identity or settlement receipt';
+  end if;
+
   select id, collectibles into run_id, snapshot from public.scores
   where user_id = '51f39d10-6e6e-4ed9-8122-6343b718de11' and jsonb_array_length(collectibles) = 2;
   if (select interruption_reason from public.scores where id = run_id) <> 'completed' then
@@ -99,7 +116,9 @@ $$;
 
 -- Fresh authenticated rows start with [] and subsequently get actual finds.
 set local role authenticated;
-insert into collectible_smoke_ids values ('user', public.record_user_score(0, 3, 0, 0, null, null, '[]'));
+insert into collectible_smoke_ids values ('user', public.record_user_score(
+  0, 3, 0, 0, null, null, '[]', 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'::uuid
+));
 reset role;
 update public.user_progress set variants = '{"9:robo:2":1800000000500}'::jsonb
 where user_id = '51f39d10-6e6e-4ed9-8122-6343b718de11';
@@ -113,13 +132,16 @@ begin
   if (select collectibles from public.scores where id = run_id) <> '[]'::jsonb then
     raise exception 'A recorded no-find run was marked legacy';
   end if;
-  perform public.record_user_score(1000, 9, 5, 3000, run_id, 'completed', snapshot);
-  perform public.record_user_score(900, 9, 4, 2500, run_id, null, '[]');
+  perform public.record_user_score(1000, 9, 5, 3000, run_id, 'completed', snapshot,
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc'::uuid);
+  perform public.record_user_score(900, 9, 4, 2500, run_id, null, '[]',
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc'::uuid);
   if (select collectibles from public.scores where id = run_id) <> snapshot then
     raise exception 'Registered live/final metadata update lost actual discovery';
   end if;
   another_id := public.record_user_score(1100, 9, 6, 4000, null, 'completed',
-    '[{"tier":9,"theme":"robo","variant":2,"discoveredAt":1800000000600}]');
+    '[{"tier":9,"theme":"robo","variant":2,"discoveredAt":1800000000600}]',
+    'dddddddd-dddd-4ddd-8ddd-dddddddddddd'::uuid);
   if (select collectibles->0->>'discoveredAt' from public.scores where id = another_id) <> '1800000000600' then
     raise exception 'Lifetime repeat did not retain its own per-run timestamp';
   end if;
@@ -144,7 +166,8 @@ begin
   end if;
   begin
     perform public.record_user_score(10, 9, 1, 1, null, null,
-      '[{"tier":9,"theme":"pig","variant":3}]');
+      '[{"tier":9,"theme":"pig","variant":3}]',
+      'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'::uuid);
     raise exception 'Invalid metadata was accepted';
   exception when invalid_parameter_value then null;
   end;
@@ -152,7 +175,7 @@ begin
     insert into public.scores (user_id, score, tier_reached, collectibles)
     values ('51f39d10-6e6e-4ed9-8122-6343b718de11', 10, 9, '{}');
     raise exception 'Invalid direct insert was accepted';
-  exception when check_violation then null;
+  exception when check_violation or insufficient_privilege then null;
   end;
 
   perform public.boss_reset_user_progress('51f39d10-6e6e-4ed9-8122-6343b718de11');
@@ -165,7 +188,7 @@ begin
     or (select variants from public.guest_profiles where guest_id = '2fd7d674-a6ce-4a04-b8ab-22418da1a1d5') <> '{}'::jsonb then
     raise exception 'Guest reset did not clear metadata and lifetime collection';
   end if;
-  if has_function_privilege('anon', 'public.record_user_score(integer,integer,integer,integer,bigint,text,jsonb)', 'execute')
+  if has_function_privilege('anon', 'public.record_user_score(integer,integer,integer,integer,bigint,text,jsonb,uuid)', 'execute')
     or has_function_privilege('anon', 'public.boss_get_dashboard_data()', 'execute')
     or has_function_privilege('authenticated', 'public.boss_sync_user_progress_internal(uuid,boolean)', 'execute') then
     raise exception 'RPC permissions were broadened';
@@ -178,7 +201,8 @@ set local role authenticated;
 do $$
 begin
   begin
-    perform public.record_user_score(1, 1, 0, 0, null, null, '[]');
+    perform public.record_user_score(1, 1, 0, 0, null, null, '[]',
+      'ffffffff-ffff-4fff-8fff-ffffffffffff'::uuid);
     raise exception 'Unauthenticated user score was accepted';
   exception when raise_exception then
     if sqlerrm <> 'Authentication required' then raise; end if;

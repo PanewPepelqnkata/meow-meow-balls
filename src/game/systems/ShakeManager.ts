@@ -1,3 +1,5 @@
+import { shakeDurationMs, shakeImpulseMultiplier } from '../../config/abilityUpgrades'
+import type { UpgradeLevels } from '../../config/abilityUpgrades'
 import Matter from 'matter-js'
 import { SHAKE_ABILITY } from '../../config/shakeAbility'
 import { STAGE } from '../../config/stage'
@@ -40,7 +42,7 @@ export interface ShakeFrameState {
 
 /**
  * Shake ability manager:
- * - 10-second active earthquake experience.
+ * - 5-second base earthquake experience (upgradable to 10 seconds).
  * - Gentle continuous seismic screen rumble (x/y translations + slight angular tilt).
  * - Periodic bounce pulses that nudge balls into contacts and merges.
  * - Falling rubble / ceiling rock debris across the WHOLE screen (stage width).
@@ -50,7 +52,9 @@ export interface ShakeFrameState {
 export class ShakeManager {
   private active = false
   private startTime = 0
-  private readonly durationMs = SHAKE_ABILITY.durationMs
+  private durationMs = shakeDurationMs()
+  /** Snapshot for this activation; affects physical bounce/jitter only. */
+  private impulseMultiplier = 1
   private clock: (() => number) | null = null
   private manager: SoftBallManager | null = null
   private lastRoundIndex = -1
@@ -130,15 +134,19 @@ export class ShakeManager {
   }
 
   /**
-   * Activate the earthquake shake ability for 10 seconds.
+   * Activate the earthquake shake ability for the snapshotted duration.
    * Adds INVISIBLE extended side walls that continue the container's sloped
    * walls straight upward, so balls physically cannot escape left/right —
    * they are blocked by a real collider, never teleported back. The top
    * stays completely open (no lid), so dropping balls during the ability
    * does not glitch against an invisible ceiling.
    */
-  activate(): boolean {
+  activate(upgrades?: UpgradeLevels | Partial<UpgradeLevels>): boolean {
     if (this.active) return false
+    // Read once per activation. The duration and physical impulse multiplier
+    // remain stable if the save changes while this cycle is running.
+    this.durationMs = shakeDurationMs(upgrades)
+    this.impulseMultiplier = shakeImpulseMultiplier(upgrades)
     this.active = true
     this.startTime = this.now()
     this.lastRoundIndex = -1
@@ -257,8 +265,8 @@ export class ShakeManager {
       this.manager.wakeBall(b.id)
 
       // Random lateral variation per ball so balls mix and bounce off each other
-      const lateralJitter = (Math.random() - 0.5) * 2 * SHAKE_ABILITY.bounceJitterX
-      const upwardImpulse = SHAKE_ABILITY.bounceVelocityY * (0.85 + Math.random() * 0.3)
+      const lateralJitter = (Math.random() - 0.5) * 2 * SHAKE_ABILITY.bounceJitterX * this.impulseMultiplier
+      const upwardImpulse = SHAKE_ABILITY.bounceVelocityY * (0.85 + Math.random() * 0.3) * this.impulseMultiplier
 
       for (const p of b.soft.particles) {
         Matter.Body.setVelocity(p, {
@@ -422,6 +430,8 @@ export class ShakeManager {
   reset(): void {
     this.active = false
     this.startTime = 0
+    this.durationMs = shakeDurationMs()
+    this.impulseMultiplier = 1
     this.lastRoundIndex = -1
     // Restore collision masks for doomed balls before clearing
     this.restoreDoomedBallMasks()

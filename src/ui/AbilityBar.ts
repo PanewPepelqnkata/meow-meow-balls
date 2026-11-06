@@ -47,7 +47,7 @@ export class AbilityBar {
 
   layout(l: UiLayout): void {
     this.l = l
-    const isGuest = !authService.isAuthenticated()
+    const isGuest = !authService.isRegisteredAccount()
     for (const b of this.buttons) b.objects().forEach((o) => o.destroy())
     this.buttons = []
     const n = 4

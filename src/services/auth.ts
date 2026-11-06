@@ -1,3 +1,4 @@
+import { UPGRADE_CATALOG, freshUpgradeLevels, normalizeUpgradeLevels, upgradeCost, type UpgradeId, type UpgradeLevels } from '../config/abilityUpgrades'
 import { getSupabase } from '../lib/supabase'
 import { isDrunkoTestRoute } from '../game/state/runVariant'
 import { normalizeRunCollectibles, type RunCollectibles } from '../game/state/collectibleMetadata'
@@ -47,39 +48,41 @@ export function resolveDisplayName(profile: Profile | null | undefined): string 
   return profile?.display_name || profile?.username || 'Anonymous'
 }
 type CloudCoinState = { coins: number; coinRevision: number }
+type UpgradePurchaseState = CloudCoinState & { upgrades: UpgradeLevels }
 
 function roundedCoins(value: number): number {
   return Math.round(Math.max(0, value) * 10) / 10
 }
 
-function positiveCoinDelta(current: number, baseline: number | null): number {
-  if (baseline === null || !Number.isFinite(current)) return 0
-  return roundedCoins(Math.max(0, current - baseline))
-}
 
 function parseCoinRevision(value: unknown): number | null {
   const revision = typeof value === 'number' || typeof value === 'string' ? Number(value) : NaN
   return Number.isSafeInteger(revision) && revision >= 0 ? revision : null
 }
 
-function parseCloudCoinState(value: unknown): CloudCoinState | null {
+
+function parseUpgradePurchaseState(value: unknown): UpgradePurchaseState | null {
   const raw = Array.isArray(value) ? value[0] : value
   if (!raw || typeof raw !== 'object') return null
-  const row = raw as { coins?: unknown; coin_revision?: unknown }
+  const row = raw as { coins?: unknown; coin_revision?: unknown; upgrades?: unknown }
   const coins = Number(row.coins)
   const coinRevision = parseCoinRevision(row.coin_revision)
-  if (!Number.isFinite(coins) || coins < 0 || coinRevision === null) return null
-  return { coins: roundedCoins(coins), coinRevision }
+  if (!Number.isFinite(coins) || coins < 0 || coinRevision === null || !row.upgrades || typeof row.upgrades !== 'object') {
+    return null
+  }
+  return { coins: roundedCoins(coins), coinRevision, upgrades: normalizeUpgradeLevels(row.upgrades) }
 }
-function cloudSavePayload(save: SaveDataV1): Omit<SaveDataV1, 'coins' | 'coinRevision'> {
+
+/** Progress payload excludes server-owned wallet and upgrade fields. */
+function cloudSavePayload(save: SaveDataV1): Omit<SaveDataV1, 'coins' | 'coinRevision' | 'upgrades'> {
   return {
     version: save.version,
     best: save.best,
-    leaderboard: save.leaderboard,
-    discovered: save.discovered,
-    variants: save.variants,
-    settings: save.settings,
-    stats: save.stats,
+    leaderboard: save.leaderboard.map((entry) => ({ ...entry })),
+    discovered: { ...save.discovered },
+    variants: { ...save.variants },
+    settings: { ...save.settings },
+    stats: { ...save.stats },
   }
 }
 
@@ -116,11 +119,15 @@ function mergeSavesForSameUser(
   leaderboard.sort((x, y) => y.score - x.score || y.at - x.at)
 
   const coins = b && typeof b === 'object' && 'coins' in b ? sb.coins : sa.coins
+  const upgrades = b && typeof b === 'object' && 'upgrades' in b && b.upgrades != null
+    ? normalizeUpgradeLevels(sb.upgrades)
+    : normalizeUpgradeLevels(sa.upgrades)
 
   return normalizeSave({
     version: 1,
     best: Math.max(sa.best, sb.best),
     coins,
+    upgrades,
     leaderboard: leaderboard.slice(0, 10),
     discovered,
     variants,
@@ -239,8 +246,6 @@ export class AuthService {
   private pendingAccountRestore = false
   private profileRequestRevision = 0
   private progressRequestRevision = 0
-  private coinRevision: number | null = null
-  private coinLocalBaseline: number | null = null
   private cloudSaveChain: Promise<void> = Promise.resolve()
 
   static getInstance(): AuthService {
@@ -267,10 +272,6 @@ export class AuthService {
       this.cloudSyncTimer = null
     }
     this.pendingCloudSave = null
-  }
-  private resetCoinSyncState(): void {
-    this.coinRevision = null
-    this.coinLocalBaseline = null
   }
 
   private scheduleCloudSync(save: SaveDataV1, immediate: boolean): void {
@@ -337,6 +338,8 @@ export class AuthService {
 
   private invalidateAccountWork(cancelCloudSync = true): void {
     this.accountRevision++
+    // Old account requests may still finish, but never hold up a new account's work.
+    this.cloudSaveChain = Promise.resolve()
     if (cancelCloudSync) this.cancelScheduledCloudSync()
     if (this.authUpdateTimer !== null) {
       clearTimeout(this.authUpdateTimer)
@@ -347,7 +350,6 @@ export class AuthService {
 
   private replaceSession(nextSession: Session | null, newAccountContext = false): boolean {
     const accountChanged = (this.user?.id ?? null) !== (nextSession?.user.id ?? null)
-    if (accountChanged || newAccountContext) this.resetCoinSyncState()
     if (accountChanged || newAccountContext) this.invalidateAccountWork(accountChanged || nextSession === null)
     if (accountChanged) this.profile = null
     this.session = nextSession
@@ -357,7 +359,6 @@ export class AuthService {
 
   private bindAccountSave(user: User): void {
     if (getSaveOwnerId() !== user.id) {
-      this.resetCoinSyncState()
       resetSave({ syncCloud: false, clearOwner: false })
       setSaveOwnerId(user.id)
     }
@@ -365,7 +366,6 @@ export class AuthService {
 
   private clearSignedOutAccount(): void {
     this.replaceSession(null, true)
-    this.resetCoinSyncState()
     this.profile = null
     resetSave({ syncCloud: false, clearOwner: true })
     resetGuestId()
@@ -556,7 +556,7 @@ export class AuthService {
   async signUpWithEmail(email: string, password: string, username: string): Promise<{ error: Error | null }> {
     const client = getSupabase()
     const guestSave = getSaveOwnerId() === null ? cloneSave(loadSave()) : freshSave()
-    const signupProgress = { ballrush_progress: guestSave }
+    const signupProgress = { ballrush_progress: cloudSavePayload(guestSave) }
     const flowRevision = this.beginAuthFlow('signup')
     try {
       const { error } = await client.auth.signUp({
@@ -572,7 +572,7 @@ export class AuthService {
       return { error }
     } finally {
       // Email confirmation may yield no session. If it did sign in, restore the
-      // guest progress saved in signup metadata outside the SDK callback.
+      // account from user_progress in the deferred auth update.
       this.finishAuthFlow(flowRevision, false)
     }
   }
@@ -639,7 +639,7 @@ export class AuthService {
     const flowRevision = this.beginAuthFlow('signup')
     let handledEvent = false
     try {
-      const signupProgress = { ballrush_progress: guestSave }
+      const signupProgress = { ballrush_progress: cloudSavePayload(guestSave) }
       const { error } = await getSupabase().auth.signUp({
         email: authEmail,
         password,
@@ -673,16 +673,13 @@ export class AuthService {
       }
       const accountRevision = this.accountRevision
 
-      // Bind transferred guest progression to the newly created account.
-      // A new account has no canonical coin row yet; transfer guest coins as
-      // an explicit earned delta instead of relying on the ignored absolute field.
-      this.coinRevision = 0
-      this.coinLocalBaseline = 0
+      // Transfer non-currency progress locally; rewards come only from the
+      // accepted guest score rows linked to this newly registered account.
+      guestSave.coins = 0
+      guestSave.coinRevision = 0
+      guestSave.upgrades = freshUpgradeLevels()
       writeSave(guestSave, { syncCloud: false, ownerId: signInData.user.id })
-      await Promise.all([
-        this.fetchProfile(),
-        this.persistSaveToCloud(guestSave, signInData.user.id),
-      ])
+      await this.fetchProfile()
       if (flowRevision !== this.authFlowRevision || accountRevision !== this.accountRevision) {
         return { error: new Error('Authentication state changed. Please try again.') }
       }
@@ -699,18 +696,9 @@ export class AuthService {
         return { error: new Error('Authentication state changed. Please try again.') }
       }
 
-      // If the guest already had a best score, also record their top run in public.scores
-      // so the global leaderboard reflects their transferred progression immediately.
-      if (hadGuestProgress && guestSave.best > 0) {
-        const topEntry = guestSave.leaderboard[0]
-        const bestTier = Math.max(1, topEntry?.bestTier ?? guestSave.stats.bestTier ?? 1)
-        await ScoreService.getInstance().submitScore(
-          guestSave.best,
-          bestTier,
-          guestSave.stats.merges,
-          0,
-        )
-      }
+      // Do not manufacture a second top-score row after linking guest runs:
+      // their stable score identities are the server's settlement receipts.
+      await this.persistSaveToCloud(undefined, signInData.user.id)
 
       if (flowRevision !== this.authFlowRevision || accountRevision !== this.accountRevision) {
         return { error: new Error('Authentication state changed. Please try again.') }
@@ -764,20 +752,40 @@ export class AuthService {
   }
 
   /**
-   * Restore the authenticated account's progress from cloud sources
-   * (`public.user_progress`, `user.user_metadata.ballrush_progress`, and `public.scores`).
+   * Restore authenticated account progress from the authoritative
+   * `public.user_progress` row and score audit rows. Auth user metadata is
+   * intentionally never used as a progress source because it is editable.
    */
   async restoreAccountProgress(targetUser?: User): Promise<void> {
     const user = targetUser ?? this.user
     if (!user || this.user?.id !== user.id || getSaveOwnerId() !== user.id) return
+    const revision = this.accountRevision
+    const saveRevision = getSaveReplacementRevision()
+    // Capture before queueing: gameplay can earn discoveries while an older
+    // sync occupies the account queue, and those must be retained as pending.
+    const localSameOwnerSave = cloneSave(loadSave())
+    const task = this.cloudSaveChain.then(async () => {
+      if (revision !== this.accountRevision || this.user?.id !== user.id || getSaveOwnerId() !== user.id) return
+      await this.restoreAccountProgressNow(user, localSameOwnerSave, saveRevision)
+    })
+    this.cloudSaveChain = task.catch(() => undefined)
+    return task
+  }
+
+
+  private async restoreAccountProgressNow(
+    user: User,
+    localSameOwnerSave: SaveDataV1,
+    saveRevision: number,
+  ): Promise<void> {
+    if (this.userProgressTableAvailable === false) return
     const userId = user.id
     const revision = this.accountRevision
     const requestRevision = ++this.progressRequestRevision
-    const saveRevision = getSaveReplacementRevision()
-
-    const localSameOwnerSave = getSaveOwnerId() === userId ? cloneSave(loadSave()) : null
 
     const [freshUserRes, scoresRes, tableRes] = await Promise.all([
+      // Fetching the current user keeps the auth/session freshness check, but
+      // never use its editable metadata as an account-progress source.
       getSupabase().auth.getUser().catch(() => ({ data: { user: null } })),
       getSupabase()
         .from('scores')
@@ -785,13 +793,11 @@ export class AuthService {
         .eq('user_id', userId)
         .order('score', { ascending: false })
         .limit(100),
-      this.userProgressTableAvailable === false
-        ? Promise.resolve({ data: null, error: null })
-        : getSupabase()
-            .from('user_progress')
-            .select('*')
-            .eq('user_id', userId)
-            .maybeSingle(),
+      getSupabase()
+        .from('user_progress')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle(),
     ])
 
     if (revision !== this.accountRevision || requestRevision !== this.progressRequestRevision ||
@@ -803,22 +809,19 @@ export class AuthService {
       if (code === 'PGRST205' || code === '42P01' || msg.includes('user_progress')) {
         this.userProgressTableAvailable = false
       }
+      return
     } else if (this.userProgressTableAvailable === null) {
       this.userProgressTableAvailable = true
     }
 
     const freshUser = freshUserRes.data?.user
-    const latestUser = freshUser?.id === userId ? freshUser : user
-    const rawMetaProgress = latestUser?.user_metadata?.ballrush_progress as
-      (Partial<SaveDataV1> & { coinRevision?: unknown }) | undefined
-    const metaSave =
-      rawMetaProgress && typeof rawMetaProgress === 'object' ? normalizeSave(rawMetaProgress) : null
-    const metaCoinRevision = rawMetaProgress ? parseCoinRevision(rawMetaProgress.coinRevision) : null
+    if (freshUser && freshUser.id !== userId) return
 
     const row = tableRes.data as {
       best_score?: number
       coins?: number | string
       coin_revision?: number | string
+      upgrades?: unknown
       discovered?: Record<string, number>
       variants?: Record<string, number>
       stats?: { runs: number; merges: number; bestTier: number }
@@ -830,6 +833,8 @@ export class AuthService {
           version: 1,
           best: row.best_score ?? 0,
           coins: Number(row.coins ?? 0),
+          coinRevision: parseCoinRevision(row.coin_revision) ?? 0,
+          upgrades: normalizeUpgradeLevels(row.upgrades),
           discovered: row.discovered ?? {},
           variants: row.variants ?? {},
           stats: row.stats ?? { runs: 0, merges: 0, bestTier: 0 },
@@ -837,48 +842,27 @@ export class AuthService {
           settings: row.settings ?? { theme: 'auto' },
         })
       : null
-    const cloudCoinState = tableSave
-      ? { coins: tableSave.coins, coinRevision: parseCoinRevision(row?.coin_revision) ?? 0 }
-      : metaSave
-        ? { coins: metaSave.coins, coinRevision: metaCoinRevision ?? 0 }
-        : null
+    // Only the table supplies wallet balances and purchased upgrades. Final
+    // score settlement is durable on the server, including across reloads.
+    let combined = tableSave ?? freshSave()
+    const liveSaveBeforeWrite = cloneSave(loadSave())
+    const canonicalCoins = combined.coins
+    const canonicalRevision = combined.coinRevision
+    const canonicalUpgrades = { ...combined.upgrades }
 
-    let combined = freshSave()
-    if (tableSave) {
-      // user_progress is canonical when available, including explicit admin decreases/resets.
-      combined = tableSave
-    } else if (metaSave) {
-      combined = mergeSavesForSameUser(combined, metaSave)
-    } else if (localSameOwnerSave) {
-      combined = cloneSave(localSameOwnerSave)
-    }
+    // Preserve local score/stat progress, but only discoveries earned after
+    // hydration began; a server reset must not re-import old collection keys.
+    const pendingOnlyLocal = cloneSave(liveSaveBeforeWrite)
+    pendingOnlyLocal.coins = 0
+    pendingOnlyLocal.upgrades = canonicalUpgrades
+    pendingOnlyLocal.variants = {}
+    pendingOnlyLocal.discovered = {}
+    combined = mergeSavesForSameUser(combined, pendingOnlyLocal)
+    combined.coins = canonicalCoins
+    combined.coinRevision = canonicalRevision
+    combined.upgrades = canonicalUpgrades
 
-    // The title screen can start gameplay before its cloud requests finish. Preserve only
-    // coins earned after the last known local baseline, never a stale absolute balance.
-    const liveSaveBeforeWrite = loadSave()
-    const localCoinBaseline = this.coinLocalBaseline ?? localSameOwnerSave?.coins ?? null
-    const localCoinDelta = cloudCoinState
-      ? positiveCoinDelta(liveSaveBeforeWrite.coins, localCoinBaseline)
-      : 0
-    if (cloudCoinState) {
-      combined.coins = roundedCoins(cloudCoinState.coins + localCoinDelta)
-    }
-
-    // Merge non-coin progress earned while hydration was pending without importing
-    // the stale local coin total or older collection unlocks.
-    if (localSameOwnerSave && (tableSave || metaSave)) {
-      const pendingOnlyLocal = cloneSave(localSameOwnerSave)
-      pendingOnlyLocal.coins = 0
-      pendingOnlyLocal.variants = {}
-      pendingOnlyLocal.discovered = {}
-      combined = mergeSavesForSameUser(combined, pendingOnlyLocal)
-      combined.coins = cloudCoinState
-        ? roundedCoins(cloudCoinState.coins + localCoinDelta)
-        : combined.coins
-    }
-
-    const discoveredDuringRestore = localSameOwnerSave !== null &&
-      retainDiscoveriesSinceRestore(combined, localSameOwnerSave, loadSave())
+    const discoveredDuringRestore = retainDiscoveriesSinceRestore(combined, localSameOwnerSave, liveSaveBeforeWrite)
 
     const userScores = Array.isArray(scoresRes.data) ? (scoresRes.data as Score[]) : []
     const { save: reconciledSave, changed: healedFromScores } = reconcileSaveWithUserScores(combined, userScores)
@@ -887,107 +871,145 @@ export class AuthService {
     if (revision !== this.accountRevision || requestRevision !== this.progressRequestRevision ||
         saveRevision !== getSaveReplacementRevision() || this.user?.id !== userId || getSaveOwnerId() !== userId) return
 
-    const hadPendingCloudSave = this.pendingCloudSave !== null
+    const hadCloudRecord = Boolean(tableSave)
+    const hasProgress = finalSave.best > 0 || finalSave.stats.runs > 0 || finalSave.stats.merges > 0 ||
+      Object.keys(finalSave.discovered).length > 3
+    const shouldSettle = userScores.length > 0 || healedFromScores || discoveredDuringRestore ||
+      (!hadCloudRecord && hasProgress)
     this.cancelScheduledCloudSync()
     writeSave(finalSave, { syncCloud: false, ownerId: userId })
 
-    const canonicalCoins = cloudCoinState?.coins ?? finalSave.coins
-    this.coinRevision = cloudCoinState?.coinRevision ?? 0
-    this.coinLocalBaseline = canonicalCoins
-
-    // If scores, same-owner local data, or earned coins healed missing cloud metadata,
-    // route the write through the guarded RPC only.
-    const hadCloudRecord = Boolean(tableSave)
-    const hasProgress =
-      finalSave.best > 0 ||
-      finalSave.stats.runs > 0 ||
-      finalSave.stats.merges > 0 ||
-      Object.keys(finalSave.discovered).length > 3
-    if (localCoinDelta > 0 || healedFromScores || discoveredDuringRestore || hadPendingCloudSave || (!hadCloudRecord && hasProgress)) {
+    if (shouldSettle) {
+      // Run the authoritative settlement scan after hydration. This recovers
+      // a final score whose previous response was lost before reload.
       void this.persistSaveToCloud(finalSave, userId)
     }
   }
 
   /**
-   * Save account progress through the guarded `sync_user_progress` RPC. The
-   * RPC is the sole writer for both user_progress and Auth metadata.
+   * Save account progress through the guarded `sync_user_progress` RPC.
+   * Account hydration, earning syncs, and purchases share one serial queue.
    */
   async persistSaveToCloud(saveData?: Partial<SaveDataV1>, expectedUserId?: string): Promise<void> {
-    const task = this.cloudSaveChain.then(() => this.persistSaveToCloudNow(saveData, expectedUserId))
+    const uid = expectedUserId ?? this.user?.id
+    if (!uid || this.user?.id !== uid || getSaveOwnerId() !== uid) return
+    const accountRevision = this.accountRevision
+    const saveRevision = getSaveReplacementRevision()
+    const requestedSave = saveData ? normalizeSave(saveData) : undefined
+    const task = this.cloudSaveChain.then(async () => {
+      if (accountRevision !== this.accountRevision || this.user?.id !== uid || getSaveOwnerId() !== uid) return
+      // A preceding hydrate/purchase/reset supersedes queued pre-replacement snapshots.
+      await this.persistSaveToCloudNow(saveRevision === getSaveReplacementRevision() ? requestedSave : undefined, uid)
+    })
     this.cloudSaveChain = task.catch(() => undefined)
     return task
   }
 
-  private async persistSaveToCloudNow(
-    saveData?: Partial<SaveDataV1>,
-    expectedUserId?: string,
-  ): Promise<void> {
-    if (isDrunkoTestRoute()) return
+  private async persistSaveToCloudNow(saveData?: Partial<SaveDataV1>, expectedUserId?: string): Promise<boolean> {
+    if (isDrunkoTestRoute()) return false
     const user = this.user
-    if (!user) return
+    if (!user) return false
     const uid = expectedUserId ?? user.id
-    if (user.id !== uid || getSaveOwnerId() !== uid) return
+    if (user.id !== uid || getSaveOwnerId() !== uid) return false
     const accountRevision = this.accountRevision
-    const saveRevision = getSaveReplacementRevision()
-    const requestedSave = normalizeSave(saveData ?? loadSave())
-    const liveSaveAtStart = loadSave()
-    const fullSave = normalizeSave({ ...requestedSave, coins: liveSaveAtStart.coins })
-    const save = cloudSavePayload(fullSave)
-    const localBaseline = this.coinLocalBaseline
-    const coinsEarned = positiveCoinDelta(liveSaveAtStart.coins, localBaseline)
-    const expectedCoinRevision = this.coinRevision ?? 0
+    // loadSave is a stable mutable reference. Snapshot the outbound payload
+    // before awaiting, then merge only the authoritative wallet into live state.
+    const liveSaveAtStart = cloneSave(loadSave())
+    const save = cloudSavePayload(normalizeSave(saveData ?? liveSaveAtStart))
 
     if (this.userProgressTableAvailable === false) {
       console.error('Failed to sync user progress: user_progress table unavailable')
-      return
+      return false
     }
     try {
       const { data, error } = await getSupabase().rpc('sync_user_progress', {
         p_save: save,
-        p_coins_earned: coinsEarned,
-        p_coin_revision: expectedCoinRevision,
+        p_coin_revision: liveSaveAtStart.coinRevision,
       })
       if (error) {
         console.error('Failed to sync user progress:', error)
-        return
+        return false
       }
-      if (accountRevision !== this.accountRevision || saveRevision !== getSaveReplacementRevision() ||
-          this.user?.id !== uid || getSaveOwnerId() !== uid) return
+      if (accountRevision !== this.accountRevision || this.user?.id !== uid || getSaveOwnerId() !== uid) return false
 
-      const cloudCoins = parseCloudCoinState(data)
-      if (!cloudCoins) {
-        console.error('Failed to sync user progress: invalid authoritative coin response')
-        return
-      }
-
-      // Gameplay can earn coins while the RPC is in flight. Keep those as a local
-      // pending delta; the next guarded RPC will apply them exactly once.
-      const liveSaveAfterSync = loadSave()
-      const earnedDuringSync = positiveCoinDelta(liveSaveAfterSync.coins, liveSaveAtStart.coins)
-      const nextLocalCoins = roundedCoins(cloudCoins.coins + earnedDuringSync)
-      if (liveSaveAfterSync.coins !== nextLocalCoins) {
-        writeSave({ ...liveSaveAfterSync, coins: nextLocalCoins }, { syncCloud: false, ownerId: uid })
+      const wallet = parseUpgradePurchaseState(data)
+      if (!wallet) {
+        console.error('Failed to sync user progress: invalid authoritative wallet response')
+        return false
       }
 
-      this.coinRevision = cloudCoins.coinRevision
-      this.coinLocalBaseline = cloudCoins.coins
-
-      // The RPC updates Auth metadata transactionally; mirror its authoritative
-      // result in the in-memory user so subsequent restores cannot use stale claims.
-      const currentUser = this.user
-      if (currentUser?.id === uid) {
-        const progress = { ...save, coins: cloudCoins.coins, coinRevision: cloudCoins.coinRevision }
-        const updatedUser = {
-          ...currentUser,
-          user_metadata: { ...currentUser.user_metadata, ballrush_progress: progress },
-        }
-        this.user = updatedUser
-        const currentSession = this.session
-        if (currentSession?.user.id === uid) this.session = { ...currentSession, user: updatedUser }
-      }
+      // Always persist the server revision even if the displayed total is
+      // unchanged. Never infer an earning amount from an older local balance.
+      writeSave({
+        ...loadSave(),
+        coins: wallet.coins,
+        coinRevision: wallet.coinRevision,
+        upgrades: wallet.upgrades,
+      }, { syncCloud: false, ownerId: uid })
+      return true
     } catch (error) {
       console.error('Failed to sync user progress:', error)
+      return false
     }
+  }
+
+  /** Buy one level after refreshing the authoritative account wallet. */
+  async purchaseUpgrade(id: UpgradeId): Promise<{ error: Error | null }> {
+    if (isDrunkoTestRoute() || !this.isRegisteredAccount() || this.authFlowInProgress === 'logout') {
+      return { error: new Error('Ability upgrades are only for players with accounts.') }
+    }
+    const uid = this.user!.id
+    if (getSaveOwnerId() !== uid) return { error: new Error('Account progress is not ready.') }
+    const accountRevision = this.accountRevision
+    const task = this.cloudSaveChain.then(async (): Promise<{ error: Error | null }> => {
+      if (accountRevision !== this.accountRevision || this.user?.id !== uid || getSaveOwnerId() !== uid || !this.isRegisteredAccount()) {
+        return { error: new Error('Authentication state changed. Please try again.') }
+      }
+      try {
+        // This also refreshes authoritative levels and balances before checking
+        // affordability, and never applies a client-supplied absolute balance.
+        const synced = await this.persistSaveToCloudNow(undefined, uid)
+        if (accountRevision !== this.accountRevision || this.user?.id !== uid || getSaveOwnerId() !== uid) {
+          return { error: new Error('Authentication state changed. Please try again.') }
+        }
+        if (!synced) return { error: new Error('Could not sync account progress. Please try again.') }
+
+        const beforePurchase = cloneSave(loadSave())
+        const definition = UPGRADE_CATALOG[id]
+        if (!definition) return { error: new Error('Unknown ability upgrade.') }
+        const currentLevel = beforePurchase.upgrades[id]
+        const cost = upgradeCost(id, currentLevel)
+        if (currentLevel >= definition.maxLevel) return { error: new Error('This upgrade is already at its maximum level.') }
+        if (beforePurchase.coins < cost) return { error: new Error('Not enough coins.') }
+
+        const { data, error } = await getSupabase().rpc('purchase_ability_upgrade', {
+          p_upgrade: id,
+          p_expected_level: currentLevel,
+          p_coin_revision: beforePurchase.coinRevision,
+        })
+        if (accountRevision !== this.accountRevision || this.user?.id !== uid || getSaveOwnerId() !== uid || !this.isRegisteredAccount()) {
+          return { error: new Error('Authentication state changed. Please try again.') }
+        }
+        if (error) return { error: new Error(error.message) }
+        const purchased = parseUpgradePurchaseState(data)
+        if (!purchased || purchased.upgrades[id] !== currentLevel + 1) {
+          return { error: new Error('Invalid authoritative upgrade response.') }
+        }
+
+        const liveSave = loadSave()
+        writeSave({
+          ...liveSave,
+          coins: purchased.coins,
+          coinRevision: purchased.coinRevision,
+          upgrades: purchased.upgrades,
+        }, { syncCloud: false, ownerId: uid })
+        return { error: null }
+      } catch (error) {
+        return { error: error instanceof Error ? error : new Error('Could not purchase this upgrade.') }
+      }
+    })
+    this.cloudSaveChain = task.then(() => undefined, () => undefined)
+    return task
   }
 
   /**
@@ -1083,12 +1105,18 @@ export class AuthService {
   isAuthenticated(): boolean {
     return this.user !== null
   }
+
+  isRegisteredAccount(): boolean {
+    const user = this.user as (User & { is_anonymous?: boolean }) | null
+    return user !== null && user.is_anonymous !== true && user.app_metadata?.provider !== 'anonymous'
+  }
 }
 
 export class ScoreService {
   private static instance: ScoreService
   private activeRun: {
     actorId: string | null
+    runId: string
     scoreId: number | null
     createPromise: Promise<number | null> | null
   } | null = null
@@ -1102,7 +1130,13 @@ export class ScoreService {
 
   /** Reset active run tracking when a fresh run begins. */
   startNewRun(): void {
-    this.activeRun = { actorId: null, scoreId: null, createPromise: null }
+    const runId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+          const random = (Math.random() * 16) | 0
+          return (c === 'x' ? random : (random & 0x3) | 0x8).toString(16)
+        })
+    this.activeRun = { actorId: null, runId, scoreId: null, createPromise: null }
   }
 
 
@@ -1133,8 +1167,17 @@ export class ScoreService {
     const cleanMerges = Math.max(0, Math.round(ballsMerged))
     const cleanDuration = Math.max(0, Math.round(durationMs))
 
-    if (!this.activeRun || (this.activeRun.actorId !== null && this.activeRun.actorId !== actorId)) {
+    if (!this.activeRun) {
       this.startNewRun()
+    } else if (this.activeRun.actorId !== null && this.activeRun.actorId !== actorId) {
+      // A signed-up guest may submit the same completed run after its row was
+      // linked. Keep its receipt key, but never reuse a guest table's score id.
+      const adoptedRunId = this.activeRun.actorId.startsWith('guest:') && user ? this.activeRun.runId : null
+      if (adoptedRunId) {
+        this.activeRun = { actorId: null, runId: adoptedRunId, scoreId: null, createPromise: null }
+      } else {
+        this.startNewRun()
+      }
     }
     const run = this.activeRun!
     run.actorId = actorId
@@ -1143,6 +1186,7 @@ export class ScoreService {
       if (!user) {
         const { data, error } = await getSupabase().rpc('record_guest_score', {
           p_guest_id: guestId,
+          p_run_id: run.runId,
           p_score: cleanScore,
           p_tier_reached: cleanTier,
           p_balls_merged: cleanMerges,
@@ -1155,6 +1199,7 @@ export class ScoreService {
         return typeof data === 'number' ? data : data != null ? Number(data) : scoreIdToUpdate
       } else {
         const { data, error } = await getSupabase().rpc('record_user_score', {
+          p_run_id: run.runId,
           p_score: cleanScore,
           p_tier_reached: cleanTier,
           p_balls_merged: cleanMerges,
@@ -1211,9 +1256,13 @@ export class ScoreService {
     if (isDrunkoTestRoute()) return { error: null }
     const auth = AuthService.getInstance()
     const user = auth.getUser()
-    const res = await this.syncActiveRun(score, tierReached, ballsMerged, durationMs, interruptionReason, collectibles)
+    const res = await this.syncActiveRun(score, tierReached, ballsMerged, durationMs, interruptionReason ?? 'completed', collectibles)
     if (res.error) return { error: res.error }
-    if (!user) {
+    if (user) {
+      if (auth.getUser()?.id !== user.id) return { error: new Error('Authentication state changed. Please try again.') }
+      // Settlement derives the award from the accepted score row and is idempotent by score identity.
+      await auth.persistSaveToCloud(undefined, user.id)
+    } else {
       void auth.persistGuestSaveToCloud()
     }
     return { error: null }

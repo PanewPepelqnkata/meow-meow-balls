@@ -259,7 +259,7 @@ export class TitleScene extends Phaser.Scene {
     })
     this.offs.push(
       gameBus.on('state:save', () => {
-        if (!this.closed) {
+        if (!this.closed && this.screen !== 'store') {
           this.buildAll()
         }
       }),
@@ -272,6 +272,7 @@ export class TitleScene extends Phaser.Scene {
       this.lbModalCleanup?.()
       this.lbModalCleanup = null
       this.destroyCollectionBook()
+      this.destroyStoreView()
       this.teardownLeaderboardScroll()
       this.disarmReset()
       this.game.events.off('br:dpr', this.onViewportResize, this)
@@ -1301,7 +1302,7 @@ export class TitleScene extends Phaser.Scene {
 
 
   // -------------------------------------------------------------------------
-  // Panels (Journal / Leaderboard / Settings / Collection)
+  // Panels (Journal / Leaderboard / Settings / Collection / Store)
   // -------------------------------------------------------------------------
 
   private buildPanelChrome(vw: number, vh: number): void {
@@ -1330,7 +1331,12 @@ export class TitleScene extends Phaser.Scene {
       this.lbModalOpen = false
       this.lbCachedScores = null
     }
+    const previousScreen = this.screen
     this.screen = screen
+    if (screen === 'menu' && previousScreen === 'store') {
+      this.buildAll()
+      return
+    }
     this.applyScreenVisibility()
   }
   private returnToPausedGame(): void {
@@ -1363,7 +1369,7 @@ export class TitleScene extends Phaser.Scene {
     const subs: Partial<Record<ScreenName, string>> = {
       collection: 'COLLECTION ALBUM & DISCOVERY LOG',
       settings: 'BACKGROUND THEME & SAVED PROGRESS',
-      store: 'MERCHANT\'S BAG — COMING SOON',
+      store: 'ABILITY UPGRADES — SPEND YOUR COINS',
     }
 
     const titles: Partial<Record<ScreenName, string>> = {

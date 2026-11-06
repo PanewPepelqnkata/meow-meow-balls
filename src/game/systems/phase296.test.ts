@@ -29,8 +29,8 @@ describe('Phase 2.9.6: wall ability lifecycle', () => {
       walls.update(fakeTime)
     }
     expect(walls.height).toBeCloseTo(CONTAINER.height, 0) // normal (lowered) default
-    expect(walls.activate()).toBe(true)
-    expect(walls.activate()).toBe(false) // no re-trigger while active
+    expect(walls.activate({ wallDuration: 10 })).toBe(true)
+    expect(walls.animationDurationMs()).toBe(26_800)
     for (let i = 0; i < 120; i++) {
       fakeTime += 16.6
       Matter.Engine.update(engine, PHYSICS.stepMs)

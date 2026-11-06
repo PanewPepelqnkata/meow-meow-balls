@@ -1,3 +1,5 @@
+import { wallDurationMs } from '../../config/abilityUpgrades'
+import type { UpgradeLevels } from '../../config/abilityUpgrades'
 import Matter from 'matter-js'
 import { CONTAINER, wallCollidersAt, tipCollidersAt } from '../../config/container'
 import type { SoftBallManager } from './SoftBallManager'
@@ -5,7 +7,7 @@ import type { SoftBallManager } from './SoftBallManager'
 export type WallPhase = 'normal' | 'raising' | 'raised' | 'lowering'
 
 const ANIM_MS = 900 // raise/lower animation duration
-const HOLD_MS = 25_000
+const LEGACY_DIRECT_HOLD_MS = 25_000
 
 /**
  * Phase 2.9.6 Raise Walls ability: animates both side walls between the
@@ -18,6 +20,7 @@ export class WallAnimator {
   private phase: WallPhase = 'normal'
   private phaseStart = 0
   private currentHeight: number = CONTAINER.height
+  private holdMs: number = LEGACY_DIRECT_HOLD_MS
   /** The scene's clock (Phaser time.now) — set by the scene so activate() and
    * update() share one timeline. Tests can inject a fake clock. */
   private clock: (() => number) | null = null
@@ -57,7 +60,7 @@ export class WallAnimator {
 
   /** Remaining raised time in ms (0 when not raised/animating to raised). */
   get remainingMs(): number {
-    if (this.phase === 'raised') return Math.max(0, HOLD_MS - (this.now() - this.phaseStart))
+    if (this.phase === 'raised') return Math.max(0, this.holdMs - (this.now() - this.phaseStart))
     return 0
   }
 
@@ -68,11 +71,14 @@ export class WallAnimator {
   /** Total raise+hold+lower cycle length (ms) — used by the scene to time
    * baked-rendering suspension around the full wall animation. */
   animationDurationMs(): number {
-    return ANIM_MS * 2 + HOLD_MS
+    return ANIM_MS * 2 + this.holdMs
   }
 
-  activate(): boolean {
+  activate(durationMsOrUpgrades: number | UpgradeLevels | Partial<UpgradeLevels> = LEGACY_DIRECT_HOLD_MS): boolean {
     if (this.isActive) return false // no re-trigger while active
+    this.holdMs = typeof durationMsOrUpgrades === 'number'
+      ? (Number.isFinite(durationMsOrUpgrades) ? Math.max(0, durationMsOrUpgrades) : LEGACY_DIRECT_HOLD_MS)
+      : wallDurationMs(durationMsOrUpgrades)
     this.phase = 'raising'
     this.phaseStart = this.now()
     return true
@@ -81,10 +87,10 @@ export class WallAnimator {
   /** Reset to normal (restart/shutdown). */
   reset(): void {
     this.phase = 'normal'
+    this.holdMs = LEGACY_DIRECT_HOLD_MS
     this.currentHeight = CONTAINER.height
     this.applyHeight(CONTAINER.height)
   }
-
   /** True while a raise/lower animation is in flight. */
   get animating(): boolean {
     return this.phase === 'raising' || this.phase === 'lowering'
@@ -155,7 +161,7 @@ export class WallAnimator {
         this.phaseStart = nowMs
       }
     } else if (this.phase === 'raised') {
-      if (t >= HOLD_MS) {
+      if (t >= this.holdMs) {
         this.phase = 'lowering'
         this.phaseStart = nowMs
       }

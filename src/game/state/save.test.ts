@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('phaser', () => ({ default: {} }))
 
 import {
+  cloneSave,
+  freshSave,
   getOrCreateGuestId,
   getSaveOwnerId,
   hasDiscoveredCollectible,
@@ -19,6 +21,7 @@ import {
   resetProgress,
   resetSave,
   savedBest,
+  setCloudSyncHandler,
   writeSave,
 } from './save'
 
@@ -43,6 +46,7 @@ describe('hasDiscoveredTier (the repeat-discovery gate)', () => {
   })
 
   afterEach(() => {
+    setCloudSyncHandler(null)
     delete (globalThis as { localStorage?: unknown }).localStorage
   })
 
@@ -136,6 +140,82 @@ describe('hasDiscoveredTier (the repeat-discovery gate)', () => {
     expect(loadSave().variants).toEqual({})
   })
 
+  it('keeps account coins and bought upgrades when Settings resets progress', () => {
+    writeSave({
+      best: 1200,
+      coins: 24.5,
+      coinRevision: 8,
+      upgrades: { wallDuration: 2, shakeDuration: 3, shakeIntensity: 1 },
+      variants: { '9:pig:2': 100 },
+    }, { syncCloud: false, ownerId: 'account-a' })
+    const sync = vi.fn()
+    setCloudSyncHandler(sync)
+
+    resetProgress()
+
+    expect(getSaveOwnerId()).toBe('account-a')
+    expect(loadSave()).toEqual(expect.objectContaining({
+      best: 0,
+      coins: 24.5,
+      coinRevision: 8,
+      upgrades: { wallDuration: 2, shakeDuration: 3, shakeIntensity: 1 },
+      variants: {},
+    }))
+    expect(sync).toHaveBeenCalledWith(expect.objectContaining({ coins: 24.5, coinRevision: 8 }), true)
+    expect(JSON.parse(store['ballrush.save.v1']!)).toEqual(expect.objectContaining({
+      coins: 24.5,
+      coinRevision: 8,
+      upgrades: { wallDuration: 2, shakeDuration: 3, shakeIntensity: 1 },
+    }))
+  })
+
+  it('clears account economy and upgrades on logout without leaking them to the next player', () => {
+    writeSave({
+      coins: 24.5,
+      coinRevision: 8,
+      upgrades: { wallDuration: 2, shakeDuration: 3, shakeIntensity: 1 },
+    }, { syncCloud: false, ownerId: 'account-a' })
+    resetSave({ syncCloud: false, clearOwner: true })
+    expect(getSaveOwnerId()).toBeNull()
+    expect(loadSave()).toEqual(expect.objectContaining({
+      coins: 0,
+      coinRevision: 0,
+      upgrades: { wallDuration: 0, shakeDuration: 0, shakeIntensity: 0 },
+    }))
+    expect(store['ballrush.save.v1']).toBeUndefined()
+  })
+
+  it('normalizes legacy saves to zero upgrades', () => {
+    expect(normalizeSave({ coins: 7.5 })).toEqual(expect.objectContaining({
+      coins: 7.5,
+      upgrades: { wallDuration: 0, shakeDuration: 0, shakeIntensity: 0 },
+    }))
+    expect(normalizeSave({
+      upgrades: { wallDuration: -1, shakeDuration: 200, shakeIntensity: Number.NaN },
+    })).toEqual(expect.objectContaining({
+      upgrades: { wallDuration: 0, shakeDuration: 10, shakeIntensity: 0 },
+    }))
+  })
+
+  it('copies economy snapshots while loadSave keeps its stable live reference', () => {
+    const first = freshSave()
+    const second = freshSave()
+    first.upgrades.wallDuration = 4
+    expect(second.upgrades.wallDuration).toBe(0)
+
+    writeSave({ ...first, coins: 10, coinRevision: 2 }, { syncCloud: false, ownerId: 'account-a' })
+    const live = loadSave()
+    const snapshot = cloneSave(live)
+    recordRunEnd(1000, 3, 1)
+    live.upgrades.wallDuration = 5
+    expect(snapshot).toEqual(expect.objectContaining({
+      coins: 10, coinRevision: 2, upgrades: { wallDuration: 4, shakeDuration: 0, shakeIntensity: 0 },
+    }))
+    expect(loadSave()).toBe(live)
+    // Account rewards are credited only from finalized server score receipts.
+    expect(live.coins).toBe(10)
+  })
+
   it('isolates account progression on logout and restores account save on login', () => {
     // 1. Guest earns progression and binds it to Account A on signup
     expect(getSaveOwnerId()).toBeNull()
@@ -197,6 +277,7 @@ describe('hasDiscoveredTier (the repeat-discovery gate)', () => {
     // 500 score → 0.5 coins (total 26.3)
     recordRunEnd(500, 2, 1)
     expect(loadSave().coins).toBe(26.3)
+    expect(JSON.parse(store['ballrush.save.v1']!).coins).toBe(26.3)
   })
 
   it('does not award coins for invalid runs (0 score AND 0 merges)', () => {

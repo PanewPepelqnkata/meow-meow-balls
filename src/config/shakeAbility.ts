@@ -2,7 +2,7 @@
  * Shake ability configuration: Chill Earthquake Feel.
  *
  * Modeled after the reference clip but tuned down for comfort:
- * - 10-second active duration.
+ * - 5-second base active duration (upgrades add 0.5s per level).
  * - Gentle continuous seismic rumble (subtle screen shake + slight rotational tilt).
  * - Periodic bounce pulses that nudge balls upward and sideways into contacts.
  * - Falling ceiling rubble / debris particles and dust puffs along walls and floor.
@@ -11,7 +11,7 @@
  */
 export const SHAKE_ABILITY = {
   /** Total ability duration in milliseconds. */
-  durationMs: 10_000,
+  durationMs: 5_000,
   /** Repetition period between seismic bounce pulses in milliseconds. */
   cyclePeriodMs: 1_600,
   /** Duration of each bounce pulse impulse window in milliseconds. */

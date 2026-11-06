@@ -2,19 +2,14 @@ import Phaser from 'phaser'
 import { ChunkyButton, UI_COLORS } from '../../ui/DesignSystem'
 import { readSafeArea } from '../../ui/ResponsiveLayout'
 import { hudText } from '../../ui/Typography'
-import { drawBallIcon } from '../scenes/TitleScene'
+import { authService } from '../../services/auth'
+import { UPGRADE_CATALOG, type UpgradeId, type UpgradeLevels, shakeDurationMs, shakeImpulseMultiplier, upgradeCost, wallDurationMs } from '../../config/abilityUpgrades'
+import { gameBus } from '../events/gameBus'
+import { loadSave } from '../state/save'
+import { drawCoin, formatCoins } from './Coin'
 import { INK } from './BallAppearance'
 
-const TEST_ITEMS = [
-  { name: 'TEST ITEM', tier: 1, seed: 100 },
-  { name: 'TEST ITEM', tier: 2, seed: 200 },
-  { name: 'TEST ITEM', tier: 3, seed: 300 },
-  { name: 'TEST ITEM', tier: 4, seed: 400 },
-  { name: 'TEST ITEM', tier: 5, seed: 500 },
-  { name: 'TEST ITEM', tier: 6, seed: 600 },
-] as const
-
-type TestItem = (typeof TEST_ITEMS)[number]
+const UPGRADE_IDS: readonly UpgradeId[] = ['wallDuration', 'shakeDuration', 'shakeIntensity']
 
 const BAG_CANVAS = 0x8b7355
 const BAG_STROKE = 0x5c4a32
@@ -26,14 +21,15 @@ const PARCHMENT_BORDER = 0xd0c2a5
 const PARCHMENT_BASE = 0xe6dac2
 const PRIMARY_TEXT = '#2d241e'
 const SECONDARY_TEXT = '#8a7a66'
-const UNAVAILABLE = 0xc0392b
 const SHADOW = 0x05070e
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
 }
 
-/** A roadside merchant's canvas sack, filled with unavailable test wares. */
+/** A roadside merchant's canvas sack, now stocked with account-only ability upgrades. */
+type PurchaseStatus = { kind: 'success' | 'error'; message: string }
+
 export class StoreView {
   private readonly storeContainer: Phaser.GameObjects.Container
   private readonly bagGraphics: Phaser.GameObjects.Graphics
@@ -49,6 +45,11 @@ export class StoreView {
   private readonly bagH: number
   private readonly bagOpeningH: number
   private readonly navY: number
+  private readonly purchasing = new Set<UpgradeId>()
+  private readonly purchaseStatus = new Map<UpgradeId, PurchaseStatus>()
+  private unsubscribeAuth: (() => void) | null = null
+  private unsubscribeState: (() => void) | null = null
+  private lifecycleRevision = 0
   private destroyed = false
 
   constructor(
@@ -82,12 +83,25 @@ export class StoreView {
     this.navContainer = scene.add.container(0, 0).setName('merchant-nav')
     this.storeContainer.add([this.bagGraphics, this.itemContainer, this.drawstringGraphics, this.navContainer])
 
+    this.storeContainer.once(Phaser.GameObjects.Events.DESTROY, this.release, this)
+    this.unsubscribeAuth = authService.onAuthStateChange(() => {
+      if (this.destroyed) return
+      this.lifecycleRevision++
+      this.purchasing.clear()
+      this.purchaseStatus.clear()
+      this.renderItems()
+      this.renderBottomNav()
+    })
+    this.unsubscribeState = gameBus.on('state:save', () => {
+      if (this.destroyed) return
+      this.renderItems()
+      this.renderBottomNav()
+    })
+
     this.renderBag()
     this.renderItems()
     this.renderDrawstring(this.drawstringGraphics)
     this.renderBottomNav()
-
-    this.storeContainer.once(Phaser.GameObjects.Events.DESTROY, this.release, this)
   }
 
   public destroy(): void {
@@ -99,8 +113,14 @@ export class StoreView {
   private release(): void {
     if (this.destroyed) return
     this.destroyed = true
-    // StoreView has no active input handlers or timers. Kill only tweens that
-    // target this view so parent-scene transitions cannot retain its objects.
+    this.lifecycleRevision++
+    this.purchasing.clear()
+    this.unsubscribeAuth?.()
+    this.unsubscribeAuth = null
+    this.unsubscribeState?.()
+    this.unsubscribeState = null
+    // StoreView has no active timers. Kill only tweens that target this view
+    // so parent-scene transitions cannot retain its objects.
     this.scene.tweens.killTweensOf(this.storeContainer)
   }
 
@@ -188,9 +208,12 @@ export class StoreView {
   }
 
   private renderItems(): void {
+    if (this.destroyed) return
+    this.itemContainer.removeAll(true)
+
     const portrait = this.vw <= this.vh
     const cols = portrait ? 2 : 3
-    const rows = Math.ceil(TEST_ITEMS.length / cols)
+    const rows = Math.ceil(UPGRADE_IDS.length / cols)
     const inset = clamp(this.bagW * 0.065, 10, 30)
     const gap = clamp(Math.min(this.bagW, this.bagH) * 0.025, 5, 12)
     const gridTop = this.bagTopY - Math.min(18, this.bagOpeningH * 0.32)
@@ -200,32 +223,81 @@ export class StoreView {
     const cardW = Math.max(1, (gridW - gap * (cols - 1)) / cols)
     const cardH = Math.max(1, (gridH - gap * (rows - 1)) / rows)
 
-    TEST_ITEMS.forEach((item, index) => {
+    UPGRADE_IDS.forEach((id, index) => {
       const col = index % cols
       const row = Math.floor(index / cols)
       const x = this.bagX + inset + col * (cardW + gap)
       const y = gridTop + row * (cardH + gap) + (row === 0 && index % 2 === 1 ? Math.min(8, cardH * 0.08) : 0)
-      this.renderItemCard(x, y, cardW, cardH, item, index)
+      this.renderUpgradeCard(x, y, cardW, cardH, id, index)
     })
+
+    if (!authService.isRegisteredAccount()) this.renderAccountGate()
   }
 
-  private renderItemCard(x: number, y: number, w: number, h: number, item: TestItem, index: number): void {
-    const card = this.scene.add.container(x + w / 2, y + h / 2).setName(`merchant-item-${index + 1}`)
-    card.setAngle(Phaser.Math.FloatBetween(-3, 3))
+  private currentLevels(): UpgradeLevels {
+    const raw = loadSave().upgrades
+    return {
+      wallDuration: Math.max(0, Math.floor(Number(raw?.wallDuration ?? 0))),
+      shakeDuration: Math.max(0, Math.floor(Number(raw?.shakeDuration ?? 0))),
+      shakeIntensity: Math.max(0, Math.floor(Number(raw?.shakeIntensity ?? 0))),
+    }
+  }
+
+  private effectValue(id: UpgradeId, level: number): string {
+    if (id === 'wallDuration') return this.formatDuration(wallDurationMs(level))
+    if (id === 'shakeDuration') return this.formatDuration(shakeDurationMs(level))
+    return `${shakeImpulseMultiplier(level).toFixed(1)}x`
+  }
+
+  private formatDuration(milliseconds: number): string {
+    const seconds = milliseconds / 1000
+    return `${Number.isInteger(seconds) ? seconds.toFixed(0) : seconds.toFixed(1)}s`
+  }
+
+  private addFittedText(
+    parent: Phaser.GameObjects.Container,
+    x: number,
+    y: number,
+    value: string,
+    maxWidth: number,
+    size: number,
+    color = PRIMARY_TEXT,
+  ): Phaser.GameObjects.Text {
+    const text = hudText(this.scene, x, y, value, 1, {
+      color,
+      size,
+      stroke: 0,
+      origin: [0.5, 0.5],
+      shadow: false,
+    }).setStroke('#000000', 0)
+    text.setScale(Math.min(1, Math.max(0.1, maxWidth / Math.max(1, text.width))))
+    parent.add(text)
+    return text
+  }
+
+  private renderUpgradeCard(x: number, y: number, w: number, h: number, id: UpgradeId, index: number): void {
+    const definition = UPGRADE_CATALOG[id]
+    const levels = this.currentLevels()
+    const current = Math.min(definition.maxLevel, levels[id])
+    const next = Math.min(definition.maxLevel, current + 1)
+    const cost = upgradeCost(id, current)
+    const registered = authService.isRegisteredAccount()
+    const balance = Number(loadSave().coins) || 0
+    const maxed = current >= definition.maxLevel
+    const insufficient = registered && !maxed && balance < cost
+    const pending = this.purchasing.has(id)
+    const disabled = !registered || maxed || insufficient || pending
+    const card = this.scene.add.container(x + w / 2, y + h / 2).setName(`merchant-upgrade-${id}`)
+    card.setAngle(index % 2 === 0 ? -0.018 : 0.022)
     this.itemContainer.add(card)
 
-    const g = this.scene.add.graphics().setName('merchant-item-card')
-    card.add(g)
+    const g = this.scene.add.graphics().setName('merchant-upgrade-card')
     const radius = clamp(Math.min(w, h) * 0.1, 4, 8)
     const left = -w / 2
     const top = -h / 2
-
-    // A raised parchment base and a slightly greyed unavailable wash.
     g.fillStyle(PARCHMENT_BASE, 1)
     g.fillRoundedRect(left + 2, top + 3, w, h, radius)
-    g.fillStyle(PARCHMENT, 0.95)
-    g.fillRoundedRect(left, top, w, h, radius)
-    g.fillStyle(0x7a6f62, 0.07)
+    g.fillStyle(PARCHMENT, 0.98)
     g.fillRoundedRect(left, top, w, h, radius)
     g.lineStyle(1, PARCHMENT_BORDER, 1)
     g.strokeRoundedRect(left, top, w, h, radius)
@@ -233,96 +305,158 @@ export class StoreView {
     g.strokeRoundedRect(left + 1, top + 1, Math.max(1, w - 2), Math.max(1, h - 2), Math.max(2, radius - 1))
     g.lineStyle(1, 0xffffff, 0.32)
     g.strokeRoundedRect(left + 2, top + 2, Math.max(1, w - 4), Math.max(1, h - 4), Math.max(2, radius - 2))
+    card.add(g)
 
-    const labelY = top + clamp(h * 0.13, 8, 14)
-    const label = hudText(this.scene, 0, labelY, item.name, 1, {
-      color: PRIMARY_TEXT,
-      size: 11,
-      stroke: 0,
-      origin: [0.5, 0.5],
-      shadow: false,
-    }).setStroke('#000000', 0)
-    label.setScale(Math.min(1, Math.max(0.05, (w - 8) / Math.max(1, label.width))))
-    card.add(label)
+    const title = id === 'shakeIntensity' ? 'SHAKE POWER' : definition.label.toUpperCase()
+    this.addFittedText(card, 0, top + clamp(h * 0.12, 12, 18), title, Math.max(1, w - 12), 12)
+    this.addFittedText(card, 0, top + clamp(h * 0.25, 25, 35), definition.description, Math.max(1, w - 14), 8, SECONDARY_TEXT)
+    const value = `${this.effectValue(id, current)} → ${this.effectValue(id, next)} / ${this.effectValue(id, definition.maxLevel)}`
+    this.addFittedText(card, 0, top + h * 0.44, value, Math.max(1, w - 12), 10, PRIMARY_TEXT)
+    this.addFittedText(card, 0, top + h * 0.56, `LEVEL ${current}/${definition.maxLevel}`, Math.max(1, w - 12), 10, SECONDARY_TEXT)
 
-    const iconG = this.scene.add.graphics().setName('merchant-item-ball')
-    const iconR = clamp(Math.min(w * 0.2, h * 0.27), 4, 30)
-    const iconY = clamp(-h * 0.04, top + iconR + 10, -top - iconR - 12)
-    drawBallIcon(this.scene, iconG, item.tier, 0, iconY, iconR, {
-      seed: item.seed,
-      detail: 24,
-      character: true,
-      layer: card,
+    this.renderPriceTag(card, w, h, cost, maxed)
+
+    const buttonH = clamp(h * 0.19, 26, 34)
+    const buttonLabel = pending ? 'PENDING...' : maxed ? 'MAX LEVEL' : !registered ? 'ACCOUNT ONLY' : insufficient ? 'NEED COINS' : `BUY ${cost}`
+    const button = new ChunkyButton({
+      scene: this.scene,
+      x: 0,
+      y: top + h * 0.78,
+      w: Math.max(52, w - 18),
+      h: buttonH,
+      label: buttonLabel,
+      fontSize: 10,
+      textColor: UI_COLORS.TEXT_DARK,
+      fill: UI_COLORS.BTN_GOLD,
+      shadowColor: UI_COLORS.BTN_GOLD_SHADOW,
+      highlightColor: UI_COLORS.BTN_GOLD_HIGHLIGHT,
+      pill: true,
+      disabled,
+      onClick: () => {
+        void this.purchase(id)
+      },
     })
-    iconG.setAlpha(0.76)
-    card.add(iconG)
+    card.add(button.container)
 
-    this.renderPriceTag(card, w, h)
-    this.renderUnavailableStamp(card, w, h)
+    const status = this.purchaseStatus.get(id)
+    if (status) {
+      this.addFittedText(card, 0, top + h * 0.66, status.message, Math.max(1, w - 12), 9, status.kind === 'success' ? '#397a3b' : '#b53b2e')
+    }
   }
 
-  private renderPriceTag(card: Phaser.GameObjects.Container, w: number, h: number): void {
-    const tag = this.scene.add.container(w * 0.28, h * 0.16).setName('merchant-price-tag')
+  private renderPriceTag(card: Phaser.GameObjects.Container, w: number, h: number, cost: number, maxed: boolean): void {
+    const tagW = clamp(w * 0.34, 38, 66)
+    const tagH = clamp(h * 0.16, 18, 26)
+    const tag = this.scene.add.container(w / 2 - tagW / 2 - 7, -h / 2 + tagH / 2 + 8).setName('merchant-price-tag')
     const tagG = this.scene.add.graphics()
-    const tagW = clamp(w * 0.27, 24, 52)
-    const tagH = clamp(h * 0.2, 14, 24)
-    const tx = -tagW / 2
-    const ty = -tagH / 2
-    tagG.lineStyle(1, 0x8a7a66, 0.9)
-    tagG.lineBetween(0, -h * 0.66, 0, ty)
     tagG.fillStyle(PARCHMENT, 1)
-    tagG.fillRoundedRect(tx, ty, tagW, tagH, 3)
+    tagG.fillRoundedRect(-tagW / 2, -tagH / 2, tagW, tagH, 3)
     tagG.lineStyle(1, PARCHMENT_BORDER, 1)
-    tagG.strokeRoundedRect(tx, ty, tagW, tagH, 3)
+    tagG.strokeRoundedRect(-tagW / 2, -tagH / 2, tagW, tagH, 3)
     tagG.fillStyle(0x8a7a66, 0.7)
-    tagG.fillCircle(tx + 5, ty + 5, 1.3)
+    tagG.fillCircle(-tagW / 2 + 5, -tagH / 2 + 5, 1.3)
+    if (!maxed) drawCoin(tagG, -tagW * 0.24, 0, Math.max(3, tagH * 0.22))
     tag.add(tagG)
-
-    const price = hudText(this.scene, 0, 0, 'N/A', 1, {
-      color: SECONDARY_TEXT,
+    const price = hudText(this.scene, maxed ? 0 : tagW * 0.12, 0, maxed ? 'MAX' : `${cost}`, 1, {
+      color: maxed ? SECONDARY_TEXT : '#7a5411',
       size: 9,
       stroke: 0,
       origin: [0.5, 0.5],
       shadow: false,
     }).setStroke('#000000', 0)
-    price.setScale(Math.min(1, Math.max(0.05, (tagW - 4) / Math.max(1, price.width))))
+    price.setScale(Math.min(1, Math.max(0.1, (tagW - 8) / Math.max(1, price.width))))
     tag.add(price)
     card.add(tag)
   }
 
-  private renderUnavailableStamp(card: Phaser.GameObjects.Container, w: number, h: number): void {
-    const stamp = this.scene.add.container(0, h * 0.32).setName('merchant-unavailable-stamp')
-    stamp.setRotation(-0.055)
-    const stampW = clamp(w * 0.86, 34, Math.max(34, w - 8))
-    const stampH = clamp(h * 0.16, 12, 20)
-    const stampG = this.scene.add.graphics()
-    stampG.lineStyle(1.3, UNAVAILABLE, 0.8)
-    stampG.strokeRoundedRect(-stampW / 2, -stampH / 2, stampW, stampH, 3)
-    stampG.lineStyle(0.7, UNAVAILABLE, 0.5)
-    stampG.strokeRoundedRect(-stampW / 2 + 2, -stampH / 2 + 2, Math.max(1, stampW - 4), Math.max(1, stampH - 4), 2)
-    stamp.add(stampG)
-
-    const label = hudText(this.scene, 0, 0, 'NOT AVAILABLE', 1, {
-      color: '#c0392b',
-      size: 10,
-      stroke: 0,
+  private renderAccountGate(): void {
+    const signW = Math.max(1, this.bagW - 18)
+    const shopTop = this.bagTopY - Math.min(20, this.bagOpeningH * 0.4)
+    const shopBottom = this.bagTopY + this.bagH
+    const signH = Math.max(1, shopBottom - shopTop)
+    const sign = this.scene.add.container(this.bagX + this.bagW / 2, shopTop + signH / 2).setName('merchant-account-sign')
+    sign.setAngle(-0.018)
+    const g = this.scene.add.graphics()
+    const halfW = signW / 2
+    const halfH = signH / 2
+    g.fillStyle(PARCHMENT_BASE, 1)
+    g.beginPath()
+    g.moveTo(-halfW + 4, -halfH)
+    g.lineTo(halfW - 3, -halfH + 2)
+    g.lineTo(halfW, halfH - 4)
+    g.lineTo(-halfW + 2, halfH)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(2, BAG_STROKE, 1)
+    g.strokePath()
+    g.lineStyle(1, PARCHMENT_BORDER, 1)
+    g.strokeRect(-halfW + 7, -halfH + 7, Math.max(1, signW - 14), Math.max(1, signH - 14))
+    sign.add(g)
+    const label = hudText(this.scene, 0, 0, 'ONLY FOR PLAYERS WITH ACCOUNTS', 1, {
+      color: PRIMARY_TEXT,
+      size: 22,
+      stroke: 1.5,
       origin: [0.5, 0.5],
       shadow: false,
-    }).setStroke('#000000', 0).setAlpha(0.85)
-    label.setScale(Math.min(1, Math.max(0.05, (stampW - 7) / Math.max(1, label.width))))
-    stamp.add(label)
-    card.add(stamp)
+    })
+    label.setScale(Math.min(1, Math.max(0.1, (signW - 28) / Math.max(1, label.width))))
+    sign.add(label)
+    this.itemContainer.add(sign)
+    const blocker = this.scene.add.zone(this.bagX + this.bagW / 2, shopTop + signH / 2, signW, signH)
+      .setName('merchant-account-sign-blocker')
+      .setInteractive({ useHandCursor: false })
+    this.itemContainer.add(blocker)
+  }
+
+  private async purchase(id: UpgradeId): Promise<void> {
+    if (this.destroyed || !authService.isRegisteredAccount()) return
+    const definition = UPGRADE_CATALOG[id]
+    const current = this.currentLevels()[id]
+    const cost = upgradeCost(id, current)
+    if (current >= definition.maxLevel || cost <= 0 || (Number(loadSave().coins) || 0) < cost || this.purchasing.has(id)) return
+
+    this.purchasing.add(id)
+    this.purchaseStatus.delete(id)
+    this.renderItems()
+    const revision = this.lifecycleRevision
+    try {
+      const result = await authService.purchaseUpgrade(id)
+      if (this.destroyed || revision !== this.lifecycleRevision) return
+      let error: unknown = null
+      if (result && typeof result === 'object' && 'error' in result) error = result.error
+      if (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        this.purchaseStatus.set(id, { kind: 'error', message: message || 'PURCHASE FAILED' })
+      } else {
+        this.purchaseStatus.set(id, { kind: 'success', message: 'PURCHASED!' })
+      }
+    } catch (error) {
+      if (this.destroyed || revision !== this.lifecycleRevision) return
+      const message = error instanceof Error ? error.message : String(error)
+      this.purchaseStatus.set(id, { kind: 'error', message: message || 'PURCHASE FAILED' })
+    } finally {
+      if (!this.destroyed && revision === this.lifecycleRevision) {
+        this.purchasing.delete(id)
+        this.renderItems()
+        this.renderBottomNav()
+      }
+    }
   }
 
   private renderBottomNav(): void {
-    const statusW = clamp(this.bagW * 0.35, 136, 218)
+    this.navContainer.removeAll(true)
+    const registered = authService.isRegisteredAccount()
+    const statusW = clamp(this.bagW * 0.42, 150, 240)
+    const balance = Number(loadSave().coins) || 0
     const status = new ChunkyButton({
       scene: this.scene,
       x: this.vw / 2,
       y: this.navY,
       w: statusW,
       h: 38,
-      label: 'COMING SOON',
+      label: registered ? `COINS ${formatCoins(balance)}` : 'ACCOUNT SHOP',
+      icon: registered ? (g, cx, cy, size) => drawCoin(g, cx, cy, Math.max(4, size * 0.42)) : undefined,
+      iconSize: 18,
       fontSize: 12,
       textColor: UI_COLORS.TEXT_GOLD,
       fill: UI_COLORS.BTN_GRAY,
@@ -331,7 +465,7 @@ export class StoreView {
       pill: true,
       disabled: true,
     })
-    status.container.setName('merchant-coming-soon')
+    status.container.setName('merchant-coin-balance')
     this.navContainer.add(status.container)
   }
 }

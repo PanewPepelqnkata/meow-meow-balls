@@ -24,6 +24,7 @@
  */
 
 import { collectibleDiscoveryKey, collectionDiscovery } from '../../config/collectibleCollection'
+import { freshUpgradeLevels, normalizeUpgradeLevels, type UpgradeLevels } from '../../config/abilityUpgrades'
 import { gameBus } from '../events/gameBus'
 import { isDrunkoTestRoute } from './runVariant'
 
@@ -48,6 +49,8 @@ export interface SaveDataV1 {
   coins: number
   /** Last server coin revision accepted for this account. */
   coinRevision: number
+  /** Account-owned ability levels; hydrated authoritatively from user_progress. */
+  upgrades: UpgradeLevels
   leaderboard: LeaderboardEntry[]
   /** tier → first-discovered-at (ms epoch). */
   discovered: Record<string, number>
@@ -57,10 +60,6 @@ export interface SaveDataV1 {
   stats: { runs: number; merges: number; bestTier: number }
 }
 
-export interface CloudCoinState {
-  balance: number
-  revision: number
-}
 
 export function freshSave(): SaveDataV1 {
   const now = Date.now()
@@ -69,6 +68,7 @@ export function freshSave(): SaveDataV1 {
     best: 0,
     coins: 0,
     coinRevision: 0,
+    upgrades: freshUpgradeLevels(),
     leaderboard: [],
     // Tiers 1–3 are known from the first run — pre-seeded as discovered.
     // Tier 4+ unlock PROGRESSIVELY (each fires its discovery: the card
@@ -162,6 +162,7 @@ export function normalizeSave(raw: Partial<SaveDataV1> | null | undefined): Save
     best,
     coins: typeof raw.coins === 'number' && Number.isFinite(raw.coins) && raw.coins >= 0 ? Math.round(raw.coins * 10) / 10 : 0,
     coinRevision,
+    upgrades: normalizeUpgradeLevels(raw.upgrades),
     leaderboard: leaderboard.slice(0, MAX_LEADERBOARD),
     discovered,
     variants,
@@ -180,6 +181,7 @@ export function cloneSave(save: SaveDataV1 = loadSave()): SaveDataV1 {
     best: save.best,
     coins: save.coins,
     coinRevision: save.coinRevision,
+    upgrades: { ...save.upgrades },
     leaderboard: save.leaderboard.map((e) => ({ ...e })),
     discovered: { ...save.discovered },
     variants: { ...save.variants },
@@ -192,28 +194,12 @@ let cache: SaveDataV1 | null = null
 let saveReplacementRevision = 0
 let ownerCache: string | null | undefined = undefined
 let guestIdCache: string | null = null
-let cloudCoinState: CloudCoinState | null = null
 let cloudSyncHandler: ((save: SaveDataV1, immediate: boolean) => void) | null = null
 
 export function setCloudSyncHandler(handler: ((save: SaveDataV1, immediate: boolean) => void) | null): void {
   cloudSyncHandler = handler
 }
 
-/** The canonical account coin balance/revision used to turn local earnings into a delta. */
-export function getCloudCoinState(): CloudCoinState | null {
-  return cloudCoinState ? { ...cloudCoinState } : null
-}
-
-export function setCloudCoinState(state: CloudCoinState | null): void {
-  if (!state || !Number.isFinite(state.balance) || !Number.isFinite(state.revision)) {
-    cloudCoinState = null
-    return
-  }
-  cloudCoinState = {
-    balance: Math.max(0, Math.round(state.balance * 10) / 10),
-    revision: Math.max(0, Math.floor(state.revision)),
-  }
-}
 
 /** Full restores/resets supersede any older in-flight account hydration. Gameplay mutations do not. */
 export function getSaveReplacementRevision(): number {
@@ -440,7 +426,7 @@ export function writeSave(
   return current
 }
 
-/** Test/QA hook & logout reset: wipe the save completely (Settings → Reset progress or logout). */
+/** Test/QA hook & logout reset: wipe the local save completely. */
 export function resetSave(options?: { syncCloud?: boolean; clearOwner?: boolean }): SaveDataV1 {
   if (isDrunkoTestRoute()) return loadSave()
   cancelScheduledWrites()
@@ -464,11 +450,21 @@ export function resetSave(options?: { syncCloud?: boolean; clearOwner?: boolean 
   return current
 }
 
-/** Settings reset starts a fresh guest history; account identity and audit rows stay intact. */
+/** Settings reset clears run/collection progress, not an account's wallet or purchases. */
 export function resetProgress(): SaveDataV1 {
   if (isDrunkoTestRoute()) return loadSave()
-  if (getSaveOwnerId() === null) resetGuestId()
-  return resetSave({ syncCloud: true, clearOwner: false })
+  const ownerId = getSaveOwnerId()
+  if (ownerId === null) {
+    resetGuestId()
+    return resetSave({ syncCloud: true, clearOwner: false })
+  }
+  const current = loadSave()
+  return writeSave({
+    ...freshSave(),
+    coins: current.coins,
+    coinRevision: current.coinRevision,
+    upgrades: current.upgrades,
+  }, { syncCloud: true, ownerId })
 }
 
 /** Record lifetime discovery; collectible themes identify characters, variant ids their palettes.
@@ -534,9 +530,12 @@ export function recordRunEnd(
   save.stats.runs++
   if (score > save.best) save.best = score
   if (bestTier > save.stats.bestTier) save.stats.bestTier = bestTier
-  // Coins: score / 1000, rounded to 1 decimal (e.g. 15849 → 15.8)
-  const coinsEarned = Math.round((score / 1000) * 10) / 10
-  save.coins = Math.round((save.coins + coinsEarned) * 10) / 10
+  // Guests keep a local wallet. Account rewards are derived from accepted
+  // finalized score rows by the server, never from a client coin delta.
+  if (getSaveOwnerId() === null) {
+    const coinsEarned = Math.round((score / 1000) * 10) / 10
+    save.coins = Math.round((save.coins + coinsEarned) * 10) / 10
+  }
   for (let t = 1; t <= Math.min(12, bestTier); t++) {
     if (save.discovered[String(t)] == null) save.discovered[String(t)] = now
   }

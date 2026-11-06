@@ -2,10 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AuthChangeEvent, Session, User } from '@supabase/supabase-js'
 import type { AuthService } from './auth'
 import type * as SaveState from '../game/state/save'
+import type { UpgradeLevels } from '../config/abilityUpgrades'
 
 interface QueryResult {
   data: unknown
-  error: null
+  error: { message: string; code?: string } | null
 }
 
 interface SessionResult {
@@ -125,14 +126,19 @@ const sdk = vi.hoisted(() => {
       return { error: null }
     }),
   }
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const rpc = vi.fn(async (..._args: unknown[]) => {
+  const defaultRpc = async (...args: [string, Record<string, unknown>?]): Promise<QueryResult> => {
     assertUnlocked('rpc')
-    return { data: null as unknown, error: null }
-  })
+    return {
+      data: args[0] === 'sync_user_progress'
+        ? { coins: 0, coin_revision: 0, upgrades: { wallDuration: 0, shakeDuration: 0, shakeIntensity: 0 } }
+        : null,
+      error: null,
+    }
+  }
+  const rpc = vi.fn(defaultRpc)
   const client = { auth, from, rpc }
   const getSupabase = vi.fn(() => client)
-  return { state, auth, from, rpc, getSupabase, queryResult, defaultQuery, emit }
+  return { state, auth, from, rpc, getSupabase, queryResult, defaultQuery, defaultRpc, emit }
 })
 
 vi.mock('../lib/supabase', () => ({ getSupabase: sdk.getSupabase }))
@@ -162,6 +168,9 @@ beforeEach(async () => {
   vi.useFakeTimers()
   vi.resetModules()
   vi.clearAllMocks()
+  sdk.rpc.mockReset()
+  sdk.rpc.mockImplementation(sdk.defaultRpc)
+  sdk.queryResult.mockReset()
   sdk.queryResult.mockImplementation(sdk.defaultQuery)
   Object.assign(sdk.state, {
     session: null,
@@ -193,6 +202,23 @@ afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
 })
+
+async function restoreWallet(
+  coins = 100,
+  coinRevision = 4,
+  upgrades: UpgradeLevels = { wallDuration: 0, shakeDuration: 0, shakeIntensity: 0 },
+  id = 'account-coins',
+): Promise<void> {
+  sdk.state.session = sessionFor(id)
+  sdk.queryResult.mockImplementation((table, column, value, operation) => {
+    if (table === 'user_progress' && operation === 'maybeSingle') {
+      return Promise.resolve({ data: { coins, coin_revision: coinRevision, upgrades }, error: null })
+    }
+    return sdk.defaultQuery(table, column, value, operation)
+  })
+  await auth.initialize()
+  await vi.advanceTimersByTimeAsync(0)
+}
 
 describe('persistent browser auth lifecycle', () => {
   it('shares one initialization promise and subscribes before reading storage', async () => {
@@ -255,7 +281,7 @@ describe('persistent browser auth lifecycle', () => {
     expect(sdk.state.nestedCalls).toEqual([])
   })
 
-  it('restores canonical coins and sends earned deltas through the guarded sync RPC', async () => {
+  it('restores canonical coins and refreshes score-derived rewards without sending a client earning amount', async () => {
     sdk.state.session = sessionFor('account-coins')
     await auth.initialize()
     await vi.advanceTimersByTimeAsync(0)
@@ -269,22 +295,19 @@ describe('persistent browser auth lifecycle', () => {
     await auth.restoreAccountProgress()
 
     expect(saves.loadSave().coins).toBe(123.5)
-    sdk.rpc.mockResolvedValue({ data: { coins: 124.5, coin_revision: 4 }, error: null })
+    sdk.rpc.mockResolvedValue({ data: { coins: 124.5, coin_revision: 5, upgrades: saves.loadSave().upgrades }, error: null })
     saves.recordRunEnd(1000, 3, 1)
     await auth.persistSaveToCloud()
 
-    const firstSync = sdk.rpc.mock.calls.find((call) => call[0] === 'sync_user_progress') as
-      | [string, { p_save?: Record<string, unknown>; p_coins_earned?: number; p_coin_revision?: number }]
-      | undefined
-    expect(firstSync?.[1]).toEqual(expect.objectContaining({
-      p_coins_earned: 1,
-      p_coin_revision: 4,
-    }))
+    const firstSync = sdk.rpc.mock.calls.find((call) => call[0] === 'sync_user_progress')
+    expect(firstSync?.[1]).toEqual({ p_save: expect.any(Object), p_coin_revision: 4 })
     expect(firstSync?.[1]?.p_save).not.toHaveProperty('coins')
     expect(firstSync?.[1]?.p_save).not.toHaveProperty('coinRevision')
+    expect(firstSync?.[1]?.p_save).not.toHaveProperty('upgrades')
+    expect(saves.loadSave().coins).toBe(124.5)
   })
 
-  it('does not send a stale pre-admin balance and preserves a later earned delta', async () => {
+  it('never uploads stale client balances before or after server-settled earnings', async () => {
     sdk.state.session = sessionFor('account-coins')
     await auth.initialize()
     await vi.advanceTimersByTimeAsync(0)
@@ -297,26 +320,19 @@ describe('persistent browser auth lifecycle', () => {
     await auth.restoreAccountProgress()
     expect(saves.loadSave().coins).toBe(50)
 
-    sdk.rpc.mockResolvedValue({ data: { coins: 50, coin_revision: 7 }, error: null })
+    sdk.rpc.mockResolvedValue({ data: { coins: 50, coin_revision: 7, upgrades: saves.loadSave().upgrades }, error: null })
     await auth.persistSaveToCloud({ coins: 100 }, 'account-coins')
-    const staleSync = sdk.rpc.mock.calls.at(-1) as
-      | [string, { p_save?: Record<string, unknown>; p_coins_earned?: number; p_coin_revision?: number }]
-      | undefined
+    const staleSync = sdk.rpc.mock.calls.at(-1)
     expect(staleSync?.[0]).toBe('sync_user_progress')
-    expect(staleSync?.[1]).toEqual(expect.objectContaining({
-      p_coins_earned: 0,
-      p_coin_revision: 7,
-    }))
+    expect(staleSync?.[1]).toEqual({ p_save: expect.any(Object), p_coin_revision: 7 })
     expect(staleSync?.[1]?.p_save).not.toHaveProperty('coins')
     expect(staleSync?.[1]?.p_save).not.toHaveProperty('coinRevision')
 
-    sdk.rpc.mockResolvedValue({ data: { coins: 51, coin_revision: 7 }, error: null })
+    sdk.rpc.mockResolvedValue({ data: { coins: 51, coin_revision: 8, upgrades: saves.loadSave().upgrades }, error: null })
     saves.recordRunEnd(1000, 3, 1)
     await auth.persistSaveToCloud()
-    expect(sdk.rpc).toHaveBeenCalledWith('sync_user_progress', expect.objectContaining({
-      p_coins_earned: 1,
-      p_coin_revision: 7,
-    }))
+    expect(sdk.rpc).toHaveBeenCalledWith('sync_user_progress', { p_save: expect.any(Object), p_coin_revision: 7 })
+    expect(saves.loadSave().coins).toBe(51)
   })
 
   it('keeps finds earned during hydration without resurrecting its stale local baseline', async () => {
@@ -352,7 +368,6 @@ describe('persistent browser auth lifecycle', () => {
     expect(saves.hasDiscoveredCollectible(9, 'robo')).toBe(true)
     expect(saves.hasDiscoveredCollectible(9, 'shark')).toBe(false)
     expect(sdk.rpc).toHaveBeenCalledWith('sync_user_progress', expect.objectContaining({
-      p_coins_earned: 0,
       p_save: expect.objectContaining({ variants: saves.loadSave().variants }),
     }))
   })
@@ -672,5 +687,303 @@ describe('persistent browser auth lifecycle', () => {
     expect(sdk.auth.getUser).not.toHaveBeenCalled()
     expect(sdk.state.callbackResults.every((result) => result === undefined)).toBe(true)
     expect(sdk.state.nestedCalls).toEqual([])
+  })
+})
+
+describe('account wallet and ability upgrade persistence', () => {
+  it('blocks signed-out, anonymous-auth and sandbox players before any purchase RPC', async () => {
+    expect(auth.isRegisteredAccount()).toBe(false)
+    expect((await auth.purchaseUpgrade('wallDuration')).error).toBeInstanceOf(Error)
+    expect(sdk.rpc).not.toHaveBeenCalled()
+
+    sdk.state.session = sessionFor('anonymous-player')
+    sdk.state.session.user.is_anonymous = true
+    await auth.initialize()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(auth.isAuthenticated()).toBe(true)
+    expect(auth.isRegisteredAccount()).toBe(false)
+    expect((await auth.purchaseUpgrade('shakeDuration')).error).toBeInstanceOf(Error)
+    expect(sdk.rpc.mock.calls.filter(([name]) => name === 'purchase_ability_upgrade')).toEqual([])
+
+    await sdk.emit('SIGNED_IN', sessionFor('registered-player'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(auth.isRegisteredAccount()).toBe(true)
+    vi.stubGlobal('window', { location: { pathname: '/drunko', search: '' } })
+    expect((await auth.purchaseUpgrade('shakeIntensity')).error).toBeInstanceOf(Error)
+    expect(sdk.rpc.mock.calls.filter(([name]) => name === 'purchase_ability_upgrade')).toEqual([])
+  })
+
+  it('hydrates upgrades and coins only from the canonical progress row, never editable metadata or cached levels', async () => {
+    saves.writeSave({
+      coins: 999,
+      coinRevision: 1,
+      upgrades: { wallDuration: 10, shakeDuration: 10, shakeIntensity: 5 },
+    }, { syncCloud: false, ownerId: 'account-coins' })
+    sdk.state.session = sessionFor('account-coins')
+    sdk.state.session.user.user_metadata.ballrush_progress = {
+      coins: 9999, coinRevision: 99, upgrades: { wallDuration: 10, shakeDuration: 10, shakeIntensity: 5 },
+    }
+    sdk.queryResult.mockImplementation((table, column, value, operation) => {
+      if (table === 'user_progress') return Promise.resolve({ data: {
+        coins: '12.5', coin_revision: '8', upgrades: { wallDuration: 2, shakeDuration: 1, shakeIntensity: 0 },
+      }, error: null })
+      return sdk.defaultQuery(table, column, value, operation)
+    })
+
+    await auth.initialize()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(saves.loadSave()).toEqual(expect.objectContaining({
+      coins: 12.5, coinRevision: 8,
+      upgrades: { wallDuration: 2, shakeDuration: 1, shakeIntensity: 0 },
+    }))
+  })
+
+  it('does not fall back to editable metadata balances or upgrades when the canonical row is missing', async () => {
+    saves.writeSave({ coins: 999, upgrades: { wallDuration: 10, shakeDuration: 10, shakeIntensity: 5 } }, {
+      syncCloud: false, ownerId: 'account-coins',
+    })
+    sdk.state.session = sessionFor('account-coins')
+    sdk.state.session.user.user_metadata.ballrush_progress = {
+      coins: 9999, coinRevision: 99, upgrades: { wallDuration: 10, shakeDuration: 10, shakeIntensity: 5 },
+    }
+    sdk.queryResult.mockImplementation((table, column, value, operation) => table === 'user_progress'
+      ? Promise.resolve({ data: null, error: null })
+      : sdk.defaultQuery(table, column, value, operation))
+
+    await auth.initialize()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(saves.loadSave()).toEqual(expect.objectContaining({
+      coins: 0, coinRevision: 0,
+      upgrades: { wallDuration: 0, shakeDuration: 0, shakeIntensity: 0 },
+    }))
+    expect(sdk.rpc).not.toHaveBeenCalled()
+  })
+
+  it('applies a canonical decrease/reset without treating an older cached balance as newly earned coins', async () => {
+    await restoreWallet(50, 7, { wallDuration: 2, shakeDuration: 3, shakeIntensity: 1 })
+    saves.writeSave({ ...saves.loadSave(), coins: 100 }, { syncCloud: false, ownerId: 'account-coins' })
+    sdk.queryResult.mockImplementation((table, column, value, operation) => table === 'user_progress'
+      ? Promise.resolve({ data: { coins: 0, coin_revision: 8, upgrades: {} }, error: null })
+      : sdk.defaultQuery(table, column, value, operation))
+
+    await auth.restoreAccountProgress()
+
+    expect(saves.loadSave()).toEqual(expect.objectContaining({
+      coins: 0, coinRevision: 8,
+      upgrades: { wallDuration: 0, shakeDuration: 0, shakeIntensity: 0 },
+    }))
+    expect(sdk.rpc).not.toHaveBeenCalled()
+  })
+
+  it('restores a server-accepted reward after a lost response and browser-module reload', async () => {
+    await restoreWallet(50, 7)
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    sdk.rpc.mockRejectedValueOnce(new Error('Response lost after server commit'))
+    await auth.persistSaveToCloud()
+    expect(saves.loadSave().coins).toBe(50)
+    saves.setCloudSyncHandler(null)
+    // Intentionally exercise a reload: only the server receipt, not a mutable
+    // in-memory baseline or client coin delta, survives the missing response.
+    vi.resetModules()
+    ;({ authService: auth } = await import('./auth'))
+    saves = await import('../game/state/save')
+    await restoreWallet(51, 8)
+    expect(saves.loadSave()).toEqual(expect.objectContaining({ coins: 51, coinRevision: 8 }))
+    expect(sdk.rpc.mock.calls.every(([, params]) => params && !('p_coins_earned' in params))).toBe(true)
+    logged.mockRestore()
+  })
+
+  it('persists the server revision even when the displayed total is unchanged', async () => {
+    await restoreWallet(50, 7)
+    sdk.rpc.mockResolvedValue({ data: { coins: 50, coin_revision: 8, upgrades: saves.loadSave().upgrades }, error: null })
+    saves.recordRunEnd(1000, 3, 1)
+    expect(saves.loadSave().coins).toBe(50)
+    await auth.persistSaveToCloud()
+    for (const [, params] of sdk.rpc.mock.calls) {
+      expect(params).not.toHaveProperty('p_coins_earned')
+      expect(params?.p_save).not.toHaveProperty('coins')
+      expect(params?.p_save).not.toHaveProperty('coinRevision')
+      expect(params?.p_save).not.toHaveProperty('upgrades')
+    }
+    expect(JSON.parse(localStorage.getItem('ballrush.save.v1')!)).toEqual(expect.objectContaining({ coins: 50, coinRevision: 8 }))
+  })
+
+  it('merges authoritative coin responses without dropping run progress earned during an in-flight sync', async () => {
+    await restoreWallet(50, 7)
+    const firstSync = deferred<QueryResult>()
+    sdk.rpc.mockImplementationOnce(() => firstSync.promise)
+    sdk.rpc.mockResolvedValue({ data: { coins: 53, coin_revision: 9, upgrades: saves.loadSave().upgrades }, error: null })
+    saves.recordRunEnd(1000, 3, 1)
+    await vi.advanceTimersByTimeAsync(0)
+    saves.recordRunEnd(2000, 3, 1)
+    const flushed = auth.persistSaveToCloud()
+    firstSync.resolve({ data: { coins: 51, coin_revision: 8, upgrades: saves.loadSave().upgrades }, error: null })
+    await flushed
+
+    const requests = sdk.rpc.mock.calls.filter(([name]) => name === 'sync_user_progress')
+    expect(requests).toHaveLength(3)
+    expect(requests[0]![1]?.p_save).toEqual(expect.objectContaining({ best: 1000 }))
+    expect(requests.every(([, params]) => params && !('p_coins_earned' in params))).toBe(true)
+    expect(saves.loadSave()).toEqual(expect.objectContaining({ coins: 53, coinRevision: 9, best: 2000 }))
+  })
+
+  it('holds sync behind hydration so an overlapping final run cannot replace canonical wallet state with a stale snapshot', async () => {
+    await restoreWallet(50, 7)
+    const progress = deferred<QueryResult>()
+    sdk.queryResult.mockImplementation((table, column, value, operation) => table === 'user_progress'
+      ? progress.promise
+      : sdk.defaultQuery(table, column, value, operation))
+    const restoring = auth.restoreAccountProgress()
+    await vi.advanceTimersByTimeAsync(0)
+    sdk.rpc.mockResolvedValue({ data: { coins: 51, coin_revision: 8, upgrades: saves.loadSave().upgrades }, error: null })
+    saves.recordRunEnd(1000, 3, 1)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(sdk.rpc).not.toHaveBeenCalled()
+    progress.resolve({ data: { coins: 50, coin_revision: 7, upgrades: saves.loadSave().upgrades }, error: null })
+    await restoring
+    await auth.persistSaveToCloud()
+
+    expect(sdk.rpc.mock.calls.every(([, params]) => params && !('p_coins_earned' in params))).toBe(true)
+    expect(saves.loadSave()).toEqual(expect.objectContaining({ coins: 51, coinRevision: 8, best: 1000 }))
+  })
+
+  it('keeps the wallet and later earnings when Settings resets progress while a sync is in flight', async () => {
+    const upgrades = { wallDuration: 1, shakeDuration: 2, shakeIntensity: 3 }
+    await restoreWallet(50, 7, upgrades)
+    const firstSync = deferred<QueryResult>()
+    sdk.rpc.mockImplementationOnce(() => firstSync.promise)
+    sdk.rpc.mockResolvedValue({ data: { coins: 53, coin_revision: 9, upgrades }, error: null })
+    saves.recordRunEnd(1000, 3, 1)
+    await vi.advanceTimersByTimeAsync(0)
+    saves.resetProgress()
+    expect(saves.loadSave()).toEqual(expect.objectContaining({ coins: 50, upgrades, best: 0 }))
+    saves.recordRunEnd(2000, 3, 1)
+    const flushed = auth.persistSaveToCloud()
+    firstSync.resolve({ data: { coins: 51, coin_revision: 8, upgrades }, error: null })
+    await flushed
+
+    expect(saves.loadSave()).toEqual(expect.objectContaining({ coins: 53, upgrades, best: 2000 }))
+    expect(sdk.rpc.mock.calls.every(([, params]) => params && !('p_coins_earned' in params))).toBe(true)
+  })
+
+  it('leaves the cached account state intact on a progress-table error instead of replacing coins with zero', async () => {
+    await restoreWallet(50, 7, { wallDuration: 1, shakeDuration: 2, shakeIntensity: 3 })
+    sdk.queryResult.mockImplementation((table, column, value, operation) => table === 'user_progress'
+      ? Promise.resolve({ data: null, error: { message: 'Network unreachable' } })
+      : sdk.defaultQuery(table, column, value, operation))
+    await auth.restoreAccountProgress()
+    expect(saves.loadSave()).toEqual(expect.objectContaining({
+      coins: 50, coinRevision: 7, upgrades: { wallDuration: 1, shakeDuration: 2, shakeIntensity: 3 },
+    }))
+  })
+
+  it('serializes rapid purchases and uses the accepted level and coin revision for each next purchase', async () => {
+    await restoreWallet()
+    const firstPurchase = deferred<QueryResult>()
+    const firstLevels = { wallDuration: 1, shakeDuration: 0, shakeIntensity: 0 }
+    const secondLevels = { wallDuration: 2, shakeDuration: 0, shakeIntensity: 0 }
+    sdk.rpc.mockResolvedValueOnce({ data: { coins: 100, coin_revision: 4, upgrades: saves.loadSave().upgrades }, error: null })
+      .mockImplementationOnce(() => firstPurchase.promise)
+      .mockResolvedValueOnce({ data: { coins: 90, coin_revision: 5, upgrades: firstLevels }, error: null })
+      .mockResolvedValueOnce({ data: { coins: 70, coin_revision: 6, upgrades: secondLevels }, error: null })
+    // vi.resetModules replaces this singleton too; a static import would observe the old bus.
+    const { gameBus } = await import('../game/events/gameBus')
+    const changed = vi.fn()
+    const off = gameBus.on('state:save', changed)
+    const first = auth.purchaseUpgrade('wallDuration')
+    const second = auth.purchaseUpgrade('wallDuration')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(sdk.rpc.mock.calls.filter(([name]) => name === 'purchase_ability_upgrade')).toHaveLength(1)
+    firstPurchase.resolve({ data: [{ coins: 90, coin_revision: 5, upgrades: firstLevels }], error: null })
+    expect(await Promise.all([first, second])).toEqual([{ error: null }, { error: null }])
+
+    expect(sdk.rpc.mock.calls.filter(([name]) => name === 'purchase_ability_upgrade')).toEqual([
+      ['purchase_ability_upgrade', { p_upgrade: 'wallDuration', p_expected_level: 0, p_coin_revision: 4 }],
+      ['purchase_ability_upgrade', { p_upgrade: 'wallDuration', p_expected_level: 1, p_coin_revision: 5 }],
+    ])
+    expect(saves.loadSave()).toEqual(expect.objectContaining({ coins: 70, coinRevision: 6, upgrades: secondLevels }))
+    expect(changed).toHaveBeenCalled()
+    off()
+  })
+
+  it('refreshes a server-settled balance before spending it on an upgrade', async () => {
+    await restoreWallet(9, 4)
+    const levels = { wallDuration: 1, shakeDuration: 0, shakeIntensity: 0 }
+    sdk.rpc.mockResolvedValueOnce({ data: { coins: 10, coin_revision: 5, upgrades: saves.loadSave().upgrades }, error: null })
+      .mockResolvedValueOnce({ data: { coins: 10, coin_revision: 5, upgrades: saves.loadSave().upgrades }, error: null })
+      .mockResolvedValueOnce({ data: { coins: 0, coin_revision: 6, upgrades: levels }, error: null })
+    saves.recordRunEnd(1000, 3, 1)
+    expect(await auth.purchaseUpgrade('wallDuration')).toEqual({ error: null })
+    expect(sdk.rpc.mock.calls.map(([name]) => name)).toEqual([
+      'sync_user_progress', 'sync_user_progress', 'purchase_ability_upgrade',
+    ])
+    expect(sdk.rpc.mock.calls[0]![1]).not.toHaveProperty('p_coins_earned')
+    expect(saves.loadSave()).toEqual(expect.objectContaining({ coins: 0, coinRevision: 6, upgrades: levels }))
+  })
+
+  it('refreshes server-settled earnings after an in-flight purchase without inventing a local earning delta', async () => {
+    await restoreWallet()
+    const purchaseResponse = deferred<QueryResult>()
+    const earningSync = deferred<QueryResult>()
+    const levels = { wallDuration: 1, shakeDuration: 0, shakeIntensity: 0 }
+    sdk.rpc.mockResolvedValueOnce({ data: { coins: 100, coin_revision: 4, upgrades: saves.loadSave().upgrades }, error: null })
+      .mockImplementationOnce(() => purchaseResponse.promise)
+      .mockImplementationOnce(() => earningSync.promise)
+      .mockResolvedValue({ data: { coins: 92, coin_revision: 6, upgrades: levels }, error: null })
+    const buying = auth.purchaseUpgrade('wallDuration')
+    await vi.advanceTimersByTimeAsync(0)
+    saves.recordRunEnd(2000, 3, 1)
+    purchaseResponse.resolve({ data: { coins: 90, coin_revision: 5, upgrades: levels }, error: null })
+    expect(await buying).toEqual({ error: null })
+    expect(saves.loadSave()).toEqual(expect.objectContaining({ coins: 90, coinRevision: 5, upgrades: levels, best: 2000 }))
+    earningSync.resolve({ data: { coins: 92, coin_revision: 6, upgrades: levels }, error: null })
+    await auth.persistSaveToCloud()
+    expect(saves.loadSave()).toEqual(expect.objectContaining({ coins: 92, coinRevision: 6, upgrades: levels }))
+  })
+
+  it.each([
+    { coins: 9, levels: { wallDuration: 0, shakeDuration: 0, shakeIntensity: 0 }, message: 'Not enough coins.' },
+    { coins: 1000, levels: { wallDuration: 10, shakeDuration: 0, shakeIntensity: 0 }, message: 'This upgrade is already at its maximum level.' },
+  ])('rejects unavailable purchases without a debit ($message)', async ({ coins, levels, message }) => {
+    await restoreWallet(coins, 4, levels)
+    sdk.rpc.mockResolvedValue({ data: { coins, coin_revision: 4, upgrades: levels }, error: null })
+    expect((await auth.purchaseUpgrade('wallDuration')).error?.message).toBe(message)
+    expect(sdk.rpc.mock.calls.filter(([name]) => name === 'purchase_ability_upgrade')).toEqual([])
+    expect(saves.loadSave().coins).toBe(coins)
+    expect(saves.loadSave().upgrades).toEqual(levels)
+  })
+
+  it('keeps balances and levels when the database rejects a stale purchase', async () => {
+    await restoreWallet()
+    sdk.rpc.mockResolvedValueOnce({ data: { coins: 100, coin_revision: 4, upgrades: saves.loadSave().upgrades }, error: null })
+      .mockResolvedValueOnce({ data: null, error: { message: 'Coin balance changed; refresh before purchasing' } })
+    expect((await auth.purchaseUpgrade('shakeIntensity')).error?.message).toBe('Coin balance changed; refresh before purchasing')
+    expect(saves.loadSave()).toEqual(expect.objectContaining({
+      coins: 100, coinRevision: 4, upgrades: { wallDuration: 0, shakeDuration: 0, shakeIntensity: 0 },
+    }))
+  })
+
+  it.each(['account-coins', 'account-b'])('discards an in-flight purchase and queued duplicate after a new %s login', async (nextId) => {
+    await restoreWallet()
+    const purchaseResponse = deferred<QueryResult>()
+    sdk.rpc.mockResolvedValueOnce({ data: { coins: 100, coin_revision: 4, upgrades: saves.loadSave().upgrades }, error: null })
+      .mockImplementationOnce(() => purchaseResponse.promise)
+    const first = auth.purchaseUpgrade('wallDuration')
+    const queued = auth.purchaseUpgrade('wallDuration')
+    await vi.advanceTimersByTimeAsync(0)
+    const nextLevels = { wallDuration: 0, shakeDuration: 2, shakeIntensity: 1 }
+    sdk.queryResult.mockImplementation((table, column, value, operation) => table === 'user_progress'
+      ? Promise.resolve({ data: { coins: 7, coin_revision: 8, upgrades: nextLevels }, error: null })
+      : sdk.defaultQuery(table, column, value, operation))
+    await sdk.emit('SIGNED_IN', sessionFor(nextId, 'new-login'))
+    await vi.advanceTimersByTimeAsync(0)
+    purchaseResponse.resolve({ data: { coins: 90, coin_revision: 5, upgrades: { wallDuration: 1, shakeDuration: 0, shakeIntensity: 0 } }, error: null })
+    const results = await Promise.all([first, queued])
+    expect(results.every(({ error }) => error instanceof Error)).toBe(true)
+    expect(sdk.rpc.mock.calls.filter(([name]) => name === 'purchase_ability_upgrade')).toHaveLength(1)
+    expect(saves.getSaveOwnerId()).toBe(nextId)
+    expect(saves.loadSave()).toEqual(expect.objectContaining({ coins: 7, coinRevision: 8, upgrades: nextLevels }))
   })
 })

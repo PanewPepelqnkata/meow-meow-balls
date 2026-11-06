@@ -6,7 +6,7 @@ import { SoftBallManager } from './SoftBallManager'
 import { getTier } from '../../config/ballTiers'
 
 describe('ShakeManager earthquake rumble and bounce pulses', () => {
-  it('activates for 10s duration, triggers bounce pulses, and adds invisible extended side walls (no lid)', () => {
+  it('activates for 5s at base level, triggers bounce pulses, and adds invisible extended side walls (no lid)', () => {
     let now = 1000
     const shake = new ShakeManager()
     shake.setClock(() => now)
@@ -46,7 +46,7 @@ describe('ShakeManager earthquake rumble and bounce pulses', () => {
     const activated = shake.activate()
     expect(activated).toBe(true)
     expect(shake.isActive).toBe(true)
-    expect(shake.remainingMs).toBe(10000)
+    expect(shake.remainingMs).toBe(5000)
     // Two invisible extended side walls are added (left + right); no lid.
     expect(addedBodies.length).toBe(2)
     expect(addedBodies.map((b) => b.label).sort()).toEqual(['shake-wall-left', 'shake-wall-right'])
@@ -63,19 +63,33 @@ describe('ShakeManager earthquake rumble and bounce pulses', () => {
     expect(shake.getDebris().length).toBeGreaterThan(0)
     expect(shake.getDustPuffs().length).toBeGreaterThan(0)
 
-    // Advance 5 seconds (active midway)
-    now += 5000
+    // Advance 2.5 seconds (active midway)
+    now += 2500
     const mid = shake.update(now, 16)
     expect(mid.active).toBe(true)
-    expect(shake.remainingMs).toBe(5000)
+    expect(shake.remainingMs).toBe(2500)
 
-    // Advance past 10 seconds (expiration)
-    now += 5001
+    // Advance past 5 seconds (expiration)
+    now += 2501
     const end = shake.update(now, 16)
     expect(end.active).toBe(false)
     expect(shake.isActive).toBe(false)
     // Both extended side walls are removed on expiration.
     expect(removedBodies.length).toBe(2)
+  })
+  it('snapshots upgraded duration for the active cycle', () => {
+    let now = 0
+    const shake = new ShakeManager()
+    shake.setClock(() => now)
+    const levels = { shakeDuration: 10, shakeIntensity: 5 }
+
+    expect(shake.activate(levels)).toBe(true)
+    expect(shake.remainingMs).toBe(10_000)
+    levels.shakeDuration = 0
+    levels.shakeIntensity = 0
+    now = 5_000
+    expect(shake.update(now, 16).active).toBe(true)
+    expect(shake.remainingMs).toBe(5_000)
   })
 
   it('resets cleanly when reset() is called mid-ability', () => {
