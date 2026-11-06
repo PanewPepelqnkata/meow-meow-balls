@@ -122,6 +122,7 @@ class DisplayObject extends EventEmitter {
   setRotation(rotation: number): this { this.rotation = rotation; return this }
   setScale(scale: number, scaleY = scale): this { this.scale = scale; this.scaleY = scaleY; return this }
   setStroke(): this { return this }
+  setPadding(): this { return this }
   setAlign(): this { return this }
   setShadow(): this { return this }
   setFontSize(size: number): this {
@@ -461,8 +462,11 @@ describe('merchant store', () => {
     expect(labels(wall)).toContain('19s → 20s')
     expect(labels(wall)).toContain('MAX EFFECT 25s')
     expect(labels(wall)).toContain('STAGE 4 / 10')
-    expect(labels(wall)).toContain('NEED 50')
-    expect(find(wall, 'merchant-buy-hit').input?.enabled).toBe(false)
+    expect(labels(wall)).toContain('50')
+    expect(find(wall, 'merchant-buy-hit').input?.enabled).toBe(true)
+    tap(find(wall, 'merchant-buy-hit'))
+    expect(labels(find(parent, 'merchant-upgrade-wallDuration'))).toContain('NOT ENOUGH COINS')
+    expect(account.purchase).not.toHaveBeenCalled()
     expect(labels(find(parent, 'merchant-upgrade-shakeDuration'))).toContain('MAXED')
     expect(find(find(parent, 'merchant-upgrade-shakeDuration'), 'merchant-buy-hit').input?.enabled).toBe(false)
   })

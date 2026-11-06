@@ -72,6 +72,7 @@ type BuyButton = {
   buttonHovered: boolean
   pressed: boolean
   hoverMix: number
+  buttonHoverMix: number
   pressMix: number
 }
 type Drag = {
@@ -1048,12 +1049,18 @@ export class StoreView {
     this.addFittedText(card, statX, stageY, active ? `STAGE ${current} / ${max}` : 'STAGE — / —', statW, compact ? 8 : 10, active ? INK_HEX : SECONDARY_TEXT)
     this.renderStageBar(card, statX, barY, statW - 4, current, max, product.accent, barH)
     const label = !active ? 'COMING SOON' : pending ? 'BUYING...' : maxed ? 'MAXED'
-      : !registered ? 'ACCOUNTS ONLY' : !affordable ? `NEED ${cost}` : `${cost}`
-    const available = active && registered && affordable && !maxed && !pending
+      : !registered ? 'ACCOUNTS ONLY' : `${cost}`
+    const available = active && registered && !maxed && !pending
     this.renderBuyButton(
       card, buttonX, buttonY, buttonW, buttonH, label,
       active && !pending && !maxed && registered, active, available, page, slotIndex, art, () => {
-        if (active) void this.purchase(product.id, card.x, card.y, page)
+        if (!active) return
+        if (!affordable) {
+          this.purchaseStatus.set(product.id, { kind: 'error', message: 'NOT ENOUGH COINS' })
+          this.renderItems()
+          return
+        }
+        void this.purchase(product.id, card.x, card.y, page)
       },
     )
   }
@@ -1098,8 +1105,9 @@ export class StoreView {
     g.fillStyle(active ? GREEN_LIGHT : 0xd1cbb6, 0.65).fillRoundedRect(-w / 2 + 10, -h / 2 + 3, Math.max(1, w - 20), Math.max(2, h * 0.16), radius * 0.3)
     button.add([g, sheenG])
     const iconSpace = coin ? Math.min(23, h * 0.7) : 0
-    const text = this.addFittedText(button, 0, -1, label, w - iconSpace - 17, clamp(h * 0.43, 10, 19), '#fff9dc')
-      .setStroke(INK_HEX, active ? 1.5 : 1)
+    const text = this.addFittedText(button, 0, -1, label, w - iconSpace - 20, clamp(h * 0.43, 10, 19), '#fff9dc')
+      .setStroke(INK_HEX, active ? 3.5 : 2.5)
+      .setPadding({ left: 4, right: 4, top: 3, bottom: 3 })
     if (coin) {
       const contentW = iconSpace + 5 + text.displayWidth
       drawCoin(g, -contentW / 2 + iconSpace / 2, -1, iconSpace * 0.45)
@@ -1139,6 +1147,7 @@ export class StoreView {
       buttonHovered: false,
       pressed: false,
       hoverMix: 0,
+      buttonHoverMix: 0,
       pressMix: 0,
     }
     hoverZone.on('pointerover', () => { entry.cardHovered = true })
@@ -1179,12 +1188,15 @@ export class StoreView {
       if (entry.page !== this.currentPage && !moving) continue
       const targetHover = this.desktopHover && !this.reducedMotion && !moving
         && (entry.cardHovered || entry.buttonHovered) ? 1 : 0
+      const targetButtonHover = this.desktopHover && !this.reducedMotion && !moving
+        && entry.buttonHovered ? 1 : 0
       const targetPress = entry.pressed && !moving ? 1 : 0
       entry.hoverMix += (targetHover - entry.hoverMix) * clamp(dt * 12, 0, 1)
+      entry.buttonHoverMix = this.reducedMotion ? targetButtonHover
+        : entry.buttonHoverMix + (targetButtonHover - entry.buttonHoverMix) * clamp(dt * 14, 0, 1)
       entry.pressMix = this.reducedMotion ? targetPress
         : entry.pressMix + (targetPress - entry.pressMix) * clamp(dt * 20, 0, 1)
       if (Math.abs(targetPress - entry.pressMix) < 0.001) entry.pressMix = targetPress
-
       const entrance = this.entranceActive && entry.page === 0
         ? clamp((this.entranceElapsedSec - entry.slotIndex * ENTRANCE_STAGGER_SEC) / ENTRANCE_DURATION_SEC, 0, 1)
         : 1
@@ -1196,13 +1208,17 @@ export class StoreView {
       entry.art.setY(!this.reducedMotion && !moving && entrance === 1
         ? Math.sin(tSec * 1.6 + entry.slotIndex * 1.05) * 1.2 : 0)
 
-      // Match the existing ChunkyButton's short, physical press; arrows already provide their own feedback.
-      entry.button.setScale(1 + entry.pressMix * 0.04, 1 - entry.pressMix * 0.08)
-        .setY(entry.buttonBaseY + entry.pressMix * 3)
+      // Match the existing ChunkyButton's short, physical press; hover lifts and scales the button.
+      const bLift = entry.buttonHoverMix * 2
+      const bScale = entry.buttonHoverMix * 0.03
+      entry.button.setScale(1 + bScale + entry.pressMix * 0.04, 1 + bScale - entry.pressMix * 0.08)
+        .setY(entry.buttonBaseY - bLift + entry.pressMix * 3)
       if (!this.reducedMotion && entry.available) {
         entry.sheenG.clear()
         const phase = (tSec * 1.35 + entry.slotIndex * 0.4) % 1
-        entry.sheenG.lineStyle(1.8, 0xffe684, Math.sin(phase * Math.PI) * 0.38)
+        const sheenAlpha = Math.min(1, Math.sin(phase * Math.PI) * 0.38 + entry.buttonHoverMix * 0.45)
+        const strokeW = 1.8 + entry.buttonHoverMix * 0.8
+        entry.sheenG.lineStyle(strokeW, 0xfff0a8, sheenAlpha)
           .strokeRoundedRect(-entry.buttonW / 2 + 1, -entry.buttonH / 2 + 1,
             entry.buttonW - 2, entry.buttonH - 2, entry.buttonH / 2)
       }

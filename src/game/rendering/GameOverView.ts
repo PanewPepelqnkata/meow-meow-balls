@@ -175,14 +175,70 @@ export class GameOverView {
     // Coins earned this run (score / 1000)
     const coinsEarned = coinsForScore(run.score)
     const totalCoins = loadSave().coins
-    const coinY = reaction.y + reaction.height + 14
+    const tabH = 34
+    const tabCenterY = reaction.y + reaction.height + 12 + tabH / 2
+    const coinTab = scene.add.container(columnX, tabCenterY)
     const coinG = scene.add.graphics()
-    drawCoin(coinG, columnX - 52, coinY + 11, 14)
-    const coinText = text(columnX - 30, coinY, `+${formatCoins(coinsEarned)}`, 22, '#b8860b', 2)
-    const coinTotal = text(columnX + 30, coinY + 4, `(${formatCoins(totalCoins)} total)`, 12, INK_COLOR)
-    content.add([coinG, coinText, coinTotal])
+    const coinRadius = 11
 
-    const statsY = coinY + 30
+    const coinText = scene.add.text(0, 0, `+${formatCoins(coinsEarned)}`, {
+      fontFamily: FONT_FAMILY,
+      fontSize: '20px',
+      color: '#976208',
+      stroke: INK_COLOR,
+      strokeThickness: 0,
+      resolution: Math.max(2, Math.min(window.devicePixelRatio || 1, 3)),
+      padding: { left: 2, right: 2, top: 2, bottom: 2 },
+    }).setOrigin(0, 0.5)
+
+    const coinTotal = scene.add.text(0, 0, `(${formatCoins(totalCoins)} total)`, {
+      fontFamily: FONT_FAMILY,
+      fontSize: '12px',
+      color: '#6d5231',
+      stroke: INK_COLOR,
+      strokeThickness: 0,
+      resolution: Math.max(2, Math.min(window.devicePixelRatio || 1, 3)),
+      padding: { left: 2, right: 2, top: 2, bottom: 2 },
+    }).setOrigin(0, 0.5)
+
+    const coinW = coinRadius * 2
+    const gap1 = 7
+    const gap2 = 9
+    const rawContentW = coinW + gap1 + coinText.width + gap2 + coinTotal.width
+    const tabW = Math.min(columnW, Math.max(rawContentW + 28, 190))
+    const maxInsideW = tabW - 20
+    const contentScale = Math.min(1, maxInsideW / rawContentW)
+    const contentW = rawContentW * contentScale
+
+    const tabBg = scene.add.graphics()
+    tabBg.fillStyle(INK, 0.12).fillRoundedRect(-tabW / 2 + 1, -tabH / 2 + 3, tabW, tabH, tabH / 2)
+    tabBg.fillStyle(0xfff8e1, 1).fillRoundedRect(-tabW / 2, -tabH / 2, tabW, tabH, tabH / 2)
+    tabBg.lineStyle(2, 0xe5ad32, 0.85).strokeRoundedRect(-tabW / 2, -tabH / 2, tabW, tabH, tabH / 2)
+    tabBg.lineStyle(1.2, 0xffffff, 0.6).strokeRoundedRect(-tabW / 2 + 2, -tabH / 2 + 2, tabW - 4, tabH / 2 - 2, (tabH - 4) / 2)
+
+    const inner = scene.add.container(-contentW / 2, 0)
+    if (contentScale < 1) inner.setScale(contentScale)
+    drawCoin(coinG, coinRadius, 0, coinRadius)
+    coinText.setPosition(coinW + gap1, 0)
+    coinTotal.setPosition(coinW + gap1 + coinText.width + gap2, 1)
+    inner.add([coinG, coinText, coinTotal])
+
+    coinTab.add([tabBg, inner])
+    content.add(coinTab)
+
+    if (motion) {
+      coinTab.setY(tabCenterY + 6).setAlpha(0)
+      this.tweens.push(scene.tweens.add({
+        targets: coinTab,
+        y: tabCenterY,
+        alpha: 1,
+        duration: 260,
+        delay: 130,
+        ease: 'Cubic.easeOut',
+      }))
+    }
+
+    const statsY = tabCenterY + tabH / 2 + 12
     const statsH = 84
     const cellW = columnW / 4
     const statsLeft = columnX - columnW / 2
