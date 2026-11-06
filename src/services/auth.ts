@@ -531,7 +531,10 @@ export class AuthService {
     try {
       const { data, error } = await client.auth.signInWithPassword({ email, password })
       if (error || !data.user) {
-        return { error: error ?? new Error('Failed to sign in') }
+        if (error && /invalid login credentials/i.test(error.message)) {
+          return { error: new Error('Username or password is incorrect') }
+        }
+        return { error: error ?? new Error('Username or password is incorrect') }
       }
 
       if (!this.acceptAuthResult(flowRevision, stateRevision, data.user, data.session)) {
@@ -600,7 +603,7 @@ export class AuthService {
     }
 
     if (lookupError || !profile?.email) {
-      return { error: new Error('Invalid username or password') }
+      return { error: new Error('Username or password is incorrect') }
     }
 
     return this.signInWithEmail(profile.email, password)

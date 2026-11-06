@@ -190,7 +190,7 @@ export function BossDashboard() {
     const { error } = await authService.signInWithUsername(username.trim(), password)
     setLoggingIn(false)
     if (error) {
-      setLoginError(error.message || 'Invalid username or password')
+      setLoginError(error.message || 'Username or password is incorrect')
       return
     }
     setAuthed(true)

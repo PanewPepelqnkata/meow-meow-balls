@@ -252,6 +252,20 @@ export class AuthModal {
     const { els } = this
     if (!els) return
 
+    for (const eventType of [
+      'pointerdown',
+      'pointerup',
+      'mousedown',
+      'mouseup',
+      'touchstart',
+      'touchend',
+      'click',
+    ] as const) {
+      els.backdrop.addEventListener(eventType, (e) => {
+        e.stopPropagation()
+      })
+    }
+
     els.closeBtn.addEventListener('click', () => this.close())
     els.backdrop.addEventListener('click', (e) => {
       if (e.target === els.backdrop) this.close()
@@ -334,20 +348,31 @@ export class AuthModal {
     const email = els.emailInput.value.trim()
 
     // Validation
-    if (!username || username.length < 2) {
-      this.showError('Username must be at least 2 characters')
-      return
-    }
-    // New accounts: letters, numbers and underscore only — no spaces or other
-    // symbols. This gate is SIGNUP-ONLY: the login path stays permissive so
-    // legacy accounts created with spaces can still sign in.
-    if (els.mode === 'signup' && !/^[A-Za-z0-9_]+$/.test(username)) {
-      this.showError('Username can only use letters, numbers and _ (no spaces)')
-      return
-    }
-    if (!password || password.length < 6) {
-      this.showError('Password must be at least 6 characters')
-      return
+    if (els.mode === 'login') {
+      if (!username || !password) {
+        this.showError('Username and password are required')
+        return
+      }
+      if (username.length < 2 || password.length < 6) {
+        this.showError('Username or password is incorrect')
+        return
+      }
+    } else {
+      if (!username || username.length < 2) {
+        this.showError('Username must be at least 2 characters')
+        return
+      }
+      // New accounts: letters, numbers and underscore only — no spaces or other
+      // symbols. This gate is SIGNUP-ONLY: the login path stays permissive so
+      // legacy accounts created with spaces can still sign in.
+      if (!/^[A-Za-z0-9_]+$/.test(username)) {
+        this.showError('Username can only use letters, numbers and _ (no spaces)')
+        return
+      }
+      if (!password || password.length < 6) {
+        this.showError('Password must be at least 6 characters')
+        return
+      }
     }
     if (els.mode === 'signup' && email && !this.isValidEmail(email)) {
       this.showError('Please enter a valid email address')

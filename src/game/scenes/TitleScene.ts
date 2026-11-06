@@ -1369,25 +1369,25 @@ export class TitleScene extends Phaser.Scene {
     const subs: Partial<Record<ScreenName, string>> = {
       collection: 'COLLECTION ALBUM & DISCOVERY LOG',
       settings: 'BACKGROUND THEME & SAVED PROGRESS',
-      store: 'ABILITY UPGRADES — SPEND YOUR COINS',
     }
 
     const titles: Partial<Record<ScreenName, string>> = {
       collection: 'COLLECTION BOOK',
       leaderboard: 'LEADERBOARD',
       settings: 'SETTINGS',
-      store: 'STORE',
     }
 
     const { contentTopY } = this.screen === 'leaderboard'
       ? this.buildLeaderboardHeader(vw, vh)
-      : buildScreenHeader(this, this.panelContent, {
-        vw, vh,
-        title: titles[this.screen] ?? this.screen.toUpperCase(),
-        subtitle: subs[this.screen],
-        onBack: () => this.openScreen('menu'),
-        rectsCollector: this.panelRects,
-      })
+      : this.screen === 'store'
+        ? this.buildStoreHeader(vw)
+        : buildScreenHeader(this, this.panelContent, {
+          vw, vh,
+          title: titles[this.screen] ?? this.screen.toUpperCase(),
+          subtitle: subs[this.screen],
+          onBack: () => this.openScreen('menu'),
+          rectsCollector: this.panelRects,
+        })
 
     switch (this.screen) {
       case 'collection':
@@ -1403,6 +1403,25 @@ export class TitleScene extends Phaser.Scene {
         this.buildStore(vw, vh, contentTopY)
         break
     }
+  }
+
+  private buildStoreHeader(vw: number): { contentTopY: number } {
+    const safe = readSafeArea()
+    const x = Math.max(14, safe.left + 10)
+    const y = Math.max(10, safe.top + 8)
+    const w = vw < 600 ? 82 : 100
+    const h = 36
+    // The stall owns its STORE sign; only Back lives in the scene chrome.
+    const back = new ChunkyButton({
+      scene: this, x: x + w / 2, y: y + h / 2, w, h,
+      label: 'BACK', fontSize: 14,
+      fill: 0xb0652a, shadowColor: 0x4e230f, highlightColor: 0xd9934e,
+      textColor: '#fff5d7', onClick: () => this.openScreen('menu'),
+    })
+    back.container.setName('merchant-back')
+    this.panelContent.add(back.container)
+    this.panelRects.push({ label: 'BACK', x, y, w, h, screen: 'panel' })
+    return { contentTopY: y + h + 7 }
   }
 
   private buildLeaderboardHeader(vw: number, vh: number): { contentTopY: number } {
