@@ -22,7 +22,7 @@ vi.mock('phaser', () => ({
     WEBGL: 2,
     Math: { Vector2: class { x = 0; y = 0 } },
     GameObjects: { Events: { DESTROY: 'destroy' } },
-    Scenes: { Events: { SHUTDOWN: 'shutdown' } },
+    Scenes: { Events: { SHUTDOWN: 'shutdown', UPDATE: 'update' } },
     Display: { Masks: { GeometryMask: class { destroy = vi.fn() } } },
   },
 }))
@@ -46,16 +46,32 @@ vi.mock('../events/gameBus', () => ({
   },
 }))
 vi.mock('../../ui/ResponsiveLayout', () => ({ readSafeArea: () => ({ top: 0, bottom: 0, left: 0, right: 0 }) }))
-vi.mock('./BallAppearance', () => ({ INK: 0x111625 }))
+vi.mock('./BallAppearance', () => ({
+  INK: 0x111625,
+  ballLookFor: () => ({}),
+  ballOutlineWidth: () => 2,
+  drawBallFace: vi.fn(),
+  restContour: (_look: unknown, r: number, cx: number, cy: number) => [
+    { x: cx - r, y: cy },
+    { x: cx, y: cy - r },
+    { x: cx + r, y: cy },
+    { x: cx, y: cy + r },
+  ],
+}))
+vi.mock('./RoughArt', () => ({ bakeCanvas: vi.fn() }))
 vi.mock('../../ui/Typography', () => ({
-  hudText: (scene: { add: { text: (...args: unknown[]) => DisplayObject } }, x: number, y: number, value: string) => scene.add.text(x, y, value),
+  hudText: (scene: { add: { text: (...args: unknown[]) => DisplayObject } }, x: number, y: number,
+    value: string, _fontScale: number, options: { size: number }) => scene.add.text(x, y, value, { fontSize: Math.max(10, Math.round(options.size)) }),
 }))
 vi.mock('../../ui/DesignSystem', () => ({
   ChunkyButton: class {
     container: DisplayObject
     hit: DisplayObject
+    options: Record<string, unknown>
     constructor(options: { scene: ButtonScene; x: number; y: number; w: number; h: number; label: string; onClick: () => void }) {
+      this.options = options
       this.container = options.scene.add.container(options.x, options.y)
+      this.container.data.buttonOptions = options
       this.hit = options.scene.add.zone(0, 0, options.w, options.h).setInteractive()
       this.hit.on('pointerup', () => {
         if (this.hit.input?.enabled) options.onClick()
@@ -77,6 +93,14 @@ class DisplayObject extends EventEmitter {
   width = 100
   height = 20
   scale = 1
+  scaleY = 1
+  alpha = 1
+  rotation = 0
+  texture = ''
+  fontSize = 16
+  data: Record<string, unknown> = {}
+  initialFontSize = 16
+  drawCalls: { method: string; args: unknown[] }[] = []
   name = ''
   text = ''
   visible = true
@@ -85,18 +109,35 @@ class DisplayObject extends EventEmitter {
   parent: DisplayObject | null = null
   input: { enabled: boolean } | null = null
   mask: { destroy: () => void } | null = null
-  filters: { external: { addMask: Mock<() => { autoUpdate: boolean }>; remove: Mock } } | null = null
+  filters: { external: { addMask: Mock<() => { autoUpdate: boolean; active: boolean }>; remove: Mock } } | null = null
 
   get displayWidth(): number { return this.width * this.scale }
+  get parentContainer(): DisplayObject | null { return this.parent }
   setName(name: string): this { this.name = name; return this }
   setX(x: number): this { this.x = x; return this }
   setY(y: number): this { this.y = y; return this }
-  setScale(scale: number): this { this.scale = scale; return this }
+  setPosition(x: number, y: number): this { this.x = x; this.y = y; return this }
+  setSize(width: number, height: number): this { this.width = width; this.height = height; return this }
+  setDisplaySize(width: number, height: number): this { this.scale = width / this.width; this.scaleY = height / this.height; return this }
+  setRotation(rotation: number): this { this.rotation = rotation; return this }
+  setScale(scale: number, scaleY = scale): this { this.scale = scale; this.scaleY = scaleY; return this }
   setStroke(): this { return this }
   setAlign(): this { return this }
   setShadow(): this { return this }
+  setFontSize(size: number): this {
+    this.fontSize = size
+    const lines = this.text.split('\n')
+    this.width = Math.ceil(Math.max(...lines.map((line) => line.length)) * size * 0.6) + 2
+    this.height = lines.length * size * 1.2 + 2
+    return this
+  }
+  setWordWrapWidth(width: number): this {
+    this.height *= Math.ceil((this.width - 2) / width)
+    this.width = Math.min(this.width, width + 2)
+    return this
+  }
   setVisible(visible: boolean): this { this.visible = visible; return this }
-  setAlpha(): this { return this }
+  setAlpha(alpha: number): this { this.alpha = alpha; return this }
   setInteractive(): this { this.input = { enabled: true }; return this }
   setMask(mask: { destroy: () => void }): this { this.mask = mask; return this }
   clearMask(destroy: boolean): this {
@@ -105,7 +146,7 @@ class DisplayObject extends EventEmitter {
     return this
   }
   enableFilters(): this {
-    this.filters = { external: { addMask: vi.fn(() => ({ autoUpdate: true })), remove: vi.fn() } }
+    this.filters = { external: { addMask: vi.fn(() => ({ autoUpdate: true, active: true })), remove: vi.fn() } }
     return this
   }
   add(children: DisplayObject | DisplayObject[]): this {
@@ -113,6 +154,11 @@ class DisplayObject extends EventEmitter {
       child.parent = this
       this.list.push(child)
     }
+    return this
+  }
+  addAt(child: DisplayObject, index: number): this {
+    child.parent = this
+    this.list.splice(index, 0, child)
     return this
   }
   removeAll(destroy: boolean): this {
@@ -138,7 +184,7 @@ function makeScene(webgl = false) {
   const input = new EventEmitter()
   const events = new EventEmitter()
   const time = { now: 1_000 }
-  let pendingTween: { targets: DisplayObject; x: number; onComplete: () => void } | null = null
+  let pendingTween: { targets: DisplayObject; startX: number; x: number; paused: boolean; onComplete: () => void } | null = null
   const scene = {
     add: {
       container: (x = 0, y = 0) => {
@@ -151,11 +197,20 @@ function makeScene(webgl = false) {
         const proxy = new Proxy(object, {
           get(target, key, receiver) {
             if (key in target) return Reflect.get(target, key, receiver)
-            return () => receiver
+            return (...args: unknown[]) => {
+              target.drawCalls.push({ method: String(key), args })
+              return receiver
+            }
           },
         })
         objects.push(proxy)
         return proxy
+      },
+      image: (x: number, y: number, texture: string) => {
+        const object = new DisplayObject().setPosition(x, y).setSize(256, 256)
+        object.texture = texture
+        objects.push(object)
+        return object
       },
       zone: (x: number, y: number, w: number, h: number) => {
         const object = new DisplayObject().setX(x).setY(y)
@@ -164,10 +219,11 @@ function makeScene(webgl = false) {
         objects.push(object)
         return object
       },
-      text: (x: unknown, y: unknown, value: unknown) => {
-        const object = new DisplayObject().setX(Number(x)).setY(Number(y))
+      text: (x: unknown, y: unknown, value: unknown, style: { fontSize: number }) => {
+        const object = new DisplayObject().setPosition(Number(x), Number(y))
         object.text = String(value)
-        object.width = Math.max(...object.text.split('\n').map((line) => line.length)) * 8
+        object.initialFontSize = style.fontSize
+        object.setFontSize(style.fontSize)
         objects.push(object)
         return object
       },
@@ -177,8 +233,13 @@ function makeScene(webgl = false) {
     tweens: {
       killTweensOf: vi.fn(() => { pendingTween = null }),
       add: vi.fn((config: { targets: DisplayObject; x: number; onComplete: () => void }) => {
-        pendingTween = config
-        return { stop: vi.fn() }
+        const tween = { ...config, startX: config.targets.x, paused: false }
+        pendingTween = tween
+        return {
+          stop: vi.fn(() => { if (pendingTween === tween) pendingTween = null }),
+          pause: vi.fn(() => { tween.paused = true }),
+          resume: vi.fn(() => { tween.paused = false }),
+        }
       }),
     },
     input,
@@ -187,7 +248,20 @@ function makeScene(webgl = false) {
   }
   return {
     scene, objects,
+    advanceUpdates(milliseconds: number) {
+      for (let remaining = milliseconds; remaining > 0; remaining -= 50) {
+        const delta = Math.min(50, remaining)
+        time.now += delta
+        events.emit('update', time.now, delta)
+      }
+    },
+    advanceTween(progress: number) {
+      if (pendingTween && !pendingTween.paused) {
+        pendingTween.targets.setX(pendingTween.startX + (pendingTween.x - pendingTween.startX) * progress)
+      }
+    },
     completeTween() {
+      if (pendingTween?.paused) return
       const tween = pendingTween
       pendingTween = null
       if (tween) {
@@ -242,15 +316,13 @@ afterEach(() => {
 })
 
 describe('merchant store', () => {
-  it('shows six illustrated goods in a desktop 3×2 grid, including three locked previews', () => {
+  it('lays out six desktop goods in three columns and two rows, with three locked previews', () => {
     const { parent } = createStore()
     const cards = find(parent, 'merchant-item-pages').list
     expect(cards).toHaveLength(6)
     expect(new Set(cards.map((card) => card.x)).size).toBe(3)
     expect(new Set(cards.map((card) => card.y)).size).toBe(2)
-    expect(labels(parent)).toContain('STORE')
-    expect(labels(parent)).toContain('UPGRADES • BOOSTS • ITEMS')
-    expect(labels(parent)).toContain('COINS 100.0')
+    expect(labels(parent)).toContain('100.0 COINS')
     for (const id of ['coinMagnet', 'mergeBonus', 'extraAbility']) {
       const card = find(parent, `merchant-upgrade-${id}`)
       expect(labels(card)).toContain('COMING SOON')
@@ -278,6 +350,108 @@ describe('merchant store', () => {
     expect(stage.y - maximum.y).toBeGreaterThan(9)
   })
 
+  it('fits constrained titles by changing font size while leaving the text bitmap at unit scale', () => {
+    const { parent } = createStore(390, 844)
+    const title = descendants(find(parent, 'merchant-upgrade-shakeIntensity')).find((object) => object.text === 'Shake\nIntensity')!
+    expect(title.fontSize).toBeLessThan(title.initialFontSize)
+    expect(title.fontSize).toBeGreaterThanOrEqual(8)
+    for (const text of descendants(parent).filter((object) => object.text)) expect(text.scale).toBe(1)
+  })
+
+  it('runs one staggered entrance clock without flashing, replaying on saves, or floating card text', () => {
+    const { parent, scene, advanceUpdates } = createStore()
+    const first = find(parent, 'merchant-upgrade-wallDuration')
+    const second = find(parent, 'merchant-upgrade-shakeDuration')
+    expect(first.alpha).toBe(0)
+    expect(second.alpha).toBe(0)
+    advanceUpdates(25)
+    expect(first.alpha).toBeGreaterThan(0)
+    expect(second.alpha).toBe(0)
+    advanceUpdates(75)
+    const alpha = first.alpha
+    const y = first.y
+    for (const listener of account.saveListeners) listener()
+    const refreshed = find(parent, 'merchant-upgrade-wallDuration')
+    expect(refreshed.alpha).toBeCloseTo(alpha)
+    expect(refreshed.y).toBe(y)
+    advanceUpdates(1000)
+    expect(refreshed.alpha).toBe(1)
+    const restingY = refreshed.y
+    const art = find(refreshed, 'merchant-upgrade-art-wallDuration')
+    const artY = art.y
+    advanceUpdates(250)
+    expect(refreshed.y).toBe(restingY)
+    expect(refreshed.scale).toBe(1)
+    expect(art.y).not.toBe(artY)
+    for (const listener of account.saveListeners) listener()
+    expect(find(parent, 'merchant-upgrade-wallDuration').alpha).toBe(1)
+    expect(scene.tweens.add).not.toHaveBeenCalled()
+  })
+
+  it('lifts the whole desktop card with a warm border and deeper shadow, and depresses its buy button', () => {
+    vi.stubGlobal('window', { matchMedia: (query: string) => ({ matches: query.includes('(hover: hover)') }) })
+    const { parent, advanceUpdates } = createStore()
+    advanceUpdates(1000)
+    const card = find(parent, 'merchant-upgrade-wallDuration')
+    const baseY = card.y
+    const button = find(card, 'merchant-buy-wallDuration')
+    const buttonY = button.y
+    const hover = find(card, 'merchant-card-hover-hit')
+    expect(hover.input?.enabled).toBe(true)
+    hover.emit('pointerover')
+    advanceUpdates(100)
+    expect(card.y).toBeLessThan(baseY)
+    expect(card.scale).toBe(1)
+    expect(find(card, 'merchant-card-hover-border').alpha).toBeGreaterThan(0)
+    expect(find(card, 'merchant-card-hover-shadow').alpha).toBeGreaterThan(0)
+    const buy = find(card, 'merchant-buy-hit')
+    buy.emit('pointerdown', { id: 1, x: 100, y: 200 })
+    advanceUpdates(50)
+    expect(button.y).toBeGreaterThan(buttonY)
+    expect(button.scaleY).toBeLessThan(1)
+    buy.emit('pointerout')
+    hover.emit('pointerout')
+    advanceUpdates(1000)
+    expect(card.y).toBe(baseY)
+    expect(button.y).toBe(buttonY)
+    expect(button.scale).toBe(1)
+    expect(account.purchase).not.toHaveBeenCalled()
+  })
+
+  it('reuses light sprites and static stall art while swinging lanterns beneath an unobscured sign', () => {
+    const { parent, objects, advanceUpdates } = createStore()
+    const store = find(parent, 'merchant-store')
+    const sign = find(parent, 'merchant-stall-sign')
+    const canopy = find(parent, 'merchant-canopy-anim')
+    expect(store.list.indexOf(sign)).toBeGreaterThan(store.list.indexOf(canopy))
+    expect(find(sign, 'merchant-sign-backing').drawCalls.length).toBeGreaterThan(0)
+    const lights = objects.filter((object) => object.texture)
+    expect(lights).toHaveLength(6)
+    expect(new Set(lights.map((light) => light.texture)).size).toBe(1)
+    const frame = find(parent, 'merchant-stall')
+    const lantern = find(parent, 'merchant-lantern-1')
+    const housing = lantern.list[0]!
+    const objectCount = objects.length
+    const staticCommands = frame.drawCalls.length + housing.drawCalls.length
+    const rotation = lantern.rotation
+    const intensity = lights[0]!.alpha
+    advanceUpdates(250)
+    expect(objects).toHaveLength(objectCount)
+    expect(frame.drawCalls.length + housing.drawCalls.length).toBe(staticCommands)
+    expect(lantern.rotation).not.toBe(rotation)
+    expect(lights[0]!.alpha).not.toBe(intensity)
+    const title = descendants(sign).find((object) => object.text === 'STORE')!
+    expect(title.x).toBe(Math.round(1280 * 0.5))
+    const prev = find(parent, 'merchant-prev')
+    expect(prev.alpha).toBe(1)
+    expect(prev.data.buttonOptions).toMatchObject({
+      disabledFill: 0x181b24,
+      disabledShadowColor: 0x090b10,
+      disabledHighlightColor: 0x3b4254,
+      disabledKeepOpaque: true,
+    })
+  })
+
   it('reads current, next and maximum effects and prices from persisted catalog levels', () => {
     account.save.upgrades.wallDuration = 4
     account.save.upgrades.shakeDuration = 10
@@ -297,7 +471,7 @@ describe('merchant store', () => {
     account.registered = false
     account.save.coins = 0
     const { parent, completeTween } = createStore(390, 844)
-    expect(labels(parent)).toContain('COINS 0.0')
+    expect(labels(parent)).toContain('0.0 COINS')
     expect(labels(find(parent, 'merchant-upgrade-wallDuration'))).toContain('ACCOUNTS ONLY')
     for (const object of descendants(parent).filter((child) => child.name === 'merchant-buy-hit')) expect(object.input?.enabled).toBe(false)
     tap(find(parent, 'merchant-next').list[0]!)
@@ -317,7 +491,7 @@ describe('merchant store', () => {
     account.save.upgrades.wallDuration = 1
     for (const listener of account.saveListeners) listener()
     await Promise.resolve()
-    expect(labels(parent)).toContain('COINS 90.0')
+    expect(labels(parent)).toContain('90.0 COINS')
     expect(labels(find(parent, 'merchant-upgrade-wallDuration'))).toContain('STAGE 1 / 10')
     expect(labels(find(parent, 'merchant-upgrade-wallDuration'))).toContain('PURCHASED!')
     expect(labels(find(parent, 'merchant-upgrade-wallDuration'))).toContain('20')
@@ -329,8 +503,23 @@ describe('merchant store', () => {
     tap(find(find(parent, 'merchant-upgrade-wallDuration'), 'merchant-buy-hit'))
     await Promise.resolve()
     expect(labels(find(parent, 'merchant-upgrade-wallDuration'))).toContain('Coin balance changed')
-    expect(labels(parent)).toContain('COINS 100.0')
+    expect(labels(parent)).toContain('100.0 COINS')
     expect(labels(find(parent, 'merchant-upgrade-wallDuration'))).toContain('STAGE 0 / 10')
+  })
+
+  it('anchors purchase celebrations to the purchased card on a later page', async () => {
+    const { parent, completeTween } = createStore(320, 844)
+    tap(find(parent, 'merchant-next').list[0]!)
+    completeTween()
+    const pages = find(parent, 'merchant-item-pages')
+    const card = find(parent, 'merchant-upgrade-shakeIntensity')
+    const expectedX = card.x + pages.x
+    const expectedY = card.y
+    tap(find(card, 'merchant-buy-hit'))
+    await Promise.resolve()
+    const particle = find(parent, 'merchant-celebration').drawCalls.find((call) => call.method === 'fillCircle')!
+    expect(particle.args[0]).toBeCloseTo(expectedX)
+    expect(particle.args[1]).toBeCloseTo(expectedY)
   })
 
   it('slides only product pages, snaps after a swipe, and prevents drag-to-purchase', () => {
@@ -401,6 +590,7 @@ describe('merchant store', () => {
     expect(account.saveListeners.size).toBe(0)
     expect(scene.tweens.killTweensOf).toHaveBeenCalled()
     expect(mask.destroyed).toBe(true)
+    expect(scene.events.listenerCount('update')).toBe(0)
     if (webgl) expect(filters!.external.remove).toHaveBeenCalledWith(expect.anything(), true)
     else expect(geometryMask!.destroy).toHaveBeenCalledExactlyOnceWith()
   })
@@ -422,16 +612,121 @@ describe('merchant store', () => {
     await Promise.resolve()
     expect(labels(find(parent, 'merchant-upgrade-wallDuration'))).toContain('ACCOUNTS ONLY')
     expect(labels(parent)).not.toContain('PURCHASED!')
+    expect(find(parent, 'merchant-celebration').drawCalls.some((call) => call.method === 'fillCircle')).toBe(false)
   })
 
-  it('supports reduced-motion paging and scene shutdown cleanup', () => {
+  it('snaps reduced-motion pages, skips decorative animation, and releases listeners on shutdown', async () => {
     vi.stubGlobal('window', { matchMedia: () => ({ matches: true }) })
-    const { parent, scene } = createStore(390, 844)
+    const { parent, scene, advanceUpdates } = createStore(390, 844, true)
+    const viewport = find(parent, 'merchant-items')
+    const card = find(parent, 'merchant-upgrade-wallDuration')
+    expect(card.alpha).toBe(1)
+    expect(find(parent, 'merchant-lantern-1').rotation).toBe(0)
+    tap(find(card, 'merchant-buy-hit'))
+    await Promise.resolve()
+    const canopy = find(parent, 'merchant-canopy-anim')
+    const environmentCommands = canopy.drawCalls.length
+    advanceUpdates(1000)
+    expect(canopy.drawCalls).toHaveLength(environmentCommands)
+    expect(find(parent, 'merchant-upgrade-art-wallDuration').y).toBe(0)
+    expect(find(parent, 'merchant-celebration').drawCalls.some((call) => call.method === 'fillCircle')).toBe(false)
     tap(find(parent, 'merchant-next').list[0]!)
     expect(find(parent, 'merchant-item-pages').x).toBeLessThan(0)
     expect(scene.tweens.add).not.toHaveBeenCalled()
+    expect(viewport.filters!.external.addMask.mock.results[0]!.value.active).toBe(false)
+    const dots = find(parent, 'merchant-page-dots')
+    const dotCommands = dots.drawCalls.length
+    advanceUpdates(1000)
+    expect(dots.drawCalls).toHaveLength(dotCommands)
     scene.events.emit('shutdown')
     expect(account.saveListeners.size).toBe(0)
     expect(scene.input.listenerCount('pointermove')).toBe(0)
+    expect(scene.events.listenerCount('update')).toBe(0)
+  })
+
+  it.each(['ancestor', 'document'])('pauses page motion and decorative clocks while a %s is hidden', (hiddenBy) => {
+    const { parent, scene, advanceUpdates, advanceTween } = createStore(320, 844, true)
+    advanceUpdates(50)
+    tap(find(parent, 'merchant-next').list[0]!)
+    advanceTween(0.35)
+    advanceUpdates(50)
+    const pages = find(parent, 'merchant-item-pages')
+    const card = find(parent, 'merchant-upgrade-wallDuration')
+    const canopy = find(parent, 'merchant-canopy-anim')
+    const x = pages.x
+    const y = card.y
+    const commands = canopy.drawCalls.length
+    if (hiddenBy === 'ancestor') parent.setVisible(false)
+    else vi.stubGlobal('document', { hidden: true })
+    advanceUpdates(1000)
+    const viewport = find(parent, 'merchant-items')
+    const killedTweens = scene.tweens.killTweensOf.mock.calls.length
+    scene.input.emit('pointerdown', { id: 1, x: viewport.x + 100, y: viewport.y + 80, isDown: true })
+    expect(scene.tweens.killTweensOf).toHaveBeenCalledTimes(killedTweens)
+    advanceTween(0.8)
+    expect(pages.x).toBe(x)
+    expect(card.y).toBe(y)
+    expect(canopy.drawCalls).toHaveLength(commands)
+    expect(scene.tweens.add.mock.results[0]!.value.pause).toHaveBeenCalledTimes(1)
+    if (hiddenBy === 'ancestor') parent.setVisible(true)
+    else vi.stubGlobal('document', { hidden: false })
+    advanceUpdates(50)
+    advanceTween(0.6)
+    expect(pages.x).not.toBe(x)
+    expect(canopy.drawCalls.length).toBeGreaterThan(commands)
+    expect(scene.tweens.add.mock.results[0]!.value.resume).toHaveBeenCalledTimes(1)
+  })
+
+  it('animates page-dot progress without resetting it when a save rebuilds the navigation', () => {
+    const { parent, advanceUpdates, advanceTween } = createStore(390, 844)
+    tap(find(parent, 'merchant-next').list[0]!)
+    advanceTween(0.5)
+    advanceUpdates(50)
+    const dots = find(parent, 'merchant-page-dots')
+    const widths = dots.drawCalls.filter((call) => call.method === 'fillRoundedRect').slice(-2).map((call) => call.args[2])
+    expect(widths).toHaveLength(2)
+    expect(Number(widths[0])).toBeLessThan(15)
+    expect(Number(widths[1])).toBeLessThan(15)
+    for (const listener of account.saveListeners) listener()
+    const refreshed = find(parent, 'merchant-page-dots')
+    expect(refreshed.drawCalls.filter((call) => call.method === 'fillRoundedRect').map((call) => call.args[2])).toEqual(widths)
+  })
+
+  it('shows both pages and activates the WebGL mask throughout a page slide', () => {
+    const { parent, completeTween } = createStore(390, 844, true)
+    const mask = find(parent, 'merchant-items').filters!.external.addMask.mock.results[0]!.value
+    const page1Card = find(parent, 'merchant-upgrade-wallDuration')
+    const page2Card = find(parent, 'merchant-upgrade-mergeBonus')
+    expect(page1Card.visible).toBe(true)
+    expect(page2Card.visible).toBe(false)
+    expect(mask.active).toBe(false)
+    tap(find(parent, 'merchant-next').list[0]!)
+    expect(page1Card.visible).toBe(true)
+    expect(page2Card.visible).toBe(true)
+    expect(mask.active).toBe(true)
+    completeTween()
+    expect(page1Card.visible).toBe(false)
+    expect(page2Card.visible).toBe(true)
+    expect(mask.active).toBe(false)
+  })
+
+  it('retains clipping and disables purchases when a pointer interrupts a partially completed slide', () => {
+    const { parent, scene, advanceTween, completeTween } = createStore(320, 844, true)
+    const viewport = find(parent, 'merchant-items')
+    const mask = viewport.filters!.external.addMask.mock.results[0]!.value
+    tap(find(parent, 'merchant-next').list[0]!)
+    advanceTween(0.4)
+    const down = { id: 1, x: viewport.x + 100, y: viewport.y + 80, isDown: true }
+    scene.input.emit('pointerdown', down)
+    expect(mask.active).toBe(true)
+    expect(find(parent, 'merchant-upgrade-wallDuration').visible).toBe(true)
+    expect(find(parent, 'merchant-upgrade-shakeIntensity').visible).toBe(true)
+    for (const hit of descendants(parent).filter((object) => object.name === 'merchant-buy-hit')) expect(hit.input?.enabled).toBe(false)
+    scene.input.emit('pointerup', { ...down, isDown: false })
+    expect(mask.active).toBe(true)
+    completeTween()
+    expect(mask.active).toBe(false)
+    expect(find(parent, 'merchant-upgrade-wallDuration').visible).toBe(false)
+    expect(find(find(parent, 'merchant-upgrade-shakeIntensity'), 'merchant-buy-hit').input?.enabled).toBe(true)
   })
 })

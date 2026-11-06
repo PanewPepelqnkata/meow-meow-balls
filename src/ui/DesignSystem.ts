@@ -62,6 +62,10 @@ export interface ChunkyButtonOptions {
   textColor?: string
   fontSize?: number
   disabled?: boolean
+  disabledFill?: number
+  disabledShadowColor?: number
+  disabledHighlightColor?: number
+  disabledKeepOpaque?: boolean
   onClick?: () => void
 }
 
@@ -171,9 +175,10 @@ export class ChunkyButton {
 
   public render(): void {
     const { w, h, disabled } = this.options
-    const fill = disabled ? UI_COLORS.BTN_GRAY : (this.options.fill ?? UI_COLORS.BTN_BLUE)
-    const shadow = disabled ? UI_COLORS.BTN_GRAY_SHADOW : (this.options.shadowColor ?? UI_COLORS.BTN_BLUE_SHADOW)
-    const highlight = disabled ? UI_COLORS.BTN_GRAY_HIGHLIGHT : (this.options.highlightColor ?? UI_COLORS.BTN_BLUE_HIGHLIGHT)
+    const fill = disabled ? (this.options.disabledFill ?? UI_COLORS.BTN_GRAY) : (this.options.fill ?? UI_COLORS.BTN_BLUE)
+    const shadow = disabled ? (this.options.disabledShadowColor ?? UI_COLORS.BTN_GRAY_SHADOW) : (this.options.shadowColor ?? UI_COLORS.BTN_BLUE_SHADOW)
+    const highlight = disabled ? (this.options.disabledHighlightColor ?? UI_COLORS.BTN_GRAY_HIGHLIGHT) : (this.options.highlightColor ?? UI_COLORS.BTN_BLUE_HIGHLIGHT)
+    const keepOpaque = !!this.options.disabledKeepOpaque
 
     this.bg.clear()
 
@@ -194,7 +199,7 @@ export class ChunkyButton {
     this.bg.fillRoundedRect(-w / 2, -h / 2 + offsetY, w, h - 2, cornerR)
 
     // Top highlight pill (specular gloss)
-    if (!this.isPressed && !disabled) {
+    if (!this.isPressed && (!disabled || keepOpaque)) {
       this.bg.fillStyle(highlight, 0.4)
       const hlInset = this.options.pill ? 12 : 6
       this.bg.fillRoundedRect(-w / 2 + hlInset, -h / 2 + 3 + offsetY, w - hlInset * 2, Math.max(3, h * 0.2), cornerR * 0.5)
@@ -208,7 +213,7 @@ export class ChunkyButton {
     const contentY = offsetY + (this.isPressed ? 1 : -1)
     if (this.labelText) {
       this.labelText.setY(contentY)
-      this.labelText.setAlpha(disabled ? 0.5 : 1)
+      this.labelText.setAlpha(disabled && !keepOpaque ? 0.5 : 1)
     }
 
     if (this.iconG && this.options.icon) {
@@ -216,7 +221,7 @@ export class ChunkyButton {
       this.iconG.setY(contentY)
       const size = this.options.iconSize ?? Math.round(h * 0.45)
       this.options.icon(this.iconG, 0, 0, size)
-      this.iconG.setAlpha(disabled ? 0.5 : 1)
+      this.iconG.setAlpha(disabled && !keepOpaque ? 0.5 : 1)
     }
   }
 
