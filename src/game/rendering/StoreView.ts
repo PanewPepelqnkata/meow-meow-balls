@@ -457,14 +457,18 @@ export class StoreView {
     }
 
     const scale = clamp(this.footerH / 82, 0.56, 1)
-    const rightBarrelX = x + w - 34 * scale - 4
-    const rightSmallBarrelX = x + w - 71 * scale - 4
+    const leftBigX = x + 30 * scale + 4
+    const leftSmallX = x + 67 * scale + 4
+    const rightBigX = x + w - 30 * scale - 4
+    const rightSmallX = x + w - 67 * scale - 4
+    const bigOpenY = bottom + 1 - 62 * scale + 7
+    const smallOpenY = bottom + 2 - 46 * scale + 7
     this.sparkles.length = 0
     this.sparkles.push(
-      { x: x + 30 * scale + 4, y: bottom - 55 * scale, r: 4.5 * scale, phase: 0.2, speed: 1.7, color: 0xfff3b0 },
-      { x: x + 67 * scale + 4, y: bottom - 40 * scale, r: 4.0 * scale, phase: 2.1, speed: 1.45, color: 0xffe680 },
-      { x: rightBarrelX, y: bottom - 56 * scale, r: 4.8 * scale, phase: 3.8, speed: 1.6, color: 0xf4d6ff },
-      { x: rightSmallBarrelX, y: bottom - 41 * scale, r: 3.8 * scale, phase: 5.1, speed: 1.9, color: 0xe6b8ff },
+      { x: leftBigX, y: bigOpenY + 0.5 * scale, r: 4.5 * scale, phase: 0.2, speed: 1.7, color: 0xfff3b0 },
+      { x: leftSmallX, y: smallOpenY + 0.8 * scale, r: 4.0 * scale, phase: 2.1, speed: 1.45, color: 0xffe680 },
+      { x: rightBigX, y: bigOpenY + 0.2 * scale, r: 4.8 * scale, phase: 3.8, speed: 1.6, color: 0xf4d6ff },
+      { x: rightSmallX, y: smallOpenY + 0.6 * scale, r: 3.8 * scale, phase: 5.1, speed: 1.9, color: 0xe6b8ff },
     )
   }
 
