@@ -200,7 +200,7 @@ Persistence:
 - No ads or IAP unless explicitly approved later.
 
 - Account wallets hydrate from `user_progress` and receive server settlement credits only for eligible finalized score rows; client payloads contain no coin delta or protected wallet fields.
-- Store: three account-only upgrades are purchasable with server-priced, revision-checked RPCs. Wall duration: 10 levels, 10 coins + 10 per owned level; shake duration: 10 levels, same price progression; shake intensity: 5 levels, 20 coins + 20 per owned level.
+- Store: three account-only upgrades are purchasable with server-priced, revision-checked RPCs. Wall duration: 10 levels, 10 coins + 10 per owned level; shake duration: 10 levels, same price progression; shake intensity: 5 levels, 20 coins + 20 per owned level. The store is a hand-drawn merchant stall with illustrated ability objects, segmented stage bars, current/next/max effect previews, guest account gating, and portrait paging for short viewports.
 - Upgrade levels are authoritative in `user_progress.upgrades` and snapshotted at ability activation. All abilities, including Swap, and purchases require a registered account; once-per-run charges remain unchanged.
 
 ## 9. Supabase Backend
