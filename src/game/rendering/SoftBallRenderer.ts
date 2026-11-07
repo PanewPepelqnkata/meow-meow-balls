@@ -163,6 +163,7 @@ export class SoftBallRenderer {
   unregister(ballId: number): void {
     dropRoboAntennaState(ballId)
     dropPirateState(ballId)
+    this.renderables.delete(ballId)
     this.looks.delete(ballId)
     this.contourPool.delete(ballId)
     this.deforms.delete(ballId)
@@ -174,6 +175,7 @@ export class SoftBallRenderer {
   clear(): void {
     clearRoboAntennaStates()
     clearPirateStates()
+    this.renderables.clear()
     this.looks.clear()
     this.contourPool.clear()
     this.deforms.clear()
