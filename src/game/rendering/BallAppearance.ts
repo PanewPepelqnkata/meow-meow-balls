@@ -2718,8 +2718,8 @@ function stepPirateSpring(
  * wearing a red knotted bandana, a dark pirate bicorne hat with gold trim
  * and white skull-and-crossbones emblem, one big glossy left eye and a dark
  * leather eyepatch over the right eye, a stitched left cheek scar, a happy
- * open mouth, a brown leather belt with a gold buckle, a silver hook hand
- * with a golden guard on the lower right, and a cute red-yellow-blue parrot
+ * open mouth, a brown leather belt with a gold buckle, a two-part wooden
+ * handle + silver hook hand on the left side, and a cute red-yellow-blue parrot
  * perched on the upper right shoulder/brim.
  */
 export function drawPirateBall(
@@ -2800,6 +2800,41 @@ export function drawPirateBall(
   g.fillStyle(pal.glow, 0.08 + glowWobble * 0.01)
   g.fillCircle(cx, cy, r * 1.24)
 
+  // ---- 1B. REAR EYEPATCH STRAP WRAP (peeking behind the head contour) ----
+  // Drawn BEFORE the main body fill so the body naturally occludes the interior
+  // while the brown strap visibly wraps around the left forehead and right temple.
+  {
+    const strapOut = thumbnail ? collectionInkWidth(r) * 0.95 : Math.max(1.8, out * 0.72)
+    // Upper-left wrap tab emerging behind the head above the left eye / under bandana.
+    const l0 = bp(-r * 0.62, -r * 0.66)
+    const l1 = bp(-r * 0.48, -r * 0.88)
+    const l2 = bp(-r * 0.30, -r * 0.82)
+    const l3 = bp(-r * 0.42, -r * 0.56)
+    g.fillStyle(pal.beltDark, 1)
+    g.beginPath()
+    g.moveTo(l0.x, l0.y)
+    quadFrom(g, l0.x, l0.y, l1.x, l1.y, l2.x, l2.y)
+    g.lineTo(l3.x, l3.y)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(strapOut, INK, 1)
+    g.strokePath()
+
+    // Right temple wrap tab curving around the back of the ball.
+    const r0 = bp(r * 0.88, -r * 0.06)
+    const r1 = bp(r * 1.07, -r * 0.01)
+    const r2 = bp(r * 1.06, r * 0.14)
+    const r3 = bp(r * 0.86, r * 0.12)
+    g.fillStyle(pal.beltDark, 1)
+    g.beginPath()
+    g.moveTo(r0.x, r0.y)
+    quadFrom(g, r0.x, r0.y, r1.x, r1.y, r2.x, r2.y)
+    quadFrom(g, r2.x, r2.y, bp(r * 0.98, r * 0.15).x, bp(r * 0.98, r * 0.15).y, r3.x, r3.y)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(strapOut, INK, 1)
+    g.strokePath()
+  }
   // ---- 2. GOLDEN BODY FILL & CLIPPED SHADING ----
   g.fillStyle(pal.body, 1)
   if (poly && poly.length >= 3) {
@@ -2915,22 +2950,71 @@ export function drawPirateBall(
   const blinkMs = (nowMs + seed * 1013) % 4600
   const blinking = panic <= 0.45 && blinkMs < 130
 
-  // Eyepatch diagonal strap from top-center forehead across right eye to right temple.
+  // Eyepatch continuous brown leather strap wrapping across the entire forehead
+  // from the upper-left head contour through the right eye to the right temple contour.
   {
-    const st0 = bp(-r * 0.16, -r * 0.52)
-    const st1 = bp(r * 0.35, -r * 0.16)
-    const st2 = bp(r * 0.94, r * 0.04)
-    const strapW = thumbnail ? collectionInkWidth(r) * 1.5 : Math.max(3, r * 0.105)
-    g.lineStyle(strapW + ink * 0.9, INK, 1)
-    g.beginPath()
-    g.moveTo(st0.x, st0.y)
-    quadFrom(g, st0.x, st0.y, st1.x, st1.y, st2.x, st2.y)
-    g.strokePath()
-    g.lineStyle(strapW, pal.hat, 1)
-    g.beginPath()
-    g.moveTo(st0.x, st0.y)
-    quadFrom(g, st0.x, st0.y, st1.x, st1.y, st2.x, st2.y)
-    g.strokePath()
+    const clipStrapQuad = (
+      x0: number,
+      y0: number,
+      cx1: number,
+      cy1: number,
+      x1: number,
+      y1: number,
+      steps = 12,
+    ): void => {
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps
+        const u = 1 - t
+        pirateBodyClipper.lineTo(
+          u * u * x0 + 2 * u * t * cx1 + t * t * x1,
+          u * u * y0 + 2 * u * t * cy1 + t * t * y1,
+        )
+      }
+    }
+    // Top and bottom curves of the front strap span beyond [-r, +r] so
+    // pirateBodyClipper trims them cleanly flush against the live body contour.
+    const sTop0 = bp(-r * 0.64, -r * 0.86)
+    const sTop1 = bp(r * 0.14, -r * 0.30)
+    const sTop2 = bp(r * 1.08, -r * 0.01)
+    const sBot2 = bp(r * 1.06, r * 0.14)
+    const sBot1 = bp(r * 0.06, -r * 0.16)
+    const sBot0 = bp(-r * 0.74, -r * 0.74)
+
+    // Main brown leather strap fill.
+    g.fillStyle(pal.belt, 1)
+    pirateBodyClipper.beginPath()
+    pirateBodyClipper.lineTo(sTop0.x, sTop0.y)
+    clipStrapQuad(sTop0.x, sTop0.y, sTop1.x, sTop1.y, sTop2.x, sTop2.y)
+    pirateBodyClipper.lineTo(sBot2.x, sBot2.y)
+    clipStrapQuad(sBot2.x, sBot2.y, sBot1.x, sBot1.y, sBot0.x, sBot0.y)
+    pirateBodyClipper.fill(g)
+
+    // Lower bevel shading along the strap.
+    const sMid0 = bp(-r * 0.70, -r * 0.79)
+    const sMid1 = bp(r * 0.09, -r * 0.22)
+    const sMid2 = bp(r * 1.07, r * 0.08)
+    g.fillStyle(pal.beltDark, 0.65)
+    pirateBodyClipper.beginPath()
+    pirateBodyClipper.lineTo(sMid0.x, sMid0.y)
+    clipStrapQuad(sMid0.x, sMid0.y, sMid1.x, sMid1.y, sMid2.x, sMid2.y)
+    pirateBodyClipper.lineTo(sBot2.x, sBot2.y)
+    clipStrapQuad(sBot2.x, sBot2.y, sBot1.x, sBot1.y, sBot0.x, sBot0.y)
+    pirateBodyClipper.fill(g)
+
+    // Top and bottom dark ink borders along the strap (clipped to body).
+    const strapRim = Math.max(1.1, ink * 0.38)
+    g.fillStyle(INK, 1)
+    for (const [p0, p1, p2] of [
+      [sTop0, sTop1, sTop2],
+      [sBot0, sBot1, sBot2],
+    ] as const) {
+      pirateBodyClipper.beginPath()
+      pirateBodyClipper.lineTo(p0.x, p0.y - strapRim)
+      clipStrapQuad(p0.x, p0.y - strapRim, p1.x, p1.y - strapRim, p2.x, p2.y - strapRim)
+      pirateBodyClipper.lineTo(p2.x, p2.y + strapRim)
+      clipStrapQuad(p2.x, p2.y + strapRim, p1.x, p1.y + strapRim, p0.x, p0.y + strapRim)
+      pirateBodyClipper.fill(g)
+    }
   }
 
   // Left eye (index 0): large expressive eye with dark pupil + dual white highlights.
@@ -3186,12 +3270,12 @@ export function drawPirateBall(
     g.lineStyle(bdOut, INK, 1)
     g.strokePath()
 
-    // Lower tail hanging down-left.
-    const t2a = hp(-r * 0.76, -r * 0.10)
-    const t2b = hp(-r * 1.16, r * 0.06 + sw * 0.5)
-    const t2c = hp(-r * 1.28, r * 0.38 + sw * 1.0)
-    const t2d = hp(-r * 0.92, r * 0.24 + sw * 0.5)
-    const t2e = hp(-r * 0.72, r * 0.08)
+    // Lower tail hanging out-left above the hook assembly (clean separation).
+    const t2a = hp(-r * 0.76, -r * 0.12)
+    const t2b = hp(-r * 1.14, -r * 0.02 + sw * 0.45)
+    const t2c = hp(-r * 1.26, r * 0.16 + sw * 0.85)
+    const t2d = hp(-r * 0.94, r * 0.12 + sw * 0.45)
+    const t2e = hp(-r * 0.74, r * 0.02)
     g.fillStyle(pal.bandana, 1)
     g.beginPath()
     g.moveTo(t2a.x, t2a.y)
@@ -3202,8 +3286,8 @@ export function drawPirateBall(
     // Fold line inside lower tail.
     g.lineStyle(Math.max(1.2, ink * 0.55), pal.bandanaDark, 0.85)
     g.beginPath()
-    g.moveTo(hp(-r * 0.84, -r * 0.02).x, hp(-r * 0.84, -r * 0.02).y)
-    quadFrom(g, hp(-r * 0.84, -r * 0.02).x, hp(-r * 0.84, -r * 0.02).y, hp(-r * 1.04, r * 0.12 + sw * 0.5).x, hp(-r * 1.04, r * 0.12 + sw * 0.5).y, hp(-r * 1.14, r * 0.26 + sw * 0.8).x, hp(-r * 1.14, r * 0.26 + sw * 0.8).y)
+    g.moveTo(hp(-r * 0.84, -r * 0.05).x, hp(-r * 0.84, -r * 0.05).y)
+    quadFrom(g, hp(-r * 0.84, -r * 0.05).x, hp(-r * 0.84, -r * 0.05).y, hp(-r * 1.02, r * 0.04 + sw * 0.45).x, hp(-r * 1.02, r * 0.04 + sw * 0.45).y, hp(-r * 1.14, r * 0.11 + sw * 0.7).x, hp(-r * 1.14, r * 0.11 + sw * 0.7).y)
     g.strokePath()
     g.lineStyle(bdOut, INK, 1)
     g.beginPath()
@@ -3406,39 +3490,62 @@ export function drawPirateBall(
   }
 
   // ---- 9. PARROT COMPANION (perched on upper-right hat brim/shoulder) ----
+  // Slightly finer line weight than the main ball so small details (wings, feathers,
+  // beak, claws) stay crisp and readable at normal gameplay size.
   {
-    const prOut = thumbnail ? collectionInkWidth(r) : Math.max(2.1, out * 0.78)
+    const prOut = thumbnail ? Math.max(1.1, collectionInkWidth(r) * 0.66) : Math.max(1.35, out * 0.50)
+    const prDetail = thumbnail ? Math.max(0.85, prOut * 0.68) : Math.max(1.0, prOut * 0.64)
     const prAnchor = bp(r * 0.80, -r * (0.44 - sp.parrotBob))
     const prRot = sp.hatTilt * 0.7
     const pp = (ux: number, uy: number): { x: number; y: number } => rp(prAnchor.x, prAnchor.y, ux, uy, prRot)
 
-    // Red tail feathers hanging down below the perch.
-    const tf0 = pp(-r * 0.02, r * 0.18)
-    const tf1 = pp(r * 0.01, r * 0.56)
-    const tf2 = pp(r * 0.09, r * 0.34)
-    const tf3 = pp(r * 0.14, r * 0.58)
-    const tf4 = pp(r * 0.21, r * 0.18)
+    // Red & blue tail feathers hanging down below the perch.
+    const tf0 = pp(-r * 0.02, r * 0.16)
+    const tf1 = pp(-r * 0.01, r * 0.58)
+    const tf2 = pp(r * 0.09, r * 0.42)
+    const tf3 = pp(r * 0.16, r * 0.60)
+    const tf4 = pp(r * 0.22, r * 0.16)
+    g.fillStyle(pal.parrotBlue, 1)
+    g.beginPath()
+    g.moveTo(tf1.x, tf1.y)
+    g.lineTo(tf2.x, tf2.y)
+    g.lineTo(tf3.x, tf3.y)
+    quadFrom(g, tf3.x, tf3.y, pp(r * 0.22, r * 0.42).x, pp(r * 0.22, r * 0.42).y, tf4.x, tf4.y)
+    g.closePath()
+    g.fillPath()
     g.fillStyle(pal.parrotRedDark, 1)
     g.beginPath()
     g.moveTo(tf0.x, tf0.y)
-    quadFrom(g, tf0.x, tf0.y, pp(-r * 0.03, r * 0.42).x, pp(-r * 0.03, r * 0.42).y, tf1.x, tf1.y)
+    quadFrom(g, tf0.x, tf0.y, pp(-r * 0.04, r * 0.42).x, pp(-r * 0.04, r * 0.42).y, tf1.x, tf1.y)
     g.lineTo(tf2.x, tf2.y)
-    g.lineTo(tf3.x, tf3.y)
-    quadFrom(g, tf3.x, tf3.y, pp(r * 0.22, r * 0.40).x, pp(r * 0.22, r * 0.40).y, tf4.x, tf4.y)
+    quadFrom(g, tf2.x, tf2.y, pp(r * 0.15, r * 0.34).x, pp(r * 0.15, r * 0.34).y, tf4.x, tf4.y)
     g.closePath()
     g.fillPath()
+    // Delicate feather split line on tail.
+    g.lineStyle(prDetail * 0.85, INK, 0.85)
+    g.beginPath()
+    g.moveTo(pp(r * 0.08, r * 0.20).x, pp(r * 0.08, r * 0.20).y)
+    g.lineTo(tf2.x, tf2.y)
+    g.strokePath()
     g.lineStyle(prOut * 0.9, INK, 1)
+    g.beginPath()
+    g.moveTo(tf0.x, tf0.y)
+    quadFrom(g, tf0.x, tf0.y, pp(-r * 0.04, r * 0.42).x, pp(-r * 0.04, r * 0.42).y, tf1.x, tf1.y)
+    g.lineTo(tf2.x, tf2.y)
+    g.lineTo(tf3.x, tf3.y)
+    quadFrom(g, tf3.x, tf3.y, pp(r * 0.22, r * 0.42).x, pp(r * 0.22, r * 0.42).y, tf4.x, tf4.y)
+    g.closePath()
     g.strokePath()
 
     // Parrot plump red body + head crest.
-    const pb0 = pp(-r * 0.18, r * 0.02)
-    const pb1 = pp(-r * 0.22, -r * 0.30)
-    const pb2 = pp(-r * 0.16, -r * 0.58)
-    const pb3 = pp(r * 0.06, -r * 0.66)
-    const pb4 = pp(r * 0.28, -r * 0.50)
-    const pb5 = pp(r * 0.38, -r * 0.44) // crest tuft
+    const pb0 = pp(-r * 0.19, r * 0.02)
+    const pb1 = pp(-r * 0.23, -r * 0.30)
+    const pb2 = pp(-r * 0.16, -r * 0.59)
+    const pb3 = pp(r * 0.06, -r * 0.67)
+    const pb4 = pp(r * 0.28, -r * 0.51)
+    const pb5 = pp(r * 0.39, -r * 0.45) // crest tuft
     const pb6 = pp(r * 0.26, -r * 0.34)
-    const pb7 = pp(r * 0.32, r * 0.04)
+    const pb7 = pp(r * 0.33, r * 0.04)
     const pb8 = pp(r * 0.08, r * 0.24)
     g.fillStyle(pal.parrotRed, 1)
     g.beginPath()
@@ -3451,16 +3558,21 @@ export function drawPirateBall(
     quadFrom(g, pb8.x, pb8.y, pp(-r * 0.12, r * 0.20).x, pp(-r * 0.12, r * 0.20).y, pb0.x, pb0.y)
     g.closePath()
     g.fillPath()
-    // Subtle chest scallop shading.
+    // Warm crown highlight on parrot head.
+    const phC = pp(r * 0.02, -r * 0.55)
+    g.fillStyle(0xff766b, 0.55)
+    g.fillEllipse(phC.x, phC.y, r * 0.20, r * 0.10)
+    // Delicate chest feather scallops.
     if (!thumbnail) {
-      g.lineStyle(Math.max(1.2, ink * 0.48), pal.parrotRedDark, 0.8)
+      g.lineStyle(Math.max(0.85, prDetail * 0.72), pal.parrotRedDark, 0.82)
       for (const [cx0, cy0] of [
-        [-0.08, -0.10],
-        [0.02, -0.06],
+        [-0.08, -0.11],
+        [0.01, -0.06],
+        [-0.04, 0.02],
       ] as const) {
-        const sc0 = pp(r * (cx0 - 0.05), r * cy0)
-        const sc1 = pp(r * cx0, r * (cy0 + 0.06))
-        const sc2 = pp(r * (cx0 + 0.05), r * cy0)
+        const sc0 = pp(r * (cx0 - 0.045), r * cy0)
+        const sc1 = pp(r * cx0, r * (cy0 + 0.055))
+        const sc2 = pp(r * (cx0 + 0.045), r * cy0)
         g.beginPath()
         g.moveTo(sc0.x, sc0.y)
         quadFrom(g, sc0.x, sc0.y, sc1.x, sc1.y, sc2.x, sc2.y)
@@ -3479,45 +3591,29 @@ export function drawPirateBall(
     g.closePath()
     g.strokePath()
 
-    // White eye patch + happy curved eye arc on the parrot.
+    // Crisp white eye patch + expressive eye on the parrot.
     const peC = pp(r * 0.05, -r * 0.42)
     g.fillStyle(0xffffff, 1)
-    g.fillEllipse(peC.x, peC.y, r * 0.21, r * 0.24)
-    g.lineStyle(prOut * 0.82, INK, 1)
-    g.strokeEllipse(peC.x, peC.y, r * 0.21, r * 0.24)
+    g.fillEllipse(peC.x, peC.y, r * 0.22, r * 0.25)
+    g.lineStyle(prDetail, INK, 1)
+    g.strokeEllipse(peC.x, peC.y, r * 0.22, r * 0.25)
     if (panic > 0.5) {
-      // Startled dot pupil when panicking.
       g.fillStyle(INK, 1)
-      g.fillCircle(peC.x, peC.y, Math.max(1.3, r * 0.045))
+      g.fillCircle(peC.x, peC.y, Math.max(1.2, r * 0.045))
     } else {
-      // Cheerful closed-arc eye.
-      const ea0 = pp(r * 0.00, -r * 0.41)
+      const ea0 = pp(-r * 0.005, -r * 0.40)
       const ea1 = pp(r * 0.05, -r * 0.48)
-      const ea2 = pp(r * 0.10, -r * 0.40)
-      g.lineStyle(Math.max(1.4, prOut * 0.8), INK, 1)
+      const ea2 = pp(r * 0.105, -r * 0.39)
+      g.lineStyle(Math.max(1.15, prDetail * 1.05), INK, 1)
       g.beginPath()
       g.moveTo(ea0.x, ea0.y)
       quadFrom(g, ea0.x, ea0.y, ea1.x, ea1.y, ea2.x, ea2.y)
       g.strokePath()
     }
 
-    // Curved golden-yellow beak (upper + lower mandible).
-    const bk0 = pp(-r * 0.05, -r * 0.50)
-    const bk1 = pp(-r * 0.28, -r * 0.48)
-    const bk2 = pp(-r * 0.26, -r * 0.26)
-    const bk3 = pp(-r * 0.04, -r * 0.32)
-    g.fillStyle(pal.parrotYellow, 1)
-    g.beginPath()
-    g.moveTo(bk0.x, bk0.y)
-    quadFrom(g, bk0.x, bk0.y, bk1.x, bk1.y, bk2.x, bk2.y)
-    quadFrom(g, bk2.x, bk2.y, bk3.x, bk3.y, bk0.x, bk0.y)
-    g.closePath()
-    g.fillPath()
-    g.lineStyle(prOut * 0.9, INK, 1)
-    g.strokePath()
-    // Lower beak mandible.
-    const lb0 = pp(-r * 0.16, -r * 0.30)
-    const lb1 = pp(-r * 0.10, -r * 0.20)
+    // Hooked golden-yellow beak (lower mandible + upper hooked maxilla with highlight).
+    const lb0 = pp(-r * 0.18, -r * 0.30)
+    const lb1 = pp(-r * 0.11, -r * 0.19)
     const lb2 = pp(-r * 0.03, -r * 0.28)
     g.fillStyle(pal.goldDark, 1)
     g.beginPath()
@@ -3525,20 +3621,50 @@ export function drawPirateBall(
     quadFrom(g, lb0.x, lb0.y, lb1.x, lb1.y, lb2.x, lb2.y)
     g.closePath()
     g.fillPath()
-    g.lineStyle(prOut * 0.8, INK, 1)
+    g.lineStyle(prDetail, INK, 1)
     g.strokePath()
 
-    // Layered tri-color wing (red top, yellow middle, blue tips) with flap angle.
-    const wPivot = pp(r * 0.14, -r * 0.22)
+    const bk0 = pp(-r * 0.04, -r * 0.51)
+    const bk1 = pp(-r * 0.31, -r * 0.49)
+    const bk2 = pp(-r * 0.28, -r * 0.24)
+    const bk3 = pp(-r * 0.03, -r * 0.32)
+    g.fillStyle(pal.parrotYellow, 1)
+    g.beginPath()
+    g.moveTo(bk0.x, bk0.y)
+    quadFrom(g, bk0.x, bk0.y, bk1.x, bk1.y, bk2.x, bk2.y)
+    quadFrom(g, bk2.x, bk2.y, bk3.x, bk3.y, bk0.x, bk0.y)
+    g.closePath()
+    g.fillPath()
+    // Bright culmen highlight on upper beak.
+    const bkh0 = pp(-r * 0.07, -r * 0.47)
+    const bkh1 = pp(-r * 0.23, -r * 0.44)
+    const bkh2 = pp(-r * 0.22, -r * 0.33)
+    g.fillStyle(pal.goldLight, 0.85)
+    g.beginPath()
+    g.moveTo(bkh0.x, bkh0.y)
+    quadFrom(g, bkh0.x, bkh0.y, bkh1.x, bkh1.y, bkh2.x, bkh2.y)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(prOut * 0.92, INK, 1)
+    g.beginPath()
+    g.moveTo(bk0.x, bk0.y)
+    quadFrom(g, bk0.x, bk0.y, bk1.x, bk1.y, bk2.x, bk2.y)
+    quadFrom(g, bk2.x, bk2.y, bk3.x, bk3.y, bk0.x, bk0.y)
+    g.closePath()
+    g.strokePath()
+
+    // Layered tri-color wing (red shoulder, yellow middle coverts, blue primaries)
+    // with delicate feather separation lines so all 3 bands pop clearly.
+    const wPivot = pp(r * 0.13, -r * 0.23)
     const wFlap = -sp.parrotWing * 0.85
     const wp = (ux: number, uy: number): { x: number; y: number } => rp(wPivot.x, wPivot.y, ux, uy, prRot + wFlap)
-    const w0 = wp(-r * 0.08, 0)
-    const w1 = wp(r * 0.16, -r * 0.04)
-    const w2 = wp(r * 0.28, r * 0.22)
-    const w3 = wp(r * 0.26, r * 0.44)
-    const w4 = wp(r * 0.08, r * 0.40)
-    const w5 = wp(-r * 0.08, r * 0.18)
-    // Base wing fill (blue feather tips at bottom).
+    const w0 = wp(-r * 0.09, -r * 0.01)
+    const w1 = wp(r * 0.18, -r * 0.05)
+    const w2 = wp(r * 0.31, r * 0.22)
+    const w3 = wp(r * 0.28, r * 0.46)
+    const w4 = wp(r * 0.07, r * 0.41)
+    const w5 = wp(-r * 0.09, r * 0.19)
+    // Base wing fill (blue primary feathers at bottom).
     g.fillStyle(pal.parrotBlue, 1)
     g.beginPath()
     g.moveTo(w0.x, w0.y)
@@ -3548,9 +3674,9 @@ export function drawPirateBall(
     g.closePath()
     g.fillPath()
     // Yellow mid band on wing.
-    const wy2 = wp(r * 0.25, r * 0.18)
-    const wy3 = wp(r * 0.18, r * 0.28)
-    const wy4 = wp(-r * 0.02, r * 0.22)
+    const wy2 = wp(r * 0.27, r * 0.18)
+    const wy3 = wp(r * 0.18, r * 0.29)
+    const wy4 = wp(-r * 0.04, r * 0.23)
     g.fillStyle(pal.parrotYellow, 1)
     g.beginPath()
     g.moveTo(w0.x, w0.y)
@@ -3560,9 +3686,9 @@ export function drawPirateBall(
     g.closePath()
     g.fillPath()
     // Red upper shoulder cap on wing.
-    const wr2 = wp(r * 0.20, r * 0.09)
-    const wr3 = wp(r * 0.08, r * 0.14)
-    const wr4 = wp(-r * 0.06, r * 0.11)
+    const wr2 = wp(r * 0.21, r * 0.09)
+    const wr3 = wp(r * 0.09, r * 0.15)
+    const wr4 = wp(-r * 0.07, r * 0.11)
     g.fillStyle(pal.parrotRed, 1)
     g.beginPath()
     g.moveTo(w0.x, w0.y)
@@ -3570,7 +3696,30 @@ export function drawPirateBall(
     quadFrom(g, wr2.x, wr2.y, wr3.x, wr3.y, wr4.x, wr4.y)
     g.closePath()
     g.fillPath()
-    // Wing outline.
+    // Delicate feather separation lines between red/yellow and yellow/blue tiers
+    // plus subtle primary feather notches.
+    g.lineStyle(Math.max(0.85, prDetail * 0.78), INK, 0.88)
+    g.beginPath()
+    g.moveTo(wr4.x, wr4.y)
+    quadFrom(g, wr4.x, wr4.y, wr3.x, wr3.y, wr2.x, wr2.y)
+    g.strokePath()
+    g.beginPath()
+    g.moveTo(wy4.x, wy4.y)
+    quadFrom(g, wy4.x, wy4.y, wy3.x, wy3.y, wy2.x, wy2.y)
+    g.strokePath()
+    if (!thumbnail) {
+      const fn0 = wp(r * 0.11, r * 0.27)
+      const fn1 = wp(r * 0.16, r * 0.40)
+      const fn2 = wp(r * 0.19, r * 0.24)
+      const fn3 = wp(r * 0.24, r * 0.38)
+      g.beginPath()
+      g.moveTo(fn0.x, fn0.y)
+      g.lineTo(fn1.x, fn1.y)
+      g.moveTo(fn2.x, fn2.y)
+      g.lineTo(fn3.x, fn3.y)
+      g.strokePath()
+    }
+    // Outer wing contour with reduced, clean outline.
     g.lineStyle(prOut, INK, 1)
     g.beginPath()
     g.moveTo(w0.x, w0.y)
@@ -3580,105 +3729,190 @@ export function drawPirateBall(
     g.closePath()
     g.strokePath()
 
-    // Golden parrot claws gripping the hat brim.
-    for (const cxOff of [-0.08, -0.01, 0.06]) {
-      const toe = pp(r * cxOff, r * 0.13)
+    // Distinct golden parrot claws gripping the hat brim (two pairs of toes with thin outlines).
+    for (const [cxOff, cyOff] of [
+      [-0.09, 0.13],
+      [-0.02, 0.14],
+      [0.06, 0.13],
+    ] as const) {
+      const toe = pp(r * cxOff, r * cyOff)
       g.fillStyle(pal.parrotYellow, 1)
-      g.fillEllipse(toe.x, toe.y, r * 0.085, r * 0.12)
-      g.lineStyle(prOut * 0.78, INK, 1)
-      g.strokeEllipse(toe.x, toe.y, r * 0.085, r * 0.12)
+      g.fillEllipse(toe.x, toe.y, r * 0.082, r * 0.125)
+      g.lineStyle(prDetail, INK, 1)
+      g.strokeEllipse(toe.x, toe.y, r * 0.082, r * 0.125)
     }
   }
 
-  // ---- 10. SILVER HOOK HAND WITH GOLDEN GUARD (lower-right) ----
+  // ---- 10. LEFT-SIDE TWO-PART HOOK ASSEMBLY (A: wooden handle + gold band, B: silver hook) ----
   {
-    const hkOut = thumbnail ? collectionInkWidth(r) * 1.05 : Math.max(2.3, out * 0.88)
-    const hkAnchor = bp(r * 0.76, r * 0.44)
-    const hkRot = sp.hookSwing
+    const hkOut = thumbnail ? collectionInkWidth(r) * 0.92 : Math.max(1.9, out * 0.74)
+    // Attached to the character's LEFT side (viewer's left, below cheek scar & above the belt).
+    const hkAnchor = bp(-r * 0.80, r * 0.36)
+    const hkRot = -0.14 + sp.hookSwing
     const kp = (ux: number, uy: number): { x: number; y: number } => rp(hkAnchor.x, hkAnchor.y, ux, uy, hkRot)
 
-    // Curved silver hook blade extending out-and-up in a C-curve.
-    const s0 = kp(r * 0.10, -r * 0.08)
-    const s1 = kp(r * 0.36, -r * 0.09)
-    const s2 = kp(r * 0.56, -r * 0.24)
-    const s3 = kp(r * 0.54, -r * 0.52)
-    const s4 = kp(r * 0.30, -r * 0.56)
-    const s5 = kp(r * 0.19, -r * 0.36) // sharp inner point
-    const s6 = kp(r * 0.33, -r * 0.40)
-    const s7 = kp(r * 0.39, -r * 0.26)
-    const s8 = kp(r * 0.28, r * 0.07)
-    const s9 = kp(r * 0.10, r * 0.08)
+    // ---- ELEMENT B: Separate silver curved pirate hook emerging from the wooden handle ----
+    // Drawn first so its base shaft connects cleanly into the wooden handle's gold collar.
+    const s0 = kp(-r * 0.27, -r * 0.065) // upper shaft entering wooden handle
+    const s1 = kp(-r * 0.54, -r * 0.08)
+    const s2 = kp(-r * 0.76, -r * 0.24)
+    const s3 = kp(-r * 0.74, -r * 0.54)
+    const s4 = kp(-r * 0.48, -r * 0.60)
+    const s5 = kp(-r * 0.35, -r * 0.38) // sharp inner hook point
+    const s6 = kp(-r * 0.50, -r * 0.43)
+    const s7 = kp(-r * 0.58, -r * 0.26)
+    const s8 = kp(-r * 0.45, r * 0.06)
+    const s9 = kp(-r * 0.27, r * 0.075) // lower shaft entering wooden handle
     g.fillStyle(pal.hook, 1)
     g.beginPath()
     g.moveTo(s0.x, s0.y)
     quadFrom(g, s0.x, s0.y, s1.x, s1.y, s2.x, s2.y)
     quadFrom(g, s2.x, s2.y, s3.x, s3.y, s4.x, s4.y)
-    quadFrom(g, s4.x, s4.y, kp(r * 0.16, -r * 0.48).x, kp(r * 0.16, -r * 0.48).y, s5.x, s5.y)
+    quadFrom(g, s4.x, s4.y, kp(-r * 0.32, -r * 0.52).x, kp(-r * 0.32, -r * 0.52).y, s5.x, s5.y)
     quadFrom(g, s5.x, s5.y, s6.x, s6.y, s7.x, s7.y)
     quadFrom(g, s7.x, s7.y, s8.x, s8.y, s9.x, s9.y)
     g.closePath()
     g.fillPath()
-    // Bright silver highlight along outer hook curve.
-    g.lineStyle(Math.max(1.5, r * 0.045), pal.hookLight, 0.85)
+
+    // Metallic inner-curve bevel shade on the silver hook.
+    g.fillStyle(pal.hookDark, 0.58)
     g.beginPath()
-    const hl0 = kp(r * 0.18, -r * 0.01)
-    const hl1 = kp(r * 0.46, -r * 0.12)
-    const hl2 = kp(r * 0.45, -r * 0.44)
+    g.moveTo(s5.x, s5.y)
+    quadFrom(g, s5.x, s5.y, s6.x, s6.y, s7.x, s7.y)
+    quadFrom(g, s7.x, s7.y, s8.x, s8.y, s9.x, s9.y)
+    g.lineTo(kp(-r * 0.27, r * 0.01).x, kp(-r * 0.27, r * 0.01).y)
+    quadFrom(
+      g,
+      kp(-r * 0.27, r * 0.01).x,
+      kp(-r * 0.27, r * 0.01).y,
+      kp(-r * 0.65, -r * 0.18).x,
+      kp(-r * 0.65, -r * 0.18).y,
+      s5.x,
+      s5.y,
+    )
+    g.closePath()
+    g.fillPath()
+
+    // Crisp specular highlight along outer silver hook curve.
+    g.lineStyle(Math.max(1.3, r * 0.042), pal.hookLight, 0.9)
+    g.beginPath()
+    const hl0 = kp(-r * 0.35, -r * 0.02)
+    const hl1 = kp(-r * 0.66, -r * 0.14)
+    const hl2 = kp(-r * 0.64, -r * 0.46)
     g.moveTo(hl0.x, hl0.y)
     quadFrom(g, hl0.x, hl0.y, hl1.x, hl1.y, hl2.x, hl2.y)
     g.strokePath()
+
+    // Dedicated outline for the metallic hook.
     g.lineStyle(hkOut, INK, 1)
     g.beginPath()
     g.moveTo(s0.x, s0.y)
     quadFrom(g, s0.x, s0.y, s1.x, s1.y, s2.x, s2.y)
     quadFrom(g, s2.x, s2.y, s3.x, s3.y, s4.x, s4.y)
-    quadFrom(g, s4.x, s4.y, kp(r * 0.16, -r * 0.48).x, kp(r * 0.16, -r * 0.48).y, s5.x, s5.y)
+    quadFrom(g, s4.x, s4.y, kp(-r * 0.32, -r * 0.52).x, kp(-r * 0.32, -r * 0.52).y, s5.x, s5.y)
     quadFrom(g, s5.x, s5.y, s6.x, s6.y, s7.x, s7.y)
     quadFrom(g, s7.x, s7.y, s8.x, s8.y, s9.x, s9.y)
     g.closePath()
     g.strokePath()
 
-    // Golden dome cup/guard at base of the hook.
-    const c0 = kp(-r * 0.08, -r * 0.22)
-    const c1 = kp(r * 0.16, -r * 0.20)
-    const c2 = kp(r * 0.18, r * 0.18)
-    const c3 = kp(-r * 0.06, r * 0.22)
-    const c4 = kp(-r * 0.20, 0)
-    g.fillStyle(pal.gold, 1)
+    // ---- ELEMENT A: Brown wooden handle / forearm cup connected to the left side ----
+    // Rounded wooden cuff/handle with warm wood shading, gold mounting band, and its own outline.
+    const w0 = kp(r * 0.10, -r * 0.21) // upper body-side attachment
+    const w1 = kp(-r * 0.12, -r * 0.22)
+    const w2 = kp(-r * 0.29, -r * 0.16) // outer top edge of wooden handle
+    const w3 = kp(-r * 0.31, r * 0.0)
+    const w4 = kp(-r * 0.28, r * 0.17) // outer bottom edge of wooden handle
+    const w5 = kp(-r * 0.10, r * 0.22)
+    const w6 = kp(r * 0.12, r * 0.20) // lower body-side attachment
+    const w7 = kp(r * 0.20, r * 0.0) // rounded inner seat anchored into left arm
+    g.fillStyle(pal.belt, 1)
     g.beginPath()
-    g.moveTo(c0.x, c0.y)
-    quadFrom(g, c0.x, c0.y, c1.x, c1.y, kp(r * 0.17, 0).x, kp(r * 0.17, 0).y)
-    quadFrom(g, kp(r * 0.17, 0).x, kp(r * 0.17, 0).y, c2.x, c2.y, c3.x, c3.y)
-    quadFrom(g, c3.x, c3.y, c4.x, c4.y, c0.x, c0.y)
+    g.moveTo(w0.x, w0.y)
+    quadFrom(g, w0.x, w0.y, w1.x, w1.y, w2.x, w2.y)
+    quadFrom(g, w2.x, w2.y, w3.x, w3.y, w4.x, w4.y)
+    quadFrom(g, w4.x, w4.y, w5.x, w5.y, w6.x, w6.y)
+    quadFrom(g, w6.x, w6.y, w7.x, w7.y, w0.x, w0.y)
     g.closePath()
     g.fillPath()
-    // Guard highlight & lower shade.
-    const ch = kp(-r * 0.02, -r * 0.11)
-    g.fillStyle(pal.goldLight, 0.78)
-    g.fillEllipse(ch.x, ch.y, r * 0.14, r * 0.08)
-    g.lineStyle(hkOut, INK, 1)
+
+    // Lower wood shadow on the wooden handle.
+    g.fillStyle(pal.beltDark, 0.78)
     g.beginPath()
-    g.moveTo(c0.x, c0.y)
-    quadFrom(g, c0.x, c0.y, c1.x, c1.y, kp(r * 0.17, 0).x, kp(r * 0.17, 0).y)
-    quadFrom(g, kp(r * 0.17, 0).x, kp(r * 0.17, 0).y, c2.x, c2.y, c3.x, c3.y)
-    quadFrom(g, c3.x, c3.y, c4.x, c4.y, c0.x, c0.y)
+    const ws0 = kp(r * 0.15, r * 0.03)
+    const ws1 = kp(-r * 0.10, r * 0.05)
+    const ws2 = kp(-r * 0.30, r * 0.02)
+    g.moveTo(ws0.x, ws0.y)
+    quadFrom(g, ws0.x, ws0.y, ws1.x, ws1.y, ws2.x, ws2.y)
+    quadFrom(g, ws2.x, ws2.y, w4.x, w4.y, w5.x, w5.y)
+    quadFrom(g, w5.x, w5.y, w6.x, w6.y, ws0.x, ws0.y)
+    g.closePath()
+    g.fillPath()
+
+    // Warm upper wood highlight streak.
+    const wh0 = kp(r * 0.06, -r * 0.12)
+    const wh1 = kp(-r * 0.18, -r * 0.11)
+    g.lineStyle(Math.max(1.3, r * 0.048), 0xa85a32, 0.85)
+    g.beginPath()
+    g.moveTo(wh0.x, wh0.y)
+    g.lineTo(wh1.x, wh1.y)
+    g.strokePath()
+
+    // Gold metallic attachment band & collar at the tip of the wooden handle (where the hook mounts).
+    const gb0 = kp(-r * 0.20, -r * 0.19)
+    const gb1 = kp(-r * 0.30, -r * 0.16)
+    const gb2 = kp(-r * 0.29, r * 0.17)
+    const gb3 = kp(-r * 0.19, r * 0.20)
+    g.fillStyle(pal.gold, 1)
+    g.beginPath()
+    g.moveTo(gb0.x, gb0.y)
+    g.lineTo(gb1.x, gb1.y)
+    g.lineTo(gb2.x, gb2.y)
+    g.lineTo(gb3.x, gb3.y)
+    g.closePath()
+    g.fillPath()
+    // Gold band top highlight.
+    const gbh = kp(-r * 0.24, -r * 0.09)
+    g.fillStyle(pal.goldLight, 0.85)
+    g.fillEllipse(gbh.x, gbh.y, r * 0.07, r * 0.10)
+    g.lineStyle(hkOut * 0.88, INK, 1)
+    g.beginPath()
+    g.moveTo(gb0.x, gb0.y)
+    g.lineTo(gb1.x, gb1.y)
+    g.lineTo(gb2.x, gb2.y)
+    g.lineTo(gb3.x, gb3.y)
     g.closePath()
     g.strokePath()
 
-    // Raised gold collar rim around the hook base.
-    const r0 = kp(r * 0.06, -r * 0.25)
-    const r1 = kp(r * 0.18, -r * 0.22)
-    const r2 = kp(r * 0.20, r * 0.20)
-    const r3 = kp(r * 0.08, r * 0.25)
+    // Gold body-side attachment rim + rivet studs on the wooden handle.
+    const gr0 = kp(r * 0.04, -r * 0.21)
+    const gr1 = kp(r * 0.13, -r * 0.19)
+    const gr2 = kp(r * 0.15, r * 0.18)
+    const gr3 = kp(r * 0.05, r * 0.21)
     g.fillStyle(pal.goldDark, 1)
     g.beginPath()
-    g.moveTo(r0.x, r0.y)
-    g.lineTo(r1.x, r1.y)
-    g.lineTo(r2.x, r2.y)
-    g.lineTo(r3.x, r3.y)
+    g.moveTo(gr0.x, gr0.y)
+    g.lineTo(gr1.x, gr1.y)
+    g.lineTo(gr2.x, gr2.y)
+    g.lineTo(gr3.x, gr3.y)
     g.closePath()
     g.fillPath()
-    g.lineStyle(hkOut * 0.92, INK, 1)
+    if (!thumbnail) {
+      g.fillStyle(pal.goldLight, 1)
+      const rv1 = kp(-r * 0.06, -r * 0.08)
+      const rv2 = kp(-r * 0.05, r * 0.08)
+      g.fillCircle(rv1.x, rv1.y, Math.max(1.1, r * 0.028))
+      g.fillCircle(rv2.x, rv2.y, Math.max(1.1, r * 0.028))
+    }
+
+    // Dedicated outline around the wooden handle assembly.
+    g.lineStyle(hkOut, INK, 1)
+    g.beginPath()
+    g.moveTo(w0.x, w0.y)
+    quadFrom(g, w0.x, w0.y, w1.x, w1.y, w2.x, w2.y)
+    quadFrom(g, w2.x, w2.y, w3.x, w3.y, w4.x, w4.y)
+    quadFrom(g, w4.x, w4.y, w5.x, w5.y, w6.x, w6.y)
+    quadFrom(g, w6.x, w6.y, w7.x, w7.y, w0.x, w0.y)
+    g.closePath()
     g.strokePath()
   }
 }
