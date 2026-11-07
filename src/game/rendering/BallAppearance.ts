@@ -2449,7 +2449,7 @@ export interface PiratePalette {
   hat: number
   /** Darker hat fold/shadow. */
   hatDark: number
-  /** Gold hat trim & buckle & hook cup. */
+  /** Gold hat trim & buckle. */
   gold: number
   /** Lighter gold specular highlight. */
   goldLight: number
@@ -2459,12 +2459,6 @@ export interface PiratePalette {
   belt: number
   /** Darker belt shadow & holes. */
   beltDark: number
-  /** Silver hook blade. */
-  hook: number
-  /** Lighter silver hook highlight. */
-  hookLight: number
-  /** Darker steel hook shadow. */
-  hookDark: number
   /** Parrot red body. */
   parrotRed: number
   /** Parrot darker red shading. */
@@ -2484,7 +2478,6 @@ export const PIRATE_PALETTES: readonly PiratePalette[] = [
     hat: 0x2a242b, hatDark: 0x19151a,
     gold: 0xf7b518, goldLight: 0xffe066, goldDark: 0xc27808,
     belt: 0x6e351c, beltDark: 0x421c0c,
-    hook: 0xb8b5c0, hookLight: 0xe6e4ec, hookDark: 0x7c7886,
     parrotRed: 0xf03228, parrotRedDark: 0xb81d15, parrotYellow: 0xffd21f, parrotBlue: 0x1c8cff,
     glow: 0xffe066,
   }, // 0: classic doubloon gold
@@ -2494,7 +2487,6 @@ export const PIRATE_PALETTES: readonly PiratePalette[] = [
     hat: 0x262228, hatDark: 0x161318,
     gold: 0xefa812, goldLight: 0xffd858, goldDark: 0xb86e06,
     belt: 0x632f18, beltDark: 0x3b180a,
-    hook: 0xb2afba, hookLight: 0xdfdde6, hookDark: 0x757180,
     parrotRed: 0xe62b22, parrotRedDark: 0xad1912, parrotYellow: 0xffca18, parrotBlue: 0x1880f0,
     glow: 0xffd658,
   }, // 1: sunlit treasure
@@ -2504,7 +2496,6 @@ export const PIRATE_PALETTES: readonly PiratePalette[] = [
     hat: 0x302932, hatDark: 0x1d181f,
     gold: 0xffbf24, goldLight: 0xffe678, goldDark: 0xc9800c,
     belt: 0x783a20, beltDark: 0x4a200e,
-    hook: 0xc2bfca, hookLight: 0xeeeaf4, hookDark: 0x858190,
     parrotRed: 0xf83a30, parrotRedDark: 0xc2221a, parrotYellow: 0xffda2b, parrotBlue: 0x2696ff,
     glow: 0xffe678,
   }, // 2:corsair sovereign
@@ -2527,8 +2518,6 @@ interface PirateSpringState {
   hatBobVel: number
   tailSway: number
   tailSwayVel: number
-  hookSwing: number
-  hookSwingVel: number
   parrotBob: number
   parrotBobVel: number
   parrotWing: number
@@ -2539,7 +2528,6 @@ interface PirateSpringOutput {
   hatTilt: number
   hatBob: number
   tailSway: number
-  hookSwing: number
   parrotBob: number
   parrotWing: number
 }
@@ -2548,7 +2536,6 @@ const PIRATE_REST_SPRING: PirateSpringOutput = {
   hatTilt: 0,
   hatBob: 0,
   tailSway: 0,
-  hookSwing: 0,
   parrotBob: 0,
   parrotWing: 0,
 }
@@ -2564,7 +2551,6 @@ function getPirateState(ballId: number): PirateSpringState {
       hatTilt: 0, hatTiltVel: 0,
       hatBob: 0, hatBobVel: 0,
       tailSway: 0, tailSwayVel: 0,
-      hookSwing: 0, hookSwingVel: 0,
       parrotBob: 0, parrotBobVel: 0,
       parrotWing: 0, parrotWingVel: 0,
     }
@@ -2590,7 +2576,6 @@ export function notifyPirateImpact(ballId: number, nx: number, ny: number, stren
   s.hatBobVel += vertical * kick * 1.6
   s.hatTiltVel += horizontal * kick * 1.5
   s.tailSwayVel += (horizontal * 1.4 + vertical * 0.8) * kick
-  s.hookSwingVel += (-horizontal * 1.5 + vertical * 1.1) * kick
   s.parrotBobVel -= vertical * kick * 2.1
   s.parrotWingVel += (vertical * 1.8 + Math.abs(horizontal) * 1.1) * kick
 }
@@ -2644,7 +2629,6 @@ function stepPirateSpring(
     s.hatTilt = 0; s.hatTiltVel = 0
     s.hatBob = 0; s.hatBobVel = 0
     s.tailSway = 0; s.tailSwayVel = 0
-    s.hookSwing = 0; s.hookSwingVel = 0
     s.parrotBob = 0; s.parrotBobVel = 0
     s.parrotWing = 0; s.parrotWingVel = 0
     return PIRATE_REST_SPRING
@@ -2652,7 +2636,6 @@ function stepPirateSpring(
 
   const t = nowMs / 1000
   const idleTail = Math.sin(t * 2.1 + seed * 0.7) * 0.035 + Math.sin(t * 3.4 + 1.1) * 0.018
-  const idleHook = Math.sin(t * 1.8 + seed * 0.5 + 0.8) * 0.045
   const idleParrot = Math.sin(t * 2.6 + seed * 0.9) * 0.024
   const hopPulse = Math.max(0, Math.sin(t * 1.4 + seed * 1.3) - 0.92) / 0.08
   const idleWing = hopPulse * 0.18 + (panic > 0.25 ? Math.sin(t * 14 + seed) * 0.14 * panic : 0)
@@ -2661,7 +2644,6 @@ function stepPirateSpring(
   if (landing > 0.02) {
     s.hatBobVel += landing * 1.3
     s.tailSwayVel += landing * 1.4
-    s.hookSwingVel += landing * 1.5
     s.parrotBobVel -= landing * 1.8
     s.parrotWingVel += landing * 1.6
   }
@@ -2670,14 +2652,12 @@ function stepPirateSpring(
   if (collision > 0.03) {
     s.hatTiltVel += -dvx * 0.75
     s.tailSwayVel += -dvx * 0.95
-    s.hookSwingVel += -dvx * 0.85
     s.parrotBobVel += - Math.abs(dvy) * 0.7
   }
 
   if (dPanic > 0.02) {
     s.parrotBobVel -= dPanic * 1.5
     s.parrotWingVel += dPanic * 1.8
-    s.hookSwingVel += dPanic * 1.2
   }
 
   const step1 = (
@@ -2700,14 +2680,12 @@ function stepPirateSpring(
   ;[s.hatTilt, s.hatTiltVel] = step1(s.hatTilt, s.hatTiltVel, -dvx * 0.02, 11.5, 0.32, -0.14, 0.14)
   ;[s.hatBob, s.hatBobVel] = step1(s.hatBob, s.hatBobVel, 0, 12.5, 0.34, -0.10, 0.12)
   ;[s.tailSway, s.tailSwayVel] = step1(s.tailSway, s.tailSwayVel, idleTail, 10.5, 0.28, -0.22, 0.22)
-  ;[s.hookSwing, s.hookSwingVel] = step1(s.hookSwing, s.hookSwingVel, idleHook - panic * 0.08, 11.0, 0.30, -0.25, 0.25)
   ;[s.parrotBob, s.parrotBobVel] = step1(s.parrotBob, s.parrotBobVel, idleParrot - hopPulse * 0.045, 13.0, 0.28, -0.16, 0.14)
   ;[s.parrotWing, s.parrotWingVel] = step1(s.parrotWing, s.parrotWingVel, idleWing, 14.0, 0.26, -0.12, 0.32)
 
   pirateSpringOutput.hatTilt = s.hatTilt
   pirateSpringOutput.hatBob = s.hatBob
   pirateSpringOutput.tailSway = s.tailSway
-  pirateSpringOutput.hookSwing = s.hookSwing
   pirateSpringOutput.parrotBob = s.parrotBob
   pirateSpringOutput.parrotWing = s.parrotWing
   return pirateSpringOutput
@@ -2718,9 +2696,8 @@ function stepPirateSpring(
  * wearing a red knotted bandana, a dark pirate bicorne hat with gold trim
  * and white skull-and-crossbones emblem, one big glossy left eye and a dark
  * leather eyepatch over the right eye, a stitched left cheek scar, a happy
- * open mouth, a brown leather belt with a gold buckle, a two-part wooden
- * handle + silver hook hand on the left side, and a cute red-yellow-blue parrot
- * perched on the upper right shoulder/brim.
+ * open mouth, a brown leather belt with a gold buckle, and a cute
+ * red-yellow-blue parrot perched on the upper right shoulder/brim.
  */
 export function drawPirateBall(
   g: Phaser.GameObjects.Graphics,
@@ -3270,12 +3247,12 @@ export function drawPirateBall(
     g.lineStyle(bdOut, INK, 1)
     g.strokePath()
 
-    // Lower tail hanging out-left above the hook assembly (clean separation).
-    const t2a = hp(-r * 0.76, -r * 0.12)
-    const t2b = hp(-r * 1.14, -r * 0.02 + sw * 0.45)
-    const t2c = hp(-r * 1.26, r * 0.16 + sw * 0.85)
-    const t2d = hp(-r * 0.94, r * 0.12 + sw * 0.45)
-    const t2e = hp(-r * 0.74, r * 0.02)
+    // Lower tail hanging down-left.
+    const t2a = hp(-r * 0.76, -r * 0.10)
+    const t2b = hp(-r * 1.16, r * 0.06 + sw * 0.5)
+    const t2c = hp(-r * 1.28, r * 0.38 + sw * 1.0)
+    const t2d = hp(-r * 0.92, r * 0.24 + sw * 0.5)
+    const t2e = hp(-r * 0.72, r * 0.08)
     g.fillStyle(pal.bandana, 1)
     g.beginPath()
     g.moveTo(t2a.x, t2a.y)
@@ -3286,8 +3263,8 @@ export function drawPirateBall(
     // Fold line inside lower tail.
     g.lineStyle(Math.max(1.2, ink * 0.55), pal.bandanaDark, 0.85)
     g.beginPath()
-    g.moveTo(hp(-r * 0.84, -r * 0.05).x, hp(-r * 0.84, -r * 0.05).y)
-    quadFrom(g, hp(-r * 0.84, -r * 0.05).x, hp(-r * 0.84, -r * 0.05).y, hp(-r * 1.02, r * 0.04 + sw * 0.45).x, hp(-r * 1.02, r * 0.04 + sw * 0.45).y, hp(-r * 1.14, r * 0.11 + sw * 0.7).x, hp(-r * 1.14, r * 0.11 + sw * 0.7).y)
+    g.moveTo(hp(-r * 0.84, -r * 0.02).x, hp(-r * 0.84, -r * 0.02).y)
+    quadFrom(g, hp(-r * 0.84, -r * 0.02).x, hp(-r * 0.84, -r * 0.02).y, hp(-r * 1.04, r * 0.12 + sw * 0.5).x, hp(-r * 1.04, r * 0.12 + sw * 0.5).y, hp(-r * 1.14, r * 0.26 + sw * 0.8).x, hp(-r * 1.14, r * 0.26 + sw * 0.8).y)
     g.strokePath()
     g.lineStyle(bdOut, INK, 1)
     g.beginPath()
@@ -3741,179 +3718,6 @@ export function drawPirateBall(
       g.lineStyle(prDetail, INK, 1)
       g.strokeEllipse(toe.x, toe.y, r * 0.082, r * 0.125)
     }
-  }
-
-  // ---- 10. LEFT-SIDE TWO-PART HOOK ASSEMBLY (A: wooden handle + gold band, B: silver hook) ----
-  {
-    const hkOut = thumbnail ? collectionInkWidth(r) * 0.92 : Math.max(1.9, out * 0.74)
-    // Attached to the character's LEFT side (viewer's left, below cheek scar & above the belt).
-    const hkAnchor = bp(-r * 0.80, r * 0.36)
-    const hkRot = -0.14 + sp.hookSwing
-    const kp = (ux: number, uy: number): { x: number; y: number } => rp(hkAnchor.x, hkAnchor.y, ux, uy, hkRot)
-
-    // ---- ELEMENT B: Separate silver curved pirate hook emerging from the wooden handle ----
-    // Drawn first so its base shaft connects cleanly into the wooden handle's gold collar.
-    const s0 = kp(-r * 0.27, -r * 0.065) // upper shaft entering wooden handle
-    const s1 = kp(-r * 0.54, -r * 0.08)
-    const s2 = kp(-r * 0.76, -r * 0.24)
-    const s3 = kp(-r * 0.74, -r * 0.54)
-    const s4 = kp(-r * 0.48, -r * 0.60)
-    const s5 = kp(-r * 0.35, -r * 0.38) // sharp inner hook point
-    const s6 = kp(-r * 0.50, -r * 0.43)
-    const s7 = kp(-r * 0.58, -r * 0.26)
-    const s8 = kp(-r * 0.45, r * 0.06)
-    const s9 = kp(-r * 0.27, r * 0.075) // lower shaft entering wooden handle
-    g.fillStyle(pal.hook, 1)
-    g.beginPath()
-    g.moveTo(s0.x, s0.y)
-    quadFrom(g, s0.x, s0.y, s1.x, s1.y, s2.x, s2.y)
-    quadFrom(g, s2.x, s2.y, s3.x, s3.y, s4.x, s4.y)
-    quadFrom(g, s4.x, s4.y, kp(-r * 0.32, -r * 0.52).x, kp(-r * 0.32, -r * 0.52).y, s5.x, s5.y)
-    quadFrom(g, s5.x, s5.y, s6.x, s6.y, s7.x, s7.y)
-    quadFrom(g, s7.x, s7.y, s8.x, s8.y, s9.x, s9.y)
-    g.closePath()
-    g.fillPath()
-
-    // Metallic inner-curve bevel shade on the silver hook.
-    g.fillStyle(pal.hookDark, 0.58)
-    g.beginPath()
-    g.moveTo(s5.x, s5.y)
-    quadFrom(g, s5.x, s5.y, s6.x, s6.y, s7.x, s7.y)
-    quadFrom(g, s7.x, s7.y, s8.x, s8.y, s9.x, s9.y)
-    g.lineTo(kp(-r * 0.27, r * 0.01).x, kp(-r * 0.27, r * 0.01).y)
-    quadFrom(
-      g,
-      kp(-r * 0.27, r * 0.01).x,
-      kp(-r * 0.27, r * 0.01).y,
-      kp(-r * 0.65, -r * 0.18).x,
-      kp(-r * 0.65, -r * 0.18).y,
-      s5.x,
-      s5.y,
-    )
-    g.closePath()
-    g.fillPath()
-
-    // Crisp specular highlight along outer silver hook curve.
-    g.lineStyle(Math.max(1.3, r * 0.042), pal.hookLight, 0.9)
-    g.beginPath()
-    const hl0 = kp(-r * 0.35, -r * 0.02)
-    const hl1 = kp(-r * 0.66, -r * 0.14)
-    const hl2 = kp(-r * 0.64, -r * 0.46)
-    g.moveTo(hl0.x, hl0.y)
-    quadFrom(g, hl0.x, hl0.y, hl1.x, hl1.y, hl2.x, hl2.y)
-    g.strokePath()
-
-    // Dedicated outline for the metallic hook.
-    g.lineStyle(hkOut, INK, 1)
-    g.beginPath()
-    g.moveTo(s0.x, s0.y)
-    quadFrom(g, s0.x, s0.y, s1.x, s1.y, s2.x, s2.y)
-    quadFrom(g, s2.x, s2.y, s3.x, s3.y, s4.x, s4.y)
-    quadFrom(g, s4.x, s4.y, kp(-r * 0.32, -r * 0.52).x, kp(-r * 0.32, -r * 0.52).y, s5.x, s5.y)
-    quadFrom(g, s5.x, s5.y, s6.x, s6.y, s7.x, s7.y)
-    quadFrom(g, s7.x, s7.y, s8.x, s8.y, s9.x, s9.y)
-    g.closePath()
-    g.strokePath()
-
-    // ---- ELEMENT A: Brown wooden handle / forearm cup connected to the left side ----
-    // Rounded wooden cuff/handle with warm wood shading, gold mounting band, and its own outline.
-    const w0 = kp(r * 0.10, -r * 0.21) // upper body-side attachment
-    const w1 = kp(-r * 0.12, -r * 0.22)
-    const w2 = kp(-r * 0.29, -r * 0.16) // outer top edge of wooden handle
-    const w3 = kp(-r * 0.31, r * 0.0)
-    const w4 = kp(-r * 0.28, r * 0.17) // outer bottom edge of wooden handle
-    const w5 = kp(-r * 0.10, r * 0.22)
-    const w6 = kp(r * 0.12, r * 0.20) // lower body-side attachment
-    const w7 = kp(r * 0.20, r * 0.0) // rounded inner seat anchored into left arm
-    g.fillStyle(pal.belt, 1)
-    g.beginPath()
-    g.moveTo(w0.x, w0.y)
-    quadFrom(g, w0.x, w0.y, w1.x, w1.y, w2.x, w2.y)
-    quadFrom(g, w2.x, w2.y, w3.x, w3.y, w4.x, w4.y)
-    quadFrom(g, w4.x, w4.y, w5.x, w5.y, w6.x, w6.y)
-    quadFrom(g, w6.x, w6.y, w7.x, w7.y, w0.x, w0.y)
-    g.closePath()
-    g.fillPath()
-
-    // Lower wood shadow on the wooden handle.
-    g.fillStyle(pal.beltDark, 0.78)
-    g.beginPath()
-    const ws0 = kp(r * 0.15, r * 0.03)
-    const ws1 = kp(-r * 0.10, r * 0.05)
-    const ws2 = kp(-r * 0.30, r * 0.02)
-    g.moveTo(ws0.x, ws0.y)
-    quadFrom(g, ws0.x, ws0.y, ws1.x, ws1.y, ws2.x, ws2.y)
-    quadFrom(g, ws2.x, ws2.y, w4.x, w4.y, w5.x, w5.y)
-    quadFrom(g, w5.x, w5.y, w6.x, w6.y, ws0.x, ws0.y)
-    g.closePath()
-    g.fillPath()
-
-    // Warm upper wood highlight streak.
-    const wh0 = kp(r * 0.06, -r * 0.12)
-    const wh1 = kp(-r * 0.18, -r * 0.11)
-    g.lineStyle(Math.max(1.3, r * 0.048), 0xa85a32, 0.85)
-    g.beginPath()
-    g.moveTo(wh0.x, wh0.y)
-    g.lineTo(wh1.x, wh1.y)
-    g.strokePath()
-
-    // Gold metallic attachment band & collar at the tip of the wooden handle (where the hook mounts).
-    const gb0 = kp(-r * 0.20, -r * 0.19)
-    const gb1 = kp(-r * 0.30, -r * 0.16)
-    const gb2 = kp(-r * 0.29, r * 0.17)
-    const gb3 = kp(-r * 0.19, r * 0.20)
-    g.fillStyle(pal.gold, 1)
-    g.beginPath()
-    g.moveTo(gb0.x, gb0.y)
-    g.lineTo(gb1.x, gb1.y)
-    g.lineTo(gb2.x, gb2.y)
-    g.lineTo(gb3.x, gb3.y)
-    g.closePath()
-    g.fillPath()
-    // Gold band top highlight.
-    const gbh = kp(-r * 0.24, -r * 0.09)
-    g.fillStyle(pal.goldLight, 0.85)
-    g.fillEllipse(gbh.x, gbh.y, r * 0.07, r * 0.10)
-    g.lineStyle(hkOut * 0.88, INK, 1)
-    g.beginPath()
-    g.moveTo(gb0.x, gb0.y)
-    g.lineTo(gb1.x, gb1.y)
-    g.lineTo(gb2.x, gb2.y)
-    g.lineTo(gb3.x, gb3.y)
-    g.closePath()
-    g.strokePath()
-
-    // Gold body-side attachment rim + rivet studs on the wooden handle.
-    const gr0 = kp(r * 0.04, -r * 0.21)
-    const gr1 = kp(r * 0.13, -r * 0.19)
-    const gr2 = kp(r * 0.15, r * 0.18)
-    const gr3 = kp(r * 0.05, r * 0.21)
-    g.fillStyle(pal.goldDark, 1)
-    g.beginPath()
-    g.moveTo(gr0.x, gr0.y)
-    g.lineTo(gr1.x, gr1.y)
-    g.lineTo(gr2.x, gr2.y)
-    g.lineTo(gr3.x, gr3.y)
-    g.closePath()
-    g.fillPath()
-    if (!thumbnail) {
-      g.fillStyle(pal.goldLight, 1)
-      const rv1 = kp(-r * 0.06, -r * 0.08)
-      const rv2 = kp(-r * 0.05, r * 0.08)
-      g.fillCircle(rv1.x, rv1.y, Math.max(1.1, r * 0.028))
-      g.fillCircle(rv2.x, rv2.y, Math.max(1.1, r * 0.028))
-    }
-
-    // Dedicated outline around the wooden handle assembly.
-    g.lineStyle(hkOut, INK, 1)
-    g.beginPath()
-    g.moveTo(w0.x, w0.y)
-    quadFrom(g, w0.x, w0.y, w1.x, w1.y, w2.x, w2.y)
-    quadFrom(g, w2.x, w2.y, w3.x, w3.y, w4.x, w4.y)
-    quadFrom(g, w4.x, w4.y, w5.x, w5.y, w6.x, w6.y)
-    quadFrom(g, w6.x, w6.y, w7.x, w7.y, w0.x, w0.y)
-    g.closePath()
-    g.strokePath()
   }
 }
 
