@@ -2432,6 +2432,1256 @@ export function drawDrunkoBall(
     g.strokePath()
   }
 }
+export interface PiratePalette {
+  /** Golden-yellow body fill. */
+  body: number
+  /** Lighter upper-left body highlight. */
+  bodyLight: number
+  /** Deeper golden-orange lower body shadow. */
+  bodyDark: number
+  /** Red bandana cloth. */
+  bandana: number
+  /** Bandana shadow / fold tone. */
+  bandanaDark: number
+  /**Bandana highlight. */
+  bandanaLight: number
+  /** Dark charcoal pirate hat body. */
+  hat: number
+  /** Darker hat fold/shadow. */
+  hatDark: number
+  /** Gold hat trim & buckle & hook cup. */
+  gold: number
+  /** Lighter gold specular highlight. */
+  goldLight: number
+  /** Deeper amber-gold shadow. */
+  goldDark: number
+  /** Brown leather belt. */
+  belt: number
+  /** Darker belt shadow & holes. */
+  beltDark: number
+  /** Silver hook blade. */
+  hook: number
+  /** Lighter silver hook highlight. */
+  hookLight: number
+  /** Darker steel hook shadow. */
+  hookDark: number
+  /** Parrot red body. */
+  parrotRed: number
+  /** Parrot darker red shading. */
+  parrotRedDark: number
+  /** Parrot wing yellow band. */
+  parrotYellow: number
+  /** Parrot wing blue tips. */
+  parrotBlue: number
+  /** Atmosphere halo colour. */
+  glow: number
+}
+
+export const PIRATE_PALETTES: readonly PiratePalette[] = [
+  {
+    body: 0xffcc18, bodyLight: 0xffe45c, bodyDark: 0xe59a0c,
+    bandana: 0xe62e25, bandanaDark: 0xa81812, bandanaLight: 0xff5a4f,
+    hat: 0x2a242b, hatDark: 0x19151a,
+    gold: 0xf7b518, goldLight: 0xffe066, goldDark: 0xc27808,
+    belt: 0x6e351c, beltDark: 0x421c0c,
+    hook: 0xb8b5c0, hookLight: 0xe6e4ec, hookDark: 0x7c7886,
+    parrotRed: 0xf03228, parrotRedDark: 0xb81d15, parrotYellow: 0xffd21f, parrotBlue: 0x1c8cff,
+    glow: 0xffe066,
+  }, // 0: classic doubloon gold
+  {
+    body: 0xf5be16, bodyLight: 0xffdc52, bodyDark: 0xd98c0a,
+    bandana: 0xd62420, bandanaDark: 0x991410, bandanaLight: 0xf24d46,
+    hat: 0x262228, hatDark: 0x161318,
+    gold: 0xefa812, goldLight: 0xffd858, goldDark: 0xb86e06,
+    belt: 0x632f18, beltDark: 0x3b180a,
+    hook: 0xb2afba, hookLight: 0xdfdde6, hookDark: 0x757180,
+    parrotRed: 0xe62b22, parrotRedDark: 0xad1912, parrotYellow: 0xffca18, parrotBlue: 0x1880f0,
+    glow: 0xffd658,
+  }, // 1: sunlit treasure
+  {
+    body: 0xffd426, bodyLight: 0xffea70, bodyDark: 0xe8a212,
+    bandana: 0xf0382e, bandanaDark: 0xb31e17, bandanaLight: 0xff685e,
+    hat: 0x302932, hatDark: 0x1d181f,
+    gold: 0xffbf24, goldLight: 0xffe678, goldDark: 0xc9800c,
+    belt: 0x783a20, beltDark: 0x4a200e,
+    hook: 0xc2bfca, hookLight: 0xeeeaf4, hookDark: 0x858190,
+    parrotRed: 0xf83a30, parrotRedDark: 0xc2221a, parrotYellow: 0xffda2b, parrotBlue: 0x2696ff,
+    glow: 0xffe678,
+  }, // 2:corsair sovereign
+]
+
+const pirateBodyClipper = new BodyFillClipper()
+
+interface PirateSpringState {
+  prevCx: number
+  prevCy: number
+  prevVx: number
+  prevVy: number
+  prevPanic: number
+  prevAspectY: number
+  prevTimeMs: number
+  initialized: boolean
+  hatTilt: number
+  hatTiltVel: number
+  hatBob: number
+  hatBobVel: number
+  tailSway: number
+  tailSwayVel: number
+  hookSwing: number
+  hookSwingVel: number
+  parrotBob: number
+  parrotBobVel: number
+  parrotWing: number
+  parrotWingVel: number
+}
+
+interface PirateSpringOutput {
+  hatTilt: number
+  hatBob: number
+  tailSway: number
+  hookSwing: number
+  parrotBob: number
+  parrotWing: number
+}
+
+const PIRATE_REST_SPRING: PirateSpringOutput = {
+  hatTilt: 0,
+  hatBob: 0,
+  tailSway: 0,
+  hookSwing: 0,
+  parrotBob: 0,
+  parrotWing: 0,
+}
+const pirateSpringOutput: PirateSpringOutput = { ...PIRATE_REST_SPRING }
+const pirateStates = new Map<number, PirateSpringState>()
+
+function getPirateState(ballId: number): PirateSpringState {
+  let s = pirateStates.get(ballId)
+  if (!s) {
+    s = {
+      prevCx: 0, prevCy: 0, prevVx: 0, prevVy: 0,
+      prevPanic: 0, prevAspectY: 1, prevTimeMs: 0, initialized: false,
+      hatTilt: 0, hatTiltVel: 0,
+      hatBob: 0, hatBobVel: 0,
+      tailSway: 0, tailSwayVel: 0,
+      hookSwing: 0, hookSwingVel: 0,
+      parrotBob: 0, parrotBobVel: 0,
+      parrotWing: 0, parrotWingVel: 0,
+    }
+    pirateStates.set(ballId, s)
+  }
+  return s
+}
+
+export function dropPirateState(ballId: number): void {
+  pirateStates.delete(ballId)
+}
+
+export function clearPirateStates(): void {
+  pirateStates.clear()
+}
+
+export function notifyPirateImpact(ballId: number, nx: number, ny: number, strength: number): void {
+  if (isReducedMotion()) return
+  const s = getPirateState(ballId)
+  const vertical = Math.max(0, -ny) * strength
+  const horizontal = -nx * strength
+  const kick = 0.35 + strength * 0.65
+  s.hatBobVel += vertical * kick * 1.6
+  s.hatTiltVel += horizontal * kick * 1.5
+  s.tailSwayVel += (horizontal * 1.4 + vertical * 0.8) * kick
+  s.hookSwingVel += (-horizontal * 1.5 + vertical * 1.1) * kick
+  s.parrotBobVel -= vertical * kick * 2.1
+  s.parrotWingVel += (vertical * 1.8 + Math.abs(horizontal) * 1.1) * kick
+}
+
+function stepPirateSpring(
+  ballId: number | undefined,
+  seed: number,
+  cx: number,
+  cy: number,
+  r: number,
+  poly: Array<{ x: number; y: number }> | undefined,
+  panic: number,
+  nowMs: number,
+): PirateSpringOutput {
+  if (ballId === undefined) return PIRATE_REST_SPRING
+  const s = getPirateState(ballId)
+  let aspectY = 1
+  if (poly && poly.length >= 3) {
+    let minY = poly[0]!.y, maxY = poly[0]!.y
+    for (const p of poly) {
+      if (p.y < minY) minY = p.y
+      if (p.y > maxY) maxY = p.y
+    }
+    aspectY = (maxY - minY) / (2 * r)
+  }
+  if (!s.initialized) {
+    s.prevCx = cx
+    s.prevCy = cy
+    s.prevPanic = panic
+    s.prevAspectY = aspectY
+    s.prevTimeMs = nowMs
+    s.initialized = true
+    return PIRATE_REST_SPRING
+  }
+  const dt = Math.min(0.05, Math.max(0.001, (nowMs - s.prevTimeMs) / 1000))
+  s.prevTimeMs = nowMs
+  const vx = (cx - s.prevCx) / (dt * r)
+  const vy = (cy - s.prevCy) / (dt * r)
+  const dvx = vx - s.prevVx
+  const dvy = vy - s.prevVy
+  s.prevCx = cx
+  s.prevCy = cy
+  s.prevVx = vx
+  s.prevVy = vy
+  const dAspect = aspectY - s.prevAspectY
+  s.prevAspectY = aspectY
+  const dPanic = panic - s.prevPanic
+  s.prevPanic = panic
+
+  if (isReducedMotion()) {
+    s.hatTilt = 0; s.hatTiltVel = 0
+    s.hatBob = 0; s.hatBobVel = 0
+    s.tailSway = 0; s.tailSwayVel = 0
+    s.hookSwing = 0; s.hookSwingVel = 0
+    s.parrotBob = 0; s.parrotBobVel = 0
+    s.parrotWing = 0; s.parrotWingVel = 0
+    return PIRATE_REST_SPRING
+  }
+
+  const t = nowMs / 1000
+  const idleTail = Math.sin(t * 2.1 + seed * 0.7) * 0.035 + Math.sin(t * 3.4 + 1.1) * 0.018
+  const idleHook = Math.sin(t * 1.8 + seed * 0.5 + 0.8) * 0.045
+  const idleParrot = Math.sin(t * 2.6 + seed * 0.9) * 0.024
+  const hopPulse = Math.max(0, Math.sin(t * 1.4 + seed * 1.3) - 0.92) / 0.08
+  const idleWing = hopPulse * 0.18 + (panic > 0.25 ? Math.sin(t * 14 + seed) * 0.14 * panic : 0)
+
+  const landing = Math.max(0, -dvy) * 0.5 + Math.max(0, -dAspect) * 2.8
+  if (landing > 0.02) {
+    s.hatBobVel += landing * 1.3
+    s.tailSwayVel += landing * 1.4
+    s.hookSwingVel += landing * 1.5
+    s.parrotBobVel -= landing * 1.8
+    s.parrotWingVel += landing * 1.6
+  }
+
+  const collision = Math.hypot(dvx, dvy) * 0.32
+  if (collision > 0.03) {
+    s.hatTiltVel += -dvx * 0.75
+    s.tailSwayVel += -dvx * 0.95
+    s.hookSwingVel += -dvx * 0.85
+    s.parrotBobVel += - Math.abs(dvy) * 0.7
+  }
+
+  if (dPanic > 0.02) {
+    s.parrotBobVel -= dPanic * 1.5
+    s.parrotWingVel += dPanic * 1.8
+    s.hookSwingVel += dPanic * 1.2
+  }
+
+  const step1 = (
+    pos: number,
+    vel: number,
+    target: number,
+    freq: number,
+    damp: number,
+    lo: number,
+    hi: number,
+  ): [number, number] => {
+    const k = freq * freq
+    const c = 2 * damp * freq
+    const acc = -k * (pos - target) - c * vel
+    const nv = vel + acc * dt
+    const np = Math.max(lo, Math.min(hi, pos + nv * dt))
+    return [np, nv]
+  }
+
+  ;[s.hatTilt, s.hatTiltVel] = step1(s.hatTilt, s.hatTiltVel, -dvx * 0.02, 11.5, 0.32, -0.14, 0.14)
+  ;[s.hatBob, s.hatBobVel] = step1(s.hatBob, s.hatBobVel, 0, 12.5, 0.34, -0.10, 0.12)
+  ;[s.tailSway, s.tailSwayVel] = step1(s.tailSway, s.tailSwayVel, idleTail, 10.5, 0.28, -0.22, 0.22)
+  ;[s.hookSwing, s.hookSwingVel] = step1(s.hookSwing, s.hookSwingVel, idleHook - panic * 0.08, 11.0, 0.30, -0.25, 0.25)
+  ;[s.parrotBob, s.parrotBobVel] = step1(s.parrotBob, s.parrotBobVel, idleParrot - hopPulse * 0.045, 13.0, 0.28, -0.16, 0.14)
+  ;[s.parrotWing, s.parrotWingVel] = step1(s.parrotWing, s.parrotWingVel, idleWing, 14.0, 0.26, -0.12, 0.32)
+
+  pirateSpringOutput.hatTilt = s.hatTilt
+  pirateSpringOutput.hatBob = s.hatBob
+  pirateSpringOutput.tailSway = s.tailSway
+  pirateSpringOutput.hookSwing = s.hookSwing
+  pirateSpringOutput.parrotBob = s.parrotBob
+  pirateSpringOutput.parrotWing = s.parrotWing
+  return pirateSpringOutput
+}
+
+/**
+ * Draw the Tier 9 PIRATE ball — a cheerful golden-yellow swashbuckler ball
+ * wearing a red knotted bandana, a dark pirate bicorne hat with gold trim
+ * and white skull-and-crossbones emblem, one big glossy left eye and a dark
+ * leather eyepatch over the right eye, a stitched left cheek scar, a happy
+ * open mouth, a brown leather belt with a gold buckle, a silver hook hand
+ * with a golden guard on the lower right, and a cute red-yellow-blue parrot
+ * perched on the upper right shoulder/brim.
+ */
+export function drawPirateBall(
+  g: Phaser.GameObjects.Graphics,
+  cx: number,
+  cy: number,
+  r: number,
+  variant = 0,
+  poly?: Array<{ x: number; y: number }>,
+  panic = 0,
+  gaze?: { x: number; y: number },
+  seed = 9,
+  bodyAngle = 0,
+  ballId?: number,
+  thumbnail = false,
+): void {
+  const pal = PIRATE_PALETTES[variant % PIRATE_PALETTES.length]!
+  const look = ballLookFor(9, seed)
+  const ink = thumbnail ? collectionInkWidth(r) : Math.max(2, r * 0.052)
+  const out = thumbnail ? collectionOutlineWidth(r) : ballOutlineWidth(r)
+  const nowMs = Date.now()
+  const now = nowMs / 1000
+  const expr = panic > 0.45 ? 'normal' : expressionAt(seed, nowMs)
+  const cosA = Math.cos(bodyAngle)
+  const sinA = Math.sin(bodyAngle)
+
+  // Measure local-frame squash/stretch from the live contour so internal
+  // features and anchored props follow the jelly deformation naturally.
+  let scaleX = 1
+  let scaleY = 1
+  let topLocalY = -r
+  if (poly && poly.length >= 3) {
+    let minLX = Infinity, maxLX = -Infinity
+    let minLY = Infinity, maxLY = -Infinity
+    let topNear = Infinity
+    for (const p of poly) {
+      const dx = p.x - cx
+      const dy = p.y - cy
+      const lx = dx * cosA + dy * sinA
+      const ly = -dx * sinA + dy * cosA
+      if (lx < minLX) minLX = lx
+      if (lx > maxLX) maxLX = lx
+      if (ly < minLY) minLY = ly
+      if (ly > maxLY) maxLY = ly
+      if (Math.abs(lx) < r * 0.48 && ly < topNear) topNear = ly
+    }
+    scaleX = Math.max(0.76, Math.min(1.26, (maxLX - minLX) / (2 * r)))
+    scaleY = Math.max(0.76, Math.min(1.26, (maxLY - minLY) / (2 * r)))
+    if (Number.isFinite(topNear)) topLocalY = topNear
+  }
+
+  // Transform a body-local point (scaled by squash/stretch) into world coords.
+  const bp = (lx: number, ly: number): { x: number; y: number } => {
+    const sx = lx * scaleX
+    const sy = ly * scaleY
+    return {
+      x: cx + sx * cosA - sy * sinA,
+      y: cy + sx * sinA + sy * cosA,
+    }
+  }
+  // Transform a rigid prop-local point (anchored on the contour) into world coords.
+  const rp = (ax: number, ay: number, ux: number, uy: number, rot = 0): { x: number; y: number } => {
+    const a = bodyAngle + rot
+    const ca = Math.cos(a)
+    const sa = Math.sin(a)
+    return {
+      x: ax + ux * ca - uy * sa,
+      y: ay + ux * sa + uy * ca,
+    }
+  }
+
+  const sp = stepPirateSpring(ballId, seed, cx, cy, r, poly, panic, nowMs)
+
+  // ---- 1. ATMOSPHERIC GLOW ----
+  const glowWobble = Math.sin(now * 0.75)
+  g.fillStyle(pal.glow, 0.06 + glowWobble * 0.01)
+  g.fillCircle(cx, cy, r * (1.40 + glowWobble * 0.02))
+  g.fillStyle(pal.glow, 0.08 + glowWobble * 0.01)
+  g.fillCircle(cx, cy, r * 1.24)
+
+  // ---- 2. GOLDEN BODY FILL & CLIPPED SHADING ----
+  g.fillStyle(pal.body, 1)
+  if (poly && poly.length >= 3) {
+    g.fillPoints(poly as unknown as Phaser.Math.Vector2[], true)
+  } else {
+    g.fillCircle(cx, cy, r)
+  }
+  pirateBodyClipper.setBody(poly, cx, cy, r)
+  // Warm lower shadow crescent.
+  g.fillStyle(pal.bodyDark, 0.82)
+  pirateBodyClipper.beginPath()
+  pirateBodyClipper.arc(cx, cy, r * 0.98, Math.PI * 0.08, Math.PI * 0.92, false)
+  pirateBodyClipper.arc(cx, cy + r * 0.54, r * 0.76, Math.PI * 0.92, Math.PI * 0.08, true)
+  pirateBodyClipper.fill(g)
+  // Upper-left bright highlight arc.
+  g.fillStyle(pal.bodyLight, 0.72)
+  pirateBodyClipper.beginPath()
+  pirateBodyClipper.arc(cx, cy, r * 0.93, Math.PI * 0.96, Math.PI * 1.56, false)
+  pirateBodyClipper.arc(cx, cy, r * 0.72, Math.PI * 1.56, Math.PI * 0.96, true)
+  pirateBodyClipper.fill(g)
+
+  // ---- 3. LEATHER BELT & GOLD BUCKLE (clipped to lower body) ----
+  {
+    const clipQuad = (x0: number, y0: number, cx1: number, cy1: number, x1: number, y1: number, steps = 10): void => {
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps
+        const u = 1 - t
+        pirateBodyClipper.lineTo(u * u * x0 + 2 * u * t * cx1 + t * t * x1, u * u * y0 + 2 * u * t * cy1 + t * t * y1)
+      }
+    }
+    const bL = bp(-r * 1.05, r * 0.60)
+    const bM = bp(-r * 0.04, r * 0.66)
+    const bR = bp(r * 1.04, r * 0.34)
+    const bRb = bp(r * 1.04, r * 0.58)
+    const bMb = bp(r * 0.0, r * 0.90)
+    const bLb = bp(-r * 1.05, r * 0.83)
+
+    // Belt main leather strap.
+    g.fillStyle(pal.belt, 1)
+    pirateBodyClipper.beginPath()
+    pirateBodyClipper.lineTo(bL.x, bL.y)
+    clipQuad(bL.x, bL.y, bM.x, bM.y, bR.x, bR.y)
+    pirateBodyClipper.lineTo(bRb.x, bRb.y)
+    clipQuad(bRb.x, bRb.y, bMb.x, bMb.y, bLb.x, bLb.y)
+    pirateBodyClipper.fill(g)
+
+    // Darker bottom bevel on belt.
+    const bMs = bp(0, r * 0.80)
+    const bLs = bp(-r * 1.05, r * 0.74)
+    const bRs = bp(r * 1.04, r * 0.48)
+    g.fillStyle(pal.beltDark, 0.65)
+    pirateBodyClipper.beginPath()
+    pirateBodyClipper.lineTo(bLs.x, bLs.y)
+    clipQuad(bLs.x, bLs.y, bMs.x, bMs.y, bRs.x, bRs.y)
+    pirateBodyClipper.lineTo(bRb.x, bRb.y)
+    clipQuad(bRb.x, bRb.y, bMb.x, bMb.y, bLb.x, bLb.y)
+    pirateBodyClipper.fill(g)
+
+    // Belt top & bottom ink borders (clipped to body).
+    g.fillStyle(INK, 1)
+    const rimHalf = Math.max(1.2, ink * 0.42)
+    for (const [p0, p1, p2] of [
+      [bL, bM, bR],
+      [bLb, bMb, bRb],
+    ] as const) {
+      pirateBodyClipper.beginPath()
+      pirateBodyClipper.lineTo(p0.x, p0.y - rimHalf)
+      clipQuad(p0.x, p0.y - rimHalf, p1.x, p1.y - rimHalf, p2.x, p2.y - rimHalf)
+      pirateBodyClipper.lineTo(p2.x, p2.y + rimHalf)
+      clipQuad(p2.x, p2.y + rimHalf, p1.x, p1.y + rimHalf, p0.x, p0.y + rimHalf)
+      pirateBodyClipper.fill(g)
+    }
+    // Belt punch holes on the right side.
+    if (!thumbnail) {
+      g.fillStyle(INK, 0.9)
+      for (const [hx, hy] of [
+        [0.18, 0.68],
+        [0.40, 0.62],
+      ] as const) {
+        const hp = bp(r * hx, r * hy)
+        g.fillCircle(hp.x, hp.y, Math.max(1.5, r * 0.036))
+      }
+    }
+  }
+
+  // ---- 4. STITCHED CHEEK SCAR (left cheek below eye) ----
+  {
+    const s0 = bp(-r * 0.67, r * 0.16)
+    const s1 = bp(-r * 0.56, r * 0.30)
+    const s2 = bp(-r * 0.43, r * 0.41)
+    g.lineStyle(Math.max(1.4, ink * 0.62), 0x6e2214, 0.95)
+    g.beginPath()
+    g.moveTo(s0.x, s0.y)
+    quadFrom(g, s0.x, s0.y, s1.x, s1.y, s2.x, s2.y)
+    g.strokePath()
+    // Two cross-stitches across the scar.
+    for (const [ax, ay, bx, by] of [
+      [-0.65, 0.27, -0.55, 0.18],
+      [-0.56, 0.37, -0.46, 0.28],
+    ] as const) {
+      const pA = bp(r * ax, r * ay)
+      const pB = bp(r * bx, r * by)
+      g.beginPath()
+      g.moveTo(pA.x, pA.y)
+      g.lineTo(pB.x, pB.y)
+      g.strokePath()
+    }
+  }
+
+  // ---- 5. THE FACE: BIG GLOSSY LEFT EYE, EYEPATCH RIGHT EYE, HAPPY MOUTH ----
+  const L = faceLayoutFor(look, r, 1, gaze)
+  const em = Math.min(1, panic)
+  const blinkMs = (nowMs + seed * 1013) % 4600
+  const blinking = panic <= 0.45 && blinkMs < 130
+
+  // Eyepatch diagonal strap from top-center forehead across right eye to right temple.
+  {
+    const st0 = bp(-r * 0.16, -r * 0.52)
+    const st1 = bp(r * 0.35, -r * 0.16)
+    const st2 = bp(r * 0.94, r * 0.04)
+    const strapW = thumbnail ? collectionInkWidth(r) * 1.5 : Math.max(3, r * 0.105)
+    g.lineStyle(strapW + ink * 0.9, INK, 1)
+    g.beginPath()
+    g.moveTo(st0.x, st0.y)
+    quadFrom(g, st0.x, st0.y, st1.x, st1.y, st2.x, st2.y)
+    g.strokePath()
+    g.lineStyle(strapW, pal.hat, 1)
+    g.beginPath()
+    g.moveTo(st0.x, st0.y)
+    quadFrom(g, st0.x, st0.y, st1.x, st1.y, st2.x, st2.y)
+    g.strokePath()
+  }
+
+  // Left eye (index 0): large expressive eye with dark pupil + dual white highlights.
+  {
+    const e0 = L.eyes[0]!
+    const ex = -r * 0.25
+    const ey = -r * 0.02
+    const ec = bp(ex, ey)
+    const wa = r * 0.30 * scaleX * (1 + 0.10 * em)
+    const wb = r * 0.34 * scaleY * (1 + 0.16 * em)
+    const rimW = thumbnail ? collectionInkWidth(r) * 1.05 : Math.max(2.2, ink * 0.92)
+    const closed = blinking || expr === 'wink'
+    if (closed) {
+      g.lineStyle(rimW, INK, 1)
+      g.beginPath()
+      for (let s = 0; s <= 12; s++) {
+        const u = -1 + (2 * s) / 12
+        const lp = bp(ex + u * r * 0.26, ey - r * 0.02 + (1 - u * u) * r * 0.12)
+        if (s === 0) g.moveTo(lp.x, lp.y)
+        else g.lineTo(lp.x, lp.y)
+      }
+      g.strokePath()
+    } else {
+      g.fillStyle(0xffffff, 1)
+      g.fillEllipse(ec.x, ec.y, wa * 2, wb * 2)
+      g.lineStyle(rimW, INK, 1)
+      g.strokeEllipse(ec.x, ec.y, wa * 2, wb * 2)
+      const pa = wa * 0.68
+      const pb = wb * 0.70 * (1 - 0.32 * em)
+      const gx = (e0.px / Math.max(0.001, e0.a)) * (wa - pa) * 0.65
+      const gy = (e0.py / Math.max(0.001, e0.b)) * (wb - pb) * 0.55 * (1 - em) - wb * 0.22 * em
+      const pcx = ec.x + gx + wa * 0.05
+      const pcy = ec.y + gy
+      g.fillStyle(INK, 1)
+      g.fillEllipse(pcx, pcy, pa * 2, pb * 2)
+      // Glossy top-right highlight + small lower-left dot (matching reference).
+      g.fillStyle(0xffffff, 1)
+      g.fillCircle(pcx + pa * 0.26, pcy - pb * 0.28, pa * 0.34)
+      g.fillCircle(pcx - pa * 0.24, pcy + pb * 0.32, pa * 0.16)
+    }
+  }
+
+  // Right eye (index 1): white sclera crescent peeking from beneath the dark leather eyepatch.
+  {
+    const ex = r * 0.37
+    const ey = -r * 0.02
+    const ec = bp(ex, ey)
+    const wa = r * 0.27 * scaleX
+    const wb = r * 0.31 * scaleY
+    const rimW = thumbnail ? collectionInkWidth(r) : Math.max(2, ink * 0.88)
+    // Underlying eye sclera & lower pupil rim peeking at bottom-left of patch.
+    g.fillStyle(0xffffff, 1)
+    g.fillEllipse(ec.x, ec.y, wa * 2, wb * 2)
+    g.fillStyle(INK, 1)
+    g.fillEllipse(ec.x - wa * 0.05, ec.y + wb * 0.04, wa * 1.25, wb * 1.25)
+    g.lineStyle(rimW, INK, 1)
+    g.strokeEllipse(ec.x, ec.y, wa * 2, wb * 2)
+
+    // Dark tilted rounded eyepatch pad over the right eye.
+    const p0 = bp(ex - r * 0.24, ey - r * 0.24)
+    const p1 = bp(ex + r * 0.06, ey - r * 0.30)
+    const p2 = bp(ex + r * 0.31, ey - r * 0.12)
+    const p3 = bp(ex + r * 0.36, ey + r * 0.12)
+    const p4 = bp(ex + r * 0.18, ey + r * 0.28)
+    const p5 = bp(ex - r * 0.08, ey + r * 0.27)
+    const p6 = bp(ex - r * 0.27, ey + r * 0.10)
+    const p7 = bp(ex - r * 0.28, ey - r * 0.12)
+    g.fillStyle(pal.hat, 1)
+    g.beginPath()
+    g.moveTo(p0.x, p0.y)
+    quadFrom(g, p0.x, p0.y, p1.x, p1.y, p2.x, p2.y)
+    quadFrom(g, p2.x, p2.y, p3.x, p3.y, p4.x, p4.y)
+    quadFrom(g, p4.x, p4.y, p5.x, p5.y, p6.x, p6.y)
+    quadFrom(g, p6.x, p6.y, p7.x, p7.y, p0.x, p0.y)
+    g.closePath()
+    g.fillPath()
+    // Subtle lighter highlight along top-left edge of eyepatch.
+    g.fillStyle(0x473d4a, 0.55)
+    const h0 = bp(ex - r * 0.18, ey - r * 0.17)
+    const h1 = bp(ex + r * 0.05, ey - r * 0.21)
+    const h2 = bp(ex + r * 0.20, ey - r * 0.08)
+    const h3 = bp(ex - r * 0.04, ey - r * 0.04)
+    g.beginPath()
+    g.moveTo(h0.x, h0.y)
+    quadFrom(g, h0.x, h0.y, h1.x, h1.y, h2.x, h2.y)
+    quadFrom(g, h2.x, h2.y, h3.x, h3.y, h0.x, h0.y)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(rimW * 1.05, INK, 1)
+    g.beginPath()
+    g.moveTo(p0.x, p0.y)
+    quadFrom(g, p0.x, p0.y, p1.x, p1.y, p2.x, p2.y)
+    quadFrom(g, p2.x, p2.y, p3.x, p3.y, p4.x, p4.y)
+    quadFrom(g, p4.x, p4.y, p5.x, p5.y, p6.x, p6.y)
+    quadFrom(g, p6.x, p6.y, p7.x, p7.y, p0.x, p0.y)
+    g.closePath()
+    g.strokePath()
+  }
+
+  // Cheerful open D-mouth with red-pink tongue (morphs to tense O when panicking).
+  {
+    const mx = 0.04 * r
+    const my = 0.31 * r
+    const mw = r * (expr === 'grin' ? 0.18 : 0.15)
+    const mh = r * (0.19 - 0.06 * em)
+    const mL = bp(mx - mw, my)
+    const mT = bp(mx, my + r * 0.02)
+    const mR = bp(mx + mw, my - r * 0.01)
+    const mB = bp(mx + r * 0.01, my + mh)
+    g.fillStyle(0x521210, 1)
+    g.beginPath()
+    g.moveTo(mL.x, mL.y)
+    quadFrom(g, mL.x, mL.y, mT.x, mT.y, mR.x, mR.y)
+    quadFrom(g, mR.x, mR.y, bp(mx + mw * 0.95, my + mh * 0.92).x, bp(mx + mw * 0.95, my + mh * 0.92).y, mB.x, mB.y)
+    quadFrom(g, mB.x, mB.y, bp(mx - mw * 0.92, my + mh * 0.92).x, bp(mx - mw * 0.92, my + mh * 0.92).y, mL.x, mL.y)
+    g.closePath()
+    g.fillPath()
+    // Tongue fill inside lower mouth.
+    if (em < 0.65) {
+      const tL = bp(mx - mw * 0.72, my + mh * 0.36)
+      const tM = bp(mx, my + mh * 0.18)
+      const tR = bp(mx + mw * 0.74, my + mh * 0.34)
+      g.fillStyle(0xf24b4b, 1)
+      g.beginPath()
+      g.moveTo(tL.x, tL.y)
+      quadFrom(g, tL.x, tL.y, tM.x, tM.y, tR.x, tR.y)
+      quadFrom(g, tR.x, tR.y, mB.x, mB.y, tL.x, tL.y)
+      g.closePath()
+      g.fillPath()
+    }
+    g.lineStyle(Math.max(1.6, ink * 0.82), INK, 1)
+    g.beginPath()
+    g.moveTo(mL.x, mL.y)
+    quadFrom(g, mL.x, mL.y, mT.x, mT.y, mR.x, mR.y)
+    quadFrom(g, mR.x, mR.y, bp(mx + mw * 0.95, my + mh * 0.92).x, bp(mx + mw * 0.95, my + mh * 0.92).y, mB.x, mB.y)
+    quadFrom(g, mB.x, mB.y, bp(mx - mw * 0.92, my + mh * 0.92).x, bp(mx - mw * 0.92, my + mh * 0.92).y, mL.x, mL.y)
+    g.closePath()
+    g.strokePath()
+  }
+
+  // Fear sweat drop on left cheek when panic rises.
+  if (panic > 0.45) {
+    const sweat = Math.min(1, (panic - 0.45) / 0.55)
+    const spPos = bp(-r * 0.68, -r * 0.04)
+    g.fillStyle(0x9fdcff, 0.95 * sweat)
+    g.fillCircle(spPos.x, spPos.y, r * 0.055 * (0.7 + 0.3 * sweat))
+  }
+
+  // ---- 6. THE BODY INK OUTLINE (drawn once before overhanging props) ----
+  g.lineStyle(out, INK, 1)
+  if (poly && poly.length >= 3) {
+    g.strokePoints(poly as unknown as Phaser.Math.Vector2[], true, true)
+  } else {
+    g.strokeCircle(cx, cy, r)
+  }
+
+  // ---- 7. GOLD BELT BUCKLE (sits slightly proud over the belt on lower-left) ----
+  {
+    const bkC = bp(-r * 0.14, r * 0.74)
+    const bkTilt = -0.10
+    const bw = r * 0.38
+    const bh = r * 0.36
+    const bOut = thumbnail ? collectionInkWidth(r) : Math.max(1.8, ink * 0.82)
+    const b0 = rp(bkC.x, bkC.y, -bw / 2, -bh / 2, bkTilt)
+    const b1 = rp(bkC.x, bkC.y, bw / 2, -bh / 2, bkTilt)
+    const b2 = rp(bkC.x, bkC.y, bw / 2, bh / 2, bkTilt)
+    const b3 = rp(bkC.x, bkC.y, -bw / 2, bh / 2, bkTilt)
+    g.fillStyle(pal.gold, 1)
+    g.beginPath()
+    g.moveTo(b0.x, b0.y)
+    g.lineTo(b1.x, b1.y)
+    g.lineTo(b2.x, b2.y)
+    g.lineTo(b3.x, b3.y)
+    g.closePath()
+    g.fillPath()
+    // Top-left gold highlight.
+    const bh0 = rp(bkC.x, bkC.y, -bw * 0.42, -bh * 0.42, bkTilt)
+    const bh1 = rp(bkC.x, bkC.y, bw * 0.36, -bh * 0.42, bkTilt)
+    const bh2 = rp(bkC.x, bkC.y, bw * 0.25, -bh * 0.24, bkTilt)
+    const bh3 = rp(bkC.x, bkC.y, -bw * 0.42, -bh * 0.24, bkTilt)
+    g.fillStyle(pal.goldLight, 0.85)
+    g.beginPath()
+    g.moveTo(bh0.x, bh0.y)
+    g.lineTo(bh1.x, bh1.y)
+    g.lineTo(bh2.x, bh2.y)
+    g.lineTo(bh3.x, bh3.y)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(bOut, INK, 1)
+    g.beginPath()
+    g.moveTo(b0.x, b0.y)
+    g.lineTo(b1.x, b1.y)
+    g.lineTo(b2.x, b2.y)
+    g.lineTo(b3.x, b3.y)
+    g.closePath()
+    g.strokePath()
+
+    // Inner leather window inside buckle.
+    const iw = bw * 0.46
+    const ih = bh * 0.44
+    const i0 = rp(bkC.x, bkC.y, -iw / 2, -ih / 2, bkTilt)
+    const i1 = rp(bkC.x, bkC.y, iw / 2, -ih / 2, bkTilt)
+    const i2 = rp(bkC.x, bkC.y, iw / 2, ih / 2, bkTilt)
+    const i3 = rp(bkC.x, bkC.y, -iw / 2, ih / 2, bkTilt)
+    g.fillStyle(pal.beltDark, 1)
+    g.beginPath()
+    g.moveTo(i0.x, i0.y)
+    g.lineTo(i1.x, i1.y)
+    g.lineTo(i2.x, i2.y)
+    g.lineTo(i3.x, i3.y)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(bOut * 0.78, INK, 1)
+    g.strokePath()
+
+    // Gold buckle prong bar.
+    const pr0 = rp(bkC.x, bkC.y, 0, 0, bkTilt)
+    const pr1 = rp(bkC.x, bkC.y, bw * 0.46, 0, bkTilt)
+    g.lineStyle(bOut * 1.25, INK, 1)
+    g.beginPath()
+    g.moveTo(pr0.x, pr0.y)
+    g.lineTo(pr1.x, pr1.y)
+    g.strokePath()
+    g.lineStyle(bOut * 0.65, pal.goldLight, 1)
+    g.beginPath()
+    g.moveTo(pr0.x, pr0.y)
+    g.lineTo(pr1.x, pr1.y)
+    g.strokePath()
+  }
+
+  // ---- 8. HEADGEAR ANCHOR (glued to top contour + spring bob/tilt) ----
+  const headAnchor = bp(0, topLocalY + r * (0.48 + sp.hatBob))
+  const headRot = sp.hatTilt
+  const hp = (ux: number, uy: number): { x: number; y: number } => rp(headAnchor.x, headAnchor.y, ux, uy, headRot)
+
+  // ---- 8A. RED BANDANA (headband + left knot + two fluttering tails) ----
+  {
+    const bdOut = thumbnail ? collectionInkWidth(r) : Math.max(2.2, out * 0.82)
+    // Two left bandana tails (drawn behind the knot).
+    const sw = sp.tailSway * r
+    // Upper tail sticking out to the left.
+    const t1a = hp(-r * 0.78, -r * 0.24)
+    const t1b = hp(-r * 1.18, -r * 0.22 + sw * 0.45)
+    const t1c = hp(-r * 1.44, -r * 0.02 + sw * 0.9)
+    const t1d = hp(-r * 1.12, r * 0.05 + sw * 0.5)
+    g.fillStyle(pal.bandana, 1)
+    g.beginPath()
+    g.moveTo(t1a.x, t1a.y)
+    quadFrom(g, t1a.x, t1a.y, t1b.x, t1b.y, t1c.x, t1c.y)
+    quadFrom(g, t1c.x, t1c.y, t1d.x, t1d.y, hp(-r * 0.80, -r * 0.06).x, hp(-r * 0.80, -r * 0.06).y)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(bdOut, INK, 1)
+    g.strokePath()
+
+    // Lower tail hanging down-left.
+    const t2a = hp(-r * 0.76, -r * 0.10)
+    const t2b = hp(-r * 1.16, r * 0.06 + sw * 0.5)
+    const t2c = hp(-r * 1.28, r * 0.38 + sw * 1.0)
+    const t2d = hp(-r * 0.92, r * 0.24 + sw * 0.5)
+    const t2e = hp(-r * 0.72, r * 0.08)
+    g.fillStyle(pal.bandana, 1)
+    g.beginPath()
+    g.moveTo(t2a.x, t2a.y)
+    quadFrom(g, t2a.x, t2a.y, t2b.x, t2b.y, t2c.x, t2c.y)
+    quadFrom(g, t2c.x, t2c.y, t2d.x, t2d.y, t2e.x, t2e.y)
+    g.closePath()
+    g.fillPath()
+    // Fold line inside lower tail.
+    g.lineStyle(Math.max(1.2, ink * 0.55), pal.bandanaDark, 0.85)
+    g.beginPath()
+    g.moveTo(hp(-r * 0.84, -r * 0.02).x, hp(-r * 0.84, -r * 0.02).y)
+    quadFrom(g, hp(-r * 0.84, -r * 0.02).x, hp(-r * 0.84, -r * 0.02).y, hp(-r * 1.04, r * 0.12 + sw * 0.5).x, hp(-r * 1.04, r * 0.12 + sw * 0.5).y, hp(-r * 1.14, r * 0.26 + sw * 0.8).x, hp(-r * 1.14, r * 0.26 + sw * 0.8).y)
+    g.strokePath()
+    g.lineStyle(bdOut, INK, 1)
+    g.beginPath()
+    g.moveTo(t2a.x, t2a.y)
+    quadFrom(g, t2a.x, t2a.y, t2b.x, t2b.y, t2c.x, t2c.y)
+    quadFrom(g, t2c.x, t2c.y, t2d.x, t2d.y, t2e.x, t2e.y)
+    g.closePath()
+    g.strokePath()
+
+    // Main red bandana headband wrapping across forehead.
+    const b0 = hp(-r * 0.84, -r * 0.12)
+    const b1 = hp(-r * 0.08, -r * 0.64)
+    const b2 = hp(r * 0.84, -r * 0.26)
+    const b3 = hp(r * 0.88, -r * 0.06)
+    const b4 = hp(-r * 0.04, -r * 0.42)
+    const b5 = hp(-r * 0.76, r * 0.04)
+    g.fillStyle(pal.bandana, 1)
+    g.beginPath()
+    g.moveTo(b0.x, b0.y)
+    quadFrom(g, b0.x, b0.y, b1.x, b1.y, b2.x, b2.y)
+    g.lineTo(b3.x, b3.y)
+    quadFrom(g, b3.x, b3.y, b4.x, b4.y, b5.x, b5.y)
+    g.closePath()
+    g.fillPath()
+    // Cloth fold crease across bandana.
+    g.lineStyle(Math.max(1.3, ink * 0.6), pal.bandanaDark, 0.85)
+    g.beginPath()
+    const f0 = hp(-r * 0.66, -r * 0.08)
+    const f1 = hp(-r * 0.04, -r * 0.50)
+    const f2 = hp(r * 0.66, -r * 0.18)
+    g.moveTo(f0.x, f0.y)
+    quadFrom(g, f0.x, f0.y, f1.x, f1.y, f2.x, f2.y)
+    g.strokePath()
+    g.lineStyle(bdOut, INK, 1)
+    g.beginPath()
+    g.moveTo(b0.x, b0.y)
+    quadFrom(g, b0.x, b0.y, b1.x, b1.y, b2.x, b2.y)
+    g.lineTo(b3.x, b3.y)
+    quadFrom(g, b3.x, b3.y, b4.x, b4.y, b5.x, b5.y)
+    g.closePath()
+    g.strokePath()
+
+    // Plump rounded bandana knot on the left temple.
+    const kC = hp(-r * 0.82, -r * 0.11)
+    const kR = r * 0.165
+    g.fillStyle(pal.bandana, 1)
+    g.fillCircle(kC.x, kC.y, kR)
+    g.fillStyle(pal.bandanaLight, 0.65)
+    g.fillCircle(kC.x - kR * 0.24, kC.y - kR * 0.24, kR * 0.45)
+    g.lineStyle(bdOut, INK, 1)
+    g.strokeCircle(kC.x, kC.y, kR)
+  }
+
+  // ---- 8B. PIRATE BICORNE HAT (gold trim, back crown, charcoal brim, skull emblem) ----
+  {
+    const hatOut = thumbnail ? collectionInkWidth(r) * 1.1 : Math.max(2.6, out * 0.94)
+    // Back crown dome peeking behind the left-top slope of the bicorne.
+    const dm0 = hp(-r * 0.72, -r * 0.66)
+    const dm1 = hp(-r * 0.52, -r * 1.18)
+    const dm2 = hp(-r * 0.14, -r * 1.12)
+    g.fillStyle(pal.hatDark, 1)
+    g.beginPath()
+    g.moveTo(dm0.x, dm0.y)
+    quadFrom(g, dm0.x, dm0.y, dm1.x, dm1.y, dm2.x, dm2.y)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(hatOut * 0.9, INK, 1)
+    g.strokePath()
+    // Gold piping on back crown.
+    g.lineStyle(Math.max(2, r * 0.065), pal.gold, 1)
+    g.beginPath()
+    g.moveTo(hp(-r * 0.68, -r * 0.68).x, hp(-r * 0.68, -r * 0.68).y)
+    quadFrom(g, hp(-r * 0.68, -r * 0.68).x, hp(-r * 0.68, -r * 0.68).y, hp(-r * 0.50, -r * 1.12).x, hp(-r * 0.50, -r * 1.12).y, hp(-r * 0.20, -r * 1.08).x, hp(-r * 0.20, -r * 1.08).y)
+    g.strokePath()
+
+    // Outer gold-trimmed bicorne silhouette.
+    const traceHatOuter = (): void => {
+      const pL = hp(-r * 1.16, -r * 0.20)
+      const cL1 = hp(-r * 1.30, -r * 0.56)
+      const pSubL = hp(-r * 0.76, -r * 0.74)
+      const cPeakL = hp(-r * 0.42, -r * 1.32)
+      const pPeak = hp(-r * 0.02, -r * 1.30)
+      const cPeakR = hp(r * 0.42, -r * 1.28)
+      const pDipR = hp(r * 0.74, -r * 0.72)
+      const cR1 = hp(r * 1.14, -r * 0.52)
+      const pR = hp(r * 1.02, -r * 0.08)
+      const cBotR = hp(r * 0.48, -r * 0.40)
+      const pBotM = hp(-r * 0.06, -r * 0.54)
+      const cBotL = hp(-r * 0.64, -r * 0.42)
+      g.moveTo(pL.x, pL.y)
+      quadFrom(g, pL.x, pL.y, cL1.x, cL1.y, pSubL.x, pSubL.y)
+      quadFrom(g, pSubL.x, pSubL.y, cPeakL.x, cPeakL.y, pPeak.x, pPeak.y)
+      quadFrom(g, pPeak.x, pPeak.y, cPeakR.x, cPeakR.y, pDipR.x, pDipR.y)
+      quadFrom(g, pDipR.x, pDipR.y, cR1.x, cR1.y, pR.x, pR.y)
+      quadFrom(g, pR.x, pR.y, cBotR.x, cBotR.y, pBotM.x, pBotM.y)
+      quadFrom(g, pBotM.x, pBotM.y, cBotL.x, cBotL.y, pL.x, pL.y)
+      g.closePath()
+    }
+    g.fillStyle(pal.gold, 1)
+    g.beginPath()
+    traceHatOuter()
+    g.fillPath()
+
+    // Gold trim top-left specular highlight.
+    g.fillStyle(pal.goldLight, 0.85)
+    g.beginPath()
+    const gh0 = hp(-r * 0.72, -r * 0.70)
+    const gh1 = hp(-r * 0.40, -r * 1.25)
+    const gh2 = hp(-r * 0.02, -r * 1.24)
+    const gh3 = hp(-r * 0.36, -r * 1.12)
+    g.moveTo(gh0.x, gh0.y)
+    quadFrom(g, gh0.x, gh0.y, gh1.x, gh1.y, gh2.x, gh2.y)
+    quadFrom(g, gh2.x, gh2.y, gh3.x, gh3.y, gh0.x, gh0.y)
+    g.closePath()
+    g.fillPath()
+
+    g.lineStyle(hatOut, INK, 1)
+    g.beginPath()
+    traceHatOuter()
+    g.strokePath()
+
+    // Inner dark charcoal bicorne front panel.
+    const traceHatInner = (): void => {
+      const iL = hp(-r * 1.00, -r * 0.25)
+      const icL1 = hp(-r * 1.12, -r * 0.50)
+      const iSubL = hp(-r * 0.68, -r * 0.64)
+      const icPeakL = hp(-r * 0.36, -r * 1.14)
+      const iPeak = hp(-r * 0.02, -r * 1.13)
+      const icPeakR = hp(r * 0.34, -r * 1.11)
+      const iDipR = hp(r * 0.66, -r * 0.63)
+      const icR1 = hp(r * 0.98, -r * 0.46)
+      const iR = hp(r * 0.88, -r * 0.16)
+      const icBotR = hp(r * 0.44, -r * 0.42)
+      const iBotM = hp(-r * 0.06, -r * 0.54)
+      const icBotL = hp(-r * 0.60, -r * 0.42)
+      g.moveTo(iL.x, iL.y)
+      quadFrom(g, iL.x, iL.y, icL1.x, icL1.y, iSubL.x, iSubL.y)
+      quadFrom(g, iSubL.x, iSubL.y, icPeakL.x, icPeakL.y, iPeak.x, iPeak.y)
+      quadFrom(g, iPeak.x, iPeak.y, icPeakR.x, icPeakR.y, iDipR.x, iDipR.y)
+      quadFrom(g, iDipR.x, iDipR.y, icR1.x, icR1.y, iR.x, iR.y)
+      quadFrom(g, iR.x, iR.y, icBotR.x, icBotR.y, iBotM.x, iBotM.y)
+      quadFrom(g, iBotM.x, iBotM.y, icBotL.x, icBotL.y, iL.x, iL.y)
+      g.closePath()
+    }
+    g.fillStyle(pal.hat, 1)
+    g.beginPath()
+    traceHatInner()
+    g.fillPath()
+    g.lineStyle(hatOut * 0.86, INK, 1)
+    g.beginPath()
+    traceHatInner()
+    g.strokePath()
+
+    // Crisp white skull-and-crossbones emblem on the hat front.
+    const skX = -r * 0.04
+    const skY = -r * 0.82
+    const boneW = thumbnail ? Math.max(1.2, r * 0.055) : Math.max(2, r * 0.065)
+    g.lineStyle(boneW, 0xf7f2eb, 1)
+    for (const sx of [-1, 1]) {
+      const bA = hp(skX - sx * r * 0.24, skY - r * 0.14)
+      const bB = hp(skX + sx * r * 0.24, skY + r * 0.14)
+      g.beginPath()
+      g.moveTo(bA.x, bA.y)
+      g.lineTo(bB.x, bB.y)
+      g.strokePath()
+      if (!thumbnail) {
+        g.fillStyle(0xf7f2eb, 1)
+        const kR = r * 0.042
+        g.fillCircle(bA.x - sx * r * 0.015, bA.y - r * 0.02, kR)
+        g.fillCircle(bA.x - sx * r * 0.03, bA.y + r * 0.02, kR)
+        g.fillCircle(bB.x + sx * r * 0.015, bB.y + r * 0.02, kR)
+        g.fillCircle(bB.x + sx * r * 0.03, bB.y - r * 0.02, kR)
+      }
+    }
+    // Skull cranium + jaw.
+    const skC = hp(skX, skY - r * 0.02)
+    const skJaw = hp(skX, skY + r * 0.09)
+    g.fillStyle(0xf7f2eb, 1)
+    g.fillEllipse(skC.x, skC.y, r * 0.28, r * 0.23)
+    g.fillRoundedRect(skJaw.x - r * 0.085, skJaw.y - r * 0.04, r * 0.17, r * 0.10, r * 0.03)
+    // Skull eye sockets + nasal triangle + teeth notches.
+    g.fillStyle(pal.hatDark, 1)
+    const eL = hp(skX - r * 0.055, skY - r * 0.02)
+    const eR = hp(skX + r * 0.055, skY - r * 0.02)
+    g.fillCircle(eL.x, eL.y, Math.max(1.1, r * 0.036))
+    g.fillCircle(eR.x, eR.y, Math.max(1.1, r * 0.036))
+    if (!thumbnail) {
+      const nC = hp(skX, skY + r * 0.035)
+      g.fillCircle(nC.x, nC.y, Math.max(0.9, r * 0.022))
+      g.lineStyle(Math.max(1, ink * 0.4), pal.hatDark, 0.9)
+      for (const tx of [-0.035, 0, 0.035]) {
+        const t0 = hp(skX + r * tx, skY + r * 0.08)
+        const t1 = hp(skX + r * tx, skY + r * 0.13)
+        g.beginPath()
+        g.moveTo(t0.x, t0.y)
+        g.lineTo(t1.x, t1.y)
+        g.strokePath()
+      }
+    }
+  }
+
+  // ---- 9. PARROT COMPANION (perched on upper-right hat brim/shoulder) ----
+  {
+    const prOut = thumbnail ? collectionInkWidth(r) : Math.max(2.1, out * 0.78)
+    const prAnchor = bp(r * 0.80, -r * (0.44 - sp.parrotBob))
+    const prRot = sp.hatTilt * 0.7
+    const pp = (ux: number, uy: number): { x: number; y: number } => rp(prAnchor.x, prAnchor.y, ux, uy, prRot)
+
+    // Red tail feathers hanging down below the perch.
+    const tf0 = pp(-r * 0.02, r * 0.18)
+    const tf1 = pp(r * 0.01, r * 0.56)
+    const tf2 = pp(r * 0.09, r * 0.34)
+    const tf3 = pp(r * 0.14, r * 0.58)
+    const tf4 = pp(r * 0.21, r * 0.18)
+    g.fillStyle(pal.parrotRedDark, 1)
+    g.beginPath()
+    g.moveTo(tf0.x, tf0.y)
+    quadFrom(g, tf0.x, tf0.y, pp(-r * 0.03, r * 0.42).x, pp(-r * 0.03, r * 0.42).y, tf1.x, tf1.y)
+    g.lineTo(tf2.x, tf2.y)
+    g.lineTo(tf3.x, tf3.y)
+    quadFrom(g, tf3.x, tf3.y, pp(r * 0.22, r * 0.40).x, pp(r * 0.22, r * 0.40).y, tf4.x, tf4.y)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(prOut * 0.9, INK, 1)
+    g.strokePath()
+
+    // Parrot plump red body + head crest.
+    const pb0 = pp(-r * 0.18, r * 0.02)
+    const pb1 = pp(-r * 0.22, -r * 0.30)
+    const pb2 = pp(-r * 0.16, -r * 0.58)
+    const pb3 = pp(r * 0.06, -r * 0.66)
+    const pb4 = pp(r * 0.28, -r * 0.50)
+    const pb5 = pp(r * 0.38, -r * 0.44) // crest tuft
+    const pb6 = pp(r * 0.26, -r * 0.34)
+    const pb7 = pp(r * 0.32, r * 0.04)
+    const pb8 = pp(r * 0.08, r * 0.24)
+    g.fillStyle(pal.parrotRed, 1)
+    g.beginPath()
+    g.moveTo(pb0.x, pb0.y)
+    quadFrom(g, pb0.x, pb0.y, pb1.x, pb1.y, pb2.x, pb2.y)
+    quadFrom(g, pb2.x, pb2.y, pb3.x, pb3.y, pb4.x, pb4.y)
+    g.lineTo(pb5.x, pb5.y)
+    g.lineTo(pb6.x, pb6.y)
+    quadFrom(g, pb6.x, pb6.y, pb7.x, pb7.y, pb8.x, pb8.y)
+    quadFrom(g, pb8.x, pb8.y, pp(-r * 0.12, r * 0.20).x, pp(-r * 0.12, r * 0.20).y, pb0.x, pb0.y)
+    g.closePath()
+    g.fillPath()
+    // Subtle chest scallop shading.
+    if (!thumbnail) {
+      g.lineStyle(Math.max(1.2, ink * 0.48), pal.parrotRedDark, 0.8)
+      for (const [cx0, cy0] of [
+        [-0.08, -0.10],
+        [0.02, -0.06],
+      ] as const) {
+        const sc0 = pp(r * (cx0 - 0.05), r * cy0)
+        const sc1 = pp(r * cx0, r * (cy0 + 0.06))
+        const sc2 = pp(r * (cx0 + 0.05), r * cy0)
+        g.beginPath()
+        g.moveTo(sc0.x, sc0.y)
+        quadFrom(g, sc0.x, sc0.y, sc1.x, sc1.y, sc2.x, sc2.y)
+        g.strokePath()
+      }
+    }
+    g.lineStyle(prOut, INK, 1)
+    g.beginPath()
+    g.moveTo(pb0.x, pb0.y)
+    quadFrom(g, pb0.x, pb0.y, pb1.x, pb1.y, pb2.x, pb2.y)
+    quadFrom(g, pb2.x, pb2.y, pb3.x, pb3.y, pb4.x, pb4.y)
+    g.lineTo(pb5.x, pb5.y)
+    g.lineTo(pb6.x, pb6.y)
+    quadFrom(g, pb6.x, pb6.y, pb7.x, pb7.y, pb8.x, pb8.y)
+    quadFrom(g, pb8.x, pb8.y, pp(-r * 0.12, r * 0.20).x, pp(-r * 0.12, r * 0.20).y, pb0.x, pb0.y)
+    g.closePath()
+    g.strokePath()
+
+    // White eye patch + happy curved eye arc on the parrot.
+    const peC = pp(r * 0.05, -r * 0.42)
+    g.fillStyle(0xffffff, 1)
+    g.fillEllipse(peC.x, peC.y, r * 0.21, r * 0.24)
+    g.lineStyle(prOut * 0.82, INK, 1)
+    g.strokeEllipse(peC.x, peC.y, r * 0.21, r * 0.24)
+    if (panic > 0.5) {
+      // Startled dot pupil when panicking.
+      g.fillStyle(INK, 1)
+      g.fillCircle(peC.x, peC.y, Math.max(1.3, r * 0.045))
+    } else {
+      // Cheerful closed-arc eye.
+      const ea0 = pp(r * 0.00, -r * 0.41)
+      const ea1 = pp(r * 0.05, -r * 0.48)
+      const ea2 = pp(r * 0.10, -r * 0.40)
+      g.lineStyle(Math.max(1.4, prOut * 0.8), INK, 1)
+      g.beginPath()
+      g.moveTo(ea0.x, ea0.y)
+      quadFrom(g, ea0.x, ea0.y, ea1.x, ea1.y, ea2.x, ea2.y)
+      g.strokePath()
+    }
+
+    // Curved golden-yellow beak (upper + lower mandible).
+    const bk0 = pp(-r * 0.05, -r * 0.50)
+    const bk1 = pp(-r * 0.28, -r * 0.48)
+    const bk2 = pp(-r * 0.26, -r * 0.26)
+    const bk3 = pp(-r * 0.04, -r * 0.32)
+    g.fillStyle(pal.parrotYellow, 1)
+    g.beginPath()
+    g.moveTo(bk0.x, bk0.y)
+    quadFrom(g, bk0.x, bk0.y, bk1.x, bk1.y, bk2.x, bk2.y)
+    quadFrom(g, bk2.x, bk2.y, bk3.x, bk3.y, bk0.x, bk0.y)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(prOut * 0.9, INK, 1)
+    g.strokePath()
+    // Lower beak mandible.
+    const lb0 = pp(-r * 0.16, -r * 0.30)
+    const lb1 = pp(-r * 0.10, -r * 0.20)
+    const lb2 = pp(-r * 0.03, -r * 0.28)
+    g.fillStyle(pal.goldDark, 1)
+    g.beginPath()
+    g.moveTo(lb0.x, lb0.y)
+    quadFrom(g, lb0.x, lb0.y, lb1.x, lb1.y, lb2.x, lb2.y)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(prOut * 0.8, INK, 1)
+    g.strokePath()
+
+    // Layered tri-color wing (red top, yellow middle, blue tips) with flap angle.
+    const wPivot = pp(r * 0.14, -r * 0.22)
+    const wFlap = -sp.parrotWing * 0.85
+    const wp = (ux: number, uy: number): { x: number; y: number } => rp(wPivot.x, wPivot.y, ux, uy, prRot + wFlap)
+    const w0 = wp(-r * 0.08, 0)
+    const w1 = wp(r * 0.16, -r * 0.04)
+    const w2 = wp(r * 0.28, r * 0.22)
+    const w3 = wp(r * 0.26, r * 0.44)
+    const w4 = wp(r * 0.08, r * 0.40)
+    const w5 = wp(-r * 0.08, r * 0.18)
+    // Base wing fill (blue feather tips at bottom).
+    g.fillStyle(pal.parrotBlue, 1)
+    g.beginPath()
+    g.moveTo(w0.x, w0.y)
+    quadFrom(g, w0.x, w0.y, w1.x, w1.y, w2.x, w2.y)
+    quadFrom(g, w2.x, w2.y, w3.x, w3.y, w4.x, w4.y)
+    quadFrom(g, w4.x, w4.y, w5.x, w5.y, w0.x, w0.y)
+    g.closePath()
+    g.fillPath()
+    // Yellow mid band on wing.
+    const wy2 = wp(r * 0.25, r * 0.18)
+    const wy3 = wp(r * 0.18, r * 0.28)
+    const wy4 = wp(-r * 0.02, r * 0.22)
+    g.fillStyle(pal.parrotYellow, 1)
+    g.beginPath()
+    g.moveTo(w0.x, w0.y)
+    quadFrom(g, w0.x, w0.y, w1.x, w1.y, wy2.x, wy2.y)
+    quadFrom(g, wy2.x, wy2.y, wy3.x, wy3.y, wy4.x, wy4.y)
+    quadFrom(g, wy4.x, wy4.y, w5.x, w5.y, w0.x, w0.y)
+    g.closePath()
+    g.fillPath()
+    // Red upper shoulder cap on wing.
+    const wr2 = wp(r * 0.20, r * 0.09)
+    const wr3 = wp(r * 0.08, r * 0.14)
+    const wr4 = wp(-r * 0.06, r * 0.11)
+    g.fillStyle(pal.parrotRed, 1)
+    g.beginPath()
+    g.moveTo(w0.x, w0.y)
+    quadFrom(g, w0.x, w0.y, w1.x, w1.y, wr2.x, wr2.y)
+    quadFrom(g, wr2.x, wr2.y, wr3.x, wr3.y, wr4.x, wr4.y)
+    g.closePath()
+    g.fillPath()
+    // Wing outline.
+    g.lineStyle(prOut, INK, 1)
+    g.beginPath()
+    g.moveTo(w0.x, w0.y)
+    quadFrom(g, w0.x, w0.y, w1.x, w1.y, w2.x, w2.y)
+    quadFrom(g, w2.x, w2.y, w3.x, w3.y, w4.x, w4.y)
+    quadFrom(g, w4.x, w4.y, w5.x, w5.y, w0.x, w0.y)
+    g.closePath()
+    g.strokePath()
+
+    // Golden parrot claws gripping the hat brim.
+    for (const cxOff of [-0.08, -0.01, 0.06]) {
+      const toe = pp(r * cxOff, r * 0.13)
+      g.fillStyle(pal.parrotYellow, 1)
+      g.fillEllipse(toe.x, toe.y, r * 0.085, r * 0.12)
+      g.lineStyle(prOut * 0.78, INK, 1)
+      g.strokeEllipse(toe.x, toe.y, r * 0.085, r * 0.12)
+    }
+  }
+
+  // ---- 10. SILVER HOOK HAND WITH GOLDEN GUARD (lower-right) ----
+  {
+    const hkOut = thumbnail ? collectionInkWidth(r) * 1.05 : Math.max(2.3, out * 0.88)
+    const hkAnchor = bp(r * 0.76, r * 0.44)
+    const hkRot = sp.hookSwing
+    const kp = (ux: number, uy: number): { x: number; y: number } => rp(hkAnchor.x, hkAnchor.y, ux, uy, hkRot)
+
+    // Curved silver hook blade extending out-and-up in a C-curve.
+    const s0 = kp(r * 0.10, -r * 0.08)
+    const s1 = kp(r * 0.36, -r * 0.09)
+    const s2 = kp(r * 0.56, -r * 0.24)
+    const s3 = kp(r * 0.54, -r * 0.52)
+    const s4 = kp(r * 0.30, -r * 0.56)
+    const s5 = kp(r * 0.19, -r * 0.36) // sharp inner point
+    const s6 = kp(r * 0.33, -r * 0.40)
+    const s7 = kp(r * 0.39, -r * 0.26)
+    const s8 = kp(r * 0.28, r * 0.07)
+    const s9 = kp(r * 0.10, r * 0.08)
+    g.fillStyle(pal.hook, 1)
+    g.beginPath()
+    g.moveTo(s0.x, s0.y)
+    quadFrom(g, s0.x, s0.y, s1.x, s1.y, s2.x, s2.y)
+    quadFrom(g, s2.x, s2.y, s3.x, s3.y, s4.x, s4.y)
+    quadFrom(g, s4.x, s4.y, kp(r * 0.16, -r * 0.48).x, kp(r * 0.16, -r * 0.48).y, s5.x, s5.y)
+    quadFrom(g, s5.x, s5.y, s6.x, s6.y, s7.x, s7.y)
+    quadFrom(g, s7.x, s7.y, s8.x, s8.y, s9.x, s9.y)
+    g.closePath()
+    g.fillPath()
+    // Bright silver highlight along outer hook curve.
+    g.lineStyle(Math.max(1.5, r * 0.045), pal.hookLight, 0.85)
+    g.beginPath()
+    const hl0 = kp(r * 0.18, -r * 0.01)
+    const hl1 = kp(r * 0.46, -r * 0.12)
+    const hl2 = kp(r * 0.45, -r * 0.44)
+    g.moveTo(hl0.x, hl0.y)
+    quadFrom(g, hl0.x, hl0.y, hl1.x, hl1.y, hl2.x, hl2.y)
+    g.strokePath()
+    g.lineStyle(hkOut, INK, 1)
+    g.beginPath()
+    g.moveTo(s0.x, s0.y)
+    quadFrom(g, s0.x, s0.y, s1.x, s1.y, s2.x, s2.y)
+    quadFrom(g, s2.x, s2.y, s3.x, s3.y, s4.x, s4.y)
+    quadFrom(g, s4.x, s4.y, kp(r * 0.16, -r * 0.48).x, kp(r * 0.16, -r * 0.48).y, s5.x, s5.y)
+    quadFrom(g, s5.x, s5.y, s6.x, s6.y, s7.x, s7.y)
+    quadFrom(g, s7.x, s7.y, s8.x, s8.y, s9.x, s9.y)
+    g.closePath()
+    g.strokePath()
+
+    // Golden dome cup/guard at base of the hook.
+    const c0 = kp(-r * 0.08, -r * 0.22)
+    const c1 = kp(r * 0.16, -r * 0.20)
+    const c2 = kp(r * 0.18, r * 0.18)
+    const c3 = kp(-r * 0.06, r * 0.22)
+    const c4 = kp(-r * 0.20, 0)
+    g.fillStyle(pal.gold, 1)
+    g.beginPath()
+    g.moveTo(c0.x, c0.y)
+    quadFrom(g, c0.x, c0.y, c1.x, c1.y, kp(r * 0.17, 0).x, kp(r * 0.17, 0).y)
+    quadFrom(g, kp(r * 0.17, 0).x, kp(r * 0.17, 0).y, c2.x, c2.y, c3.x, c3.y)
+    quadFrom(g, c3.x, c3.y, c4.x, c4.y, c0.x, c0.y)
+    g.closePath()
+    g.fillPath()
+    // Guard highlight & lower shade.
+    const ch = kp(-r * 0.02, -r * 0.11)
+    g.fillStyle(pal.goldLight, 0.78)
+    g.fillEllipse(ch.x, ch.y, r * 0.14, r * 0.08)
+    g.lineStyle(hkOut, INK, 1)
+    g.beginPath()
+    g.moveTo(c0.x, c0.y)
+    quadFrom(g, c0.x, c0.y, c1.x, c1.y, kp(r * 0.17, 0).x, kp(r * 0.17, 0).y)
+    quadFrom(g, kp(r * 0.17, 0).x, kp(r * 0.17, 0).y, c2.x, c2.y, c3.x, c3.y)
+    quadFrom(g, c3.x, c3.y, c4.x, c4.y, c0.x, c0.y)
+    g.closePath()
+    g.strokePath()
+
+    // Raised gold collar rim around the hook base.
+    const r0 = kp(r * 0.06, -r * 0.25)
+    const r1 = kp(r * 0.18, -r * 0.22)
+    const r2 = kp(r * 0.20, r * 0.20)
+    const r3 = kp(r * 0.08, r * 0.25)
+    g.fillStyle(pal.goldDark, 1)
+    g.beginPath()
+    g.moveTo(r0.x, r0.y)
+    g.lineTo(r1.x, r1.y)
+    g.lineTo(r2.x, r2.y)
+    g.lineTo(r3.x, r3.y)
+    g.closePath()
+    g.fillPath()
+    g.lineStyle(hkOut * 0.92, INK, 1)
+    g.strokePath()
+  }
+}
 
 export interface CrabPalette {
   /** Shell (the main carapace colour). */
@@ -2696,6 +3946,8 @@ export function drawTier9Ball(
     drawDrunkoBall(g, cx, cy, r, variant, poly, panic, gaze, seed, bodyAngle, thumbnail)
   } else if (theme === 'robo') {
     drawRoboBall(g, cx, cy, r, variant, poly, panic, gaze, seed, ballId, thumbnail)
+  } else if (theme === 'pirate') {
+    drawPirateBall(g, cx, cy, r, variant, poly, panic, gaze, seed, bodyAngle, ballId, thumbnail)
   } else {
     drawSharkBall(g, cx, cy, r, variant, poly, panic, gaze, seed, thumbnail)
   }
@@ -2731,7 +3983,7 @@ export function drawCollectibleBall(
     throw new Error(`No collectible art implemented for tier ${tier}`)
   }
   drawTier9Ball(g, cx, cy, r, variant, poly, panic, gaze, seed,
-    theme === 'shark' || theme === 'pig' || theme === 'drunko' || theme === 'robo' ? theme : tier9Theme(),
+    theme === 'shark' || theme === 'pig' || theme === 'drunko' || theme === 'robo' || theme === 'pirate' ? theme : tier9Theme(),
     bodyAngle, ballId, thumbnail)
 }
 

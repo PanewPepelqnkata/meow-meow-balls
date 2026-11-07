@@ -17,6 +17,9 @@ import {
   notifyRoboImpact,
   dropRoboAntennaState,
   clearRoboAntennaStates,
+  notifyPirateImpact,
+  dropPirateState,
+  clearPirateStates,
 } from './BallAppearance'
 import type { BallLook } from './BallAppearance'
 import {
@@ -145,9 +148,13 @@ export class SoftBallRenderer {
       }
       const bodyAngle = r.soft.center.angle ?? 0
       registerImpact(d, p.x / len, p.y / len, p.speed, r.soft.radius, bodyAngle)
-      if (r.tier === 9 && tier9Theme() === 'robo') {
-        // Feed the robo antenna springs with the exact collision vector.
-        notifyRoboImpact(r.id, p.x / len, p.y / len, impactStrength(p.speed, r.soft.radius))
+      if (r.tier === 9) {
+        const t9 = tier9Theme()
+        if (t9 === 'robo') {
+          notifyRoboImpact(r.id, p.x / len, p.y / len, impactStrength(p.speed, r.soft.radius))
+        } else if (t9 === 'pirate') {
+          notifyPirateImpact(r.id, p.x / len, p.y / len, impactStrength(p.speed, r.soft.radius))
+        }
       }
     }
     this.pendingImpacts.clear()
@@ -155,7 +162,7 @@ export class SoftBallRenderer {
 
   unregister(ballId: number): void {
     dropRoboAntennaState(ballId)
-    this.renderables.delete(ballId)
+    dropPirateState(ballId)
     this.looks.delete(ballId)
     this.contourPool.delete(ballId)
     this.deforms.delete(ballId)
@@ -166,7 +173,7 @@ export class SoftBallRenderer {
 
   clear(): void {
     clearRoboAntennaStates()
-    this.renderables.clear()
+    clearPirateStates()
     this.looks.clear()
     this.contourPool.clear()
     this.deforms.clear()

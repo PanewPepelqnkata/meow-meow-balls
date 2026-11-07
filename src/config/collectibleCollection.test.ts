@@ -4,11 +4,19 @@ import { rollCollectibleTheme } from './collectibleThemes'
 
 describe('collection character identities', () => {
   it('keeps characters separate even when their discovery palettes match', () => {
-    const discoveries = { '9:pig:2': 100, '9:shark:2': 200, '9:pig:5': 300, '9:drunko:2': 400, '9:robo:2': 500 }
+    const discoveries = {
+      '9:pig:2': 100,
+      '9:shark:2': 200,
+      '9:pig:5': 300,
+      '9:drunko:2': 400,
+      '9:robo:2': 500,
+      '9:pirate:2': 600,
+    }
     expect(collectionDiscovery(discoveries, 9, 'pig')).toEqual({ at: 100, variant: 2 })
     expect(collectionDiscovery(discoveries, 9, 'shark')).toEqual({ at: 200, variant: 2 })
     expect(collectionDiscovery(discoveries, 9, 'drunko')).toEqual({ at: 400, variant: 2 })
     expect(collectionDiscovery(discoveries, 9, 'robo')).toEqual({ at: 500, variant: 2 })
+    expect(collectionDiscovery(discoveries, 9, 'pirate')).toEqual({ at: 600, variant: 2 })
   })
 
   it('retains a character’s first discovered palette rather than the latest run palette', () => {
@@ -30,6 +38,7 @@ describe('collection character identities', () => {
     expect(collectionDiscovery(discoveries, 9, 'pig')).toBeNull()
     expect(collectionDiscovery(discoveries, 9, 'drunko')).toBeNull()
     expect(collectionDiscovery(discoveries, 9, 'robo')).toBeNull()
+    expect(collectionDiscovery(discoveries, 9, 'pirate')).toBeNull()
   })
 
   it('keeps score-generated numeric records unidentified even when a tier has one character', () => {

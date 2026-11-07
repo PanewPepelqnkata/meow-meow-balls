@@ -53,30 +53,41 @@ export function variantIdFor(tier: number): number {
 
 // ---------------------------------------------------------------------------
 // Tier-9 THEME roll — the run picks ONE collectible family from
-// COLLECTIBLE_THEMES[9] (shark / pig / drunko). Every tier-9 ball in a run
-// is that character (the variant id then picks the palette WITHIN the
-// family), so players collect sharks some runs and pigs the next.
+// COLLECTIBLE_THEMES[9] (shark / pig / drunko / robo / pirate). Every
+// tier-9 ball in a run is that character (the variant id then picks the
+// palette WITHIN the family), so players collect sharks some runs and
+// pirates the next.
 // ---------------------------------------------------------------------------
 
-export type Tier9Theme = 'shark' | 'pig' | 'drunko' | 'robo'
+export type Tier9Theme = 'shark' | 'pig' | 'drunko' | 'robo' | 'pirate'
 
-/** The /drunko test route: every drop is a tier-9 Drunk'o Ball and the run
- *  leaves no trace (no leaderboard submit, no save writes). */
+/** The /pirate_ball test route: every drop is a tier-9 Pirate Ball and the
+ *  run leaves no trace (no leaderboard submit, no save writes). */
+export function isPirateTestRoute(): boolean {
+  if (typeof window === 'undefined') return false
+  const path = window.location.pathname.replace(/\/+$/, '')
+  return path === '/pirate_ball' || path.endsWith('/pirate_ball')
+}
+
+/** Isolated character test routes (/drunko and /pirate_ball): every drop is
+ *  that tier-9 character and the run leaves no trace (no leaderboard submit,
+ *  no save writes). */
 export function isDrunkoTestRoute(): boolean {
   if (typeof window === 'undefined') return false
   const path = window.location.pathname.replace(/\/+$/, '')
-  return path === '/drunko' || path.endsWith('/drunko')
+  return path === '/drunko' || path.endsWith('/drunko') || isPirateTestRoute()
 }
 
-/** The tier-9 animal theme this run rolled — a weighted roll from
+/** The tier-9 theme this run rolled — a weighted roll from
  *  `COLLECTIBLE_THEMES[9]` in config/collectibleThemes.ts (equal weights
- *  today). URL overrides: `?theme=pig|shark|drunko|robo` for QA, and the
- *  /drunko test route pins the theme to the drunkard. */
+ *  today). URL overrides: `?theme=pig|shark|drunko|robo|pirate` for QA, and
+ *  the /drunko and /pirate_ball test routes pin the theme. */
 export function tier9Theme(): Tier9Theme {
   if (typeof window !== 'undefined') {
+    if (isPirateTestRoute()) return 'pirate'
     if (isDrunkoTestRoute()) return 'drunko'
     const p = new URLSearchParams(window.location.search).get('theme')
-    if (p === 'pig' || p === 'shark' || p === 'drunko' || p === 'robo') return p
+    if (p === 'pig' || p === 'shark' || p === 'drunko' || p === 'robo' || p === 'pirate') return p
   }
   return rollCollectibleTheme(9, runSeed, hash) as Tier9Theme
 }

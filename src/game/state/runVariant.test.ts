@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { isDrunkoTestRoute, tier9Theme } from './runVariant'
+import { isDrunkoTestRoute, isPirateTestRoute, tier9Theme } from './runVariant'
 
 function visit(pathname: string, search = ''): void {
   vi.stubGlobal('window', { location: { pathname, search } })
@@ -15,14 +15,27 @@ describe('isDrunkoTestRoute', () => {
     expect(isDrunkoTestRoute()).toBe(false)
   })
 
-  it.each(['/drunko', '/drunko/', '/drunko///', '/preview/drunko', '/preview/drunko//'])(
-    'recognizes the sandbox path %s',
+  it.each([
+    '/drunko',
+    '/drunko/',
+    '/drunko///',
+    '/preview/drunko',
+    '/preview/drunko//',
+    '/pirate_ball',
+    '/pirate_ball/',
+    '/preview/pirate_ball',
+  ])('recognizes the sandbox path %s', (pathname) => {
+    visit(pathname)
+    expect(isDrunkoTestRoute()).toBe(true)
+  })
+
+  it.each(['/pirate_ball', '/pirate_ball/', '/preview/pirate_ball'])(
+    'recognizes the pirate_ball path %s via isPirateTestRoute',
     (pathname) => {
       visit(pathname)
-      expect(isDrunkoTestRoute()).toBe(true)
+      expect(isPirateTestRoute()).toBe(true)
     },
   )
-
   it.each(['/', '/preview', '/drunkos', '/not-drunko', '/drunko/play', '/Drunko', '/drunko.html'])(
     'does not treat the production path %s as a sandbox',
     (pathname) => {
@@ -37,8 +50,15 @@ describe('tier9Theme route precedence', () => {
     visit(pathname, '?theme=shark&test=1')
     expect(tier9Theme()).toBe('drunko')
   })
+  it.each(['/pirate_ball', '/pirate_ball/', '/preview/pirate_ball'])(
+    'pins %s to pirate despite conflicting QA flags',
+    (pathname) => {
+      visit(pathname, '?theme=shark&test=1')
+      expect(tier9Theme()).toBe('pirate')
+    },
+  )
 
-  it.each(['shark', 'pig', 'drunko', 'robo'] as const)('preserves the production %s override', (theme) => {
+  it.each(['shark', 'pig', 'drunko', 'robo', 'pirate'] as const)('preserves the production %s override', (theme) => {
     visit('/', `?theme=${theme}`)
     expect(tier9Theme()).toBe(theme)
   })

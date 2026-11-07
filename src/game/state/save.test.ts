@@ -70,12 +70,13 @@ describe('hasDiscoveredTier (the repeat-discovery gate)', () => {
   })
 
   it('stores every tier-nine character separately across runs and save roundtrips', () => {
-    for (const theme of ['pig', 'shark', 'drunko', 'robo']) recordDiscovery(9, 3, theme)
+    for (const theme of ['pig', 'shark', 'drunko', 'robo', 'pirate']) recordDiscovery(9, 3, theme)
     const saved = normalizeSave(loadSave())
     expect(saved.variants['9:pig:3']).toBeGreaterThan(0)
     expect(saved.variants['9:shark:3']).toBeGreaterThan(0)
     expect(saved.variants['9:drunko:3']).toBeGreaterThan(0)
     expect(saved.variants['9:robo:3']).toBeGreaterThan(0)
+    expect(saved.variants['9:pirate:3']).toBeGreaterThan(0)
     expect(saved.variants['9:3']).toBeUndefined()
     resetSave()
     writeSave(saved, { syncCloud: false })
@@ -88,6 +89,7 @@ describe('hasDiscoveredTier (the repeat-discovery gate)', () => {
     expect(hasDiscoveredCollectible(9, 'pig')).toBe(false)
     expect(hasDiscoveredCollectible(9, 'drunko')).toBe(false)
     expect(hasDiscoveredCollectible(9, 'robo')).toBe(false)
+    expect(hasDiscoveredCollectible(9, 'pirate')).toBe(false)
     expect(hasDiscoveredCollectible(10, 'crab')).toBe(false)
   })
 

@@ -9,6 +9,14 @@
       "destination": "/index.html"
     },
     {
+      "source": "/pirate_ball",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/pirate_ball/",
+      "destination": "/index.html"
+    },
+    {
       "source": "/boss",
       "destination": "/index.html"
     },

@@ -71,7 +71,7 @@ describe('/drunko save isolation', () => {
     vi.unstubAllGlobals()
   })
 
-  it.each(['/drunko', '/drunko/', '/preview/drunko//'])(
+  it.each(['/drunko', '/drunko/', '/preview/drunko//', '/pirate_ball', '/pirate_ball/', '/preview/pirate_ball'])(
     'leaves both cached progress and all local storage unchanged on %s',
     (route) => {
       pathname = route
