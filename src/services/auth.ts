@@ -1021,8 +1021,16 @@ export class AuthService {
   async persistGuestSaveToCloud(saveData?: Partial<SaveDataV1>): Promise<void> {
     if (isDrunkoTestRoute()) return
     if (this.user || getSaveOwnerId() !== null) return
-    const guestId = getOrCreateGuestId()
     const save = normalizeSave(saveData ?? loadSave())
+    const hasProgress =
+      save.best > 0 ||
+      save.stats.runs > 0 ||
+      save.stats.merges > 0 ||
+      save.leaderboard.length > 0 ||
+      Object.keys(save.variants).length > 0 ||
+      Object.keys(save.discovered).some((k) => Number(k) > 3)
+    if (!hasProgress) return
+    const guestId = getOrCreateGuestId()
     try {
       await getSupabase().rpc('upsert_guest_progress', {
         p_guest_id: guestId,

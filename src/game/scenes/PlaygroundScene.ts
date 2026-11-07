@@ -1067,7 +1067,6 @@ export class PlaygroundScene extends Phaser.Scene {
       if (!isDrunkoTestRoute()) {
         scoreService.startNewRun()
         recordRunStart()
-        this.syncLiveRun(true)
       }
     }
     // frame (the update-loop flip would otherwise lag one frame).
@@ -1192,6 +1191,7 @@ export class PlaygroundScene extends Phaser.Scene {
 
   private syncLiveRun(force = false): void {
     if (!this.runStarted || isDrunkoTestRoute()) return
+    if (this.mergesThisRun === 0 && this.score.score === 0) return
     const now = Date.now()
     if (!force && now - this.lastLiveSyncAt < 2500) return
     this.lastLiveSyncAt = now

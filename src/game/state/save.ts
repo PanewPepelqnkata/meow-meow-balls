@@ -108,6 +108,8 @@ export function normalizeSave(raw: Partial<SaveDataV1> | null | undefined): Save
 
   const leaderboard: LeaderboardEntry[] = []
   if (Array.isArray(raw.leaderboard)) {
+    const seenLb = new Set<string>()
+    const parsedLb: LeaderboardEntry[] = []
     for (const entry of raw.leaderboard) {
       if (
         entry &&
@@ -117,14 +119,18 @@ export function normalizeSave(raw: Partial<SaveDataV1> | null | undefined): Save
         typeof entry.bestTier === 'number' &&
         Number.isFinite(entry.bestTier)
       ) {
-        leaderboard.push({
-          score: Math.floor(entry.score),
-          bestTier: Math.max(1, Math.min(12, Math.floor(entry.bestTier))),
-          at: typeof entry.at === 'number' && Number.isFinite(entry.at) && entry.at > 0 ? entry.at : now,
-        })
+        const score = Math.floor(entry.score)
+        const bestTier = Math.max(1, Math.min(12, Math.floor(entry.bestTier)))
+        const at = typeof entry.at === 'number' && Number.isFinite(entry.at) && entry.at > 0 ? entry.at : now
+        const key = `${score}:${bestTier}:${Math.floor(at / 1000)}`
+        if (!seenLb.has(key)) {
+          seenLb.add(key)
+          parsedLb.push({ score, bestTier, at })
+        }
       }
     }
-    leaderboard.sort((a, b) => b.score - a.score || b.at - a.at)
+    parsedLb.sort((a, b) => b.score - a.score || b.at - a.at)
+    leaderboard.push(...parsedLb.slice(0, MAX_LEADERBOARD))
   }
 
   const rawBest = typeof raw.best === 'number' && Number.isFinite(raw.best) && raw.best >= 0 ? Math.floor(raw.best) : 0

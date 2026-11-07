@@ -416,6 +416,17 @@ export function buildBossAnalytics(
     let gRuns = (guestRunsByGuest.get(gp.guest_id) ?? []).sort(
       (a, b) => Date.parse(b.created_at) - Date.parse(a.created_at),
     )
+    const lb = Array.isArray(gp.leaderboard) ? gp.leaderboard : []
+    const hasGuestActivity =
+      Boolean(gp.converted_user_id) ||
+      gRuns.length > 0 ||
+      lb.length > 0 ||
+      (gp.best_score ?? 0) > 0 ||
+      (gp.stats?.runs ?? 0) > 0 ||
+      (gp.stats?.merges ?? 0) > 0 ||
+      Object.keys(gp.variants ?? {}).length > 0 ||
+      Object.keys(gp.discovered ?? {}).some((k) => Number(k) > 3)
+    if (!hasGuestActivity) continue
 
     // If a guest has recorded local leaderboard entries or career stats in guest_profiles
     // before individual guest_scores rows were logged, synthesize run entries so Runs tab & charts show them.
@@ -583,7 +594,18 @@ export function buildBossAnalytics(
     })
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
 
-  const allRuns: BossRunEnriched[] = [...runs, ...guestRuns].sort(
+  // Exclude converted guests' runs from allRuns when those runs were already linked into registered scores
+  const unlinkedGuestRuns = guestRuns.filter((gr) => {
+    const g = guestLookup.get(gr.user_id)
+    if (!g?.convertedUserId) return true
+    const convertedPlayerRuns = runsByUser.get(g.convertedUserId) ?? []
+    return !convertedPlayerRuns.some(
+      (pr) =>
+        pr.score === gr.score &&
+        Math.abs(Date.parse(pr.created_at) - Date.parse(gr.created_at)) < 5000,
+    )
+  })
+  const allRuns: BossRunEnriched[] = [...runs, ...unlinkedGuestRuns].sort(
     (a, b) => Date.parse(b.created_at) - Date.parse(a.created_at),
   )
   const nowMs = Date.parse(generatedAt)
@@ -612,7 +634,6 @@ export function buildBossAnalytics(
   const totalGuestCareerRuns = guests.reduce((sum, g) => sum + g.careerRuns, 0)
   const guestRuns24h = guestRuns.filter((r) => nowMs - Date.parse(r.created_at) <= dayMs).length
   const guestRuns7d = guestRuns.filter((r) => nowMs - Date.parse(r.created_at) <= 7 * dayMs).length
-
   const allCandidates = [...players, ...guests].sort(
     (a, b) => b.bestScore - a.bestScore || b.careerRuns - a.careerRuns,
   )

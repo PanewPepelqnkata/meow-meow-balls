@@ -284,4 +284,20 @@ describe('hasDiscoveredTier (the repeat-discovery gate)', () => {
     recordRunEnd(0, 1, 0)
     expect(loadSave().coins).toBe(0)
   })
+
+  it('deduplicates and caps leaderboard entries before clamping stats.runs', () => {
+    const repeated = Array.from({ length: 25 }, (_, i) => ({
+      score: 3436,
+      bestTier: 6,
+      at: 1793967600100 + (i % 2) * 100,
+    }))
+    const normalized = normalizeSave({
+      version: 1,
+      best: 3436,
+      leaderboard: repeated,
+      stats: { runs: 1, merges: 45, bestTier: 6 },
+    })
+    expect(normalized.leaderboard).toHaveLength(1)
+    expect(normalized.stats.runs).toBe(1)
+  })
 })

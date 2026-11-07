@@ -341,4 +341,70 @@ describe('buildBossAnalytics', () => {
     expect(summary.guests[0]?.runs[0]?.collectibles).toBeUndefined()
     expect(summary.allRuns[0]?.collectibles).toBeUndefined()
   })
+
+  it('excludes empty unconverted bounce guest profiles and deduplicates converted guest runs from allRuns and career totals', () => {
+    const emptyGuest: BossGuestProfileRow = {
+      guest_id: '44444444-4444-4444-8444-444444444444',
+      best_score: 0,
+      discovered: { '1': 1, '2': 1, '3': 1 },
+      variants: {},
+      stats: { runs: 0, merges: 0, bestTier: 0 },
+      leaderboard: [],
+      settings: { theme: 'auto' },
+      converted_user_id: null,
+      converted_at: null,
+      created_at: nowIso,
+      updated_at: nowIso,
+      last_seen_at: nowIso,
+    }
+    const convertedGuest: BossGuestProfileRow = {
+      guest_id: '55555555-5555-4555-8555-555555555555',
+      best_score: 2196,
+      discovered: { '1': 1, '2': 1, '3': 1, '8': 2 },
+      variants: {},
+      stats: { runs: 1, merges: 282, bestTier: 8 },
+      leaderboard: [{ score: 2196, bestTier: 8, at: Date.parse('2026-11-02T18:00:00.000Z') }],
+      settings: { theme: 'auto' },
+      converted_user_id: 'u1',
+      converted_at: nowIso,
+      created_at: nowIso,
+      updated_at: nowIso,
+      last_seen_at: nowIso,
+    }
+    const linkedUserScore: BossScoreRow = {
+      id: 99,
+      user_id: 'u1',
+      score: 2196,
+      tier_reached: 8,
+      balls_merged: 282,
+      duration_ms: 735000,
+      interruption_reason: 'completed',
+      created_at: '2026-11-02T18:00:00.000Z',
+    }
+    const linkedGuestScore: BossGuestScoreRow = {
+      id: 199,
+      guest_id: '55555555-5555-4555-8555-555555555555',
+      score: 2196,
+      tier_reached: 8,
+      balls_merged: 282,
+      duration_ms: 735000,
+      interruption_reason: 'completed',
+      created_at: '2026-11-02T18:00:00.000Z',
+    }
+
+    const summary = buildBossAnalytics(
+      [profiles[0]!],
+      [linkedUserScore],
+      [],
+      nowIso,
+      [emptyGuest, convertedGuest],
+      [linkedGuestScore],
+    )
+
+    expect(summary.totalGuests).toBe(1)
+    expect(summary.allRuns).toHaveLength(1)
+    expect(summary.totalRecordedRuns).toBe(1)
+    expect(summary.totalCareerRuns).toBe(1)
+    expect(summary.totalBallsMerged).toBe(282)
+  })
 })

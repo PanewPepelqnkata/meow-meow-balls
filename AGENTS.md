@@ -12,3 +12,7 @@ is a shark → every tier 9 this run is a shark; next run it may be a pig).
 Players collect the themed balls they discover for the first time. Merges stay
 tier-consistent: two sharks → the themed tier 10 of the shark run, etc.
 QA: ?test=<tier> deals that tier; ?discovery=wind forces the wind banner.
+
+## Git workflow
+
+Always commit and push changes to git (`origin main`) after completing each task.
