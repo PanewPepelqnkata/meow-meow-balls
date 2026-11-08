@@ -139,6 +139,127 @@ BatchHandlerTriFlat.prototype.batch = function (currentContext, indexes, vertice
     }
   }
 }
+
+// 3. In GraphicsWebGLRenderer, CLOSE_PATH executes `lastPath.points.push(lastPath.points[0])`
+//    without `addPoint()`'s duplicate check, and ARC's final point at `endAngle = 2*PI`
+//    has floating-point cos/sin drift (~1e-16) from `startAngle = 0` so `CLOSE_PATH`
+//    or `strokePoints(pts, true, true)` creates a zero-length segment (`len === 0`).
+//    `DrawLine.run` divides by `len` without checking `len === 0`, producing 4 `NaN`
+//    vertices `[NaN, NaN, NaN, NaN]`, and `StrokePath.run` joins the previous real
+//    segment and first real segment to those `NaN` vertices! On Mali-G52 (OpenGL ES 2.0),
+//    `NaN` in vertex attributes converts to `(0.0, 0.0)` in world space (top-left of the
+//    canvas), stretching giant ink/fill triangles from `(0, 0)` to every closed stroke!
+var StrokePath = require('phaser/src/renderer/webgl/renderNodes/StrokePath.js')
+var origStrokePathRun = StrokePath.prototype.run
+StrokePath.prototype.run = function (
+  drawingContext,
+  submitterNode,
+  path,
+  lineWidth,
+  open,
+  currentMatrix,
+  tintTL,
+  tintTR,
+  tintBL,
+  tintBR,
+  detail,
+  lighting
+) {
+  if (!path || path.length < 2) {
+    return
+  }
+  var epsSq = 1e-12
+  var hasDup = false
+  for (var i = 1; i < path.length; i++) {
+    var dx = path[i].x - path[i - 1].x
+    var dy = path[i].y - path[i - 1].y
+    if (dx * dx + dy * dy <= epsSq) {
+      hasDup = true
+      break
+    }
+  }
+  if (hasDup) {
+    var clean = [path[0]]
+    for (var j = 1; j < path.length; j++) {
+      var prev = clean[clean.length - 1]
+      var cdx = path[j].x - prev.x
+      var cdy = path[j].y - prev.y
+      if (cdx * cdx + cdy * cdy > epsSq) {
+        clean.push(path[j])
+      }
+    }
+    if (clean.length < 2) {
+      return
+    }
+    path = clean
+  }
+  origStrokePathRun.call(
+    this,
+    drawingContext,
+    submitterNode,
+    path,
+    lineWidth,
+    open,
+    currentMatrix,
+    tintTL,
+    tintTR,
+    tintBL,
+    tintBR,
+    detail,
+    lighting
+  )
+}
+
+var DrawLine = require('phaser/src/renderer/webgl/renderNodes/DrawLine.js')
+DrawLine.prototype.run = function (
+  drawingContext,
+  currentMatrix,
+  ax,
+  ay,
+  bx,
+  by,
+  aLineWidth,
+  bLineWidth,
+  vertices
+) {
+  this.onRunBegin(drawingContext)
+  var dx = bx - ax
+  var dy = by - ay
+  var len = Math.sqrt(dx * dx + dy * dy)
+  var al0 = len > 0 ? (aLineWidth * (by - ay)) / len : 0
+  var al1 = len > 0 ? (aLineWidth * (ax - bx)) / len : 0
+  var bl0 = len > 0 ? (bLineWidth * (by - ay)) / len : 0
+  var bl1 = len > 0 ? (bLineWidth * (ax - bx)) / len : 0
+  var lx0 = bx - bl0
+  var ly0 = by - bl1
+  var lx1 = ax - al0
+  var ly1 = ay - al1
+  var lx2 = bx + bl0
+  var ly2 = by + bl1
+  var lx3 = ax + al0
+  var ly3 = ay + al1
+  var offset = vertices.length
+  if (currentMatrix) {
+    vertices[offset + 0] = currentMatrix.getX(lx3, ly3)
+    vertices[offset + 1] = currentMatrix.getY(lx3, ly3)
+    vertices[offset + 2] = currentMatrix.getX(lx1, ly1)
+    vertices[offset + 3] = currentMatrix.getY(lx1, ly1)
+    vertices[offset + 4] = currentMatrix.getX(lx0, ly0)
+    vertices[offset + 5] = currentMatrix.getY(lx0, ly0)
+    vertices[offset + 6] = currentMatrix.getX(lx2, ly2)
+    vertices[offset + 7] = currentMatrix.getY(lx2, ly2)
+  } else {
+    vertices[offset + 0] = lx3
+    vertices[offset + 1] = ly3
+    vertices[offset + 2] = lx1
+    vertices[offset + 3] = ly1
+    vertices[offset + 4] = lx0
+    vertices[offset + 5] = ly0
+    vertices[offset + 6] = lx2
+    vertices[offset + 7] = ly2
+  }
+  this.onRunEnd(drawingContext)
+}
 Phaser = Extend(false, Phaser, CONST)
 globalThis.Phaser = Phaser
 
