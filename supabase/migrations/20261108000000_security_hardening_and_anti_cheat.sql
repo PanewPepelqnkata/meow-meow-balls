@@ -6,7 +6,7 @@ create table if not exists public.game_sessions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users(id) on delete cascade,
   guest_id uuid,
-  nonce text not null default encode(gen_random_bytes(16), 'hex'),
+  nonce text not null default replace(gen_random_uuid()::text, '-', ''),
   rules_version integer not null default 1,
   seed text not null,
   theme text not null,
@@ -43,14 +43,23 @@ grant select (id, username, display_name, avatar_url, created_at, updated_at) on
 grant update (username, display_name, avatar_url, updated_at) on table public.profiles to authenticated;
 grant select on table public.scores to anon, authenticated;
 grant select on table public.user_progress to authenticated;
+grant select on table public.coin_settlements to authenticated;
 grant select on table public.game_sessions to authenticated;
 grant select on table public.economy_ledger to authenticated;
 
+drop policy if exists "Users can view own coin settlements" on public.coin_settlements;
+create policy "Users can view own coin settlements"
+  on public.coin_settlements for select
+  to authenticated
+  using ((select auth.uid()) = user_id);
+
+drop policy if exists "Users can view own game sessions" on public.game_sessions;
 create policy "Users can view own game sessions"
   on public.game_sessions for select
   to authenticated
   using ((select auth.uid()) = user_id);
 
+drop policy if exists "Users can view own economy ledger" on public.economy_ledger;
 create policy "Users can view own economy ledger"
   on public.economy_ledger for select
   to authenticated
@@ -647,8 +656,8 @@ as $$
 declare
   v_uid uuid := (select auth.uid());
   v_session_id uuid := coalesce(p_session_id, gen_random_uuid());
-  v_nonce text := encode(gen_random_bytes(16), 'hex');
-  v_seed text := coalesce(nullif(btrim(p_seed), ''), encode(gen_random_bytes(16), 'hex'));
+  v_nonce text := replace(gen_random_uuid()::text, '-', '');
+  v_seed text := coalesce(nullif(btrim(p_seed), ''), replace(gen_random_uuid()::text, '-', ''));
   v_theme text := coalesce(nullif(btrim(p_theme), ''), 'classic');
   v_upgrades jsonb := '{"wallDuration":0,"shakeDuration":0,"shakeIntensity":0}'::jsonb;
   v_recent_count integer := 0;
@@ -666,9 +675,10 @@ begin
     if v_recent_count >= 30 then
       raise exception 'Session creation rate limit exceeded' using errcode = 'P0001';
     end if;
-    select coalesce(up.upgrades, v_upgrades) into v_upgrades
+    select up.upgrades into v_upgrades
     from public.user_progress up
     where up.user_id = v_uid;
+    v_upgrades := coalesce(v_upgrades, '{"wallDuration":0,"shakeDuration":0,"shakeIntensity":0}'::jsonb);
   else
     select count(*) into v_recent_count
     from public.game_sessions
@@ -968,6 +978,85 @@ $$;
 revoke all on function public.record_guest_score(uuid, integer, integer, integer, integer, bigint, text, jsonb, uuid) from public, anon, authenticated;
 grant execute on function public.record_guest_score(uuid, integer, integer, integer, integer, bigint, text, jsonb, uuid) to anon, authenticated;
 
+
+create or replace function public.upsert_guest_progress(
+  p_guest_id uuid,
+  p_best_score integer,
+  p_discovered jsonb default '{}'::jsonb,
+  p_variants jsonb default '{}'::jsonb,
+  p_stats jsonb default '{"runs": 0, "merges": 0, "bestTier": 0}'::jsonb,
+  p_leaderboard jsonb default '[]'::jsonb,
+  p_settings jsonb default '{"theme": "auto"}'::jsonb
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_runs integer := greatest(0, least(100000, coalesce((p_stats->>'runs')::integer, 0)));
+  v_merges integer := greatest(0, least(5000000, coalesce((p_stats->>'merges')::integer, 0)));
+  v_best_tier integer := greatest(0, least(12, coalesce((p_stats->>'bestTier')::integer, 0)));
+  v_best integer := greatest(0, least(2000000, coalesce(p_best_score, 0)));
+  v_lb_len integer := case when jsonb_typeof(p_leaderboard) = 'array' then jsonb_array_length(p_leaderboard) else 0 end;
+  v_variants jsonb := case when jsonb_typeof(p_variants) = 'object' then p_variants else '{}'::jsonb end;
+begin
+  if p_guest_id is null then
+    return;
+  end if;
+
+  if v_best = 0 and v_runs = 0 and v_merges = 0 and v_lb_len = 0
+     and v_variants = '{}'::jsonb
+     and coalesce(p_discovered, '{}'::jsonb) = '{}'::jsonb
+     and not exists (select 1 from public.guest_profiles where guest_id = p_guest_id)
+     and not exists (select 1 from public.guest_scores where guest_id = p_guest_id) then
+    return;
+  end if;
+
+  insert into public.guest_profiles (
+    guest_id,
+    best_score,
+    discovered,
+    variants,
+    stats,
+    leaderboard,
+    settings,
+    updated_at,
+    last_seen_at
+  )
+  values (
+    p_guest_id,
+    v_best,
+    coalesce(p_discovered, '{}'::jsonb),
+    v_variants,
+    jsonb_build_object('runs', v_runs, 'merges', v_merges, 'bestTier', v_best_tier),
+    coalesce(p_leaderboard, '[]'::jsonb),
+    coalesce(p_settings, '{"theme": "auto"}'::jsonb),
+    now(),
+    now()
+  )
+  on conflict (guest_id) do update set
+    best_score = greatest(public.guest_profiles.best_score, excluded.best_score),
+    discovered = public.guest_profiles.discovered || excluded.discovered,
+    variants = public.guest_profiles.variants || excluded.variants,
+    stats = jsonb_build_object(
+      'runs', greatest(coalesce((public.guest_profiles.stats->>'runs')::integer, 0), v_runs),
+      'merges', greatest(coalesce((public.guest_profiles.stats->>'merges')::integer, 0), v_merges),
+      'bestTier', greatest(coalesce((public.guest_profiles.stats->>'bestTier')::integer, 0), v_best_tier)
+    ),
+    leaderboard = case
+      when jsonb_typeof(excluded.leaderboard) = 'array' and jsonb_array_length(excluded.leaderboard) > 0 then excluded.leaderboard
+      else public.guest_profiles.leaderboard
+    end,
+    settings = excluded.settings,
+    updated_at = now(),
+    last_seen_at = now();
+
+  perform public.boss_sync_guest_progress_internal(p_guest_id, false);
+end;
+$$;
+revoke all on function public.upsert_guest_progress(uuid, integer, jsonb, jsonb, jsonb, jsonb, jsonb) from public;
+grant execute on function public.upsert_guest_progress(uuid, integer, jsonb, jsonb, jsonb, jsonb, jsonb) to anon, authenticated;
 create or replace function public.purchase_ability_upgrade(
   p_upgrade text,
   p_expected_level integer,
@@ -1167,12 +1256,13 @@ begin
   for update;
 
   if not found then
-    select coalesce(up.upgrades, v_upgrades) into v_upgrades
+    select up.upgrades into v_upgrades
     from public.user_progress up
     where up.user_id = v_uid;
+    v_upgrades := coalesce(v_upgrades, '{"wallDuration":0,"shakeDuration":0,"shakeIntensity":0}'::jsonb);
 
     insert into public.game_sessions (id, user_id, seed, theme, upgrades_snapshot, status)
-    values (p_session_id, v_uid, encode(gen_random_bytes(16), 'hex'), 'classic', v_upgrades, 'active')
+    values (p_session_id, v_uid, replace(gen_random_uuid()::text, '-', ''), 'classic', v_upgrades, 'active')
     returning * into v_session;
   elsif v_session.user_id is distinct from v_uid then
     raise exception 'Session does not belong to authenticated user' using errcode = '42501';
@@ -1327,6 +1417,17 @@ begin
     where id = p_session_id;
 
     select * into v_progress from public.user_progress where user_id = v_uid;
+    if round(least(2000000, greatest(0, coalesce(p_score, 0)))::numeric / 1000, 1) > 0 then
+      insert into public.economy_ledger (user_id, session_id, delta, balance_after, coin_revision, reason)
+      values (
+        v_uid,
+        p_session_id,
+        round(least(2000000, greatest(0, coalesce(p_score, 0)))::numeric / 1000, 1),
+        coalesce(v_progress.coins, 0),
+        coalesce(v_progress.coin_revision, 0),
+        'run_settlement'
+      );
+    end if;
     return jsonb_build_object(
       'score_id', v_score_id,
       'session_id', p_session_id,

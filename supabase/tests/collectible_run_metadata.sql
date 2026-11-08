@@ -6,6 +6,7 @@ begin;
 insert into auth.users (id, email, raw_user_meta_data)
 values ('51f39d10-6e6e-4ed9-8122-6343b718de11', 'collectibles-sql-smoke@ballrush.local', '{"username":"collectibles_sql_smoke"}');
 select set_config('request.jwt.claim.sub', '51f39d10-6e6e-4ed9-8122-6343b718de11', true);
+insert into public.boss_admins (user_id) values ('51f39d10-6e6e-4ed9-8122-6343b718de11');
 
 create temporary table collectible_smoke_ids (kind text primary key, id bigint);
 
@@ -25,29 +26,29 @@ reset role;
 
 do $$
 declare
-  run_id bigint := (select id from collectible_smoke_ids where kind = 'guest');
+  v_score_id bigint := (select id from collectible_smoke_ids where kind = 'guest');
   actual jsonb;
 begin
-  perform public.record_guest_score('2fd7d674-a6ce-4a04-b8ab-22418da1a1d5', 800, 10, 8, 2000, run_id, 'completed',
+  perform public.record_guest_score('2fd7d674-a6ce-4a04-b8ab-22418da1a1d5', 800, 10, 8, 2000, v_score_id, 'completed',
     '[{"tier":9,"theme":"pig","variant":3,"discoveredAt":1800000000200},{"tier":10,"theme":"crab","variant":5,"discoveredAt":1800000000300}]',
     'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'::uuid);
   -- A delayed older live snapshot cannot erase the later crab discovery.
-  perform public.record_guest_score('2fd7d674-a6ce-4a04-b8ab-22418da1a1d5', 500, 9, 4, 1000, run_id, null,
+  perform public.record_guest_score('2fd7d674-a6ce-4a04-b8ab-22418da1a1d5', 500, 9, 4, 1000, v_score_id, null,
     '[{"tier":9,"theme":"pig","variant":3,"discoveredAt":1800000000400}]',
     'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'::uuid);
-  select collectibles into actual from public.guest_scores where id = run_id;
+  select collectibles into actual from public.guest_scores where id = v_score_id;
   if jsonb_array_length(actual) <> 2 or actual->0->>'discoveredAt' <> '1800000000200' then
     raise exception 'Guest snapshots lost identity or first discovery timestamp: %', actual;
   end if;
-  if (select interruption_reason from public.guest_scores where id = run_id) <> 'completed' then
+  if (select interruption_reason from public.guest_scores where id = v_score_id) <> 'completed' then
     raise exception 'An older live sync cleared the final interruption reason';
   end if;
   if not (select variants ? '9:pig:3' and variants ? '10:crab:5' and not (variants ? '9:0')
     from public.guest_profiles where guest_id = '2fd7d674-a6ce-4a04-b8ab-22418da1a1d5') then
     raise exception 'Guest lifetime map omitted actual identities or invented a legacy key';
   end if;
-  perform public.boss_update_guest_score(run_id, 400, 8, 2, 900);
-  if (select collectibles from public.guest_scores where id = run_id) <> actual then
+  perform public.boss_update_guest_score(v_score_id, 400, 8, 2, 900);
+  if (select collectibles from public.guest_scores where id = v_score_id) <> actual then
     raise exception 'Guest admin scalar edit destroyed metadata';
   end if;
 end;
@@ -64,7 +65,7 @@ reset role;
 
 do $$
 declare
-  run_id bigint;
+  v_score_id bigint;
   snapshot jsonb;
   dashboard jsonb;
 begin
@@ -92,18 +93,18 @@ begin
     raise exception 'Guest conversion lost run identity or settlement receipt';
   end if;
 
-  select id, collectibles into run_id, snapshot from public.scores
+  select id, collectibles into v_score_id, snapshot from public.scores
   where user_id = '51f39d10-6e6e-4ed9-8122-6343b718de11' and jsonb_array_length(collectibles) = 2;
-  if (select interruption_reason from public.scores where id = run_id) <> 'completed' then
+  if (select interruption_reason from public.scores where id = v_score_id) <> 'completed' then
     raise exception 'Conversion lost interruption reason';
   end if;
-  perform public.boss_update_score(run_id, 300, 7, 1, 500);
-  if (select collectibles from public.scores where id = run_id) <> snapshot then
+  perform public.boss_update_score(v_score_id, 300, 7, 1, 500);
+  if (select collectibles from public.scores where id = v_score_id) <> snapshot then
     raise exception 'Registered admin scalar edit destroyed metadata';
   end if;
   dashboard := public.boss_get_dashboard_data();
   if not exists (select 1 from jsonb_array_elements(dashboard->'scores') row
-    where (row->>'id')::bigint = run_id and row->'collectibles' = snapshot) then
+    where (row->>'id')::bigint = v_score_id and row->'collectibles' = snapshot) then
     raise exception 'Dashboard RPC omitted user collectibles';
   end if;
   if not exists (select 1 from jsonb_array_elements(dashboard->'guest_scores') row
@@ -125,18 +126,18 @@ where user_id = '51f39d10-6e6e-4ed9-8122-6343b718de11';
 
 do $$
 declare
-  run_id bigint := (select id from collectible_smoke_ids where kind = 'user');
+  v_score_id bigint := (select id from collectible_smoke_ids where kind = 'user');
   another_id bigint;
   snapshot jsonb := '[{"tier":9,"theme":"robo","variant":2,"discoveredAt":1800000000500}]';
 begin
-  if (select collectibles from public.scores where id = run_id) <> '[]'::jsonb then
+  if (select collectibles from public.scores where id = v_score_id) <> '[]'::jsonb then
     raise exception 'A recorded no-find run was marked legacy';
   end if;
-  perform public.record_user_score(1000, 9, 5, 3000, run_id, 'completed', snapshot,
+  perform public.record_user_score(1000, 9, 5, 3000, v_score_id, 'completed', snapshot,
     'cccccccc-cccc-4ccc-8ccc-cccccccccccc'::uuid);
-  perform public.record_user_score(900, 9, 4, 2500, run_id, null, '[]',
+  perform public.record_user_score(900, 9, 4, 2500, v_score_id, null, '[]',
     'cccccccc-cccc-4ccc-8ccc-cccccccccccc'::uuid);
-  if (select collectibles from public.scores where id = run_id) <> snapshot then
+  if (select collectibles from public.scores where id = v_score_id) <> snapshot then
     raise exception 'Registered live/final metadata update lost actual discovery';
   end if;
   another_id := public.record_user_score(1100, 9, 6, 4000, null, 'completed',
