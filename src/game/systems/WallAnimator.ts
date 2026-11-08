@@ -76,9 +76,10 @@ export class WallAnimator {
 
   activate(durationMsOrUpgrades: number | UpgradeLevels | Partial<UpgradeLevels> = LEGACY_DIRECT_HOLD_MS): boolean {
     if (this.isActive) return false // no re-trigger while active
-    this.holdMs = typeof durationMsOrUpgrades === 'number'
+    const rawMs = typeof durationMsOrUpgrades === 'number'
       ? (Number.isFinite(durationMsOrUpgrades) ? Math.max(0, durationMsOrUpgrades) : LEGACY_DIRECT_HOLD_MS)
       : wallDurationMs(durationMsOrUpgrades)
+    this.holdMs = Math.min(rawMs, LEGACY_DIRECT_HOLD_MS)
     this.phase = 'raising'
     this.phaseStart = this.now()
     return true

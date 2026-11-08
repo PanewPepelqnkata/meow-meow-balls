@@ -24,12 +24,16 @@ declare const __BR_BUILD__: string
  *    none show, the camera/space/depth stack is wrong. If T1/T2 show,
  *    textures work and the bug is in bake content/coords.
  */
+let diagTimer: number | undefined
+
 export function installDiag(game: Phaser.Game): void {
   const w = window as unknown as Record<string, unknown>
-  w.__brGame = game
+  if (import.meta.env.DEV) {
+    w.__brGame = game
+  }
 
   // Single instance across React Strict Mode double-mounts.
-  if (w.__brDiagTimer) clearInterval(w.__brDiagTimer as ReturnType<typeof setInterval>)
+  window.clearInterval(diagTimer)
 
   const panel = document.createElement('div')
   panel.style.cssText =
@@ -277,6 +281,6 @@ export function installDiag(game: Phaser.Game): void {
   })
 
   render()
-  w.__brDiagTimer = setInterval(render, 800)
+  diagTimer = window.setInterval(render, 800)
 }
 

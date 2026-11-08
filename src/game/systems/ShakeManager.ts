@@ -145,8 +145,8 @@ export class ShakeManager {
     if (this.active) return false
     // Read once per activation. The duration and physical impulse multiplier
     // remain stable if the save changes while this cycle is running.
-    this.durationMs = shakeDurationMs(upgrades)
-    this.impulseMultiplier = shakeImpulseMultiplier(upgrades)
+    this.durationMs = Math.min(10_000, Math.max(0, shakeDurationMs(upgrades)))
+    this.impulseMultiplier = Math.min(1.5, Math.max(1, shakeImpulseMultiplier(upgrades)))
     this.active = true
     this.startTime = this.now()
     this.lastRoundIndex = -1

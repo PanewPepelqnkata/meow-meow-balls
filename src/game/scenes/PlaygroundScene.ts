@@ -996,6 +996,7 @@ export class PlaygroundScene extends Phaser.Scene {
   private doSwap(): void {
     if (this.gameOver || session.menuActive || this.swapUsed || this.discoveryBlocking() || this.guestAbilityBlocked()) return
     this.swapUsed = true
+    void scoreService.activateSessionAbility('swap')
     // Swap discards the held ball as if it had been dropped: the claw
     // immediately holds the previously-NEXT ball and a fresh ball enters the
     // next slot (the same queue rotation a real drop performs).
@@ -1026,6 +1027,7 @@ export class PlaygroundScene extends Phaser.Scene {
     // the cycle runs cannot alter its duration.
     if (!this.walls.activate(loadSave().upgrades)) return
     this.raiseUsed = true
+    void scoreService.activateSessionAbility('raise')
     gameBus.emit('ability:raiseUsed', {})
   }
 
@@ -1035,9 +1037,9 @@ export class PlaygroundScene extends Phaser.Scene {
     // camera/debris visuals remain at their base intensity.
     if (!this.shake.activate(loadSave().upgrades)) return
     this.shakeUsed = true
+    void scoreService.activateSessionAbility('shake')
     gameBus.emit('ability:shakeUsed', {})
   }
-
   private shakeUsed = false
   private lastShakeMs = 0
   private raiseUsed = false

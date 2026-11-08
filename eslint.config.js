@@ -17,7 +17,7 @@ const outsideGameDirs = [
 ]
 
 export default tseslint.config(
-  { ignores: ['dist', 'coverage', 'node_modules', 'qa', 'vendor'] },
+  { ignores: ['dist', 'coverage', 'node_modules', 'qa', 'vendor', 'supabase/functions'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

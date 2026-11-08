@@ -592,21 +592,38 @@ export class AuthService {
     }
 
     const lookupRevision = this.accountRevision
-    const { data: profile, error: lookupError } = await getSupabase()
-      .from('profiles')
-      .select('email')
-      .ilike('username', trimmed)
-      .maybeSingle()
+    let resolvedEmail: string | null = null
+    try {
+      const { data: rpcEmail, error: rpcError } = await getSupabase().rpc('resolve_username_email', {
+        p_username: trimmed,
+      })
+      if (!rpcError && typeof rpcEmail === 'string' && rpcEmail.length > 0) {
+        resolvedEmail = rpcEmail
+      }
+    } catch {
+      // Fall back to direct profile lookup if RPC is not yet deployed
+    }
+
+    if (!resolvedEmail) {
+      const { data: profile, error: lookupError } = await getSupabase()
+        .from('profiles')
+        .select('email')
+        .ilike('username', trimmed)
+        .maybeSingle()
+      if (!lookupError && profile?.email) {
+        resolvedEmail = profile.email
+      }
+    }
 
     if (lookupRevision !== this.accountRevision) {
       return { error: new Error('Authentication state changed. Please try again.') }
     }
 
-    if (lookupError || !profile?.email) {
+    if (!resolvedEmail) {
       return { error: new Error('Username or password is incorrect') }
     }
 
-    return this.signInWithEmail(profile.email, password)
+    return this.signInWithEmail(resolvedEmail, password)
   }
 
   /**
@@ -1053,7 +1070,7 @@ export class AuthService {
 
     const { data, error } = await getSupabase()
       .from('profiles')
-      .select('*')
+      .select('id, username, display_name, avatar_url, created_at, updated_at')
       .eq('id', userId)
       .single()
 
@@ -1148,6 +1165,29 @@ export class ScoreService {
           return (c === 'x' ? random : (random & 0x3) | 0x8).toString(16)
         })
     this.activeRun = { actorId: null, runId, scoreId: null, createPromise: null }
+  }
+
+  getActiveRunId(): string | null {
+    return this.activeRun?.runId ?? null
+  }
+
+  async activateSessionAbility(ability: 'swap' | 'shake' | 'raise'): Promise<{ error: Error | null }> {
+    if (isDrunkoTestRoute()) return { error: null }
+    const auth = AuthService.getInstance()
+    if (!auth.isRegisteredAccount()) {
+      return { error: new Error('Registered account required') }
+    }
+    const runId = this.activeRun?.runId
+    if (!runId) return { error: null }
+    try {
+      const { error } = await getSupabase().rpc('activate_session_ability', {
+        p_session_id: runId,
+        p_ability: ability,
+      })
+      return { error: error ? new Error(error.message) : null }
+    } catch {
+      return { error: null }
+    }
   }
 
 

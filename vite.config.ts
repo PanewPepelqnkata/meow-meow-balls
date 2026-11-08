@@ -68,5 +68,5 @@ export default defineConfig({
       },
     },
   },
-  build: { treeshake: false },
+  build: { treeshake: false, sourcemap: false },
 })
