@@ -168,11 +168,11 @@ export class KingdomMenuEffects {
     const layout = this.layout!
     const geometry = throneHallGeometry(layout)
     const g = this.banners
-    const w = Math.max(16, Math.min(layout.width * 0.055, 58))
-    const h = Math.min(layout.height * 0.2, w * 3.3)
-    const y = layout.height * 0.19
+    const w = Math.max(18, Math.min(layout.width * (layout.desktop ? 0.055 : 0.068), 58))
+    const h = Math.min(layout.height * (layout.desktop ? 0.2 : 0.145), w * 2.95)
+    const y = layout.height * (layout.desktop ? 0.19 : 0.165)
     g.clear()
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < geometry.pillarXs.length; i++) {
       const x = geometry.pillarXs[i]! - w / 2
       const wave = this.reducedMotion ? 0 : Math.sin(t * 1.25 + i * 1.9) * w * 0.065
       g.lineStyle(3, GOLD).lineBetween(x - w * 0.2, y, x + w * 1.2, y)

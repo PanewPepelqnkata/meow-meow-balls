@@ -6,6 +6,8 @@ vi.mock('phaser', () => ({ default: { BlendModes: { ADD: 1 } } }))
 vi.mock('./RoughArt', () => ({ bakeCanvas: vi.fn() }))
 
 import { KingdomMenuEffects } from './KingdomMenuEffects'
+import { selectRoundTableSpecs, unlockedRoundTablePool } from './KingdomMenuView'
+import { normalizeSave } from '../state/save'
 import { bakeCanvas } from './RoughArt'
 
 class DisplayObject {
@@ -134,5 +136,56 @@ describe('Throne vault atmosphere', () => {
     expect((effects.surface as unknown as DisplayObject).list).toHaveLength(0)
     expect((effects.ambient as unknown as DisplayObject).list).toHaveLength(0)
     effects.destroy()
+  })
+})
+
+describe('Round Table unlocked hero selection', () => {
+  it('includes only unlocked core tiers and discovered collectible characters', () => {
+    const fresh = normalizeSave(null)
+    expect(unlockedRoundTablePool(fresh).map((s) => s.key)).toEqual(['core:1', 'core:2', 'core:3'])
+
+    const progressed = {
+      ...fresh,
+      discovered: { 1: 10, 2: 10, 3: 10, 4: 20, 8: 30 },
+      variants: { '9:shark:2': 40, '10:crab:1': 50 },
+    }
+    const pool = unlockedRoundTablePool(progressed)
+    expect(pool.map((s) => s.key)).toEqual([
+      'core:1',
+      'core:2',
+      'core:3',
+      'core:4',
+      'core:8',
+      'collectible:9:shark',
+      'collectible:10:crab',
+    ])
+    expect(pool.find((s) => s.key === 'collectible:9:shark')?.variant).toBe(2)
+  })
+
+  it('returns all unlocked balls when at or below capacity and samples randomly when over capacity', () => {
+    const fullSave = normalizeSave({
+      discovered: { 1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 1, 8: 1 },
+      variants: {
+        '9:shark:0': 10,
+        '9:pig:1': 11,
+        '9:pirate:0': 12,
+        '9:drunko:2': 13,
+        '9:robo:1': 14,
+        '10:crab:0': 15,
+      },
+    })
+    const pool = unlockedRoundTablePool(fullSave)
+    expect(pool).toHaveLength(14)
+    let seed = 42
+    const rngA = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0
+      return seed / 0x100000000
+    }
+    const sampleA = selectRoundTableSpecs(pool, 8, rngA)
+    const sampleB = selectRoundTableSpecs(pool, 8, rngA)
+    expect(sampleA).toHaveLength(8)
+    expect(new Set(sampleA.map((s) => s.key)).size).toBe(8)
+    expect(sampleA.every((s) => pool.some((p) => p.key === s.key))).toBe(true)
+    expect(sampleA.map((s) => s.key)).not.toEqual(sampleB.map((s) => s.key))
   })
 })

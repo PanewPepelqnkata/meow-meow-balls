@@ -116,29 +116,31 @@ export function resolveKingdomMenuLayout(width: number, height: number, safe: Sa
   }
 
   // Portrait / Tablet Symmetrical Stage: Top Logo + Stats -> Center Round Table -> PLAY + 2×2 Grid + Account
-  const short = height < 720
-  const logoW = Math.min(innerW * 0.86, 296, height * (short ? 0.25 : 0.29))
-  const logo = centered(cx, hall.y + Math.min(height * 0.025, 22), logoW, logoW * logoRatio)
-  const stats = centered(cx, logo.y + logo.h + 6, Math.min(innerW, 410), short ? 46 : 50)
-  const navW = Math.min(innerW, 400)
-  const gap = short ? 6 : 8
-  const navH = short ? 44 : 48
-  const playH = short ? 54 : 60
+  // Keep the Round Table aspect ratio balanced (never horizontally squished) and give the hall vertical breathing room.
+  const short = height < 700
+  const logoW = Math.min(innerW * 0.82, 276, height * (short ? 0.22 : 0.26))
+  const logo = centered(cx, hall.y + Math.min(height * 0.016, 14), logoW, logoW * logoRatio)
+  const stats = centered(cx, logo.y + logo.h + 4, Math.min(innerW, 396), short ? 44 : 48)
+  const navW = Math.min(innerW, 396)
+  const gap = short ? 6 : 7
+  const navH = short ? 44 : 46
+  const playH = short ? 52 : 56
   const accountH = 44
-  const stackH = playH + 8 + navH * 2 + gap + 8 + accountH
-  const startY = hall.y + hall.h - 6 - stackH
+  const stackH = playH + 7 + navH * 2 + gap + 7 + accountH
+  const startY = hall.y + hall.h - 4 - stackH
   const buttons: KingdomNavItem[] = [{ ...centered(cx, startY, navW, playH), action: 'play', label: 'PLAY', compact: false }]
   const cellW = Math.floor((navW - 10) / 2)
   items.slice(0, 4).forEach((item, index) => buttons.push({
-    ...centered(cx - navW / 2 + cellW / 2 + (index % 2) * (cellW + 10), startY + playH + 8 + Math.floor(index / 2) * (navH + gap), cellW, navH),
+    ...centered(cx - navW / 2 + cellW / 2 + (index % 2) * (cellW + 10), startY + playH + 7 + Math.floor(index / 2) * (navH + gap), cellW, navH),
     ...item,
     compact: true,
   }))
   buttons.push({ ...centered(cx, startY + stackH - accountH, Math.min(navW * 0.68, 244), accountH), ...items[4]!, compact: true })
-  const carouselTop = stats.y + stats.h + 8
-  const availH = Math.max(100, startY - carouselTop - 12)
-  const carouselH = Math.max(1, Math.min(availH, innerW * 0.92, 420))
-  const carouselW = Math.min(innerW, Math.round(carouselH * 1.06))
+  const carouselTop = stats.y + stats.h + 6
+  const availH = Math.max(100, startY - carouselTop - 8)
+  // Keep carouselW and carouselH proportional (~1.08:1) so the Round Table never looks squished on narrow phones
+  const carouselW = Math.min(innerW, Math.round(availH * 1.08), 420)
+  const carouselH = Math.max(1, Math.min(availH, Math.round(carouselW * 0.94), 390))
   const carousel = centered(cx, carouselTop + Math.max(0, (availH - carouselH) / 2), carouselW, carouselH)
   return { width, height, desktop, hall, logo, stats, carousel, buttons }
 }

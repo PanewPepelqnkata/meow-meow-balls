@@ -1,6 +1,7 @@
 import Phaser from 'phaser'
 import { getTier } from '../../config/ballTiers'
 import { MAX_RENDER_DPR } from '../../config/stage'
+import { COLLECTIBLE_TIERS, collectionDiscovery, collectionSlotsFor } from '../../config/collectibleCollection'
 import type { KingdomMenuArtwork } from '../../react/kingdomMenuBridge'
 import { authService } from '../../services/auth'
 import { readSafeArea } from '../../ui/ResponsiveLayout'
@@ -14,6 +15,7 @@ import { bakeThroneVaultHall } from './KingdomStallArt'
 import { bakeKingdomMenuArtwork } from './KingdomMenuArtwork'
 import { KINGDOM_GLOW_KEY, KingdomMenuEffects } from './KingdomMenuEffects'
 import { bakeRoundTableCarousel } from './KingdomWidgetsArt'
+import { loadSave, type SaveDataV1 } from '../state/save'
 import { cycleColor } from './rgbCycle'
 
 const INK = INK_NUM
@@ -51,8 +53,81 @@ interface HeroBall {
 const MAX_BACKGROUND_TEXTURE_EDGE = 2048
 const MAX_BACKGROUND_TEXTURE_PIXELS = 2_097_152
 const NEUTRAL_GAZE = { x: 0, y: 0 } as const
-const HERO_NAMES = ['Shark', 'Pig', 'Pirate', 'Drunko', 'Robo', 'Crab', 'RGB Champion', 'Classic Hero'] as const
-const HERO_STATUSES = ['TIDEKEEPER', 'HEART OF THE HALL', 'THE HIGH SEAS', 'ROYAL TOAST', 'IRON GUARD', 'SHELL SENTINEL', 'PRISMATIC CROWN', 'HOUSE CLASSIC'] as const
+const ROUND_TABLE_CAPACITY = 8
+
+interface HeroSpec {
+  key: string
+  tier: number
+  theme?: string
+  variant: number
+  name: string
+  status: string
+}
+
+const CORE_HERO_META: Record<number, { name: string; status: string }> = {
+  1: { name: 'Sunny', status: 'FIRST DROP' },
+  2: { name: 'Berry', status: 'SWEET SPARK' },
+  3: { name: 'Minty', status: 'FRESH BOUNCE' },
+  4: { name: 'Tangerine', status: 'CITRUS GUARD' },
+  5: { name: 'Classic Hero', status: 'HOUSE CLASSIC' },
+  6: { name: 'Plum', status: 'VELVET KNIGHT' },
+  7: { name: 'Coral', status: 'CROWN JEWEL' },
+  8: { name: 'RGB Champion', status: 'PRISMATIC CROWN' },
+}
+
+const COLLECTIBLE_HERO_META: Record<string, { name: string; status: string }> = {
+  shark: { name: 'Shark', status: 'TIDEKEEPER' },
+  pig: { name: 'Pig', status: 'HEART OF THE HALL' },
+  pirate: { name: 'Pirate', status: 'THE HIGH SEAS' },
+  drunko: { name: 'Drunko', status: 'ROYAL TOAST' },
+  robo: { name: 'Robo', status: 'IRON GUARD' },
+  crab: { name: 'Crab', status: 'SHELL SENTINEL' },
+}
+
+export function unlockedRoundTablePool(save: SaveDataV1 = loadSave()): HeroSpec[] {
+  const pool: HeroSpec[] = []
+  for (let tier = 1; tier <= 8; tier++) {
+    if (save.discovered[String(tier)] == null) continue
+    const meta = CORE_HERO_META[tier] ?? { name: `Tier ${tier}`, status: 'ROYAL GUARD' }
+    pool.push({ key: `core:${tier}`, tier, variant: 0, name: meta.name, status: meta.status })
+  }
+  for (const tier of COLLECTIBLE_TIERS) {
+    for (const slot of collectionSlotsFor(tier)) {
+      if (!slot.theme) continue
+      const found = collectionDiscovery(save.variants, tier, slot.theme)
+      if (!found) continue
+      const meta = COLLECTIBLE_HERO_META[slot.theme] ?? {
+        name: slot.label ?? slot.theme.toUpperCase(),
+        status: `TIER ${tier} CHAMPION`,
+      }
+      pool.push({
+        key: `collectible:${tier}:${slot.theme}`,
+        tier,
+        theme: slot.theme,
+        variant: found.variant,
+        name: meta.name,
+        status: meta.status,
+      })
+    }
+  }
+  return pool
+}
+
+export function selectRoundTableSpecs(
+  pool: readonly HeroSpec[],
+  maxCount = ROUND_TABLE_CAPACITY,
+  rng: () => number = Math.random,
+): HeroSpec[] {
+  if (pool.length <= maxCount) return [...pool]
+  const copy = [...pool]
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1))
+    const tmp = copy[i]!
+    copy[i] = copy[j]!
+    copy[j] = tmp
+  }
+  return copy.slice(0, maxCount)
+}
 
 type PointerLike = Phaser.Input.Pointer
 
@@ -91,6 +166,8 @@ export class KingdomMenuView {
   private pointerDragging = false
   private pressedHero: HeroBall | null = null
   private renderedDpr = 0
+  private unlockedSignature = ''
+  private selectedSpecs: HeroSpec[] = []
   private destroyed = false
   private pageHidden = false
   private readonly pointerWorld = new Phaser.Math.Vector2()
@@ -121,9 +198,30 @@ export class KingdomMenuView {
     this.layout = resolveKingdomMenuLayout(width, height, readSafeArea(), authService.isAuthenticated())
     const dpr = Math.min(window.devicePixelRatio || 1, MAX_RENDER_DPR)
     this.artwork = bakeKingdomMenuArtwork(this.scene, this.layout, dpr)
-    // Auth/save changes must not replace scenery, reset blinking, or replay the entrance.
-    if (previous?.width === width && previous.height === height && this.renderedDpr === dpr && previous.logo.x === this.layout.logo.x && previous.logo.y === this.layout.logo.y && previous.logo.w === this.layout.logo.w && previous.carousel.x === this.layout.carousel.x && previous.carousel.y === this.layout.carousel.y && previous.carousel.w === this.layout.carousel.w && previous.carousel.h === this.layout.carousel.h) {
-      if (previous.buttons[previous.buttons.length - 1]?.action === this.layout.buttons[this.layout.buttons.length - 1]?.action) this.layout = previous
+    const pool = unlockedRoundTablePool(loadSave())
+    const nextSignature = pool.map((item) => `${item.key}:${item.variant}`).join('|')
+    const collectionChanged = nextSignature !== this.unlockedSignature
+    if (collectionChanged || this.selectedSpecs.length === 0) {
+      this.unlockedSignature = nextSignature
+      this.selectedSpecs = selectRoundTableSpecs(pool, ROUND_TABLE_CAPACITY)
+    }
+    const layoutUnchanged =
+      previous?.width === width &&
+      previous.height === height &&
+      this.renderedDpr === dpr &&
+      previous.logo.x === this.layout.logo.x &&
+      previous.logo.y === this.layout.logo.y &&
+      previous.logo.w === this.layout.logo.w &&
+      previous.carousel.x === this.layout.carousel.x &&
+      previous.carousel.y === this.layout.carousel.y &&
+      previous.carousel.w === this.layout.carousel.w &&
+      previous.carousel.h === this.layout.carousel.h
+    if (layoutUnchanged) {
+      if (previous.buttons[previous.buttons.length - 1]?.action === this.layout.buttons[previous.buttons.length - 1]?.action) this.layout = previous
+      if (collectionChanged && this.carousel) {
+        this.clearRoundTable()
+        this.buildRoundTable(dpr)
+      }
       return
     }
     this.renderedDpr = dpr
@@ -266,8 +364,14 @@ export class KingdomMenuView {
     this.logo = null
     this.logoRush = null
     this.logoSparkles = null
-    this.carousel = null
+    this.clearRoundTable()
+  }
+
+  private clearRoundTable(): void {
+    this.carouselGlow?.destroy()
     this.carouselGlow = null
+    this.carousel?.destroy(true)
+    this.carousel = null
     this.heroLayer = null
     this.ribbon = null
     this.ribbonName = null
@@ -292,16 +396,7 @@ export class KingdomMenuView {
     this.heroLayer = this.scene.add.container(0, 0).setName('round-table-hero-pedestals')
     this.carousel = this.scene.add.container(rect.x, rect.y, [backImg, this.heroLayer]).setName('round-table-of-heroes')
     this.decorations.add(this.carousel)
-    const specs: Array<{ tier: number; theme?: string; variant: number }> = [
-      { tier: 9, theme: 'shark', variant: 0 },
-      { tier: 9, theme: 'pig', variant: 1 },
-      { tier: 9, theme: 'pirate', variant: 0 },
-      { tier: 9, theme: 'drunko', variant: 2 },
-      { tier: 9, theme: 'robo', variant: 1 },
-      { tier: 10, theme: 'crab', variant: 0 },
-      { tier: 8, variant: 0 },
-      { tier: 5, variant: 0 },
-    ]
+    const specs = this.selectedSpecs
     specs.forEach((spec, index) => {
       const graphics = this.scene.add.graphics()
       const pedestal = this.scene.add.graphics()
@@ -330,8 +425,8 @@ export class KingdomMenuView {
         graphics,
         tier: spec.tier,
         theme: spec.theme,
-        name: HERO_NAMES[index]!,
-        status: HERO_STATUSES[index]!,
+        name: spec.name,
+        status: spec.status,
         variant: spec.variant,
         seed,
         radius,

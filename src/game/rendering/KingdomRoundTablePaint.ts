@@ -14,19 +14,10 @@ function ellipse(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number
   }
 }
 
-function daisPath(ctx: CanvasRenderingContext2D): void {
-  ctx.beginPath()
-  ctx.moveTo(14, 52)
-  ctx.bezierCurveTo(16, 68, 22, 81, 29, 88)
-  ctx.bezierCurveTo(40, 96, 60, 96, 71, 88)
-  ctx.bezierCurveTo(78, 81, 84, 68, 86, 52)
-  ctx.closePath()
-}
-
 /**
- * Open Flat Royal Table (No Center Spike, Raised Podiums) in a logical 100 × 100 box.
- * The flat tabletop sits at y ≈ 46 with a wide perspective ellipse (rx ≈ 44, ry ≈ 15.5)
- * and a flush inlaid royal crest in the center so hero balls on raised podiums never clip.
+ * Luxury Single-Pedestal Round Table in a logical 100 × 100 box.
+ * Features a massive turned marble-and-gold central pillar that splits at the bottom
+ * into four sweeping royal cabriole legs with gilded lion-paw feet.
  */
 export function paintRoundTableBack(ctx: CanvasRenderingContext2D, uX: number, uY = uX): void {
   ctx.save()
@@ -34,45 +25,102 @@ export function paintRoundTableBack(ctx: CanvasRenderingContext2D, uX: number, u
   ctx.lineJoin = 'round'
   ctx.lineCap = 'round'
 
-  // Floor ambient shadow & stepped royal stone plinth
-  ellipse(ctx, 50, 91.5, 43, 5.8, 'rgba(10, 8, 19, 0.48)')
-  ellipse(ctx, 50, 88.5, 37.5, 5.2, '#483f54', INK_HEX, 1.15)
-  ellipse(ctx, 50, 86.8, 34.5, 4.4, '#7c6e80', '#cbb49d', 0.75)
+  // Wide ambient floor shadow & gilded compass floor plinth
+  ellipse(ctx, 50, 92.2, 41, 6.2, 'rgba(10, 8, 19, 0.52)')
+  ellipse(ctx, 50, 90.2, 31.5, 4.5, '#3b3248', INK_HEX, 1.15)
+  ellipse(ctx, 50, 89.2, 27.5, 3.6, '#695c73', '#d6ad60', 0.8)
 
-  // Fluted stone pedestal column under the table
-  daisPath(ctx)
-  const stone = ctx.createLinearGradient(0, 50, 0, 92)
-  stone.addColorStop(0, '#9c8d96')
-  stone.addColorStop(0.24, '#6e6476')
-  stone.addColorStop(0.7, '#443e51')
-  stone.addColorStop(1, '#292639')
-  ctx.fillStyle = stone
+  // Back pair of sweeping cabriole legs (drawn behind the central pedestal)
+  for (const side of [-1, 1]) {
+    ctx.save()
+    ctx.beginPath()
+    ctx.moveTo(50 + side * 6.5, 72)
+    ctx.bezierCurveTo(50 + side * 15, 73, 50 + side * 23, 78, 50 + side * 27.5, 84.5)
+    ctx.lineTo(50 + side * 23.5, 86.5)
+    ctx.bezierCurveTo(50 + side * 18, 81.5, 50 + side * 12, 78.5, 50 + side * 5, 78)
+    ctx.closePath()
+    ctx.fillStyle = '#4e445c'
+    ctx.fill()
+    ctx.strokeStyle = INK_HEX
+    ctx.lineWidth = 1.1
+    ctx.stroke()
+    // Gilded scroll foot at tip
+    ellipse(ctx, 50 + side * 26.2, 85.8, 3.4, 1.8, '#c89638', INK_HEX, 1)
+    ctx.restore()
+  }
+
+  // Single massive central turned pedestal column in the middle
+  ctx.save()
+  ctx.beginPath()
+  ctx.moveTo(41.5, 53)
+  ctx.bezierCurveTo(43.5, 58, 44.5, 62, 40.5, 67.5)
+  ctx.bezierCurveTo(37.5, 71.5, 39.5, 76.5, 42.5, 80.5)
+  ctx.lineTo(57.5, 80.5)
+  ctx.bezierCurveTo(60.5, 76.5, 62.5, 71.5, 59.5, 67.5)
+  ctx.bezierCurveTo(55.5, 62, 56.5, 58, 58.5, 53)
+  ctx.closePath()
+  const colGrad = ctx.createLinearGradient(38, 53, 62, 82)
+  colGrad.addColorStop(0, '#9e8f9b')
+  colGrad.addColorStop(0.32, '#75687d')
+  colGrad.addColorStop(0.7, '#483f54')
+  colGrad.addColorStop(1, '#2a2538')
+  ctx.fillStyle = colGrad
   ctx.fill()
   ctx.strokeStyle = INK_HEX
-  ctx.lineWidth = 1.2
+  ctx.lineWidth = 1.25
   ctx.stroke()
 
-  ctx.save()
-  daisPath(ctx)
-  ctx.clip()
-  for (let row = 0; row < 4; row++) {
-    ctx.strokeStyle = row % 2 ? 'rgba(222, 207, 193, 0.17)' : 'rgba(21, 18, 33, 0.28)'
+  // Vertical fluted ribs on the central bulbous urn shaft
+  for (const dx of [-5.5, -2, 2, 5.5]) {
+    ctx.strokeStyle = dx < 0 ? 'rgba(238, 224, 210, 0.22)' : 'rgba(17, 22, 37, 0.34)'
     ctx.lineWidth = 1
     ctx.beginPath()
-    ctx.moveTo(12, 62 + row * 6.2)
-    ctx.bezierCurveTo(32, 67 + row * 5, 68, 57 + row * 7, 88, 62 + row * 5.5)
-    ctx.stroke()
-  }
-  // Vertical carved pilasters on base
-  for (const px of [30, 43, 57, 70]) {
-    ctx.strokeStyle = 'rgba(17, 22, 37, 0.32)'
-    ctx.lineWidth = 1.2
-    ctx.beginPath()
-    ctx.moveTo(px, 56)
-    ctx.lineTo(50 + (px - 50) * 0.78, 88)
+    ctx.moveTo(50 + dx * 0.85, 55)
+    ctx.quadraticCurveTo(50 + dx * 1.35, 68, 50 + dx * 0.9, 79)
     ctx.stroke()
   }
   ctx.restore()
+
+  // Heavy gold torus collars wrapping the central pedestal waist and base
+  ellipse(ctx, 50, 56.2, 10.2, 2.5, '#d8a648', INK_HEX, 1.05)
+  ellipse(ctx, 50, 68.2, 11.4, 2.8, '#e8bc62', INK_HEX, 1.1)
+  ellipse(ctx, 50, 79.8, 10.6, 2.7, '#c89232', INK_HEX, 1.1)
+
+  // Front pair of sweeping luxury cabriole legs splitting out from the central column
+  for (const side of [-1, 1]) {
+    ctx.save()
+    ctx.beginPath()
+    ctx.moveTo(50 + side * 4.5, 76.5)
+    ctx.bezierCurveTo(50 + side * 14, 77.5, 50 + side * 24, 82, 50 + side * 32.5, 89.2)
+    ctx.lineTo(50 + side * 26.5, 91.5)
+    ctx.bezierCurveTo(50 + side * 19.5, 86.2, 50 + side * 11.5, 82.8, 50 + side * 3.5, 82)
+    ctx.closePath()
+    const legGrad = ctx.createLinearGradient(50, 76, 50 + side * 33, 91)
+    legGrad.addColorStop(0, '#8d7e8d')
+    legGrad.addColorStop(0.55, '#5e5268')
+    legGrad.addColorStop(1, '#373044')
+    ctx.fillStyle = legGrad
+    ctx.fill()
+    ctx.strokeStyle = INK_HEX
+    ctx.lineWidth = 1.2
+    ctx.stroke()
+
+    // Gold acanthus leaf carving along the top knee of each split leg
+    ctx.strokeStyle = '#e8bc62'
+    ctx.lineWidth = 1.1
+    ctx.beginPath()
+    ctx.moveTo(50 + side * 6.5, 77.5)
+    ctx.quadraticCurveTo(50 + side * 17, 79.2, 50 + side * 25.5, 85.8)
+    ctx.stroke()
+
+    // Gilded lion-paw / scroll foot at the bottom of each split leg
+    ellipse(ctx, 50 + side * 30.2, 90.4, 4.4, 2.2, '#e2b456', INK_HEX, 1.15)
+    ellipse(ctx, 50 + side * 30.2, 90.0, 2.8, 1.2, '#fff1b0')
+    ctx.restore()
+  }
+
+  // Central gold finial boss where the four legs split from the pillar
+  ellipse(ctx, 50, 81.2, 7.2, 2.6, '#d8a648', INK_HEX, 1.1)
 
   // Deep carved stone apron & heavy gold table rim
   ellipse(ctx, 50, 51.2, 46.2, 16.8, '#3f354b', INK_HEX, 1.3)

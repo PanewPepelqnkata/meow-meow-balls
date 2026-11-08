@@ -1,6 +1,7 @@
+import { getTier } from '../../config/ballTiers'
+import { ballLookFor, faceLayoutFor, INK, restContour } from './BallAppearance'
 import { paintCanonicalCoin } from './Coin'
 import { INK_HEX, rrPath, starPath } from './KingdomMenuArt'
-
 export type KingdomButtonIconKind = 'play' | 'leaderboard' | 'collection' | 'store' | 'settings' | 'login'
 export type KingdomStatIconKind = 'best' | 'collection' | 'coins'
 
@@ -292,51 +293,90 @@ export function paintButtonIcon(
 }
 
 function paintCollectibleBallStat(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number): void {
+  // Render an authentic in-game Ball Rush ball using the exact BallAppearance pipeline
+  // (restContour + faceLayoutFor + getTier color) so the stats pill matches actual gameplay balls.
   ctx.save()
   ctx.translate(cx, cy)
-  ctx.scale(r, r)
   ctx.lineJoin = 'round'
   ctx.lineCap = 'round'
-  const grad = ctx.createRadialGradient(-0.24, -0.28, 0.08, 0, 0, 0.92)
-  grad.addColorStop(0, '#fff799')
-  grad.addColorStop(0.55, '#ffd83b')
-  grad.addColorStop(1, '#efa019')
-  ctx.fillStyle = grad
-  ctx.strokeStyle = INK_HEX
-  ctx.lineWidth = 0.12
+
+  const tier = 3
+  const seed = 8800 + 2 * 113 + tier * 17
+  const ballR = r * 0.86
+  const look = ballLookFor(tier, seed)
+  const contour = restContour(look, ballR, 0, 0, 40)
+  const tierColor = getTier(tier)?.color ?? 0xf96ec0
+  const fillHex = `#${tierColor.toString(16).padStart(6, '0')}`
+  const inkHex = `#${INK.toString(16).padStart(6, '0')}`
+  const outlineW = Math.max(1.8, ballR * 0.15)
+
+  // Subtle drop shadow
+  ctx.fillStyle = 'rgba(17, 22, 37, 0.28)'
   ctx.beginPath()
-  ctx.arc(0, 0.02, 0.86, 0, Math.PI * 2)
+  ctx.arc(ballR * 0.06, ballR * 0.1, ballR, 0, Math.PI * 2)
   ctx.fill()
+
+  // Wobbled soft-body contour fill + chunky ink outline
+  ctx.beginPath()
+  ctx.moveTo(contour[0]!.x, contour[0]!.y)
+  for (let i = 1; i < contour.length; i++) {
+    ctx.lineTo(contour[i]!.x, contour[i]!.y)
+  }
+  ctx.closePath()
+  ctx.fillStyle = fillHex
+  ctx.fill()
+  ctx.strokeStyle = inkHex
+  ctx.lineWidth = outlineW
   ctx.stroke()
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.72)'
+
+  // Exact normalized in-game face layout (oversized close-set slime eyes, off-center gaze, top-left glint, marker smile)
+  const L = faceLayoutFor(look, ballR, 1, { x: 0.42, y: -0.08 })
+  for (const e of L.eyes) {
+    ctx.fillStyle = '#ffffff'
+    ctx.beginPath()
+    ctx.ellipse(e.x, e.y, e.a, e.b, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = inkHex
+    ctx.lineWidth = Math.max(1.2, e.rim * 0.85)
+    ctx.stroke()
+
+    ctx.fillStyle = inkHex
+    ctx.beginPath()
+    ctx.ellipse(e.x + e.px, e.y + e.py, e.pa, e.pb, 0, 0, Math.PI * 2)
+    ctx.fill()
+
+    // Pupil upper-left specular highlight + secondary dot
+    ctx.fillStyle = '#ffffff'
+    ctx.beginPath()
+    ctx.arc(e.x + e.px - e.pa * 0.32, e.y + e.py - e.pb * 0.34, e.pa * 0.3, 0, Math.PI * 2)
+    ctx.arc(e.x + e.px - e.pa * 0.1, e.y + e.py - e.pb * 0.38, e.pa * 0.12, 0, Math.PI * 2)
+    ctx.fill()
+  }
+
+  // 10 o'clock body glint + dot
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.85)'
   ctx.beginPath()
-  ctx.ellipse(-0.32, -0.34, 0.25, 0.14, -0.55, 0, Math.PI * 2)
+  ctx.ellipse(L.highlight.x, L.highlight.y, L.highlight.w / 2, L.highlight.h / 2, 0, 0, Math.PI * 2)
   ctx.fill()
-  ctx.fillStyle = 'rgba(255, 118, 128, 0.62)'
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'
   ctx.beginPath()
-  ctx.ellipse(-0.42, 0.14, 0.15, 0.09, 0, 0, Math.PI * 2)
-  ctx.ellipse(0.42, 0.14, 0.15, 0.09, 0, 0, Math.PI * 2)
+  ctx.arc(L.highlightDot.x, L.highlightDot.y, L.highlightDot.r, 0, Math.PI * 2)
   ctx.fill()
-  ctx.fillStyle = INK_HEX
+
+  // Simple child-drawn marker mouth
+  const m = L.mouth
+  ctx.strokeStyle = inkHex
+  ctx.lineWidth = Math.max(1.2, m.stroke * 0.85)
   ctx.beginPath()
-  ctx.ellipse(-0.24, -0.02, 0.11, 0.15, 0, 0, Math.PI * 2)
-  ctx.ellipse(0.24, -0.02, 0.11, 0.15, 0, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.fillStyle = '#ffffff'
-  ctx.beginPath()
-  ctx.arc(-0.27, -0.07, 0.045, 0, Math.PI * 2)
-  ctx.arc(0.21, -0.07, 0.045, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.strokeStyle = INK_HEX
-  ctx.lineWidth = 0.09
-  ctx.beginPath()
-  ctx.arc(0, 0.12, 0.16, 0.15, Math.PI - 0.15)
-  ctx.stroke()
-  ctx.fillStyle = '#fff6b8'
-  starPath(ctx, 0.58, -0.52, 0.28, 4, 0.42)
-  ctx.fill()
-  ctx.strokeStyle = INK_HEX
-  ctx.lineWidth = 0.08
+  const steps = 14
+  for (let i = 0; i <= steps; i++) {
+    const t = -1 + (2 * i) / steps
+    const tiltLift = m.style === 1 ? 1 + m.tilt * 0.35 * t : 1
+    const mx = m.x + t * m.halfW
+    const my = m.y + (1 - t * t) * m.depth * tiltLift
+    if (i === 0) ctx.moveTo(mx, my)
+    else ctx.lineTo(mx, my)
+  }
   ctx.stroke()
   ctx.restore()
 }

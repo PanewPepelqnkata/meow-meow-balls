@@ -7,7 +7,7 @@ const artworkCache = new WeakMap<Phaser.Game, { signature: string; artwork: King
 
 /** Export the same authored widget painters once per layout, never on a React frame. */
 export function bakeKingdomMenuArtwork(scene: Phaser.Scene, layout: KingdomMenuLayout, dpr: number): KingdomMenuArtwork {
-  const signature = `v5:throne-medallion-flat-table:${dpr}:${layout.stats.w}:${layout.stats.h}:${layout.carousel.w}:${layout.carousel.h}:${layout.buttons.map((button) => `${button.action}/${button.w}/${button.h}/${button.compact}`).join(':')}`
+  const signature = `v6:throne-authentic-ball-luxury-table:${dpr}:${layout.stats.w}:${layout.stats.h}:${layout.carousel.w}:${layout.carousel.h}:${layout.buttons.map((button) => `${button.action}/${button.w}/${button.h}/${button.compact}`).join(':')}`
   const cached = artworkCache.get(scene.game)
   if (cached?.signature === signature) return cached.artwork
   // Native images do not need duplicate GPU textures in Phaser's texture manager.
