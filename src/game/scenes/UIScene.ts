@@ -4,6 +4,7 @@ import { GameOverView } from '../rendering/GameOverView'
 import { DiscoveryOverlay } from '../rendering/DiscoveryOverlay'
 import { DiscoveryBanner } from '../rendering/DiscoveryBanner'
 import { AuthModal } from '../../ui/AuthModal'
+import { FloatingTextNotification } from '../../ui/FloatingTextNotification'
 import { authService, scoreService } from '../../services/auth'
 import { gameBus } from '../events/gameBus'
 import { isDrunkoTestRoute } from '../state/runVariant'
@@ -28,6 +29,7 @@ export class UIScene extends Phaser.Scene {
   private discoveryOverlay!: DiscoveryOverlay
   /** The NON-BLOCKING repeat-discovery banner (already-seen tiers). */
   private discoveryBanner!: DiscoveryBanner
+  private achievementNotification: FloatingTextNotification | null = null
   private lastBest = 0
   private lastScore = 0
   /** Last completed run's leaderboard payload (for the post-login SAVE
@@ -94,6 +96,7 @@ export class UIScene extends Phaser.Scene {
     // The repeat-discovery banner: non-blocking, owns its own lifecycle.
     this.discoveryBanner = new DiscoveryBanner(this, () => this.uiRoot.layout_)
 
+    this.achievementNotification = new FloatingTextNotification(this, 88)
     // Boot-time sync (PlaygroundScene.create ran first and populated these).
     this.lastBest = Number(this.registry.get('best') ?? 0)
     const next = this.registry.get('next') as { tier: number; seed: number } | undefined
@@ -170,6 +173,12 @@ export class UIScene extends Phaser.Scene {
       // Repeat discovery (seen in an earlier run): the small non-blocking
       // banner — gameplay never pauses for it.
       gameBus.on('discovery:banner', ({ tier, seed, theme, variant }) => this.discoveryBanner.show(tier, seed, theme, variant)),
+      gameBus.on('achievement:unlocked', ({ name, rewardTitleName }) => {
+        const msg = rewardTitleName
+          ? `🏆 ACHIEVEMENT: ${name.toUpperCase()} (+TITLE: ${rewardTitleName.toUpperCase()})`
+          : `🏆 ACHIEVEMENT UNLOCKED: ${name.toUpperCase()}`
+        this.achievementNotification?.show(msg, this.scale.width / (this.game.scale.displayScale.x || 1) / 2)
+      }),
     )
     this.offs.push(authService.onAuthStateChange(() => {
       this.uiRoot.refreshAbilityAuth()
@@ -185,6 +194,7 @@ export class UIScene extends Phaser.Scene {
       this.offs = []
       this.discoveryOverlay.reset()
       this.discoveryBanner.destroy()
+      this.achievementNotification?.clear()
     })
   }
 

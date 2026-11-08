@@ -1,3 +1,10 @@
+import {
+  buildFallbackOverviewFromSave,
+  validateFavoriteBallIds,
+  validateRoyalUsername,
+  type KingsWardrobeOverview,
+} from '../config/kingsWardrobe'
+import { gameBus } from '../game/events/gameBus'
 import { UPGRADE_CATALOG, freshUpgradeLevels, normalizeUpgradeLevels, upgradeCost, type UpgradeId, type UpgradeLevels } from '../config/abilityUpgrades'
 import { getSupabase } from '../lib/supabase'
 import { isDrunkoTestRoute } from '../game/state/runVariant'
@@ -26,6 +33,10 @@ export interface Profile {
   username: string | null
   display_name: string | null
   avatar_url: string | null
+  selected_avatar_id?: string | null
+  active_title_id?: string | null
+  favorite_ball_ids?: string[] | null
+  username_changed_at?: string | null
   email?: string
   created_at: string
   updated_at: string
@@ -48,7 +59,15 @@ export function resolveDisplayName(profile: Profile | null | undefined): string 
   return profile?.display_name || profile?.username || 'Anonymous'
 }
 type CloudCoinState = { coins: number; coinRevision: number }
-type UpgradePurchaseState = CloudCoinState & { upgrades: UpgradeLevels }
+type UpgradePurchaseState = CloudCoinState & {
+  upgrades: UpgradeLevels
+  newlyUnlockedAchievements?: Array<{
+    id: string
+    name: string
+    reward_title_id: string | null
+    reward_title_name: string | null
+  }>
+}
 
 function roundedCoins(value: number): number {
   return Math.round(Math.max(0, value) * 10) / 10
@@ -64,13 +83,34 @@ function parseCoinRevision(value: unknown): number | null {
 function parseUpgradePurchaseState(value: unknown): UpgradePurchaseState | null {
   const raw = Array.isArray(value) ? value[0] : value
   if (!raw || typeof raw !== 'object') return null
-  const row = raw as { coins?: unknown; coin_revision?: unknown; upgrades?: unknown }
+  const row = raw as {
+    coins?: unknown
+    coin_revision?: unknown
+    upgrades?: unknown
+    newly_unlocked_achievements?: unknown
+  }
   const coins = Number(row.coins)
   const coinRevision = parseCoinRevision(row.coin_revision)
   if (!Number.isFinite(coins) || coins < 0 || coinRevision === null || !row.upgrades || typeof row.upgrades !== 'object') {
     return null
   }
-  return { coins: roundedCoins(coins), coinRevision, upgrades: normalizeUpgradeLevels(row.upgrades) }
+  const newlyUnlockedAchievements = Array.isArray(row.newly_unlocked_achievements)
+    ? row.newly_unlocked_achievements
+        .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+        .map((item) => ({
+          id: String(item.id ?? ''),
+          name: String(item.name ?? ''),
+          reward_title_id: typeof item.reward_title_id === 'string' ? item.reward_title_id : null,
+          reward_title_name: typeof item.reward_title_name === 'string' ? item.reward_title_name : null,
+        }))
+        .filter((item) => item.id.length > 0 && item.name.length > 0)
+    : undefined
+  return {
+    coins: roundedCoins(coins),
+    coinRevision,
+    upgrades: normalizeUpgradeLevels(row.upgrades),
+    newlyUnlockedAchievements,
+  }
 }
 
 /** Progress payload excludes server-owned wallet and upgrade fields. */
@@ -966,6 +1006,16 @@ export class AuthService {
         coinRevision: wallet.coinRevision,
         upgrades: wallet.upgrades,
       }, { syncCloud: false, ownerId: uid })
+      if (wallet.newlyUnlockedAchievements && wallet.newlyUnlockedAchievements.length > 0) {
+        for (const ach of wallet.newlyUnlockedAchievements) {
+          gameBus.emit('achievement:unlocked', {
+            id: ach.id,
+            name: ach.name,
+            rewardTitleId: ach.reward_title_id,
+            rewardTitleName: ach.reward_title_name,
+          })
+        }
+      }
       return true
     } catch (error) {
       console.error('Failed to sync user progress:', error)
@@ -1070,7 +1120,7 @@ export class AuthService {
 
     const { data, error } = await getSupabase()
       .from('profiles')
-      .select('id, username, display_name, avatar_url, created_at, updated_at')
+      .select('id, username, display_name, avatar_url, selected_avatar_id, active_title_id, favorite_ball_ids, username_changed_at, created_at, updated_at')
       .eq('id', userId)
       .single()
 
@@ -1085,39 +1135,133 @@ export class AuthService {
     return data
   }
 
-  async updateProfile(updates: Partial<Profile>): Promise<{ error: Error | null }> {
-    if (!this.user) return { error: new Error('Not authenticated') }
-
-    const { error } = await getSupabase()
-      .from('profiles')
-      .update({ ...updates, updated_at: new Date().toISOString() })
-      .eq('id', this.user.id)
-
-    if (!error) {
-      await this.fetchProfile()
+  async getKingsWardrobeOverview(): Promise<{ data: KingsWardrobeOverview; error: Error | null }> {
+    const save = loadSave()
+    if (!this.user || !this.isRegisteredAccount()) {
+      return { data: buildFallbackOverviewFromSave(save, this.profile), error: null }
     }
-
-    return { error }
+    try {
+      const { data, error } = await getSupabase().rpc('get_kings_wardrobe_overview')
+      if (error || !data || typeof data !== 'object') {
+        return {
+          data: buildFallbackOverviewFromSave(save, this.profile),
+          error: error ? new Error(error.message) : null,
+        }
+      }
+      const overview = data as KingsWardrobeOverview
+      if (overview.newly_unlocked_achievements && overview.newly_unlocked_achievements.length > 0) {
+        for (const ach of overview.newly_unlocked_achievements) {
+          gameBus.emit('achievement:unlocked', {
+            id: ach.id,
+            name: ach.name,
+            rewardTitleId: ach.reward_title_id,
+            rewardTitleName: ach.reward_title_name,
+          })
+        }
+      }
+      if (overview.profile && this.profile) {
+        this.profile = {
+          ...this.profile,
+          username: overview.profile.username,
+          display_name: overview.profile.display_name,
+          selected_avatar_id: overview.profile.selected_avatar_id,
+          active_title_id: overview.profile.active_title_id,
+          favorite_ball_ids: overview.profile.favorite_ball_ids,
+          username_changed_at: overview.profile.username_changed_at,
+        }
+      }
+      return { data: overview, error: null }
+    } catch (err) {
+      return {
+        data: buildFallbackOverviewFromSave(save, this.profile),
+        error: err instanceof Error ? err : new Error('Failed to load wardrobe overview'),
+      }
+    }
   }
 
-  /**
-   * Update the user's display name (nickname shown on leaderboard).
-   */
+  async changeUsernameOnce(newUsername: string): Promise<{ error: Error | null }> {
+    if (!this.user || !this.isRegisteredAccount()) {
+      return { error: new Error('Sign in with a registered account to change your username') }
+    }
+    const check = validateRoyalUsername(newUsername)
+    if (!check.valid) {
+      return { error: new Error(check.error ?? 'Invalid username') }
+    }
+    const { error } = await getSupabase().rpc('change_username_once', {
+      p_new_username: check.normalized,
+    })
+    if (error) {
+      return { error: new Error(error.message) }
+    }
+    await this.fetchProfile()
+    return { error: null }
+  }
   async updateDisplayName(displayName: string): Promise<{ error: Error | null }> {
-    if (!this.user) return { error: new Error('Not authenticated') }
-
-    const { error } = await getSupabase()
-      .from('profiles')
-      .update({ display_name: displayName, updated_at: new Date().toISOString() })
-      .eq('id', this.user.id)
-
-    if (!error) {
-      await this.fetchProfile()
-    }
-
-    return { error }
+    return this.changeUsernameOnce(displayName)
   }
 
+  async setSelectedAvatar(avatarId: string): Promise<{ error: Error | null }> {
+    if (!this.user || !this.isRegisteredAccount()) {
+      return { error: new Error('Sign in with a registered account to customize your avatar') }
+    }
+    const { error } = await getSupabase().rpc('set_selected_avatar', {
+      p_avatar_id: avatarId.trim(),
+    })
+    if (error) {
+      return { error: new Error(error.message) }
+    }
+    await this.fetchProfile()
+    return { error: null }
+  }
+
+  async saveFavoriteBalls(favoriteBallIds: readonly string[]): Promise<{ error: Error | null }> {
+    if (!this.user || !this.isRegisteredAccount()) {
+      return { error: new Error('Sign in with a registered account to save favorite balls') }
+    }
+    const check = validateFavoriteBallIds(favoriteBallIds)
+    if (!check.valid) {
+      return { error: new Error(check.error ?? 'Invalid favorite balls') }
+    }
+    const { error } = await getSupabase().rpc('save_favorite_balls', {
+      p_favorite_ball_ids: check.normalized,
+    })
+    if (error) {
+      return { error: new Error(error.message) }
+    }
+    await this.fetchProfile()
+    return { error: null }
+  }
+
+  async setActiveTitle(titleId: string | null): Promise<{ error: Error | null }> {
+    if (!this.user || !this.isRegisteredAccount()) {
+      return { error: new Error('Sign in with a registered account to equip a title') }
+    }
+    const { error } = await getSupabase().rpc('set_active_title', {
+      p_title_id: titleId ? titleId.trim() : null,
+    })
+    if (error) {
+      return { error: new Error(error.message) }
+    }
+    await this.fetchProfile()
+    return { error: null }
+  }
+
+  async deleteOwnAccount(confirmation: string): Promise<{ error: Error | null }> {
+    if (!this.user || !this.isRegisteredAccount()) {
+      return { error: new Error('Not signed in to a registered account') }
+    }
+    if (confirmation.trim() !== 'DELETE') {
+      return { error: new Error('Type DELETE to confirm permanent account deletion') }
+    }
+    const { error } = await getSupabase().rpc('delete_own_account', {
+      p_confirmation: confirmation.trim(),
+    })
+    if (error) {
+      return { error: new Error(error.message) }
+    }
+    await this.signOut()
+    return { error: null }
+  }
   getUser(): User | null {
     return this.user
   }
@@ -1336,7 +1480,10 @@ export class ScoreService {
             id,
             username,
             display_name,
-            avatar_url
+            avatar_url,
+            selected_avatar_id,
+            active_title_id,
+            favorite_ball_ids
           )
         `)
         .order('score', { ascending: false })

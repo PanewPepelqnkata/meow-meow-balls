@@ -61,6 +61,13 @@ export interface GameEventMap {
   /** World → UI. The drop-cooldown gate flipped. `holding` is false during
    * the post-drop cooldown (claw + preview show no ball), true when ready. */
   'state:dropHolding': { holding: boolean }
+  /** Server-evaluated achievement newly unlocked on this sync. */
+  'achievement:unlocked': {
+    id: string
+    name: string
+    rewardTitleId: string | null
+    rewardTitleName: string | null
+  }
 }
 
 type Handler<K extends keyof GameEventMap> = (payload: GameEventMap[K]) => void

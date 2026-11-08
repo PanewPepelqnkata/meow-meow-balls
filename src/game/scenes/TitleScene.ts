@@ -27,8 +27,10 @@ import { StartIntroScene } from './StartIntroScene'
 import { readSafeArea } from '../../ui/ResponsiveLayout'
 import { UI_COLORS, buildScreenHeader, ChunkyButton } from '../../ui/DesignSystem'
 import { CollectionBookView } from '../rendering/CollectionBookView'
+import { KingsWardrobeView, renderWardrobeBallCharacter } from '../rendering/KingsWardrobeView'
 import { StoreView } from '../rendering/StoreView'
 import { AuthModal } from '../../ui/AuthModal'
+import { getTitleNameById, isValidWardrobeCharacterId } from '../../config/kingsWardrobe'
 import { authService, resolveDisplayName, scoreService } from '../../services/auth'
 import { kingdomMenuBridge, kingdomStatsFromSave } from '../../react/kingdomMenuBridge'
 import type { KingdomNavAction } from '../../ui/KingdomMenuLayout'
@@ -41,7 +43,7 @@ import type { KingdomNavAction } from '../../ui/KingdomMenuLayout'
 const LEADERBOARD_TEXT = '#25283a'
 const LEADERBOARD_SECONDARY = '#555467'
 const LEADERBOARD_FONT = 'Nunito, ui-rounded, system-ui, sans-serif'
-type ScreenName = 'menu' | 'leaderboard' | 'settings' | 'collection' | 'store'
+type ScreenName = 'menu' | 'leaderboard' | 'settings' | 'collection' | 'store' | 'account'
 export class TitleScene extends Phaser.Scene {
   private root!: Phaser.GameObjects.Container
   private menuLayer!: Phaser.GameObjects.Container
@@ -52,6 +54,7 @@ export class TitleScene extends Phaser.Scene {
   private panelContent!: Phaser.GameObjects.Container
   private collectionBook: CollectionBookView | null = null
   private storeView: StoreView | null = null
+  private wardrobeView: KingsWardrobeView | null = null
   private homeAuthModal: AuthModal | null = null
   private panelRects: Array<{
     label: string
@@ -203,6 +206,7 @@ export class TitleScene extends Phaser.Scene {
       this.lbModalCleanup = null
       this.destroyCollectionBook()
       this.destroyStoreView()
+      this.destroyWardrobeView()
       this.kingdomMenu?.destroy()
       this.kingdomMenu = null
       this.teardownLeaderboardScroll()
@@ -220,6 +224,11 @@ export class TitleScene extends Phaser.Scene {
       ;(window as unknown as Record<string, unknown>).__brMenu = {
         visible: () => !this.closed,
         screen: () => this.screen,
+        openScreen: (s: ScreenName) => this.openScreen(s),
+        wardrobeTab: (t?: 'mirror' | 'avatars' | 'trophies' | 'ledger') => {
+          if (t) this.wardrobeView?.setTab(t)
+          return this.wardrobeView?.getActiveTab() ?? null
+        },
         buttons: () => [...(this.screen === 'menu' && !this.closed ? kingdomMenuBridge.getButtonRects() : []), ...this.panelRects].map((b) => ({ ...b })),
         // Phase 2.15.0 QA: dump the wordmark letter objects (text, layout,
         // canvas texture size) so visual oddities can be diagnosed from the
@@ -331,8 +340,8 @@ export class TitleScene extends Phaser.Scene {
       this.publishHome()
       modal.open('login')
     } else {
-      // Account remains the existing settings account card (logout/cloud-save semantics).
-      this.openScreen(action === 'account' ? 'settings' : action)
+      // Account opens The King's Wardrobe royal chambers.
+      this.openScreen(action)
     }
   }
 
@@ -423,14 +432,15 @@ export class TitleScene extends Phaser.Scene {
     const subs: Partial<Record<ScreenName, string>> = {
       collection: 'COLLECTION ALBUM & DISCOVERY LOG',
       settings: 'BACKGROUND THEME & SAVED PROGRESS',
+      account: 'ROYAL IDENTITY, WARDROBE, TROPHIES & LEDGER',
     }
 
     const titles: Partial<Record<ScreenName, string>> = {
       collection: 'COLLECTION BOOK',
       leaderboard: 'LEADERBOARD',
       settings: 'SETTINGS',
+      account: "THE KING'S WARDROBE",
     }
-
     const { contentTopY } = this.screen === 'leaderboard'
       ? this.buildLeaderboardHeader(vw, vh)
       : this.screen === 'store'
@@ -455,6 +465,9 @@ export class TitleScene extends Phaser.Scene {
         break
       case 'store':
         this.buildStore(vw, vh, contentTopY)
+        break
+      case 'account':
+        this.buildWardrobe(vw, vh, contentTopY)
         break
     }
   }
@@ -576,11 +589,17 @@ export class TitleScene extends Phaser.Scene {
     this.storeView = null
   }
 
+  private destroyWardrobeView(): void {
+    this.wardrobeView?.destroy()
+    this.wardrobeView = null
+  }
+
   private clearPanelContent(): void {
     this.lbModalCleanup?.()
     this.lbModalCleanup = null
     this.destroyCollectionBook()
     this.destroyStoreView()
+    this.destroyWardrobeView()
     this.teardownLeaderboardScroll()
     this.panelContent.removeAll(true)
     this.panelRects.length = 0
@@ -716,6 +735,8 @@ export class TitleScene extends Phaser.Scene {
     interface LeaderboardEntry {
       rank: number
       displayName: string
+      selectedAvatarId: string | null
+      activeTitleId: string | null
       score: number
       tierReached: number
       createdAt: number
@@ -732,7 +753,9 @@ export class TitleScene extends Phaser.Scene {
 
       entries = scores.map((s, i) => ({
         rank: i + 1,
-        displayName: s.profiles?.display_name || 'Anonymous',
+        displayName: s.profiles?.display_name || s.profiles?.username || 'Anonymous',
+        selectedAvatarId: s.profiles?.selected_avatar_id ?? null,
+        activeTitleId: s.profiles?.active_title_id ?? null,
         score: s.score,
         tierReached: s.tier_reached,
         createdAt: new Date(s.created_at).getTime(),
@@ -948,9 +971,13 @@ export class TitleScene extends Phaser.Scene {
       const ball = this.add.container(cx, seatY)
       const ballG = this.add.graphics()
       ball.add(ballG)
-      drawBallIcon(this, ballG, slot.tier, 0, -ballR, ballR, {
-        seed: slot.rank * 777 + slot.tier * 31, layer: ball,
-      })
+      if (slot.entry.selectedAvatarId && isValidWardrobeCharacterId(slot.entry.selectedAvatarId)) {
+        renderWardrobeBallCharacter(this, ballG, slot.entry.selectedAvatarId, 0, -ballR, ballR, { layer: ball })
+      } else {
+        drawBallIcon(this, ballG, slot.tier, 0, -ballR, ballR, {
+          seed: slot.rank * 777 + slot.tier * 31, layer: ball,
+        })
+      }
       if (slot.rank === 1) addCrownImage(this, ball, -ballR * 0.07,
         -ballR * 1.98, ballR * 1.24, ballR * 0.9, -0.12)
       const medalW = Math.ceil(medalR * 3.8 + 4)
@@ -1167,12 +1194,13 @@ export class TitleScene extends Phaser.Scene {
         }
         const cy = rowH / 2
         view.rank.setText(`${i + 1}`).setY(cy)
-        view.name.setText(entry.displayName).setY(cy)
+        const titleName = getTitleNameById(entry.activeTitleId)
+        view.name.setText(titleName ? `${entry.displayName} • ${titleName}` : entry.displayName).setY(cy)
         view.score.setText(scoreStrings[i]!).setY(cy)
         const tier = i < 3 ? [6, 1, 5][i]! : entry.tierReached > 1
           ? Math.min(BALL_TIERS.length, entry.tierReached) : fallbackTiers[i % fallbackTiers.length]!
         const seed = (i % 8 + 1) * 777 + tier * 31
-        view.avatar.setTexture(leaderboardAvatarKey(this, tier, seed, avatarSize))
+        view.avatar.setTexture(leaderboardAvatarKey(this, tier, seed, avatarSize, entry.selectedAvatarId))
           .setY(cy).setDisplaySize(avatarSize, avatarSize)
       }
     }
@@ -1551,12 +1579,42 @@ export class TitleScene extends Phaser.Scene {
       info.setScale(Math.min(1, (cardW - 24) / Math.max(1, info.width)))
       this.panelContent.add(info)
 
-      const btnW = Math.min(200, cardW - 48)
+      const gap = 10
+      const btnW = Math.min(180, Math.floor((cardW - 36 - gap) / 2))
       const btnH = compact ? 36 : 40
       const btnY = cardY + cardH - btnH / 2 - (compact ? 12 : 16)
+      const wardrobeBtnX = centerX - btnW / 2 - gap / 2
+      const logoutBtnX = centerX + btnW / 2 + gap / 2
+
+      const wardrobeBtn = new ChunkyButton({
+        scene: this,
+        x: wardrobeBtnX,
+        y: btnY,
+        w: btnW,
+        h: btnH,
+        pill: true,
+        fill: UI_COLORS.BTN_GOLD,
+        shadowColor: UI_COLORS.BTN_GOLD_SHADOW,
+        highlightColor: UI_COLORS.BTN_GOLD_HIGHLIGHT,
+        label: 'WARDROBE',
+        fontSize: 12,
+        onClick: () => {
+          this.openScreen('account')
+        },
+      })
+      this.panelContent.add(wardrobeBtn.container)
+      this.panelRects.push({
+        label: 'WARDROBE',
+        x: wardrobeBtnX - btnW / 2,
+        y: btnY - btnH / 2,
+        w: btnW,
+        h: btnH,
+        screen: 'settings',
+      })
+
       const logoutBtn = new ChunkyButton({
         scene: this,
-        x: centerX,
+        x: logoutBtnX,
         y: btnY,
         w: btnW,
         h: btnH,
@@ -1565,7 +1623,7 @@ export class TitleScene extends Phaser.Scene {
         shadowColor: UI_COLORS.BTN_RED_SHADOW,
         highlightColor: UI_COLORS.BTN_RED_HIGHLIGHT,
         label: 'LOGOUT',
-        fontSize: 13,
+        fontSize: 12,
         onClick: () => {
           if (!window.confirm('Are you sure you want to log out?')) return
           void authService.signOut().then(() => {
@@ -1576,7 +1634,7 @@ export class TitleScene extends Phaser.Scene {
       this.panelContent.add(logoutBtn.container)
       this.panelRects.push({
         label: 'LOGOUT',
-        x: centerX - btnW / 2,
+        x: logoutBtnX - btnW / 2,
         y: btnY - btnH / 2,
         w: btnW,
         h: btnH,
@@ -1634,6 +1692,12 @@ export class TitleScene extends Phaser.Scene {
 
   private buildStore(vw: number, vh: number, topY: number): void {
     this.storeView = new StoreView(this, this.panelContent, vw, vh, topY)
+  }
+
+  private buildWardrobe(vw: number, vh: number, topY: number): void {
+    this.wardrobeView = new KingsWardrobeView(this, this.panelContent, vw, vh, topY, () => {
+      this.publishHome()
+    })
   }
 
   // -------------------------------------------------------------------------
@@ -1951,9 +2015,21 @@ function leaderboardAvatarKey(
   tier: number,
   seed: number,
   displaySize: number,
+  selectedAvatarId?: string | null,
 ): string {
   const dpr = Math.max(2, Math.min(window.devicePixelRatio || 1, MAX_RENDER_DPR))
   const textureSize = Math.ceil(displaySize * dpr)
+  if (selectedAvatarId && isValidWardrobeCharacterId(selectedAvatarId)) {
+    const customKey = `br-leaderboard-wardrobe-avatar:${selectedAvatarId}:${textureSize}`
+    if (scene.textures.exists(customKey)) return customKey
+    const graphics = scene.add.graphics()
+    const center = textureSize / 2
+    const radius = displaySize * dpr / 2 - 2 * dpr
+    renderWardrobeBallCharacter(scene, graphics, selectedAvatarId, center, center, radius)
+    graphics.generateTexture(customKey, textureSize, textureSize)
+    graphics.destroy()
+    return customKey
+  }
   const theme = tier === 9 ? tier9Theme() : ''
   const variant = tier === 9 || tier === 10 ? variantIdFor(tier) : 0
   const key = `br-leaderboard-avatar:${tier}:${theme}:${variant}:${seed}:${textureSize}`
