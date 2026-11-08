@@ -25,7 +25,7 @@
        ├──► BackgroundScene (Backdrop gradient, stars, camera zoom = displayScale)
        ├──► PlaygroundScene (Matter.js 120Hz physics, SoftBallManager, MergeSystem, DropClaw, ScoreSystem)
        ├──► UIScene (1:1 HUD camera, ScoreDisplay, AbilityBar, NextBall, GameOverView, DiscoveryOverlay)
-       ├──► TitleScene (Uiverse DOM button overlay, gumball machine, journal/leaderboard/collection/settings)
+       ├──► TitleScene (Ball Rush Kingdom courtyard menu, journal/leaderboard/collection/store/settings)
        └──► StartIntroScene (Transient gumball/iris transition overlay)
 ```
 
@@ -154,3 +154,15 @@
 - The home screen separates the saved coin balance from lifetime score and collection progress. The balance uses a dedicated outlined pill in the top-right safe area on desktop and compact landscape, and beside the stats pill in portrait; the two portrait bounds reserve a gap.
 - Replaced the generic layered coin circles with a bold arcade token: dark offset edge, warm gold rim, inset face, and compact Ball Rush face emblem. `drawCoin` remains shared by the menu balance and game-over earnings row.
 - Browser verification is pending for 390×844 DPR 3, 844×390, and 1280×800. Compare the coin/stats bounds with the viewport and logo, and check coin-face readability at menu and game-over sizes.
+
+## Main menu Kingdom cutover — 2026-11-07
+
+- Replaced the legacy home-screen layout and DOM button overlay with `KingdomMenuView`, `KingdomStallArt`, `KingdomMenuEffects`, and `KingdomWidgetsArt`: a dark timber merchant recess, animated red/cream canopy, warm lantern atmosphere, crested `BALL RUSH` logo, carved stats plaque, timber signboard navigation, and the glass Magical Ball Capsule on its counter.
+- Removed dead `src/ui/UiverseDomButtons.ts` and the `.uiverse-btn-layer` CSS rules from `src/index.css`; updated QA fallback PLAY tap coordinates in `qa/lib-game.mjs` and `qa/verify-prod-diag.mjs`.
+- Preserved all existing route handlers (`PLAY`, `LOGIN`, `LEADERBOARD`, `COLLECTION`, `STORE`, `SETTINGS`), `state:save` and auth listeners, `prefers-reduced-motion` handling, and `__brMenu` QA hooks. Verified across 1440×900 desktop and 390×844 / 393×852 / 430×932 mobile portrait viewports.
+
+## Store-style main menu — 2026-11-08
+
+- Replaced the courtyard/castle rendering with a dark planked merchant stall, inked timber posts, red/cream canopy, and a dedicated counter supporting the glass gumball machine. Removed the retired courtyard/landscape painters and signpost bake paths.
+- Canopy scallops animate as live cloth; two wrought-iron lantern rigs share cached radial lighting, layered flame flicker, pendulum swing, and breathing warm light. Fourteen bounded dust motes and rare hardware/counter twinkles keep the scene warm without filling the navigation area with effects.
+- Native React controls retain navigation and live saved statistics. PLAY uses the Store green beveled hero treatment; secondary controls and the progress plaque use carved timber with brass hardware. Responsive layouts separate title/progress, machine/counter, and navigation; hidden/reduced-motion menus stop scene animation.

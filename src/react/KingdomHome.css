@@ -1,0 +1,281 @@
+.kingdom-home {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  font-family: 'Lilita One', ui-rounded, system-ui, sans-serif;
+  color: #fff9ec;
+  isolation: isolate;
+}
+
+.kingdom-home__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.kingdom-button {
+  position: absolute;
+  display: block;
+  appearance: none;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 12px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  color: #fff9ec;
+  font: inherit;
+  font-size: 21px;
+  line-height: 1;
+  letter-spacing: 0;
+  text-align: center;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Keep hit targets still; entrance, interaction and glow use separate layers. */
+.kingdom-button__entrance {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  animation: kingdom-control-enter 380ms cubic-bezier(.2, .7, .25, 1) var(--button-delay, 0ms) both;
+}
+
+.kingdom-button__visual {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 0 16px 5px 50px;
+  isolation: isolate;
+  transition: transform 140ms ease, filter 140ms ease;
+}
+
+.kingdom-button__art {
+  position: absolute;
+  left: -8px;
+  top: -8px;
+  display: block;
+  width: calc(100% + 16px);
+  height: calc(100% + 16px);
+  max-width: none;
+  pointer-events: none;
+  user-select: none;
+  z-index: 0;
+}
+
+.kingdom-button__label {
+  position: relative;
+  z-index: 2;
+  white-space: nowrap;
+  paint-order: stroke fill;
+  color: #fff9ec;
+  -webkit-text-stroke: 1.8px #111625;
+  text-shadow: 0 2px 0 #111625, 0 3px 1px #4e230f;
+}
+
+.kingdom-button--play {
+  font-size: 36px;
+}
+
+.kingdom-button--play .kingdom-button__visual {
+  padding: 0 20px 5px 54px;
+}
+
+.kingdom-button--play .kingdom-button__art {
+  filter: drop-shadow(0 3px 5px rgba(17, 22, 37, .24)) drop-shadow(0 0 5px rgba(60, 167, 43, .25));
+  animation: kingdom-play-glow 3.4s ease-in-out 650ms infinite;
+}
+
+.kingdom-button--play .kingdom-button__visual::after {
+  content: '';
+  position: absolute;
+  inset: 3px 5px 10px;
+  z-index: 1;
+  border-radius: 12px;
+  background: linear-gradient(110deg, transparent 42%, rgba(255, 249, 236, .18) 49%, rgba(255, 249, 236, .05) 54%, transparent 62%);
+  background-size: 280% 100%;
+  background-position: 100% 0;
+  opacity: 0;
+  animation: kingdom-play-sheen 6.8s ease-in-out 1.2s infinite;
+}
+
+@keyframes kingdom-control-enter {
+  from { opacity: 0; transform: translateY(9px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes kingdom-play-glow {
+  0%, 100% {
+    filter: drop-shadow(0 3px 5px rgba(17, 22, 37, .24)) drop-shadow(0 0 5px rgba(60, 167, 43, .25));
+  }
+  50% {
+    filter: drop-shadow(0 3px 5px rgba(17, 22, 37, .24)) drop-shadow(0 0 10px rgba(98, 203, 73, .4));
+  }
+}
+
+@keyframes kingdom-play-sheen {
+  0%, 78% { background-position: 100% 0; opacity: 0; }
+  80% { opacity: 1; }
+  96% { background-position: 0 0; opacity: 1; }
+  100% { background-position: 0 0; opacity: 0; }
+}
+
+.kingdom-button--play .kingdom-button__label {
+  color: #fff;
+  -webkit-text-stroke: 3.5px #111625;
+  text-shadow: 0 3px 0 #111625;
+}
+
+.kingdom-button--compact {
+  font-size: clamp(10.5px, calc((var(--button-width) - 44px) * .153), 17px);
+  letter-spacing: -.25px;
+}
+
+.kingdom-button--compact .kingdom-button__visual {
+  padding: 0 7px 4px 40px;
+}
+
+.kingdom-button--compact .kingdom-button__label {
+  -webkit-text-stroke-width: 1.4px;
+  text-shadow: 0 1.5px 0 #111625, 0 2px 1px #4e230f;
+}
+@media (hover: hover) and (pointer: fine) {
+  .kingdom-button:hover .kingdom-button__visual {
+    transform: translateY(-2px);
+    filter: brightness(1.06);
+  }
+}
+
+.kingdom-button:focus-visible .kingdom-button__visual {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+}
+
+.kingdom-button:active .kingdom-button__visual {
+  transform: translateY(2px) scale(.992);
+  filter: brightness(.98);
+}
+
+.kingdom-button:focus-visible {
+  outline: 3px solid #ffce42;
+  outline-offset: 4px;
+  box-shadow: 0 0 0 2px #111625;
+}
+
+.kingdom-stats {
+  position: absolute;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  isolation: isolate;
+  padding: 0 8px 2px;
+  box-sizing: border-box;
+  animation: kingdom-control-enter 380ms cubic-bezier(.2, .7, .25, 1) 40ms both;
+}
+
+.kingdom-stats__art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+}
+
+.kingdom-stat {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(3px, calc(var(--stats-width) * .015), 7px);
+  min-width: 0;
+  padding: 0 2px;
+}
+
+.kingdom-stat__icon {
+  flex: 0 0 auto;
+  display: block;
+  width: clamp(20px, calc(var(--stats-width) * .075), 35px);
+  height: clamp(20px, calc(var(--stats-width) * .075), 35px);
+  object-fit: contain;
+  user-select: none;
+}
+
+.kingdom-stat__text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  line-height: 1.08;
+}
+
+.kingdom-stat__name {
+  font-family: 'Nunito', ui-rounded, system-ui, sans-serif;
+  font-size: clamp(9px, calc(var(--stats-width) * .028), 12px);
+  font-weight: 900;
+  letter-spacing: .2px;
+  color: #f6ede0;
+  text-shadow: 0 1px 0 #111625;
+}
+
+.kingdom-stat strong {
+  max-width: 100%;
+  font-weight: 400;
+  font-size: clamp(12px, calc(var(--stats-width) * .049), 22px);
+  line-height: 1.08;
+  color: #fff9ec;
+  paint-order: stroke fill;
+  -webkit-text-stroke: 1px #111625;
+  text-shadow: 0 1.5px 0 #111625;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.kingdom-stat--coins strong {
+  color: #ffce42;
+}
+
+
+.kingdom-home--portrait .kingdom-button--play {
+  font-size: 32px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kingdom-stats,
+  .kingdom-button__entrance,
+  .kingdom-button__visual,
+  .kingdom-button__art,
+  .kingdom-button--play .kingdom-button__art,
+  .kingdom-button--play .kingdom-button__visual::after {
+    animation: none;
+    transition: none;
+  }
+
+  .kingdom-stats,
+  .kingdom-button__entrance {
+    opacity: 1;
+    transform: none;
+  }
+
+  .kingdom-button:hover .kingdom-button__visual,
+  .kingdom-button:active .kingdom-button__visual,
+  .kingdom-button:focus-visible .kingdom-button__visual {
+    transform: none;
+  }
+
+  .kingdom-button--play .kingdom-button__visual::after {
+    opacity: 0;
+  }
+}

@@ -88,18 +88,7 @@ await page.waitForFunction(
 await page.waitForTimeout(1500)
 
 // Leave the title screen.
-const play = await page.evaluate(() => {
-  const vw = window.innerWidth
-  const vh = window.innerHeight
-  const chipH = Math.round(Math.max(30, Math.min(44, vh * 0.052)))
-  const playH = Math.round(Math.max(52, Math.min(76, vh * 0.085)))
-  const navH = Math.round(Math.max(40, Math.min(56, vh * 0.058)))
-  const chipY = vh - Math.round(Math.max(12, Math.min(22, Math.min(vw, vh) * 0.025))) - chipH / 2
-  const nav2Y = chipY - chipH / 2 - 12 - navH / 2
-  const nav1Y = nav2Y - navH - 10
-  return { x: vw / 2, y: nav1Y - navH / 2 - 12 - playH / 2 }
-})
-await page.touchscreen.tap(play.x, play.y)
+await page.locator('[data-kingdom-action="play"]').tap()
 await page.waitForTimeout(4000)
 // Drop a few balls with REAL touch input — the __brScene QA hook is
 // DEV-only, so a production build has no scripting hook (which is the

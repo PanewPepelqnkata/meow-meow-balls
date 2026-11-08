@@ -40,22 +40,7 @@ export async function bootGame({ diag = true } = {}) {
   )
   await page.waitForTimeout(1500)
   // Tap the play button to leave the title screen.
-  const play = await page.evaluate(() => {
-    const ts = window.__brGame?.scene.getScene('TitleScene')
-    const r = ts?.menuRects?.find((b) => b.label === 'PLAY')
-    if (r) return { x: r.x + r.w / 2, y: r.y + r.h / 2 }
-    const vw = window.innerWidth
-    const vh = window.innerHeight
-    const m = Math.round(Math.max(12, Math.min(22, Math.min(vw, vh) * 0.025)))
-    const chipH = Math.round(Math.max(30, Math.min(44, vh * 0.052)))
-    const playH = Math.round(Math.max(52, Math.min(76, vh * 0.085)))
-    const navH = Math.round(Math.max(38, Math.min(50, vh * 0.054)))
-    const chipY = vh - m - chipH / 2
-    const navY = chipY - chipH / 2 - 12 - navH / 2
-    const sideW = Math.floor((vw - 2 * m - 8) / 2)
-    return { x: m + sideW / 2, y: navY - navH / 2 - 12 - playH / 2 }
-  })
-  await page.touchscreen.tap(play.x, play.y)
+  await page.locator('[data-kingdom-action="play"]').click()
   await page.waitForFunction(
     () => window.__brGame?.scene.getScene('StartIntroScene')?.scene.settings.status === 8,
     { timeout: 60000 },

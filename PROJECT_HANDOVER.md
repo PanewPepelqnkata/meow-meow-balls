@@ -165,7 +165,7 @@ Persistence:
 - Hand-drawn cartoon aesthetic with ink outlines (`INK = 0x1a1a1a`).
 - Blue/red palette: navy backdrop, red machine, blue accents.
 - Lucide icons via `lucide-static` + `LucideIcon.ts`.
-- Uiverse-style DOM buttons for menu (`UiverseDomButtons.ts`).
+- Store-style timber stall main menu: `KingdomMenuView.ts` composes `KingdomStallArt.ts`, live canopy/lantern/dust rigs in `KingdomMenuEffects.ts`, and native React controls from `KingdomHome.tsx`. `KingdomMenuLayout.ts` shares safe-area-aware title, counter/machine, and navigation geometry between both renderers.
 - Default visual baseline: existing shipped game look. Change only when explicitly specified.
 
 ## 7. Tier System

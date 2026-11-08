@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createGame, destroyGame } from '../game/GameRoot'
 import { FONT_FAMILY } from '../ui/Typography'
+import { KingdomHome } from './KingdomHome'
 
 /**
  * Mounts the single Phaser game instance. The engine is created inside the
@@ -51,5 +52,5 @@ export function GameCanvas() {
       destroyGame(game)
     }
   }, [fontReady])
-  return <div ref={containerRef} className="game-container" />
+  return <><div ref={containerRef} className="game-container" /><KingdomHome /></>
 }
