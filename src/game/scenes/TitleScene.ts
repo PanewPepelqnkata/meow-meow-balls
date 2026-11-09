@@ -432,14 +432,14 @@ export class TitleScene extends Phaser.Scene {
     const subs: Partial<Record<ScreenName, string>> = {
       collection: 'COLLECTION ALBUM & DISCOVERY LOG',
       settings: 'BACKGROUND THEME & SAVED PROGRESS',
-      account: 'ROYAL IDENTITY, WARDROBE, TROPHIES & LEDGER',
+      account: 'PROFILE, AVATARS, TROPHIES & LIFETIME STATS',
     }
 
     const titles: Partial<Record<ScreenName, string>> = {
       collection: 'COLLECTION BOOK',
       leaderboard: 'LEADERBOARD',
       settings: 'SETTINGS',
-      account: "THE KING'S WARDROBE",
+      account: 'ACCOUNT',
     }
     const { contentTopY } = this.screen === 'leaderboard'
       ? this.buildLeaderboardHeader(vw, vh)
@@ -978,8 +978,10 @@ export class TitleScene extends Phaser.Scene {
           seed: slot.rank * 777 + slot.tier * 31, layer: ball,
         })
       }
-      if (slot.rank === 1) addCrownImage(this, ball, -ballR * 0.07,
-        -ballR * 1.98, ballR * 1.24, ballR * 0.9, -0.12)
+      if (slot.rank === 1) {
+        const isCrab = slot.entry.selectedAvatarId === 'collectible:10:crab'
+        addCrownImage(this, ball, -ballR * 0.07, -ballR * (isCrab ? 2.18 : 1.98), ballR * 1.24, ballR * 0.9, -0.12)
+      }
       const medalW = Math.ceil(medalR * 3.8 + 4)
       const medalH = Math.ceil(medalR * 2.4 + 4)
       const medalKey = `br-champion-medal:${slot.rank}:${medalW}:${medalH}`
@@ -1596,7 +1598,7 @@ export class TitleScene extends Phaser.Scene {
         fill: UI_COLORS.BTN_GOLD,
         shadowColor: UI_COLORS.BTN_GOLD_SHADOW,
         highlightColor: UI_COLORS.BTN_GOLD_HIGHLIGHT,
-        label: 'WARDROBE',
+        label: 'ACCOUNT',
         fontSize: 12,
         onClick: () => {
           this.openScreen('account')
@@ -1604,7 +1606,7 @@ export class TitleScene extends Phaser.Scene {
       })
       this.panelContent.add(wardrobeBtn.container)
       this.panelRects.push({
-        label: 'WARDROBE',
+        label: 'ACCOUNT',
         x: wardrobeBtnX - btnW / 2,
         y: btnY - btnH / 2,
         w: btnW,
@@ -1651,12 +1653,42 @@ export class TitleScene extends Phaser.Scene {
       info.setScale(Math.min(1, (cardW - 24) / Math.max(1, info.width)))
       this.panelContent.add(info)
 
-      const btnW = Math.min(200, cardW - 48)
+      const gap = 10
+      const btnW = Math.min(180, Math.floor((cardW - 36 - gap) / 2))
       const btnH = compact ? 36 : 40
       const btnY = cardY + cardH - btnH / 2 - (compact ? 12 : 16)
+      const accountBtnX = centerX - btnW / 2 - gap / 2
+      const loginBtnX = centerX + btnW / 2 + gap / 2
+
+      const accountBtn = new ChunkyButton({
+        scene: this,
+        x: accountBtnX,
+        y: btnY,
+        w: btnW,
+        h: btnH,
+        pill: true,
+        fill: UI_COLORS.BTN_GOLD,
+        shadowColor: UI_COLORS.BTN_GOLD_SHADOW,
+        highlightColor: UI_COLORS.BTN_GOLD_HIGHLIGHT,
+        label: 'ACCOUNT',
+        fontSize: 12,
+        onClick: () => {
+          this.openScreen('account')
+        },
+      })
+      this.panelContent.add(accountBtn.container)
+      this.panelRects.push({
+        label: 'ACCOUNT',
+        x: accountBtnX - btnW / 2,
+        y: btnY - btnH / 2,
+        w: btnW,
+        h: btnH,
+        screen: 'settings',
+      })
+
       const loginBtn = new ChunkyButton({
         scene: this,
-        x: centerX,
+        x: loginBtnX,
         y: btnY,
         w: btnW,
         h: btnH,
@@ -1665,7 +1697,7 @@ export class TitleScene extends Phaser.Scene {
         shadowColor: UI_COLORS.BTN_BLUE_SHADOW,
         highlightColor: UI_COLORS.BTN_BLUE_HIGHLIGHT,
         label: 'LOGIN',
-        fontSize: 13,
+        fontSize: 12,
         onClick: () => {
           const modal = new AuthModal(document.body)
           modal.onSuccess(() => {
@@ -1677,7 +1709,7 @@ export class TitleScene extends Phaser.Scene {
       this.panelContent.add(loginBtn.container)
       this.panelRects.push({
         label: 'LOGIN',
-        x: centerX - btnW / 2,
+        x: loginBtnX - btnW / 2,
         y: btnY - btnH / 2,
         w: btnW,
         h: btnH,
@@ -1963,8 +1995,8 @@ export function drawBallIcon(
   const t = getTier(tier)
   if (!t) return
   if (!opts.silhouette && (tier === 9 || tier === 10)) {
-    // Claws and fins must fit the same icon slot as an ordinary ball.
-    const iconR = r / (tier === 10 ? 2.6 : 1.5)
+    // Claws and fins fit cleanly at ~0.82R so Tier 9 & 10 match core ball visual weight.
+    const iconR = r * (tier === 10 ? 0.78 : 0.84)
     drawCollectibleBall(g, cx, cy, iconR, tier, opts.variant ?? variantIdFor(tier), undefined, 0, undefined, opts.seed ?? tier)
     return
   }
@@ -2020,7 +2052,7 @@ function leaderboardAvatarKey(
   const dpr = Math.max(2, Math.min(window.devicePixelRatio || 1, MAX_RENDER_DPR))
   const textureSize = Math.ceil(displaySize * dpr)
   if (selectedAvatarId && isValidWardrobeCharacterId(selectedAvatarId)) {
-    const customKey = `br-leaderboard-wardrobe-avatar:${selectedAvatarId}:${textureSize}`
+    const customKey = `br-leaderboard-wardrobe-avatar-v2:${selectedAvatarId}:${textureSize}`
     if (scene.textures.exists(customKey)) return customKey
     const graphics = scene.add.graphics()
     const center = textureSize / 2
@@ -2032,7 +2064,7 @@ function leaderboardAvatarKey(
   }
   const theme = tier === 9 ? tier9Theme() : ''
   const variant = tier === 9 || tier === 10 ? variantIdFor(tier) : 0
-  const key = `br-leaderboard-avatar:${tier}:${theme}:${variant}:${seed}:${textureSize}`
+  const key = `br-leaderboard-avatar-v2:${tier}:${theme}:${variant}:${seed}:${textureSize}`
   if (scene.textures.exists(key)) return key
 
   const graphics = scene.add.graphics()
