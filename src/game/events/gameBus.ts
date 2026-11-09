@@ -16,7 +16,17 @@ export interface GameEventMap {
   /** Game over triggered (Phase 2.10.0): score/best at the moment of overflow.
    * Auth leaderboard: tier/balls/duration ride along so the UIScene's
    * SAVE YOUR SCORE flow can submit the full run record post-login. */
-  'run:gameover': { score: number; best: number; tierReached: number; ballsMerged: number; durationMs: number }
+  'run:gameover': {
+    score: number
+    best: number
+    tierReached: number
+    ballsMerged: number
+    durationMs: number
+    revivesUsed?: number
+    reviveCost?: number
+  }
+  /** World → UI: run was revived after game over (fallen-out balls cleared, overlay dismissed). */
+  'run:revived': { revivesUsed: number; nextReviveCost: number; removedBalls: number }
   // ---- Phase 2.11.0: PlaygroundScene (world) ↔ UIScene (HUD) wiring ----
   /** The upcoming ball changed (tier + the appearance seed the preview,
    * crane and the eventual spawn all share). */
@@ -43,6 +53,7 @@ export interface GameEventMap {
   'ui:raise': Record<string, never>
   'ui:shake': Record<string, never>
   'ui:restart': Record<string, never>
+  'ui:revive': Record<string, never>
   /** Pause menu opened; the world must ignore all pointer releases. */
   'ui:pause': Record<string, never>
   /** Pause menu → world: swallow the Resume release before enabling gameplay. */

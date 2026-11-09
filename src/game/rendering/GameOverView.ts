@@ -4,13 +4,16 @@ import { FONT_FAMILY } from '../../ui/Typography'
 import { doodleSilhouette, darkenFill } from '../../ui/CartoonButton'
 import { getTier } from '../../config/ballTiers'
 import { GAME_OVER_SEQUENCE as SEQ } from '../../config/gameOverSequence'
+import { reviveCostForCount } from '../../config/gameOver'
 import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK, type BallExpression } from './BallAppearance'
 import { drawCoin, formatCoins, coinsForScore } from './Coin'
+import { gameBus } from '../events/gameBus'
 import { loadSave } from '../state/save'
 
 const CREAM = 0xfff8ec
 const BLUE = 0x2d74c9
 const RED = 0xf44336
+const GREEN = 0x2eb85c
 const INK_COLOR = '#1a1a1a'
 
 
@@ -20,12 +23,21 @@ interface RunStats {
   durationMs: number
 }
 
+export interface ReviveOption {
+  cost: number
+  revivesUsed?: number
+  onRevive?: () => void
+}
+
 interface RunPresentation {
   score: number
   best: number
   isNewBest: boolean
   saveScore?: { onSave: () => void }
   stats?: RunStats
+  reviveCost: number
+  revivesUsed: number
+  onRevive?: () => void
   saved: boolean
 }
 
@@ -37,6 +49,8 @@ export class GameOverView {
   private reducedMotion = false
   private restarting = false
   private lastButtonCenter = { x: 0, y: 0 }
+  private lastReviveButtonCenter = { x: 0, y: 0 }
+  private offSaveListener: (() => void) | null = null
   private saveRow: {
     icon: Phaser.GameObjects.Graphics
     label: Phaser.GameObjects.Text
@@ -47,11 +61,13 @@ export class GameOverView {
   private readonly scene: Phaser.Scene
   private readonly onRestart: () => void
   private readonly onMenu: () => void
+  private readonly onRevive?: () => void
 
-  constructor(scene: Phaser.Scene, onRestart: () => void, onMenu: () => void) {
+  constructor(scene: Phaser.Scene, onRestart: () => void, onMenu: () => void, onRevive?: () => void) {
     this.scene = scene
     this.onRestart = onRestart
     this.onMenu = onMenu
+    this.onRevive = onRevive
   }
 
   get visible(): boolean {
@@ -63,17 +79,42 @@ export class GameOverView {
     return this.lastButtonCenter
   }
 
-  show(score: number, best: number, isNewBest: boolean, saveScore?: { onSave: () => void }, stats?: RunStats): void {
+  /** Viewport-space center of Revive button (QA/automation hook). */
+  get reviveButtonCenter(): { x: number; y: number } {
+    return this.lastReviveButtonCenter
+  }
+
+  show(
+    score: number,
+    best: number,
+    isNewBest: boolean,
+    saveScore?: { onSave: () => void },
+    stats?: RunStats,
+    revive?: ReviveOption,
+  ): void {
     this.hide()
     try {
       this.reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
     } catch {
       this.reducedMotion = false
     }
-    this.run = { score, best, isNewBest, saveScore, stats, saved: false }
+    const revivesUsed = Math.max(0, Math.floor(revive?.revivesUsed ?? 0))
+    const reviveCost = revive?.cost ?? reviveCostForCount(revivesUsed)
+    this.run = {
+      score,
+      best,
+      isNewBest,
+      saveScore,
+      stats,
+      reviveCost,
+      revivesUsed,
+      onRevive: revive?.onRevive ?? this.onRevive,
+      saved: false,
+    }
     this.scene.scale.on(Phaser.Scale.Events.RESIZE, this.onResize, this)
     this.scene.game.events.on('br:dpr', this.onResize, this)
     this.scene.events.once(Phaser.Scenes.Events.SHUTDOWN, this.hide, this)
+    this.offSaveListener = gameBus.on('state:save', () => this.onResize())
     this.draw(this.run, true)
   }
 
@@ -306,7 +347,64 @@ export class GameOverView {
       }
     })
 
-    const primaryY = statsY + statsH + 12 + 32
+    // REVIVE button: clears fallen-out balls and continues the current run.
+    // Cost starts at 25 coins and doubles each revive in the same run (25 -> 50 -> 100 -> 200...).
+    const reviveH = 50
+    const reviveY = statsY + statsH + 10 + reviveH / 2
+    const canAffordRevive = totalCoins + 1e-9 >= run.reviveCost
+    const reviveContainer = scene.add.container(columnX, reviveY)
+    const reviveFace = scene.add.container(0, 0)
+    reviveContainer.add(reviveFace)
+    this.drawPlate(reviveFace, columnW, reviveH, canAffordRevive ? GREEN : 0x9c9588, 15, 29, 4)
+    if (!canAffordRevive) {
+      reviveContainer.setAlpha(0.76)
+    }
+    const reviveLabel = text(0, 0, 'REVIVE', 22, '#fff8ec', 2).setOrigin(0, 0.5)
+    const badgeCoinR = 10
+    const costText = scene.add.text(0, 0, `${run.reviveCost}`, {
+      fontFamily: FONT_FAMILY,
+      fontSize: '20px',
+      color: canAffordRevive ? '#fff6b8' : '#f3eee4',
+      stroke: INK_COLOR,
+      strokeThickness: 2,
+      resolution: Math.max(2, Math.min(window.devicePixelRatio || 1, 3)),
+      padding: { left: 2, right: 2, top: 2, bottom: 2 },
+    }).setOrigin(0, 0.5)
+    const pillInnerW = badgeCoinR * 2 + 6 + costText.width
+    const pillW = pillInnerW + 16
+    const pillH = 30
+    const totalReviveW = reviveLabel.width + 12 + pillW
+    reviveLabel.setPosition(-totalReviveW / 2, 0)
+    const pillCenterX = -totalReviveW / 2 + reviveLabel.width + 12 + pillW / 2
+    const pillBg = scene.add.graphics()
+    pillBg.fillStyle(INK, 0.24).fillRoundedRect(pillCenterX - pillW / 2, -pillH / 2, pillW, pillH, pillH / 2)
+    pillBg.lineStyle(1.8, INK, 0.65).strokeRoundedRect(pillCenterX - pillW / 2, -pillH / 2, pillW, pillH, pillH / 2)
+    const reviveCoinG = scene.add.graphics()
+    const coinCenterX = pillCenterX - pillInnerW / 2 + badgeCoinR
+    drawCoin(reviveCoinG, coinCenterX, 0, badgeCoinR)
+    costText.setPosition(coinCenterX + badgeCoinR + 6, 0)
+    reviveFace.add([reviveLabel, pillBg, reviveCoinG, costText])
+    const reviveHit = scene.add.rectangle(0, 0, columnW, reviveH, CREAM, 0.001).setInteractive({ useHandCursor: true })
+    reviveContainer.add(reviveHit)
+    content.add(reviveContainer)
+    if (canAffordRevive && run.onRevive) {
+      const handleRevive = run.onRevive
+      this.bindAction(reviveContainer, reviveHit, handleRevive, true)
+    } else {
+      reviveHit.on('pointerdown', () => {
+        if (this.restarting || this.reducedMotion) return
+        scene.tweens.killTweensOf(reviveContainer)
+        reviveContainer.setX(columnX - 5)
+        this.tweens.push(scene.tweens.add({
+          targets: reviveContainer,
+          x: columnX,
+          duration: 220,
+          ease: 'Elastic.easeOut',
+        }))
+      })
+    }
+
+    const primaryY = reviveY + reviveH / 2 + 11 + 32
     const primary = scene.add.container(columnX, primaryY)
     const replayGlow = scene.add.graphics().setPosition(columnX, primaryY).setAlpha(0.15)
     for (let spread = 14; spread >= 2; spread -= 4) {
@@ -477,7 +575,10 @@ export class GameOverView {
       x: vw / 2 + columnX * fit,
       y: vh / 2 + (primaryY - ph / 2) * fit,
     }
-
+    this.lastReviveButtonCenter = {
+      x: vw / 2 + columnX * fit,
+      y: vh / 2 + (reviveY - ph / 2) * fit,
+    }
     if (motion) {
       dim.setAlpha(0)
       panel.setAlpha(0).setScale(fit * 0.92).setY(vh / 2 + 12)
@@ -621,6 +722,8 @@ export class GameOverView {
     this.scene.scale.off(Phaser.Scale.Events.RESIZE, this.onResize, this)
     this.scene.game.events.off('br:dpr', this.onResize, this)
     this.scene.events.off(Phaser.Scenes.Events.SHUTDOWN, this.hide, this)
+    this.offSaveListener?.()
+    this.offSaveListener = null
     this.clearObjects()
     this.run = null
     this.restarting = false

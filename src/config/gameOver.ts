@@ -59,3 +59,28 @@ export function isOutsideContainer(c: Vec2, currentWallHeight: number): boolean 
   const pastLeft = b.innerLeftAt(yLine) - c.x
   return pastRight > GAME_OVER.outsideMargin || pastLeft > GAME_OVER.outsideMargin
 }
+
+export const REVIVE_BASE_COST = 25
+
+/**
+ * Coin cost for the next revive in a run, doubling each time:
+ * 0 revives used -> 25, 1 -> 50, 2 -> 100, 3 -> 200, 4 -> 400, ...
+ */
+export function reviveCostForCount(revivesUsed: number): number {
+  const count = Number.isFinite(revivesUsed) ? Math.max(0, Math.floor(revivesUsed)) : 0
+  return REVIVE_BASE_COST * Math.pow(2, Math.min(20, count))
+}
+
+/**
+ * True when a touched ball has either triggered overflow (`isOutsideContainer`)
+ * or its centroid has already crossed the side-wall inner line / floor line
+ * so it must be cleared on Revive to prevent an immediate re-overflow.
+ */
+export function isSpillingOrOutsideContainer(c: Vec2, currentWallHeight: number): boolean {
+  if (isOutsideContainer(c, currentWallHeight)) return true
+  const b = containerBounds()
+  if (c.y > b.floorY) return true
+  const wallTopY = b.floorY - currentWallHeight
+  const yLine = Math.min(Math.max(c.y, wallTopY), b.floorY)
+  return c.x > b.innerRightAt(yLine) || c.x < b.innerLeftAt(yLine)
+}

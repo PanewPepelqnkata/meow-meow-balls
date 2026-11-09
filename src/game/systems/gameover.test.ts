@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { GAME_OVER, isOutsideContainer } from '../../config/gameOver'
+import { GAME_OVER, isOutsideContainer, isSpillingOrOutsideContainer, reviveCostForCount } from '../../config/gameOver'
 import { CONTAINER, containerBounds } from '../../config/container'
 import { GameOverWatch } from './GameOverWatch'
 
@@ -52,6 +52,19 @@ describe('isOutsideContainer: overflow geometry', () => {
   it('a ball below the floor line outside the funnel is outside (spilled)', () => {
     expect(isOutsideContainer({ x: 60, y: b().floorY - 20 }, h)).toBe(true)
     expect(isOutsideContainer({ x: 660, y: b().floorY - 20 }, h)).toBe(true)
+  })
+
+  it('isSpillingOrOutsideContainer catches balls outside the wall lines even when above the wall tops', () => {
+    expect(isSpillingOrOutsideContainer({ x: 30, y: b().floorY - h - 10 }, h)).toBe(true)
+    expect(isSpillingOrOutsideContainer({ x: 690, y: b().floorY - h - 10 }, h)).toBe(true)
+    expect(isSpillingOrOutsideContainer({ x: 360, y: b().floorY - 120 }, h)).toBe(false)
+  })
+
+  it('reviveCostForCount starts at 25 and doubles each time', () => {
+    expect(reviveCostForCount(0)).toBe(25)
+    expect(reviveCostForCount(1)).toBe(50)
+    expect(reviveCostForCount(2)).toBe(100)
+    expect(reviveCostForCount(3)).toBe(200)
   })
 })
 

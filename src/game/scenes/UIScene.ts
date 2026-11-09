@@ -49,6 +49,7 @@ export class UIScene extends Phaser.Scene {
       this,
       () => gameBus.emit('ui:restart', {}),
       () => this.returnToMenu(),
+      () => gameBus.emit('ui:revive', {}),
     )
   }
 
@@ -126,7 +127,7 @@ export class UIScene extends Phaser.Scene {
         this.pauseAllowed = enabled
         this.uiRoot.setAbilitiesEnabled(enabled)
       }),
-      gameBus.on('run:gameover', ({ score, best, tierReached, ballsMerged, durationMs }) => {
+      gameBus.on('run:gameover', ({ score, best, tierReached, ballsMerged, durationMs, revivesUsed, reviveCost }) => {
         const drunkoTestRoute = isDrunkoTestRoute()
         this.lastBest = best
         this.uiRoot.setScore(score, best)
@@ -157,7 +158,15 @@ export class UIScene extends Phaser.Scene {
           !drunkoTestRoute && score >= best && score > 0,
           saveScore,
           { tierReached, ballsMerged, durationMs },
+          {
+            cost: reviveCost ?? 25 * Math.pow(2, Math.max(0, revivesUsed ?? 0)),
+            revivesUsed: revivesUsed ?? 0,
+            onRevive: () => gameBus.emit('ui:revive', {}),
+          },
         )
+      }),
+      gameBus.on('run:revived', () => {
+        this.gameOverlay.hide()
       }),
       gameBus.on('run:started', () => {
         this.gameOverlay.hide()
@@ -300,6 +309,11 @@ export class UIScene extends Phaser.Scene {
   /** QA hook: PLAY AGAIN button center in viewport px. */
   playAgainCenter(): { x: number; y: number } {
     return this.gameOverlay.buttonCenter
+  }
+
+  /** QA hook: REVIVE button center in viewport px. */
+  reviveButtonCenter(): { x: number; y: number } {
+    return this.gameOverlay.reviveButtonCenter
   }
 
   /** QA hook (Phase 2.13.0): tiers the progression path shows unlocked. */

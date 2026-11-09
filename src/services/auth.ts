@@ -6,6 +6,7 @@ import {
 } from '../config/kingsWardrobe'
 import { gameBus } from '../game/events/gameBus'
 import { UPGRADE_CATALOG, freshUpgradeLevels, normalizeUpgradeLevels, upgradeCost, type UpgradeId, type UpgradeLevels } from '../config/abilityUpgrades'
+import { reviveCostForCount } from '../config/gameOver'
 import { getSupabase } from '../lib/supabase'
 import { isDrunkoTestRoute } from '../game/state/runVariant'
 import { normalizeRunCollectibles, type RunCollectibles } from '../game/state/collectibleMetadata'
@@ -23,6 +24,7 @@ import {
   resetSave,
   setCloudSyncHandler,
   setSaveOwnerId,
+  spendCoins,
   writeSave,
   type LeaderboardEntry,
   type SaveDataV1,
@@ -1076,6 +1078,64 @@ export class AuthService {
         return { error: null }
       } catch (error) {
         return { error: error instanceof Error ? error : new Error('Could not purchase this upgrade.') }
+      }
+    })
+    this.cloudSaveChain = task.then(() => undefined, () => undefined)
+    return task
+  }
+
+  /**
+   * Spend coins to revive the active run (25 -> 50 -> 100 -> 200...).
+   * Deducts immediately from the local save for zero-latency gameplay resume,
+   * and for registered accounts synchronizes the purchase via `purchase_run_revive`.
+   */
+  async purchaseRevive(
+    revivesUsed: number,
+    sessionId?: string | null,
+  ): Promise<{ error: Error | null; cost: number; coins: number }> {
+    const cost = reviveCostForCount(revivesUsed)
+    if (!spendCoins(cost)) {
+      return { error: new Error('Not enough coins.'), cost, coins: loadSave().coins }
+    }
+    const coinsAfterLocal = loadSave().coins
+    if (isDrunkoTestRoute() || !this.isRegisteredAccount() || this.authFlowInProgress === 'logout') {
+      return { error: null, cost, coins: coinsAfterLocal }
+    }
+    const uid = this.user!.id
+    if (getSaveOwnerId() !== uid) {
+      return { error: null, cost, coins: coinsAfterLocal }
+    }
+    const accountRevision = this.accountRevision
+    const task = this.cloudSaveChain.then(async (): Promise<{ error: Error | null; cost: number; coins: number }> => {
+      if (accountRevision !== this.accountRevision || this.user?.id !== uid || getSaveOwnerId() !== uid || !this.isRegisteredAccount()) {
+        return { error: new Error('Authentication state changed. Please try again.'), cost, coins: loadSave().coins }
+      }
+      try {
+        const beforePurchase = cloneSave(loadSave())
+        const { data, error } = await getSupabase().rpc('purchase_run_revive', {
+          p_session_id: sessionId ?? null,
+          p_expected_revives: Math.max(0, Math.floor(revivesUsed)),
+          p_coin_revision: beforePurchase.coinRevision,
+        })
+        if (accountRevision !== this.accountRevision || this.user?.id !== uid || getSaveOwnerId() !== uid || !this.isRegisteredAccount()) {
+          return { error: null, cost, coins: loadSave().coins }
+        }
+        if (error) {
+          return { error: null, cost, coins: loadSave().coins }
+        }
+        const purchased = parseUpgradePurchaseState(data)
+        if (purchased) {
+          writeSave({
+            ...loadSave(),
+            coins: purchased.coins,
+            coinRevision: purchased.coinRevision,
+            upgrades: purchased.upgrades,
+          }, { syncCloud: false, ownerId: uid })
+          return { error: null, cost, coins: purchased.coins }
+        }
+        return { error: null, cost, coins: loadSave().coins }
+      } catch {
+        return { error: null, cost, coins: loadSave().coins }
       }
     })
     this.cloudSaveChain = task.then(() => undefined, () => undefined)

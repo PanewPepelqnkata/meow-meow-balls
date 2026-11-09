@@ -553,9 +553,8 @@ export class MergeSystem {
       const a = softMgr.getBallById?.(p.aId)
       const b = softMgr.getBallById?.(p.bId)
       if (!a || !b || a.state === 'removed' || b.state === 'removed') {
-        // Unreachable in production: only restart/removal clears balls, and
-        // the same flow clears `pending`. Defensive: a stale entry can never
-        // produce a lost replacement — it is dropped without spawning.
+        if (a && a.state === 'merging') this.unreserve(a)
+        if (b && b.state === 'merging') this.unreserve(b)
         p.tx.outcome = 'dropped'
         continue
       }

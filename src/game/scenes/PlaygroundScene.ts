@@ -11,7 +11,7 @@ import { SoftBallManager } from '../systems/SoftBallManager'
 import { WallAnimator } from '../systems/WallAnimator'
 import { InputController } from '../systems/InputSystem'
 import { MergeSystem } from '../systems/MergeSystem'
-import { isOutsideContainer } from '../../config/gameOver'
+import { isOutsideContainer, isSpillingOrOutsideContainer, reviveCostForCount } from '../../config/gameOver'
 import { GameOverSequence } from '../rendering/GameOverSequence'
 import { GameOverWatch } from '../systems/GameOverWatch'
 import { ScoreSystem } from '../systems/ScoreSystem'
@@ -132,6 +132,14 @@ export class PlaygroundScene extends Phaser.Scene {
   /** Game-over state (Phase 2.10.0): once triggered, drops/inputs/abilities
    * stop and the physics is paused until a full restart. */
   private gameOver = false
+  /** Number of coin revives used in the current run (cost doubles: 25 -> 50 -> 100 -> 200...). */
+  private revivesUsed = 0
+  /** Ball ids that triggered overflow game over and must be removed on revive. */
+  private readonly overflowBallIds = new Set<number>()
+  /** Last score settled into recordRunEnd during this run (prevents double-crediting after revive). */
+  private lastSettledRunScore: number | null = null
+  /** Timestamp of this run's leaderboard entry so revived runs update their entry in place. */
+  private runLeaderboardAt: number | null = null
   /** Brief end-of-run panic reaction; the finished pile remains for the overlay. */
   private gameOverSequence: GameOverSequence | null = null
   /** Phase 2.14.0: highest tier reached THIS run (leaderboard flavor). */
@@ -142,7 +150,6 @@ export class PlaygroundScene extends Phaser.Scene {
   private interruptionReason: string | null = null
   /** Whether the player has dropped at least one ball in the current run. */
   private runStarted = false
-  /** Throttle timestamp for live run score syncing during gameplay. */
   private lastLiveSyncAt = 0
   /** Drops are ignored until this scene-time (restart click suppression). */
   private dropSuppressUntil = 0
@@ -441,6 +448,12 @@ export class PlaygroundScene extends Phaser.Scene {
     )
     this.events.once(
       Phaser.Scenes.Events.SHUTDOWN,
+      gameBus.on('ui:revive', () => {
+        this.reviveRun()
+      }),
+    )
+    this.events.once(
+      Phaser.Scenes.Events.SHUTDOWN,
       gameBus.on('state:save', ({ best }) => {
         this.registry.set('best', best)
       }),
@@ -628,7 +641,11 @@ export class PlaygroundScene extends Phaser.Scene {
           best: this.best(),
           overlay: (this.ui()?.overlayVisible() ?? false),
           buttonViewport: this.ui()?.playAgainCenter() ?? null,
+          reviveButtonViewport: this.ui()?.reviveButtonCenter() ?? null,
+          revivesUsed: this.revivesUsed,
+          reviveCost: this.currentReviveCost(),
         }),
+        revive: () => this.reviveRun(),
         /** Viewport-space positions of interactive UI (QA automation). */
         uiPositions: () => this.ui()?.uiPositions() ?? null,
         /** DEV-ONLY QA hook (Phase 2.13.0, read-only): tiers the progression
@@ -1187,8 +1204,66 @@ export class PlaygroundScene extends Phaser.Scene {
       if (c && isOutsideContainer(c, height)) outside.push(ball.id)
     }
     if (this.overWatch.observe(outside, deltaMs)) {
+      for (const id of outside) this.overflowBallIds.add(id)
       this.triggerGameOver()
     }
+  }
+
+  private currentReviveCost(): number {
+    return reviveCostForCount(this.revivesUsed)
+  }
+
+  /** Identify all balls that have fallen out or are spilling past the container walls. */
+  private collectFallenOutBallIds(): number[] {
+    const toRemove = new Set<number>(this.overflowBallIds)
+    const height = this.walls.height
+    for (const ball of this.balls.getBalls()) {
+      if (!ball.touched) continue
+      const c = this.balls.centroid(ball.id)
+      if (c && isSpillingOrOutsideContainer(c, height)) {
+        toRemove.add(ball.id)
+      }
+    }
+    return [...toRemove]
+  }
+
+  /**
+   * Spend coins (25 -> 50 -> 100 -> 200...) to revive the run:
+   * removes the ball(s) that fell out of the container and resumes gameplay.
+   */
+  private reviveRun(): boolean {
+    if (!this.gameOver) return false
+    const cost = this.currentReviveCost()
+    if (loadSave().coins + 1e-9 < cost) return false
+
+    const usedBefore = this.revivesUsed
+    void authService.purchaseRevive(usedBefore, scoreService.getActiveRunId())
+    this.revivesUsed = usedBefore + 1
+
+    const fallenIds = this.collectFallenOutBallIds()
+    for (const id of fallenIds) {
+      this.balls.removeBall(id, true)
+      this.ballRenderer.unregister(id)
+      this.registeredIds.delete(id)
+    }
+    this.overflowBallIds.clear()
+    this.overWatch.reset()
+    this.gameOverSequence?.destroy()
+    this.gameOverSequence = null
+    this.ballRenderer.gameOverSequence = null
+    this.gameOver = false
+    this.runStarted = true
+    this.interruptionReason = null
+
+    gameBus.emit('ability:enabled', { enabled: true })
+    this.inputController.setEnabled(!session.menuActive)
+    this.dropSuppressUntil = this.activeTimeMs + 350
+    gameBus.emit('run:revived', {
+      revivesUsed: this.revivesUsed,
+      nextReviveCost: this.currentReviveCost(),
+      removedBalls: fallenIds.length,
+    })
+    return true
   }
 
   private syncLiveRun(force = false): void {
@@ -1207,12 +1282,29 @@ export class PlaygroundScene extends Phaser.Scene {
     )
   }
 
+  private recordCurrentRunProgress(): void {
+    if (this.runLeaderboardAt === null) {
+      this.runLeaderboardAt = Date.now()
+    }
+    const nextBest = recordRunEnd(
+      this.score.score,
+      this.bestTierRun,
+      this.mergesThisRun,
+      {
+        previousScore: this.lastSettledRunScore ?? undefined,
+        runAt: this.runLeaderboardAt,
+      },
+    )
+    this.lastSettledRunScore = Math.max(this.lastSettledRunScore ?? 0, this.score.score)
+    this.registry.set('best', nextBest)
+  }
+
   private finalizeActiveRunIfIncomplete(reason?: string): void {
     if (!this.runStarted || this.gameOver || isDrunkoTestRoute()) return
     // Skip invalid runs (0 merges AND 0 score) — don't record or submit them
     const isValidRun = this.mergesThisRun > 0 || this.score.score > 0
     if (!isValidRun) return
-    this.registry.set('best', recordRunEnd(this.score.score, this.bestTierRun, this.mergesThisRun))
+    this.recordCurrentRunProgress()
     gameBus.emit('state:best', { best: this.best() })
     void scoreService.submitScore(
       this.score.score,
@@ -1237,7 +1329,7 @@ export class PlaygroundScene extends Phaser.Scene {
     // Skip invalid runs (0 merges AND 0 score) — don't record or submit them.
     const isValidRun = this.mergesThisRun > 0 || this.score.score > 0
     if (!isDrunkoTestRoute() && isValidRun) {
-      this.registry.set('best', recordRunEnd(this.score.score, this.bestTierRun, this.mergesThisRun))
+      this.recordCurrentRunProgress()
     }
     gameBus.emit('state:best', { best: this.best() })
     // Submit immediately so the run is recorded before the brief game-over reaction ends.
@@ -1254,6 +1346,8 @@ export class PlaygroundScene extends Phaser.Scene {
     // Briefly react, then show the overlay over the unchanged, paused pile.
     this.gameOverSequence = this.gameOverSequence ?? new GameOverSequence(this)
     this.ballRenderer.gameOverSequence = this.gameOverSequence
+    const revivesUsed = this.revivesUsed
+    const reviveCost = this.currentReviveCost()
     this.gameOverSequence.start(() => {
       gameBus.emit('run:gameover', {
         score: this.score.score,
@@ -1261,6 +1355,8 @@ export class PlaygroundScene extends Phaser.Scene {
         tierReached: this.bestTierRun,
         ballsMerged: this.mergesThisRun,
         durationMs: Math.round(this.activeTimeMs),
+        revivesUsed,
+        reviveCost,
       })
     })
   }
@@ -1272,6 +1368,10 @@ export class PlaygroundScene extends Phaser.Scene {
     // Full reset (Phase 2.10.0): gameplay state, game-over state, overlay,
     // HUD ability state, walls, physics and rendering all start clean.
     this.gameOver = false
+    this.revivesUsed = 0
+    this.overflowBallIds.clear()
+    this.lastSettledRunScore = null
+    this.runLeaderboardAt = null
     this.runStarted = false
     this.lastLiveSyncAt = 0
     this.interruptionReason = null

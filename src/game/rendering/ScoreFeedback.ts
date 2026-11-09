@@ -81,11 +81,77 @@ export class ScoreFeedback {
 
     const container = this.scene.add.container(px, py).setDepth(POPUP_DEPTH)
 
+    // `+N` in the merged tier's color — bold, outlined, offset shadow.
+    const tierColor = getTier(tier)?.color ?? 0xffeb3b
+    const scoreSize = Math.min(style.scoreSize, COMBO_FEEDBACK.maxScoreSize)
+    const gradeSize = Math.min(style.gradeSize, COMBO_FEEDBACK.maxGradeSize)
+    const comboSize = Math.min(style.comboSize, COMBO_FEEDBACK.maxComboSize)
+    const dpr = Math.min(window.devicePixelRatio || 1, 2)
+    const lineGap = 6
+
+    const scoreText = this.scene.add.text(0, 0, `+${points}`, {
+      resolution: dpr,
+      fontFamily: 'Lilita One, Arial Black, sans-serif',
+      fontSize: `${scoreSize}px`,
+      color: '#' + tierColor.toString(16).padStart(6, '0'),
+      stroke: '#000000',
+      strokeThickness: style.scoreStroke,
+    })
+    scoreText.setOrigin(0.5, 0.5)
+    scoreText.setShadow(style.shadowOffset, style.shadowOffset, '#000000', 0, false, false)
+
+    const scoreH = Math.max(scoreText.height || 0, Math.ceil(scoreSize * 1.12) + style.scoreStroke)
+    let gradeText: Phaser.GameObjects.Text | null = null
+    let comboText: Phaser.GameObjects.Text | null = null
+    let gradeY = 0
+    let comboY = 0
+    let stackBottom = scoreH / 2
+
+    if (showGrade) {
+      const { grade, color } = gradeForChain(depth)
+      gradeText = this.scene.add.text(0, 0, grade, {
+        resolution: dpr,
+        fontFamily: 'Lilita One, Arial Black, sans-serif',
+        fontSize: `${gradeSize}px`,
+        color,
+        stroke: '#000000',
+        strokeThickness: style.gradeStroke,
+      })
+      gradeText.setOrigin(0.5, 0.5)
+      gradeText.setShadow(style.shadowOffset, style.shadowOffset, '#000000', 0, false, false)
+      const gradeH = Math.max(gradeText.height || 0, Math.ceil(gradeSize * 1.12) + style.gradeStroke)
+      gradeY = Math.round(scoreH / 2 + style.shadowOffset + lineGap + gradeH / 2)
+      stackBottom = gradeY + gradeH / 2
+
+      if (depth >= 2) {
+        comboText = this.scene.add.text(0, 0, `${depth}x Combo!`, {
+          resolution: dpr,
+          fontFamily: 'Lilita One, Arial Black, sans-serif',
+          fontSize: `${comboSize}px`,
+          color: style.comboColor,
+          stroke: '#000000',
+          strokeThickness: style.comboStroke,
+        })
+        comboText.setOrigin(0.5, 0.5)
+        comboText.setShadow(style.shadowOffset, style.shadowOffset, '#000000', 0, false, false)
+        const comboH = Math.max(comboText.height || 0, Math.ceil(comboSize * 1.12) + style.comboStroke)
+        comboY = Math.round(gradeY + gradeH / 2 + style.shadowOffset + lineGap + comboH / 2)
+        stackBottom = comboY + comboH / 2
+      }
+    }
+
+    // Center the vertical stack around container (0, 0) so halo, sparkles,
+    // and scale/rotation punches pivot around the middle of the text block.
+    const stackTop = -scoreH / 2
+    const stackMidY = Math.round((stackTop + stackBottom) / 2)
+    const stackTotalH = stackBottom - stackTop
+    scoreText.setPosition(0, -stackMidY)
+
     // Halo ring (depth ≥ 3): a soft colored ellipse behind the text stack.
     if (style.haloColor) {
       const halo = this.scene.add.graphics()
       halo.fillStyle(Phaser.Display.Color.HexStringToColor(style.haloColor).color, style.haloAlpha)
-      halo.fillEllipse(0, 34, style.scoreSize * 2.6, (style.scoreSize + style.gradeSize) * 1.15)
+      halo.fillEllipse(0, 0, scoreSize * 2.6, Math.max(stackTotalH * 1.1, (scoreSize + gradeSize) * 1.15))
       container.add(halo)
       halo.setScale(0.4)
       this.scene.tweens.add({
@@ -97,60 +163,25 @@ export class ScoreFeedback {
       })
     }
 
-    // `+N` in the merged tier's color — bold, outlined, offset shadow.
-    const tierColor = getTier(tier)?.color ?? 0xffeb3b
-    const scoreSize = Math.min(style.scoreSize, COMBO_FEEDBACK.maxScoreSize)
-    const dpr = Math.min(window.devicePixelRatio || 1, 2)
-    const scoreText = this.scene.add.text(0, 0, `+${points}`, {
-      resolution: dpr,
-      fontFamily: 'Lilita One, Arial Black, sans-serif',
-      fontSize: `${scoreSize}px`,
-      color: '#' + tierColor.toString(16).padStart(6, '0'),
-      stroke: '#000000',
-      strokeThickness: style.scoreStroke,
-    })
-    scoreText.setShadow(style.shadowOffset, style.shadowOffset, '#000000', 0, false, false)
     container.add(scoreText)
-
-    if (showGrade) {
-      const { grade, color } = gradeForChain(depth)
-      const gradeText = this.scene.add.text(0, scoreSize * 0.62, grade, {
-        resolution: dpr,
-        fontFamily: 'Lilita One, Arial Black, sans-serif',
-        fontSize: `${Math.min(style.gradeSize, COMBO_FEEDBACK.maxGradeSize)}px`,
-        color,
-        stroke: '#000000',
-        strokeThickness: style.gradeStroke,
-      })
-      gradeText.setOrigin(0.5)
-      gradeText.setShadow(style.shadowOffset, style.shadowOffset, '#000000', 0, false, false)
+    if (gradeText) {
+      gradeText.setPosition(0, gradeY - stackMidY)
       container.add(gradeText)
-
-      if (depth >= 2) {
-        const comboY = scoreSize * 0.62 + Math.min(style.comboSize, COMBO_FEEDBACK.maxComboSize) * 1.15
-        const comboText = this.scene.add.text(0, comboY, `${depth}x Combo!`, {
-          resolution: dpr,
-          fontFamily: 'Lilita One, Arial Black, sans-serif',
-          fontSize: `${Math.min(style.comboSize, COMBO_FEEDBACK.maxComboSize)}px`,
-          color: style.comboColor,
-          stroke: '#000000',
-          strokeThickness: style.comboStroke,
-        })
-        comboText.setOrigin(0.5)
-        comboText.setShadow(style.shadowOffset, style.shadowOffset, '#000000', 0, false, false)
-        container.add(comboText)
-        // Combo line gets its own delayed mini-punch (staggered energy).
-        comboText.setScale(0.4)
-        comboText.setAlpha(0)
-        this.scene.tweens.add({
-          targets: comboText,
-          scale: 1,
-          alpha: 1,
-          delay: style.punchMs * 0.5,
-          duration: style.punchMs,
-          ease: 'Back.easeOut',
-        })
-      }
+    }
+    if (comboText) {
+      comboText.setPosition(0, comboY - stackMidY)
+      container.add(comboText)
+      // Combo line gets its own delayed mini-punch (staggered energy).
+      comboText.setScale(0.4)
+      comboText.setAlpha(0)
+      this.scene.tweens.add({
+        targets: comboText,
+        scale: 1,
+        alpha: 1,
+        delay: style.punchMs * 0.5,
+        duration: style.punchMs,
+        ease: 'Back.easeOut',
+      })
     }
 
     // Star sparkles (depth ≥ 3): tiny stars popping around the text.

@@ -519,11 +519,20 @@ export function recordMerge(tier: number, currentRunScore = 0): void {
   writeSoon()
 }
 
+/** Options when recording run end on a revived/continued run. */
+export interface RecordRunEndOptions {
+  /** Score already settled at an earlier game over in this same run. */
+  previousScore?: number
+  /** Timestamp of this run's existing leaderboard entry to update in-place. */
+  runAt?: number
+}
+
 /** A run ended (game over or restart/leave): leaderboard entry + best-score bookkeeping. */
 export function recordRunEnd(
   score: number,
   bestTier: number,
   mergesThisRun = 0,
+  options?: RecordRunEndOptions,
 ): number {
   const save = loadSave()
   if (isDrunkoTestRoute()) return save.best
@@ -532,26 +541,58 @@ export function recordRunEnd(
   // toward stats or leaderboard.
   const isValidRun = mergesThisRun > 0 || score > 0
   if (!isValidRun) return save.best
-  const now = Date.now()
-  save.stats.runs++
+  const now = options?.runAt ?? Date.now()
+  const isContinuation = typeof options?.previousScore === 'number' && Number.isFinite(options.previousScore)
+  if (!isContinuation) {
+    save.stats.runs++
+  }
   if (score > save.best) save.best = score
   if (bestTier > save.stats.bestTier) save.stats.bestTier = bestTier
   // Guests keep a local wallet. Account rewards are derived from accepted
   // finalized score rows by the server, never from a client coin delta.
   if (getSaveOwnerId() === null) {
-    const coinsEarned = Math.round((score / 1000) * 10) / 10
-    save.coins = Math.round((save.coins + coinsEarned) * 10) / 10
+    const totalRunCoins = Math.round((score / 1000) * 10) / 10
+    const previouslyCredited = isContinuation
+      ? Math.round((Math.max(0, options!.previousScore!) / 1000) * 10) / 10
+      : 0
+    const coinsEarned = Math.max(0, Math.round((totalRunCoins - previouslyCredited) * 10) / 10)
+    if (coinsEarned > 0) {
+      save.coins = Math.round((save.coins + coinsEarned) * 10) / 10
+    }
   }
   for (let t = 1; t <= Math.min(12, bestTier); t++) {
     if (save.discovered[String(t)] == null) save.discovered[String(t)] = now
   }
   if (score > 0 || save.leaderboard.length === 0) {
-    save.leaderboard.push({ score, bestTier, at: now })
+    const existingIdx = isContinuation && options?.runAt != null
+      ? save.leaderboard.findIndex((e) => e.at === options.runAt)
+      : -1
+    if (existingIdx !== -1) {
+      const existing = save.leaderboard[existingIdx]!
+      existing.score = Math.max(existing.score, score)
+      existing.bestTier = Math.max(existing.bestTier, bestTier)
+    } else {
+      save.leaderboard.push({ score, bestTier, at: now })
+    }
     save.leaderboard.sort((a, b) => b.score - a.score || b.at - a.at)
     save.leaderboard = save.leaderboard.slice(0, MAX_LEADERBOARD)
   }
   writeNow(true)
   return save.best
+}
+
+/**
+ * Deduct `amount` coins from the local save balance if affordable.
+ * Returns true when the deduction succeeded, false if insufficient coins.
+ */
+export function spendCoins(amount: number): boolean {
+  if (!Number.isFinite(amount) || amount <= 0) return false
+  const save = loadSave()
+  const cost = Math.round(amount * 10) / 10
+  if (save.coins + 1e-9 < cost) return false
+  save.coins = Math.max(0, Math.round((save.coins - cost) * 10) / 10)
+  writeNow(false)
+  return true
 }
 
 /** Persisted best score (the gameplay HUD 'BEST' reads this at boot). */

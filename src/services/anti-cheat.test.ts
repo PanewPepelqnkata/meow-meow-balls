@@ -4,7 +4,8 @@ import { WallAnimator } from '../game/systems/WallAnimator'
 import { ShakeManager } from '../game/systems/ShakeManager'
 import { ScoreSystem } from '../game/systems/ScoreSystem'
 import { normalizeUpgradeLevels, upgradeCost, wallDurationMs, shakeDurationMs, shakeImpulseMultiplier } from '../config/abilityUpgrades'
-import { loadSave, writeSave, resetSave, setSaveOwnerId } from '../game/state/save'
+import { loadSave, recordRunEnd, resetSave, setSaveOwnerId, spendCoins, writeSave } from '../game/state/save'
+import { reviveCostForCount } from '../config/gameOver'
 import { AuthService, ScoreService } from './auth'
 
 const sdk = vi.hoisted(() => ({
@@ -178,6 +179,35 @@ describe('Attacker-Style Security & Anti-Cheat Suite', () => {
         shakeDuration: 0,
         shakeIntensity: 0,
       })
+    })
+
+    it('computes doubling revive costs (25 -> 50 -> 100 -> 200...) and deducts coins without double-crediting continued runs', async () => {
+      expect(reviveCostForCount(0)).toBe(25)
+      expect(reviveCostForCount(1)).toBe(50)
+      expect(reviveCostForCount(2)).toBe(100)
+      expect(reviveCostForCount(3)).toBe(200)
+
+      resetSave()
+      writeSave({ ...loadSave(), coins: 80 }, { syncCloud: false })
+      expect(spendCoins(25)).toBe(true)
+      expect(loadSave().coins).toBe(55)
+      expect(spendCoins(50)).toBe(true)
+      expect(loadSave().coins).toBe(5)
+      expect(spendCoins(100)).toBe(false)
+      expect(loadSave().coins).toBe(5)
+
+      // Guest run continuation does not double-count runs or coins
+      const runAt = 1_700_000_000_000
+      recordRunEnd(1000, 5, 10, { runAt })
+      expect(loadSave().stats.runs).toBe(1)
+      expect(loadSave().coins).toBe(6) // 5 + 1.0 coin from 1000 score
+
+      // Revived and reached 2500 score in the same run -> +1.5 incremental coins
+      recordRunEnd(2500, 6, 18, { previousScore: 1000, runAt })
+      expect(loadSave().stats.runs).toBe(1)
+      expect(loadSave().coins).toBe(7.5)
+      expect(loadSave().leaderboard).toHaveLength(1)
+      expect(loadSave().leaderboard[0]?.score).toBe(2500)
     })
   })
 
