@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 import Matter from 'matter-js'
 import { PHYSICS } from '../../config/physics'
 import { getTier } from '../../config/ballTiers'
-import { containerBounds } from '../../config/container'
+import { containerBounds, wallCollidersAt } from '../../config/container'
+import { PhysicsWorld } from './PhysicsWorld'
+import { SoftBallManager } from './SoftBallManager'
+import { createWallBody, floorCollider } from './ContainerBodies'
 import {
   SOFT,
   createSoftBall,
@@ -486,5 +489,77 @@ describe('Phase 2.9.5 regression: free fall must never be damped', () => {
     }
     // The standing 1.2px/step constraint field must still be suppressed.
     expect(sum / 300).toBeLessThan(0.5)
+  })
+})
+
+describe('Tier 1 blue ball corner-crush protection (anti-wedge / anti-horn)', () => {
+  it('a Tier 1 blue ball pinned in the bottom-left corner under a giant Tier 7 white ball stays round without caving in or growing corner horns', () => {
+    const physics = new PhysicsWorld()
+    for (const body of [...wallCollidersAt().map(createWallBody), createWallBody(floorCollider())]) {
+      physics.addBody(body)
+    }
+    const manager = new SoftBallManager(physics.world)
+    manager.tierRadius = (t) => getTier(t)?.radius ?? 44
+    physics.setSubStepHandler(() => {
+      manager.stepAll()
+      manager.separateContacts()
+      manager.expandShape()
+      manager.clampToContainer()
+      manager.commitRest()
+    })
+    const b = containerBounds()
+    const r1 = getTier(1)!.radius
+    const r7 = getTier(7)!.radius
+    const r2 = getTier(2)!.radius
+    const r3 = getTier(3)!.radius
+
+    // Place the Tier 1 blue ball in the bottom-left corner, then drop the
+    // giant Tier 7 white ball + Tier 2 green + Tier 3 pink onto it (exact
+    // screenshot layout).
+    const leftX = b.innerLeftAt(b.floorY - r1 - 2) + r1 + 2
+    const blue = manager.spawnBall(leftX, b.floorY - r1 - 2, 1)
+    manager.spawnBall(leftX + 75, b.floorY - r1 * 2 - r7 + 20, 7)
+    manager.spawnBall(leftX + 215, b.floorY - r2 - 2, 2)
+    manager.spawnBall(leftX + 185, b.floorY - r7 * 2 - r3, 3)
+
+    const ringR = r1 * (1 - SOFT.particleRadiusFactor)
+    let minRadialFrac = 1
+    let maxRadialFrac = 1
+    let maxNeighborRadialStepFrac = 0
+    let worstAreaFrac = 1
+    let worstAspect = 1
+
+    for (let i = 0; i < 360; i++) {
+      physics.step(STEP)
+      const evs = physics.takeCollisionEvents()
+      if (evs.length) manager.markTouched(evs.flatMap(({ bodyA, bodyB }) => [bodyA.id, bodyB.id]))
+
+      const c = softBallCentroid(blue.soft)
+      const pts = blue.soft.particles
+      const n = pts.length
+      for (let k = 0; k < n; k++) {
+        const p = pts[k]!
+        const q = pts[(k + 1) % n]!
+        const rk = Math.hypot(p.position.x - c.x, p.position.y - c.y) / ringR
+        const rq = Math.hypot(q.position.x - c.x, q.position.y - c.y) / ringR
+        minRadialFrac = Math.min(minRadialFrac, rk)
+        maxRadialFrac = Math.max(maxRadialFrac, rk)
+        maxNeighborRadialStepFrac = Math.max(maxNeighborRadialStepFrac, Math.abs(rk - rq))
+      }
+      worstAreaFrac = Math.min(worstAreaFrac, softBallArea(blue.soft) / blue.soft.restArea)
+      const xs = pts.map((p) => p.position.x)
+      const ys = pts.map((p) => p.position.y)
+      const w = Math.max(...xs) - Math.min(...xs)
+      const h = Math.max(...ys) - Math.min(...ys)
+      worstAspect = Math.min(worstAspect, Math.min(w, h) / Math.max(w, h))
+    }
+    const finalAreaFrac = softBallArea(blue.soft) / blue.soft.restArea
+    expect(minRadialFrac).toBeGreaterThan(0.62) // never caved in by the Tier 7 ball
+    expect(maxRadialFrac).toBeLessThan(1.08) // no rectangular corner horn sticking out
+    expect(maxNeighborRadialStepFrac).toBeLessThan(0.18) // smooth perimeter, no sharp kink
+    expect(worstAreaFrac).toBeGreaterThan(0.64) // no collapse during 9× mass slam transient
+    expect(finalAreaFrac).toBeGreaterThan(0.74) // plump settled area under Tier 7 load
+    expect(worstAspect).toBeGreaterThan(0.70)
+    physics.dispose()
   })
 })

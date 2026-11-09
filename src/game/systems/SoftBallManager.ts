@@ -10,6 +10,7 @@ import {
   softBallSpeed,
   softBallMaxSpeed,
   softBallSleeping,
+  isBlueBall,
   SOFT,
 } from './SoftBall'
 import { CONTAINER, containerBounds, clampBallInside, interiorCorners } from '../../config/container'
@@ -703,6 +704,16 @@ export class SoftBallManager {
           const prA = A.soft.radius * SOFT.particleRadiusFactor + SOFT.contactSkin
           const prB = B.soft.radius * SOFT.particleRadiusFactor + SOFT.contactSkin
           const contact = prA + prB
+          const aBlue = isBlueBall(A.soft.radius)
+          const bBlue = isBlueBall(B.soft.radius)
+          const ringRA = A.soft.radius * (1 - SOFT.particleRadiusFactor)
+          const ringRB = B.soft.radius * (1 - SOFT.particleRadiusFactor)
+          const minRA = ringRA * (aBlue ? 0.68 : SOFT.minRadiusFraction)
+          const minRB = ringRB * (bBlue ? 0.68 : SOFT.minRadiusFraction)
+          const maxRA = ringRA * 1.04
+          const maxRB = ringRB * 1.04
+          const pca = aBlue ? softBallCentroid(A.soft) : ca
+          const pcb = bBlue ? softBallCentroid(B.soft) : cb
           const imA = 1 / A.soft.particles[0]!.mass
           const imB = 1 / B.soft.particles[0]!.mass
           const imSum = imA + imB
@@ -732,32 +743,50 @@ export class SoftBallManager {
                 ny = pdy / d
               }
               const deficit = contact - d
-              // Depth-proportional cap: small deficits (the standing solver
-              // war, ≤~1px) get a gentle cap so corrections never churn the
-              // constraint networks; deep impact transients get a larger cap
-              // so they resolve within 2-3 iterations instead of flashing
-              // (measured: a fixed cap left a one-frame 9px melt on the
-              // hardest rapid-drop impact).
               const cap = Math.min(6, 1 + deficit * 0.5)
               const fix = Math.min(deficit * SOFT.separationRelaxation, cap)
-              // mass-weighted split, then CONTAINER-AWARE: neither particle's
-              // correction may push its body deeper past a container surface
-              // (measured: a wedged tier-2 squeezed between two tier-4s was
-              // driven ~21px below the floor line by its own separation
-              // corrections). Asymmetric splits when one side hits a wall —
-              // the other side takes the remaining correction. A SLEEPING
-              // side never takes any correction (frozen state — see above):
-              // the awake side gets the full fix.
-              const wA = aAsleep ? 0 : bAsleep ? 1 : (fix * imA) / imSum
-              const wB = bAsleep ? 0 : aAsleep ? 1 : (fix * imB) / imSum
-              const fixA = Math.min(wA, this.wallLimitedDistance(pa, -nx, -ny, prA))
-              const fixB = Math.min(wB, this.wallLimitedDistance(pb, nx, ny, prB))
+              let limitA = this.wallLimitedDistance(pa, -nx, -ny, prA)
+              if (aBlue && !bAsleep) {
+                const rxA = pa.position.x - pca.x
+                const ryA = pa.position.y - pca.y
+                const distA = Math.hypot(rxA, ryA) || 1
+                const radialChangeA = -(rxA * nx + ryA * ny) / distA
+                if (radialChangeA < -1e-4) {
+                  const crushA = Math.max(0, (distA - minRA) / -radialChangeA)
+                  if (crushA < limitA) limitA = crushA
+                } else if (radialChangeA > 1e-4) {
+                  const hornA = Math.max(0, (maxRA - distA) / radialChangeA)
+                  if (hornA < limitA) limitA = hornA
+                }
+              }
+              let limitB = this.wallLimitedDistance(pb, nx, ny, prB)
+              if (bBlue && !aAsleep) {
+                const rxB = pb.position.x - pcb.x
+                const ryB = pb.position.y - pcb.y
+                const distB = Math.hypot(rxB, ryB) || 1
+                const radialChangeB = (rxB * nx + ryB * ny) / distB
+                if (radialChangeB < -1e-4) {
+                  const crushB = Math.max(0, (distB - minRB) / -radialChangeB)
+                  if (crushB < limitB) limitB = crushB
+                } else if (radialChangeB > 1e-4) {
+                  const hornB = Math.max(0, (maxRB - distB) / radialChangeB)
+                  if (hornB < limitB) limitB = hornB
+                }
+              }
+              const wA = aAsleep ? 0 : bAsleep ? fix : (fix * imA) / imSum
+              const wB = bAsleep ? 0 : aAsleep ? fix : (fix * imB) / imSum
+              let fixA = Math.min(wA, limitA)
+              let fixB = Math.min(wB, limitB)
+              if (fixA < wA && !bAsleep) {
+                fixB = Math.min(Math.max(fixB, fix - fixA), limitB)
+              }
+              if (fixB < wB && !aAsleep) {
+                fixA = Math.min(Math.max(fixA, fix - fixB), limitA)
+              }
               if (fixA > 1e-4) Matter.Body.translate(pa, { x: -nx * fixA, y: -ny * fixA })
               if (fixB > 1e-4) Matter.Body.translate(pb, { x: nx * fixB, y: ny * fixB })
               if (fix > SOFT.separationMinMove) {
                 corrected = true
-                // never re-awake a frozen ball — only the sides actually
-                // being corrected belong in the wake set
                 if (!aAsleep) moved.add(A.id)
                 if (!bAsleep) moved.add(B.id)
               }
@@ -800,21 +829,22 @@ export class SoftBallManager {
     for (const A of balls) {
       if (softBallSleeping(A.soft)) continue
       const soft = A.soft
+      const blue = isBlueBall(soft.radius)
       const deficit = 1 - softBallArea(soft) / soft.restArea
-      const minR = soft.radius * (1 - SOFT.particleRadiusFactor) * SOFT.minRadiusFraction
-      if (deficit < SOFT.expandMinDeficit && deficit > -SOFT.expandMinDeficit) continue
-      const c = softBallCentroid(soft, this.centroidScratch)
       const ringR = soft.radius * (1 - SOFT.particleRadiusFactor)
+      const minR = ringR * (blue ? 0.68 : SOFT.minRadiusFraction)
+      const c = softBallCentroid(soft, this.centroidScratch)
+      let minParticleDist = ringR
+      for (const p of soft.particles) {
+        const d = Math.hypot(p.position.x - c.x, p.position.y - c.y)
+        if (d < minParticleDist) minParticleDist = d
+      }
+      if (!blue && deficit < SOFT.expandMinDeficit && deficit > -SOFT.expandMinDeficit) continue
       const bodyR = soft.radius * SOFT.particleRadiusFactor + SOFT.contactSkin
-      // outward when compressed, inward when inflated
       const outward = deficit > 0
       const delta = Math.min(SOFT.expandMaxMove, ringR * Math.abs(deficit) * SOFT.expandRate)
-      // foreign collision discs near this ball (padded by this ball's own
-      // particle radius + margin: the moving particle's CENTER must stay
-      // outside foreign surfaces, or Matter cancels the move next step).
-      // Only needed for OUTWARD moves — inward moves retreat from neighbors.
       let nearN = 0
-      if (outward) {
+      if (outward || blue) {
         for (const B of balls) {
           if (B === A) continue
           const dx = B.soft.center.position.x - c.x
@@ -823,7 +853,6 @@ export class SoftBallManager {
           if (dx * dx + dy * dy > reach * reach) continue
           const rB = bodyR + B.soft.radius * SOFT.particleRadiusFactor + SOFT.contactSkin + 0.5
           for (const pb of B.soft.particles) {
-            // pooled slot: reuse the object at index nearN, extend when needed
             let slot = near[nearN]
             if (!slot) {
               slot = { x: 0, y: 0, r: 0 }
@@ -836,24 +865,18 @@ export class SoftBallManager {
           }
         }
       }
-      // wall clearance: expansion must keep the body inside the container —
-      // a particle pressed against a wall/floor must NOT be pushed deeper
-      // into it (measured: wall-directed expansion buried bodies ~15px past
-      // the visible surface). Blocked directions simply don't expand; the
-      // ball bulges into free space instead (the desired slime behavior).
-      let minParticleDist = ringR
-      for (const p of soft.particles) {
-        const d = Math.hypot(p.position.x - c.x, p.position.y - c.y)
-        if (d < minParticleDist) minParticleDist = d
-      }
       const inwardSqueeze = Math.max(0, 1 - minParticleDist / ringR)
-      const bulgeCap =
-        1.02 +
-        Math.min(
-          0.36,
-          Math.max(Math.max(0, deficit - 0.012) * 1.25, Math.max(0, inwardSqueeze - 0.10) * 0.85),
-        )
-      for (const p of soft.particles) {
+      const bulgeCap = blue
+        ? 1.03
+        : 1.02 +
+          Math.min(
+            0.36,
+            Math.max(Math.max(0, deficit - 0.012) * 1.25, Math.max(0, inwardSqueeze - 0.10) * 0.85),
+          )
+      const pts = soft.particles
+      const segs = pts.length
+      for (let pi = 0; pi < segs; pi++) {
+        const p = pts[pi]!
         const rx = p.position.x - c.x
         const ry = p.position.y - c.y
         const dist = Math.hypot(rx, ry) || 1
@@ -862,45 +885,104 @@ export class SoftBallManager {
         const uy = (ry / dist) * dir
         let move: number
         if (outward) {
-          // Allow unconstrained flanks to bulge up to bulgeCap × ringR when the
-          // ball is indented on another side so volume is preserved by lateral
-          // or vertical slime bulge without bang-bang oscillation at deficit=0.
           move = Math.min(delta, Math.max(0, ringR * bulgeCap - dist))
           if (dist < minR) {
             move = Math.max(move, Math.min((minR - dist) * 0.4, SOFT.expandMaxMove * 1.5))
           }
           if (move <= 0) continue
         } else {
-          // Deflation: only pull inward particles that exceed the current
-          // squeeze-aware bulge envelope (prevents bang-bang outline flicker
-          // when a squeezed oval reaches restArea).
           const deflateFloor = Math.max(minR, ringR * Math.max(0.92, bulgeCap - 0.04))
           move = Math.min(delta, Math.max(0, dist - deflateFloor))
           if (move <= 0) continue
         }
         if (outward) {
-          // container surfaces: keep the body inside the container
           const tWall = this.wallLimitedDistance(p, ux, uy, bodyR)
           if (tWall < move) move = Math.max(0, tWall)
-          // ray-clamp against foreign discs: largest t keeping p+t·r̂ outside
           for (let qi = 0; qi < nearN; qi++) {
             const q = near[qi]!
             const qx = q.x - p.position.x
             const qy = q.y - p.position.y
             const b1 = qx * ux + qy * uy
-            // PERF culls: disc behind the ray, or its closest approach
-            // already beyond the (shrinking) move budget — skip the
-            // sqrt entirely. Measured ~50-70% of near[] entries in
-            // dense piles never constrain the ray.
             if (b1 <= 0 || b1 - q.r >= move) continue
             const disc = b1 * b1 - (qx * qx + qy * qy) + q.r * q.r
-            if (disc <= 0) continue // ray misses this disc entirely
+            if (disc <= 0) continue
             const tHit = b1 - Math.sqrt(disc)
             if (tHit < move) move = Math.max(0, tHit)
           }
         }
         if (move > 0.01) {
           Matter.Body.translate(p, { x: ux * move, y: uy * move })
+        }
+      }
+      // Tier 1 blue ball anti-glitch envelope: positionally clamp radial
+      // distance to [0.66 * ringR, 1.04 * ringR] and smooth adjacent-particle
+      // radial steps so a heavy Tier 7 ball in a corner can never cave the
+      // blue ball in or squirt 1-2 particles into a corner horn.
+      if (blue) {
+        const maxR = ringR * 1.04
+        for (let pass = 0; pass < 3; pass++) {
+          const bc = softBallCentroid(soft, this.centroidScratch)
+          for (let pi = 0; pi < segs; pi++) {
+            const p = pts[pi]!
+            const rx = p.position.x - bc.x
+            const ry = p.position.y - bc.y
+            const dist = Math.hypot(rx, ry) || 1
+            const ux = rx / dist
+            const uy = ry / dist
+            const pPrev = pts[(pi - 1 + segs) % segs]!
+            const pNext = pts[(pi + 1) % segs]!
+            const dPrev = Math.hypot(pPrev.position.x - bc.x, pPrev.position.y - bc.y)
+            const dNext = Math.hypot(pNext.position.x - bc.x, pNext.position.y - bc.y)
+            const neighborMean = 0.5 * (dPrev + dNext)
+            const minNeighbor = Math.min(dPrev, dNext)
+            const targetMax = Math.min(maxR, minNeighbor + ringR * 0.135, neighborMean + ringR * 0.06)
+            const targetMin = Math.max(minR, neighborMean - ringR * 0.06)
+            if (dist > targetMax) {
+              const pull = (dist - targetMax) * 0.85
+              const tWall = this.wallLimitedDistance(p, -ux, -uy, bodyR)
+              const m = Math.min(pull, tWall)
+              if (m > 0.01) Matter.Body.translate(p, { x: -ux * m, y: -uy * m })
+            } else if (dist < targetMin) {
+              const push = (targetMin - dist) * 0.85
+              const tWall = this.wallLimitedDistance(p, ux, uy, bodyR)
+              let m = Math.min(push, tWall)
+              for (let qi = 0; qi < nearN; qi++) {
+                const q = near[qi]!
+                const qx = q.x - p.position.x
+                const qy = q.y - p.position.y
+                const b1 = qx * ux + qy * uy
+                if (b1 <= 0 || b1 - q.r >= m) continue
+                const disc = b1 * b1 - (qx * qx + qy * qy) + q.r * q.r
+                if (disc <= 0) continue
+                const tHit = b1 - Math.sqrt(disc)
+                if (tHit < m) m = Math.max(0, tHit)
+              }
+              if (m > 0.01) Matter.Body.translate(p, { x: ux * m, y: uy * m })
+              const rem = (push - tWall) * 0.35
+              if (rem > 0.01) {
+                // Wall normal reaction: p is against the container wall/floor,
+                // so push the rest of the blue ball's ring away from the wall
+                // (clamped against foreign collision discs).
+                for (let qi = 0; qi < segs; qi++) {
+                  if (qi === pi) continue
+                  const qb = pts[qi]!
+                  let rm = Math.min(rem, this.wallLimitedDistance(qb, -ux, -uy, bodyR))
+                  for (let fk = 0; fk < nearN; fk++) {
+                    const f = near[fk]!
+                    const fx = f.x - qb.position.x
+                    const fy = f.y - qb.position.y
+                    const b1 = -(fx * ux + fy * uy)
+                    if (b1 <= 0 || b1 - f.r >= rm) continue
+                    const disc = b1 * b1 - (fx * fx + fy * fy) + f.r * f.r
+                    if (disc <= 0) continue
+                    const tHit = b1 - Math.sqrt(disc)
+                    if (tHit < rm) rm = Math.max(0, tHit)
+                  }
+                  if (rm > 0.01) Matter.Body.translate(qb, { x: -ux * rm, y: -uy * rm })
+                }
+              }
+            }
+          }
         }
       }
     }

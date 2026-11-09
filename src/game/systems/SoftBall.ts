@@ -133,6 +133,10 @@ export const SOFT = {
    * ≥55% of the rest ring (no small ball disappears into a sliver; the
    * 0.52 sweep candidate produced a 2.9 aspect on the wedge-trapped ball). */
   minRadiusFraction: 0.36,
+  /** Minimum inner ring radius fraction specifically for the Tier 1 blue ball
+   * (radius 44) so heavy balls (e.g. Tier 7) cannot crush it into a concave
+   * wedge or horned sliver in container corners. */
+  blueBallMinRadiusFraction: 0.52,
   minRadiusRecovery: 0.32,
   maxPressureCorrection: 0.35,
   /** Rest area is computed at creation; area below this fraction triggers
@@ -295,6 +299,18 @@ export function clampSoftBallSpeed(ball: SoftBall, inContact = true): void {
   }
 }
 
+const BLUE_BALL_MAX_RADIUS = getTier(1)!.radius + 0.5
+
+/** True for the Tier 1 blue ball (and smaller prototype test balls). */
+export function isBlueBall(radius: number): boolean {
+  return radius <= BLUE_BALL_MAX_RADIUS
+}
+
+/** Minimum inner ring radius fraction (anti-crush floor) for a ball of `radius`. */
+export function minRadiusFractionFor(radius: number): number {
+  return isBlueBall(radius) ? SOFT.blueBallMinRadiusFraction : SOFT.minRadiusFraction
+}
+
 export function applyPressure(ball: SoftBall): void {
   ball.area = softBallArea(ball)
   // SIGNED deficit: positive = compressed (restore outward), negative =
@@ -366,8 +382,9 @@ export function applyPressure(ball: SoftBall): void {
   }
   pcx /= ball.particles.length
   pcy /= ball.particles.length
+  const blue = isBlueBall(ball.radius)
   const ringR = ball.radius * (1 - SOFT.particleRadiusFactor)
-  const minR = ringR * SOFT.minRadiusFraction
+  const minR = ringR * minRadiusFractionFor(ball.radius)
   let minLen = ringR
   for (const p of ball.particles) {
     const dx = p.position.x - pcx
@@ -393,15 +410,22 @@ export function applyPressure(ball: SoftBall): void {
   // (under heavy pile weight or squeezed in a narrow pocket beside a large
   // ball), soften spokes and diameter cross-braces down to 0.28× so the ball
   // visibly squishes and molds into the pocket without fighting its own hub.
+  // EXCEPTION: the small Tier 1 blue ball keeps a firm structural ring so
+  // giant balls (up to 8.7× heavier) never cave its top in or fold it into a
+  // sharp wedge in container corners.
   const inwardSqueeze = Math.max(0, 1 - minLen / ringR)
-  const soften = inwardSqueeze > 0.12 ? Math.max(0.28, 1 - (inwardSqueeze - 0.12) * 1.6) : 1
+  const soften = blue
+    ? 1
+    : inwardSqueeze > 0.12
+      ? Math.max(0.28, 1 - (inwardSqueeze - 0.12) * 1.6)
+      : 1
   const constraints = ball.composite.constraints
   const segs = ball.particles.length
   if (constraints.length >= segs * 3) {
-    const rimS = SOFT.rimStiffness * (0.55 + 0.45 * soften)
-    const spokeS = SOFT.spokeStiffness * soften
-    const braceS = spokeS * 0.5
-    const diamS = SOFT.diameterStiffness * soften
+    const rimS = blue ? 0.58 : SOFT.rimStiffness * (0.55 + 0.45 * soften)
+    const spokeS = blue ? 0.26 : SOFT.spokeStiffness * soften
+    const braceS = blue ? 0.15 : spokeS * 0.5
+    const diamS = blue ? 0.38 : SOFT.diameterStiffness * soften
     for (let i = 0; i < segs; i++) {
       constraints[i]!.stiffness = rimS
       constraints[segs + i]!.stiffness = spokeS
@@ -415,7 +439,7 @@ export function applyPressure(ball: SoftBall): void {
   const cdx = pcx - ball.center.position.x
   const cdy = pcy - ball.center.position.y
   const cd = Math.hypot(cdx, cdy) || 1
-  const escape = cd - ringR * 0.55
+  const escape = cd - ringR * (blue ? 0.42 : 0.55)
   if (escape > 0) {
     const k = Math.min(1, escape / (ringR * 0.4))
     const pull = k * SOFT.minRadiusRecovery
@@ -498,6 +522,11 @@ export function createSoftBall(
   const composite = Matter.Composite.create({ label: `soft-ball-${id}` })
   Matter.Composite.add(composite, [center, ...particles])
 
+  const blue = isBlueBall(radius)
+  const initRimS = blue ? 0.58 : SOFT.rimStiffness
+  const initSpokeS = blue ? 0.26 : SOFT.spokeStiffness
+  const initBraceS = blue ? 0.15 : SOFT.spokeStiffness * 0.5
+  const initDiamS = blue ? 0.38 : SOFT.diameterStiffness
   // Rim constraints (adjacent ring particles) — hold the perimeter
   const rimLen = 2 * ringR * Math.sin(Math.PI / segments)
   for (let i = 0; i < segments; i++) {
@@ -507,7 +536,7 @@ export function createSoftBall(
         bodyA: particles[i]!,
         bodyB: particles[(i + 1) % segments]!,
         length: rimLen,
-        stiffness: SOFT.rimStiffness,
+        stiffness: initRimS,
         damping: SOFT.damping,
       }),
     )
@@ -520,7 +549,7 @@ export function createSoftBall(
         bodyA: center,
         bodyB: p,
         length: ringR,
-        stiffness: SOFT.spokeStiffness,
+        stiffness: initSpokeS,
         damping: SOFT.damping,
       }),
     )
@@ -536,7 +565,7 @@ export function createSoftBall(
         bodyA: particles[i]!,
         bodyB: particles[(i + 2) % segments]!,
         length: braceLen,
-        stiffness: SOFT.spokeStiffness * 0.5,
+        stiffness: initBraceS,
         damping: SOFT.damping,
       }),
     )
@@ -555,7 +584,7 @@ export function createSoftBall(
           bodyA: particles[i]!,
           bodyB: particles[i + segments / 2]!,
           length: diameterLen,
-          stiffness: SOFT.diameterStiffness,
+          stiffness: initDiamS,
           damping: SOFT.damping,
         }),
       )
