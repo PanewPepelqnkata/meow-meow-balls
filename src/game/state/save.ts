@@ -578,6 +578,7 @@ export function recordRunEnd(
     save.leaderboard = save.leaderboard.slice(0, MAX_LEADERBOARD)
   }
   writeNow(true)
+  gameBus.emit('state:save', { best: save.best })
   return save.best
 }
 
@@ -592,6 +593,7 @@ export function spendCoins(amount: number): boolean {
   if (save.coins + 1e-9 < cost) return false
   save.coins = Math.max(0, Math.round((save.coins - cost) * 10) / 10)
   writeNow(false)
+  gameBus.emit('state:save', { best: save.best })
   return true
 }
 

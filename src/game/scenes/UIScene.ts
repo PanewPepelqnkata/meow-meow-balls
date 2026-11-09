@@ -134,19 +134,11 @@ export class UIScene extends Phaser.Scene {
         this.lastRunStats = drunkoTestRoute ? null : { score, tierReached, ballsMerged, durationMs }
 
         // The /drunko sandbox is a real game run, but it must never create a
-        // leaderboard record or invite the player to save one.
-        if (!drunkoTestRoute) {
-          void scoreService
-            .submitScore(score, tierReached, ballsMerged, durationMs)
-            .then(({ error }) => {
-              if (error) {
-                console.error('Auto score submission failed:', error)
-              } else {
-                this.refreshRank()
-              }
-            })
+        // Score submission is triggered immediately by PlaygroundScene.triggerGameOver();
+        // refresh the player's rank when the Game Over overlay opens.
+        if (!drunkoTestRoute && authService.isAuthenticated()) {
+          this.refreshRank()
         }
-        // SAVE YOUR SCORE rides the panel only for signed-out players with
         // a score worth saving; post-login the modal submits lastRunStats.
         const saveScore =
           !drunkoTestRoute && !authService.isAuthenticated() && score > 0

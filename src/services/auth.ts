@@ -288,8 +288,8 @@ export class AuthService {
   private pendingAccountRestore = false
   private profileRequestRevision = 0
   private progressRequestRevision = 0
+  private pendingReviveSpendCoins = 0
   private cloudSaveChain: Promise<void> = Promise.resolve()
-
   static getInstance(): AuthService {
     if (!AuthService.instance) {
       AuthService.instance = new AuthService()
@@ -388,6 +388,7 @@ export class AuthService {
       this.authUpdateTimer = null
     }
     this.pendingAccountRestore = false
+    this.pendingReviveSpendCoins = 0
   }
 
   private replaceSession(nextSession: Session | null, newAccountContext = false): boolean {
@@ -908,7 +909,7 @@ export class AuthService {
     // score settlement is durable on the server, including across reloads.
     let combined = tableSave ?? freshSave()
     const liveSaveBeforeWrite = cloneSave(loadSave())
-    const canonicalCoins = combined.coins
+    const canonicalCoins = Math.max(0, Math.round((combined.coins - this.pendingReviveSpendCoins) * 10) / 10)
     const canonicalRevision = combined.coinRevision
     const canonicalUpgrades = { ...combined.upgrades }
 
@@ -1002,9 +1003,10 @@ export class AuthService {
 
       // Always persist the server revision even if the displayed total is
       // unchanged. Never infer an earning amount from an older local balance.
+      const displayCoins = Math.max(0, Math.round((wallet.coins - this.pendingReviveSpendCoins) * 10) / 10)
       writeSave({
         ...loadSave(),
-        coins: wallet.coins,
+        coins: displayCoins,
         coinRevision: wallet.coinRevision,
         upgrades: wallet.upgrades,
       }, { syncCloud: false, ownerId: uid })
@@ -1105,9 +1107,16 @@ export class AuthService {
     if (getSaveOwnerId() !== uid) {
       return { error: null, cost, coins: coinsAfterLocal }
     }
+    this.pendingReviveSpendCoins = Math.round((this.pendingReviveSpendCoins + cost) * 10) / 10
     const accountRevision = this.accountRevision
     const task = this.cloudSaveChain.then(async (): Promise<{ error: Error | null; cost: number; coins: number }> => {
+      const releasePending = (): void => {
+        if (accountRevision === this.accountRevision) {
+          this.pendingReviveSpendCoins = Math.max(0, Math.round((this.pendingReviveSpendCoins - cost) * 10) / 10)
+        }
+      }
       if (accountRevision !== this.accountRevision || this.user?.id !== uid || getSaveOwnerId() !== uid || !this.isRegisteredAccount()) {
+        releasePending()
         return { error: new Error('Authentication state changed. Please try again.'), cost, coins: loadSave().coins }
       }
       try {
@@ -1117,6 +1126,7 @@ export class AuthService {
           p_expected_revives: Math.max(0, Math.floor(revivesUsed)),
           p_coin_revision: beforePurchase.coinRevision,
         })
+        releasePending()
         if (accountRevision !== this.accountRevision || this.user?.id !== uid || getSaveOwnerId() !== uid || !this.isRegisteredAccount()) {
           return { error: null, cost, coins: loadSave().coins }
         }
@@ -1125,16 +1135,18 @@ export class AuthService {
         }
         const purchased = parseUpgradePurchaseState(data)
         if (purchased) {
+          const displayCoins = Math.max(0, Math.round((purchased.coins - this.pendingReviveSpendCoins) * 10) / 10)
           writeSave({
             ...loadSave(),
-            coins: purchased.coins,
+            coins: displayCoins,
             coinRevision: purchased.coinRevision,
             upgrades: purchased.upgrades,
           }, { syncCloud: false, ownerId: uid })
-          return { error: null, cost, coins: purchased.coins }
+          return { error: null, cost, coins: displayCoins }
         }
         return { error: null, cost, coins: loadSave().coins }
       } catch {
+        releasePending()
         return { error: null, cost, coins: loadSave().coins }
       }
     })

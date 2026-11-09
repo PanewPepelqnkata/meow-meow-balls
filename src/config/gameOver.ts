@@ -76,11 +76,12 @@ export function reviveCostForCount(revivesUsed: number): number {
  * or its centroid has already crossed the side-wall inner line / floor line
  * so it must be cleared on Revive to prevent an immediate re-overflow.
  */
-export function isSpillingOrOutsideContainer(c: Vec2, currentWallHeight: number): boolean {
+export function isSpillingOrOutsideContainer(c: Vec2, currentWallHeight: number, radius = 0): boolean {
   if (isOutsideContainer(c, currentWallHeight)) return true
   const b = containerBounds()
   if (c.y > b.floorY) return true
   const wallTopY = b.floorY - currentWallHeight
   const yLine = Math.min(Math.max(c.y, wallTopY), b.floorY)
-  return c.x > b.innerRightAt(yLine) || c.x < b.innerLeftAt(yLine)
+  const rPad = radius > 0 && c.y <= wallTopY + Math.max(12, radius * 0.5) ? radius * 0.35 : 0
+  return c.x + rPad > b.innerRightAt(yLine) || c.x - rPad < b.innerLeftAt(yLine)
 }

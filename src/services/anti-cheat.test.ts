@@ -25,6 +25,15 @@ vi.mock('../lib/supabase', () => ({
   }),
 }))
 vi.mock('phaser', () => ({ default: {} }))
+function deferred<T>() {
+  // The project's ES2022 libraries do not expose Promise.withResolvers.
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((done) => {
+    resolve = done
+  })
+  return { promise, resolve }
+}
+
 
 describe('Attacker-Style Security & Anti-Cheat Suite', () => {
   beforeEach(() => {
@@ -208,6 +217,55 @@ describe('Attacker-Style Security & Anti-Cheat Suite', () => {
       expect(loadSave().coins).toBe(7.5)
       expect(loadSave().leaderboard).toHaveLength(1)
       expect(loadSave().leaderboard[0]?.score).toBe(2500)
+    })
+
+    it('preserves immediate revive coin deduction while an earlier sync_user_progress is still in flight', async () => {
+      const auth = AuthService.getInstance()
+      const fakeUser = { id: 'user-revive', app_metadata: { provider: 'email' } } as unknown as User
+      ;(auth as unknown as { user: User | null }).user = fakeUser
+      setSaveOwnerId('user-revive')
+      writeSave(
+        { ...loadSave(), coins: 100, coinRevision: 4 },
+        { syncCloud: false, ownerId: 'user-revive' },
+      )
+
+      ;(auth as unknown as { cloudSaveChain: Promise<void> }).cloudSaveChain = Promise.resolve()
+      const { promise: syncRpcPromise, resolve: resolveSync } =
+        deferred<{ data: unknown; error: null }>()
+      sdk.rpc.mockImplementationOnce(() => syncRpcPromise)
+      sdk.rpc.mockResolvedValueOnce({
+        data: {
+          coins: 75,
+          coin_revision: 5,
+          upgrades: { wallDuration: 0, shakeDuration: 0, shakeIntensity: 0 },
+        },
+        error: null,
+      })
+
+      // Game over starts a sync_user_progress call in the background
+      const syncPromise = auth.persistSaveToCloud(undefined, 'user-revive')
+
+      // Player clicks REVIVE (25 coins) while sync is still awaiting server
+      const revivePromise = auth.purchaseRevive(0, '00000000-0000-4000-8000-000000000001')
+
+      // Immediate local deduction must show 75 right away
+      expect(loadSave().coins).toBe(75)
+
+      // Earlier sync resolves with pre-revive server balance (100) — must NOT overwrite 75 back to 100
+      resolveSync({
+        data: {
+          coins: 100,
+          coin_revision: 4,
+          upgrades: { wallDuration: 0, shakeDuration: 0, shakeIntensity: 0 },
+        },
+        error: null,
+      })
+      await syncPromise
+      expect(loadSave().coins).toBe(75)
+
+      await revivePromise
+      expect(loadSave().coins).toBe(75)
+      expect(loadSave().coinRevision).toBe(5)
     })
   })
 

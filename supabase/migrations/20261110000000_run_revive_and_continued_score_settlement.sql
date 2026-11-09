@@ -17,6 +17,7 @@ as $$
 declare
   v_uid uuid := (select auth.uid());
   v_revives integer := coalesce(p_expected_revives, 0);
+  v_settled numeric(20, 1) := 0;
   v_current_coins numeric(12, 1);
   v_current_revision bigint;
   v_current_upgrades jsonb;
@@ -24,6 +25,7 @@ declare
   v_next_coins numeric(12, 1);
   v_next_revision bigint;
   v_session public.game_sessions%rowtype;
+  v_valid_session_id uuid := null;
 begin
   if v_uid is null then
     raise exception 'Authentication required' using errcode = '42501';
@@ -54,8 +56,13 @@ begin
   if not found then
     raise exception 'User progress record not found';
   end if;
-  if p_coin_revision is not null and p_coin_revision <> v_current_revision then
-    raise exception 'Coin revision is stale';
+
+  -- Settle any newly completed score rows before checking balance so the wallet
+  -- reflects coins earned up to this game-over moment.
+  v_settled := public.boss_settle_final_score_coins(v_uid);
+  if v_settled > 0 then
+    v_current_coins := greatest(0, least(99999999999.9, round(coalesce(v_current_coins, 0) + v_settled, 1)));
+    v_current_revision := coalesce(v_current_revision, 0) + 1;
   end if;
 
   if p_session_id is not null then
@@ -71,6 +78,7 @@ begin
       if coalesce(v_session.revives_used, 0) <> v_revives then
         raise exception 'Session revive count is stale' using errcode = '22023';
       end if;
+      v_valid_session_id := v_session.id;
     end if;
   end if;
 
@@ -80,7 +88,7 @@ begin
   end if;
 
   v_next_coins := round(coalesce(v_current_coins, 0) - v_cost, 1);
-  v_next_revision := v_current_revision + 1;
+  v_next_revision := coalesce(v_current_revision, 0) + 1;
 
   update public.user_progress
   set coins = v_next_coins,
@@ -88,16 +96,16 @@ begin
       updated_at = now()
   where user_id = v_uid;
 
-  if p_session_id is not null then
+  if v_valid_session_id is not null then
     update public.game_sessions
     set revives_used = v_revives + 1,
         status = 'active',
         ended_at = null
-    where id = p_session_id and user_id = v_uid;
+    where id = v_valid_session_id and user_id = v_uid;
   end if;
 
   insert into public.economy_ledger (user_id, session_id, delta, balance_after, coin_revision, reason)
-  values (v_uid, p_session_id, -v_cost, v_next_coins, v_next_revision, 'revive:' || (v_revives + 1)::text);
+  values (v_uid, v_valid_session_id, -v_cost, v_next_coins, v_next_revision, 'revive:' || (v_revives + 1)::text);
 
   update auth.users
   set raw_user_meta_data = coalesce(raw_user_meta_data, '{}'::jsonb) || jsonb_build_object(

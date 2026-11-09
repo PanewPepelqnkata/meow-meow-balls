@@ -136,7 +136,8 @@ export class PlaygroundScene extends Phaser.Scene {
   private revivesUsed = 0
   /** Ball ids that triggered overflow game over and must be removed on revive. */
   private readonly overflowBallIds = new Set<number>()
-  /** Last score settled into recordRunEnd during this run (prevents double-crediting after revive). */
+  /** Post-revive protection window (sim-time ms) during which any ball spilling outside is auto-cleaned. */
+  private reviveCleanupUntilMs = 0
   private lastSettledRunScore: number | null = null
   /** Timestamp of this run's leaderboard entry so revived runs update their entry in place. */
   private runLeaderboardAt: number | null = null
@@ -1196,6 +1197,11 @@ export class PlaygroundScene extends Phaser.Scene {
 
   private checkGameOver(deltaMs: number): void {
     if (this.gameOver) return
+    if (this.activeTimeMs < this.reviveCleanupUntilMs) {
+      this.removeFallenOutBalls()
+      this.overWatch.reset()
+      return
+    }
     const height = this.walls.height
     const outside: number[] = []
     for (const ball of this.balls.getBalls()) {
@@ -1217,14 +1223,30 @@ export class PlaygroundScene extends Phaser.Scene {
   private collectFallenOutBallIds(): number[] {
     const toRemove = new Set<number>(this.overflowBallIds)
     const height = this.walls.height
+    const floorY = containerBounds().floorY
     for (const ball of this.balls.getBalls()) {
-      if (!ball.touched) continue
       const c = this.balls.centroid(ball.id)
-      if (c && isSpillingOrOutsideContainer(c, height)) {
+      if (!c) continue
+      // Remove any ball that is outside/spilling past the container walls,
+      // including airborne drops that already fell into the container band.
+      const inOrPastContainer = ball.touched || c.y > floorY - height - ball.soft.radius
+      if (inOrPastContainer && isSpillingOrOutsideContainer(c, height, ball.soft.radius)) {
         toRemove.add(ball.id)
       }
     }
     return [...toRemove]
+  }
+
+  private removeFallenOutBalls(): number {
+    const fallenIds = this.collectFallenOutBallIds()
+    for (const id of fallenIds) {
+      this.balls.removeBall(id, true)
+      this.ballRenderer.unregister(id)
+      this.ballRenderer.emotion.forget(id)
+      this.registeredIds.delete(id)
+    }
+    this.overflowBallIds.clear()
+    return fallenIds.length
   }
 
   /**
@@ -1240,14 +1262,9 @@ export class PlaygroundScene extends Phaser.Scene {
     void authService.purchaseRevive(usedBefore, scoreService.getActiveRunId())
     this.revivesUsed = usedBefore + 1
 
-    const fallenIds = this.collectFallenOutBallIds()
-    for (const id of fallenIds) {
-      this.balls.removeBall(id, true)
-      this.ballRenderer.unregister(id)
-      this.registeredIds.delete(id)
-    }
-    this.overflowBallIds.clear()
+    const removedCount = this.removeFallenOutBalls()
     this.overWatch.reset()
+    this.reviveCleanupUntilMs = this.activeTimeMs + 1500
     this.gameOverSequence?.destroy()
     this.gameOverSequence = null
     this.ballRenderer.gameOverSequence = null
@@ -1261,7 +1278,7 @@ export class PlaygroundScene extends Phaser.Scene {
     gameBus.emit('run:revived', {
       revivesUsed: this.revivesUsed,
       nextReviveCost: this.currentReviveCost(),
-      removedBalls: fallenIds.length,
+      removedBalls: removedCount,
     })
     return true
   }
@@ -1369,6 +1386,7 @@ export class PlaygroundScene extends Phaser.Scene {
     // HUD ability state, walls, physics and rendering all start clean.
     this.gameOver = false
     this.revivesUsed = 0
+    this.reviveCleanupUntilMs = 0
     this.overflowBallIds.clear()
     this.lastSettledRunScore = null
     this.runLeaderboardAt = null
