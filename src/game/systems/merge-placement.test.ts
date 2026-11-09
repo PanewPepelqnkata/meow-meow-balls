@@ -367,3 +367,20 @@ describe('merge placement: OPEN TOP (Phase 2.15.0 — the rim is not a wall)', (
     expect(floor.y).toBeCloseTo(bounds.floorY - 78.5, 4)
   })
 })
+
+describe('merge placement: in-place pocket priority (jelly-slime conformation)', () => {
+  it('a merge beneath a covering ball stays in its pocket and lifts the covering ball instead of teleporting above it', () => {
+    // Two tier-3 balls merge on the floor at (360, floorY - env(4) - 1);
+    // a tier-3 ball sits directly above the midpoint at y - (env(3) + env(4) - 18).
+    // Previously, the ring search jumped ABOVE the covering ball; now in-place
+    // squeeze / soft-conform keeps the merged tier-4 at the floor pocket and
+    // lifts the covering ball upward.
+    const baseY = bounds.floorY - env(4) - 1
+    const covering = obstacleAt(360, baseY - (env(3) + env(4) - 18), 3)
+    const p = placeMergedBall(360, baseY, env(4), [covering], bounds, 60, { overlap: 'bounded' })
+    expect(p.deferred).toBe(false)
+    // Must stay in the bottom pocket (below the covering ball), never leap above it:
+    expect(p.y).toBeGreaterThan(covering.y)
+    expect(Math.hypot(p.x - 360, p.y - baseY)).toBeLessThanOrEqual(32)
+  })
+})

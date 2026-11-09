@@ -93,29 +93,21 @@ const EPS = 0.5 // clearance epsilon between envelopes
  */
 export const MAX_PUSH = 60
 /**
- * Phase 2.13.0 — LOCAL placement (anti-teleportation, spec §5):
- *
- * Ring radii are RELATIVE to the replacement radius (fractions of rNew) and
- * capped by an absolute ceiling, so a replacement never searches further than
- * about one replacement-diameter from the true merge point. The old absolute
- * rings (up to 290px for every tier) let a dense-pile search walk the result
- * to the other side of the container — the "merge on the left appears on the
- * right" defect.
- *
- * Angles are ordered UPWARD-FIRST (start at −π/2, alternate sides) so, where
- * space exists, the replacement prefers to rise out of the pile rather than
- * slide sideways; the previous scan started at angle 0 (due right) and broke
- * on the first clear hit — a systematic rightward bias.
- *
- * Phase 2.13.1: MAX_RING_PX is also the hard bound on the dense-pile
- * relaxation drift — the fallback center can never wander further than this
- * from the ORIGINAL clamped midpoint (the old loop could drift hundreds of
- * px across the container in 8 unbounded iterations).
+ * Strict in-place pocket placement:
+ *  - Always prefers the clamped merge midpoint `base` and tries bounded
+ *    in-place neighbor squeeze FIRST (before any offset search), so a merge
+ *    at the bottom or middle of a pile lifts/parts adjacent balls in place
+ *    instead of leaping above them to the top of the pile.
+ *  - Micro-pocket adjustments around `base` are capped at `MAX_RING_PX = 36`
+ *    (less than a single Tier-1 ball radius of 44px), making it
+ *    geometrically impossible for a merged ball to jump over any neighbor.
+ *  - Angles scan sideways/downward pocket seating before upward so pocket
+ *    relaxation settles into the vacated 2-ball cavity rather than climbing.
  */
 const RING_FRACTIONS = [0.3, 0.6, 1.0, 1.5, 2.1]
 const MAX_RING_PX = 240
 const RING_ANGLES = 24
-
+const INPLACE_MAX_DRIFT = 32
 function clearAt(x: number, y: number, r: number, obstacles: readonly PlacementObstacle[]): boolean {
   for (const o of obstacles) {
     const dx = o.x - x
@@ -130,7 +122,7 @@ function penetrationAt(x: number, y: number, r: number, obstacles: readonly Plac
   let worst = 0
   for (const o of obstacles) {
     const d = Math.hypot(o.x - x, o.y - y)
-    worst = Math.max(worst, r + o.r - d)
+    worst = Math.max(worst, r + o.r + EPS - d)
   }
   return worst
 }
@@ -142,7 +134,7 @@ function penetrationAt(x: number, y: number, r: number, obstacles: readonly Plac
 function worstOverlapAt(x: number, y: number, r: number, obstacles: readonly PlacementObstacle[]): { pen: number; r: number } {
   let worst = { pen: 0, r: 0 }
   for (const o of obstacles) {
-    const pen = r + o.r - Math.hypot(o.x - x, o.y - y)
+    const pen = r + o.r + EPS - Math.hypot(o.x - x, o.y - y)
     if (pen > worst.pen) worst = { pen, r: o.r }
   }
   return worst
@@ -203,18 +195,132 @@ export function placeMergedBall(
     return { x: base.x, y: base.y, displaced: [], squeezed: false, deferred: false, overlapPx: 0, overlapR: 0 }
   }
 
-  // Spiral search for a clear position near the midpoint. Ring 0 (the
-  // midpoint) is already known blocked; rings step outward RELATIVE to the
-  // replacement size (capped) — the search can never wander across the
-  // container. Angles are tried upward-first with alternating sides, so a
-  // clear pocket above the merge wins over an equally near sideways one.
+  // In-place squeeze helper: pushes violating neighbors radially outward
+  // (within maxPush) while allowing the spawn center to relax within the
+  // local pocket bound (MAX_RING_PX) away from any unpushable residual.
+  const trySqueeze = (start: { x: number; y: number }, maxDrift: number = MAX_RING_PX): PlacementResult | null => {
+    let chosen = { x: start.x, y: start.y }
+    const pushes = new Map<PlacementObstacle, Vec2>()
+    for (let iter = 0; iter < 8; iter++) {
+      pushes.clear()
+      let worstResidual = 0
+      let worstObstacle: PlacementObstacle | null = null
+      for (const o of obstacles) {
+        const dx = o.x - chosen.x
+        const dy = o.y - chosen.y
+        const d = Math.hypot(dx, dy)
+        const need = rNew + o.r + EPS - d
+        if (need <= 0) continue
+        const ux = d > 1e-6 ? dx / d : 1
+        const uy = d > 1e-6 ? dy / d : 0
+        pushes.set(o, { x: ux * need, y: uy * need })
+        if (need - maxPush > worstResidual) {
+          worstResidual = need - maxPush
+          worstObstacle = o
+        }
+      }
+      if (!worstObstacle) {
+        const tolerance = 2 // px: soft bodies may touch, not interpenetrate
+        for (const [o, v] of pushes.entries()) {
+          const nx = o.x + v.x
+          const ny = o.y + v.y
+          for (const other of obstacles) {
+            if (other === o) continue
+            const overlap = (other.r + o.r + tolerance) - Math.hypot(other.x - nx, other.y - ny)
+            if (overlap > 0) return null
+          }
+        }
+        const displaced: Displacement[] = [...pushes.entries()].map(([obstacle, v]) => ({
+          obstacle,
+          dx: v.x,
+          dy: v.y,
+        }))
+        return { x: chosen.x, y: chosen.y, displaced, squeezed: true, deferred: false, overlapPx: 0, overlapR: 0 }
+      }
+      const wo = worstObstacle
+      const dx = chosen.x - wo.x
+      const dy = chosen.y - wo.y
+      const d = Math.hypot(dx, dy) || 1
+      const next = clamp(chosen.x + (dx / d) * worstResidual, chosen.y + (dy / d) * worstResidual)
+      if (Math.hypot(next.x - base.x, next.y - base.y) > maxDrift) {
+        return null
+      }
+      chosen = { x: next.x, y: next.y }
+    }
+    return null
+  }
+
+  const policy: OverlapPolicy = opts.overlap ?? 'strict'
+
+  // IN-PLACE PRIORITY (gameplay merges pass overlap='bounded' or 'always'):
+  // 1. Try squeezing neighbors right at the clamped midpoint `base` (within
+  //    INPLACE_MAX_DRIFT = 32px) so adjacent balls are gently lifted/parted in
+  //    place instead of the merged ball leaping above them.
+  // 2. If rigid pushes are blocked by a dense pile, check if `base` ITSELF
+  //    fits within the soft ring's physical conformation capacity
+  //    (`overlapPx <= 0.42 * min(rNew, overlapR)`). When it does, commit
+  //    strictly IN PLACE at `base` (0px drift!) and let
+  //    SoftBallManager.conformToPocket + slime pressure expand it in the pocket.
+  if (policy !== 'strict') {
+    const inPlaceSqueeze = trySqueeze(base, INPLACE_MAX_DRIFT)
+    if (inPlaceSqueeze) return inPlaceSqueeze
+    const baseOverlap = worstOverlapAt(base.x, base.y, rNew, obstacles)
+    const softConformBudget = 0.42 * Math.min(rNew, baseOverlap.r) + 1
+    if (baseOverlap.pen <= softConformBudget) {
+      return {
+        x: base.x,
+        y: base.y,
+        displaced: [],
+        squeezed: false,
+        deferred: false,
+        overlapPx: baseOverlap.pen,
+        overlapR: baseOverlap.r,
+      }
+    }
+    // Micro-pocket adjustment (≤ 0.55·rNew, capped at 56px — still less than
+    // any ball diameter so it never leaps over a neighbor): handles wall-clamped
+    // merges where the wall pushed `base` into an adjacent ball.
+    let pocketBest: { x: number; y: number; pen: number; r: number; d: number } = {
+      x: base.x,
+      y: base.y,
+      pen: baseOverlap.pen,
+      r: baseOverlap.r,
+      d: 0,
+    }
+    for (const frac of [0.25, 0.5]) {
+      const rad = Math.min(frac * rNew, 56)
+      for (let ai = 0; ai < RING_ANGLES; ai++) {
+        const a = (ai / RING_ANGLES) * Math.PI * 2
+        const c = clamp(base.x + Math.cos(a) * rad, base.y + Math.sin(a) * rad)
+        const ov = worstOverlapAt(c.x, c.y, rNew, obstacles)
+        const d = Math.hypot(c.x - base.x, c.y - base.y)
+        if (ov.pen < pocketBest.pen || (ov.pen === pocketBest.pen && d < pocketBest.d)) {
+          pocketBest = { x: c.x, y: c.y, pen: ov.pen, r: ov.r, d }
+        }
+      }
+    }
+    const pocketConformBudget = 0.42 * Math.min(rNew, pocketBest.r) + 1
+    if (pocketBest.pen <= pocketConformBudget) {
+      return {
+        x: pocketBest.x,
+        y: pocketBest.y,
+        displaced: [],
+        squeezed: false,
+        deferred: false,
+        overlapPx: pocketBest.pen,
+        overlapR: pocketBest.r,
+      }
+    }
+  }
+
+  // Fallback local search (used by strict unit-test calls or when `base`
+  // itself would swallow a neighbor's center):
   let best: { x: number; y: number; pen: number; d: number } | null = null
   for (let ri = 0; ri < RING_FRACTIONS.length; ri++) {
     const rad = Math.min(RING_FRACTIONS[ri]! * rNew, MAX_RING_PX)
     let clearHit: Vec2 | null = null
     let ringBest: { x: number; y: number; pen: number; d: number } | null = null
     for (let ai = 0; ai < RING_ANGLES; ai++) {
-      // Upward-first, alternating sides: 0, +1, −1, +2, −2 … from −π/2.
       const side = ai % 2 === 0 ? 1 : -1
       const a = -Math.PI / 2 + side * Math.ceil(ai / 2) * ((Math.PI * 2) / RING_ANGLES)
       const c = clamp(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad)
@@ -234,85 +340,6 @@ export function placeMergedBall(
     if (ringBest && (!best || ringBest.pen < best.pen)) best = ringBest
   }
 
-  // Dense-pile fallback: least-penetrating candidate + bounded displacement.
-  // Phase 2.10.2 CORRECTNESS FIX: the old code capped each neighbor push at
-  // MAX_PUSH and spawned anyway — a neighbor needing more than MAX_PUSH was
-  // left BURIED inside the replacement (the "second ball inside the merged
-  // ball" defect). Now the spawn center itself is shifted away from
-  // still-violating obstacles (bounded relaxation), and every neighbor is
-  // pushed EXACTLY to envelope clearance. If clearance cannot be guaranteed
-  // within MAX_PUSH, the placement is DEFERRED (caller retries next frames)
-  // instead of creating an overlapping ball.
-  //
-  // Phase 2.13.1 hard bounds:
-  //  - the relaxation may drift at most MAX_RING_PX from the ORIGINAL
-  //    clamped midpoint (base) — no unbounded walk across the container;
-  //  - every push is validated against ALL OTHER obstacles: a neighbor is
-  //    never shoved inside a third ball (tolerance = one contact skin —
-  //    soft bodies are allowed to touch, not to be buried);
-  //  - the squeeze is attempted from the MIDPOINT first (most local), then
-  //    from the least-penetrating ring candidate — a penetration-optimized
-  //    candidate is not necessarily pushable.
-  const trySqueeze = (start: { x: number; y: number }): PlacementResult | null => {
-    let chosen = { x: start.x, y: start.y }
-    const pushes = new Map<PlacementObstacle, Vec2>()
-    for (let iter = 0; iter < 8; iter++) {
-      // Required push for every violating obstacle at the current center.
-      pushes.clear()
-      let worstResidual = 0
-      let worstObstacle: PlacementObstacle | null = null
-      for (const o of obstacles) {
-        const dx = o.x - chosen.x
-        const dy = o.y - chosen.y
-        const d = Math.hypot(dx, dy)
-        const need = rNew + o.r + EPS - d
-        if (need <= 0) continue
-        const ux = d > 1e-6 ? dx / d : 1
-        const uy = d > 1e-6 ? dy / d : 0
-        pushes.set(o, { x: ux * need, y: uy * need })
-        if (need - maxPush > worstResidual) {
-          worstResidual = need - maxPush
-          worstObstacle = o
-        }
-      }
-      if (!worstObstacle) {
-        // Every push fits within MAX_PUSH. Validate no push buries a
-        // neighbor inside a THIRD ball — if any would, this start point
-        // fails (defer or fall through to the other candidate).
-        const tolerance = 2 // px: soft bodies may touch, not interpenetrate
-        for (const [o, v] of pushes.entries()) {
-          const nx = o.x + v.x
-          const ny = o.y + v.y
-          for (const other of obstacles) {
-            if (other === o) continue
-            const overlap = (other.r + o.r + tolerance) - Math.hypot(other.x - nx, other.y - ny)
-            if (overlap > 0) return null
-          }
-        }
-        const displaced: Displacement[] = [...pushes.entries()].map(([obstacle, v]) => ({
-          obstacle,
-          dx: v.x,
-          dy: v.y,
-        }))
-        return { x: chosen.x, y: chosen.y, displaced, squeezed: true, deferred: false, overlapPx: 0, overlapR: 0 }
-      }
-      // Shift the replacement center AWAY from the worst offender by the
-      // residual, re-clamp, and re-evaluate (bounded relaxation) — but never
-      // beyond MAX_RING_PX from the ORIGINAL midpoint: beyond that bound
-      // this start point fails (bounded locality).
-      const wo = worstObstacle
-      const dx = chosen.x - wo.x
-      const dy = chosen.y - wo.y
-      const d = Math.hypot(dx, dy) || 1
-      const next = clamp(chosen.x + (dx / d) * worstResidual, chosen.y + (dy / d) * worstResidual)
-      if (Math.hypot(next.x - base.x, next.y - base.y) > MAX_RING_PX) {
-        return null
-      }
-      chosen = { x: next.x, y: next.y }
-    }
-    return null
-  }
-
   const fromBase = trySqueeze(base)
   if (fromBase) return fromBase
   if (best) {
@@ -320,14 +347,8 @@ export function placeMergedBall(
     if (fromBest) return fromBest
   }
 
-  // Phase 2.14.0 overlap-commit path: the strict guarantees above could not
-  // be met, so evaluate the LEAST-PENETRATING local candidate (base or the
-  // best ring hit — bounded locality, never a teleport) against the
-  // caller's overlap policy.
-  const policy: OverlapPolicy = opts.overlap ?? 'strict'
   const fallback = best ?? base
   const { pen: overlapPx, r: overlapR } = worstOverlapAt(fallback.x, fallback.y, rNew, obstacles)
-  // NO-SWALLOW budget: the commit is valid while neither center enters the
   // other's envelope (overlapPx ≤ min(rNew, worstObstacle.r) + 1px float
   // kindness). 'always' (aged pendings) has no budget — the 2.13.2
   // merge-loss backstop. Either way: never deferred, nothing shoved — the

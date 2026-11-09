@@ -14,14 +14,11 @@ export const MERGE = {
    */
   mergeCooldownMs: 120,
   /**
-   * Phase 2.13.2 (spec §1): guaranteed resolution for a deferred replacement.
-   * A pending replacement whose local space never clears (a jammed pile that
-   * cannot relax) is spawned at the LEAST-PENETRATING position within the
-   * local ring bound after this much simulated time — the soft-body contact
-   * solver then separates the (touching) balls gently over a few frames.
-   * This bounds the worst-case "sources gone, replacement absent" window to
-   * this value; without it a jammed pile could defer forever, which is the
-   * reported merge-loss defect.
+   * Micro-delay ceiling (simulated ms) for extreme-crush merges where a
+   * neighbor's center is inside the merge pocket past the collapse limit.
+   * Normal crowded merges commit immediately in place with soft pocket
+   * conformation; deeply crushed pockets wait at most 120ms for the woken
+   * pile to relax before committing in place.
    */
-  pendingEmergencyMs: 900,
+  pendingEmergencyMs: 120,
 } as const

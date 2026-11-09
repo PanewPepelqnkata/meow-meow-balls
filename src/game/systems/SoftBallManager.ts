@@ -360,6 +360,91 @@ export class SoftBallManager {
     return entity
   }
 
+  /**
+   * Pre-conform (squish) a newly spawned merged ball's particle ring to fit
+   * the surrounding pocket of neighboring balls and container surfaces.
+   * Instead of spawning as a rigid circle that overlaps neighbors or
+   * teleports above the pile, the ring molds inward along blocked directions
+   * (never below minRadiusFraction) and smoothly inflates in place via the
+   * damped pressure + positional expansion passes.
+   */
+  conformToPocket(id: number): void {
+    const ball = this.getBallById(id)
+    if (!ball) return
+    const soft = ball.soft
+    const c = soft.center.position
+    const ringR = soft.radius * (1 - SOFT.particleRadiusFactor)
+    const minR = ringR * SOFT.minRadiusFraction
+    const bodyR = soft.radius * SOFT.particleRadiusFactor + SOFT.contactSkin
+    const n = soft.particles.length
+
+    let nearN = 0
+    const near = this.nearParticles
+    for (const B of this.balls) {
+      if (B === ball || B.state === 'removed') continue
+      const dx = B.soft.center.position.x - c.x
+      const dy = B.soft.center.position.y - c.y
+      const reach = soft.radius + B.soft.radius + 2 * SOFT.contactSkin + 8
+      if (dx * dx + dy * dy > reach * reach) continue
+      const rB = bodyR + B.soft.radius * SOFT.particleRadiusFactor + SOFT.contactSkin + 0.5
+      for (const pb of B.soft.particles) {
+        let slot = near[nearN]
+        if (!slot) {
+          slot = { x: 0, y: 0, r: 0 }
+          near[nearN] = slot
+        }
+        slot.x = pb.position.x
+        slot.y = pb.position.y
+        slot.r = rB
+        nearN++
+      }
+    }
+    if (nearN === 0) return
+    let anyDeepOverlap = false
+    const targetR = new Array<number>(n)
+    for (let i = 0; i < n; i++) {
+      const p = soft.particles[i]!
+      const rx = p.position.x - c.x
+      const ry = p.position.y - c.y
+      const dist = Math.hypot(rx, ry) || 1
+      const ux = rx / dist
+      const uy = ry / dist
+      let allowed = Math.min(ringR, this.wallLimitedDistance(soft.center, ux, uy, bodyR))
+      for (let qi = 0; qi < nearN; qi++) {
+        const q = near[qi]!
+        const qx = q.x - c.x
+        const qy = q.y - c.y
+        const b1 = qx * ux + qy * uy
+        if (b1 <= 0 || b1 - q.r >= allowed) continue
+        const disc = b1 * b1 - (qx * qx + qy * qy) + q.r * q.r
+        if (disc <= 0) continue
+        const tHit = b1 - Math.sqrt(disc)
+        if (tHit < allowed) allowed = tHit
+      }
+      if (ringR - allowed > 2.5) anyDeepOverlap = true
+      targetR[i] = Math.max(minR, Math.min(ringR, allowed))
+    }
+    if (!anyDeepOverlap) return
+
+    // 1-pass cyclic smoothing so the conformed pocket silhouette is a smooth
+    // organic jelly curve, clamped never to exceed the hard clearance limit.
+    for (let i = 0; i < n; i++) {
+      const prev = targetR[(i - 1 + n) % n]!
+      const curr = targetR[i]!
+      const next = targetR[(i + 1) % n]!
+      const smoothed = Math.max(minR, Math.min(curr, 0.25 * prev + 0.5 * curr + 0.25 * next))
+      const p = soft.particles[i]!
+      const rx = p.position.x - c.x
+      const ry = p.position.y - c.y
+      const dist = Math.hypot(rx, ry) || 1
+      const delta = smoothed - dist
+      if (Math.abs(delta) > 0.05) {
+        Matter.Body.translate(p, { x: (rx / dist) * delta, y: (ry / dist) * delta })
+      }
+    }
+    soft.area = softBallArea(soft)
+  }
+
   /** Tier radius provider (injected at construction for testability). */
   tierRadius: (tier: number) => number = (tier) => {
     throw new Error(`SoftBallManager.tierRadius not configured (tier ${tier})`)
@@ -871,7 +956,9 @@ export class SoftBallManager {
       // spawn still clear the counter, so every genuine disturbance (which
       // always wakes the ball) starts the evidence from zero; the drift +
       // area gates are untouched and still veto sleep.
-      const warCount = fast ? (this.restWar.get(id) ?? 0) + 1 : (this.restWar.get(id) ?? 0)
+      const centerSpeed = Math.hypot(ball.soft.center.velocity.x, ball.soft.center.velocity.y)
+      const inSolverChurn = fast || (maxSpeed > 2.0 && centerSpeed < 0.5)
+      const warCount = inSolverChurn ? (this.restWar.get(id) ?? 0) + 1 : (this.restWar.get(id) ?? 0)
       this.restWar.set(id, warCount)
       // The AREA gate: the ball's area must still be ~at rest. A ball
       // that is genuinely being squashed (or stretched) by a real load is
@@ -879,7 +966,7 @@ export class SoftBallManager {
       // mid-distortion.
       const areaOk =
         Math.abs(1 - ball.soft.area / ball.soft.restArea) < SOFT.restWarSurrenderAreaTolerance
-      if (fast && warCount > SOFT.restWarSurrenderSteps && areaOk) {
+      if (inSolverChurn && warCount > SOFT.restWarSurrenderSteps && areaOk) {
         this.warSurrendered.add(id)
       } else if (this.warSurrendered.has(id) && !areaOk) {
         // The area gate failed: the ball is really being deformed, so the
@@ -933,6 +1020,13 @@ export class SoftBallManager {
         continue
       }
       this.restCounters.set(id, counter)
+      if (counter >= 45 && centerSpeed < 0.4) {
+        for (const p of ball.soft.particles) {
+          if (Math.hypot(p.velocity.x, p.velocity.y) > 1.5) {
+            Matter.Body.setVelocity(p, { x: p.velocity.x * 0.55, y: p.velocity.y * 0.55 })
+          }
+        }
+      }
       if (counter >= SOFT.restSteps) {
         // Phase 2.9.9: the actual freeze is DEFERRED to commitRest(), which
         // the scene calls after the full correction chain (separation →

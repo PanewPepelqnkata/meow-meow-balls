@@ -456,16 +456,17 @@ export class MergeSystem {
   ): MergeOutcome {
     const rNew = getTier(tier + 1)!.radius
 
-    // Spawn EXACTLY ONE replacement and give it the parents' average velocity.
+    // Spawn EXACTLY ONE replacement, transfer parents' average velocity to the
+    // entire composite, and pre-conform its particle ring to the pocket so it
+    // molds cleanly in place without burying neighbors.
     const nb = this.balls.spawnBall(placement.x, placement.y, tier + 1, true)
     Matter.Body.setVelocity(nb.body, { x: avgVx, y: avgVy })
     // Per-replacement merge cooldown: no same-step chain merges.
     this.cooldownUntil.set(nb.id, this.physicsWorld.simTimeMs + MERGE.mergeCooldownMs)
-    // Wake the balls around the insertion (removeBall already woke the
-    // area around the sources; this covers the displacement zone) — and,
-    // for the emergency overlap spot, so the contact solver actively
-    // separates the touching balls over the next frames.
     const softMgr = this.balls as SoftBallManager
+    softMgr.conformToPocket?.(nb.id)
+    // Wake the balls around the insertion so the surrounding pocket and the
+    // conformed slime ring smoothly equilibrate over the next frames.
     softMgr.wakeNear?.(placement.x, placement.y, rNew)
 
     // Chain depth: consecutive merges within the window escalate.

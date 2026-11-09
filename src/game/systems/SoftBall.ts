@@ -58,30 +58,21 @@ export const SOFT = {
    * (targets §6); settled piles still sleep (standing wars now surrender
    * and the drift gate still vetoes real motion). Stability re-verified
    * by the full unit battery + QA scenarios. */
-  rimStiffness: 0.5,
-  /** Spoke (particle-to-center) stiffness. 0.18: yields for visible
-   * flattening under load; the center-escape retention pass (Phase 2.9.2)
-   * handles the fold-through failure mode that stiffer spokes were
-   * attempting to brute-force. Phase 2.11.2: kept at 0.18 — 0.15 left a
-   * settled-jam particle churning just above the 2px/step stillness bar;
-   * the impact softness comes from the rim + braces instead. */
+  rimStiffness: 0.40,
+  /** Spoke (particle-to-center) stiffness. Kept at 0.18 so settled-pile
+   * particles stay below the 2px/step stillness bar; jelly-slime softness
+   * comes from the softer rim (0.40) and diameter braces (0.30). */
   spokeStiffness: 0.18,
   /** Rim/spoke damping — SLIME CONTROL (spec §4): constraint damping kills
-   * ring oscillation. Sweep (2.10.1): 0.16 → 0.21 — impacts produce a few
-   * visibly damped wobbles then settle (spec: "subtle, damped wobble
-   * immediately after an impact, then settle completely"). Phase 2.11.2:
-   * 0.21 → 0.26 — smoother, slower recovery (no snap-back), still settling. */
-  damping: 0.26,
+   * ring oscillation. 0.29 gives a smooth, viscous jelly recovery without
+   * snappy spring-back while still settling cleanly to rest. */
+  damping: 0.29,
   /** Diameter-brace stiffness — SLIME CONTROL (spec §4): holds the ring's
    * overall size through hard impacts (1-frame point-collapse otherwise).
-   * Sweep (2.10.1): 0.85 → 0.58 alongside the rim softening; 0.5 (with rim
-   * 0.55) allowed the wedge-trap overlap to grow — 0.58 keeps the anti-fold
-   * floor ahead of the load. Phase 2.11.2: 0.58 → 0.4 alongside the rim
-   * 0.5 sweep — the diameter braces resist the VERTICAL crown load directly
-   * (a static stack compresses along the brace axis), so they were the last
-   * sustained-load rigidity source; 0.4 still holds the ring's size through
-   * impacts (diameter braces + pressure + contact skin do that work). */
-  diameterStiffness: 0.4,
+   * Lowered 0.4 → 0.30 (25% softer cross-brace): eliminates the "inflated
+   * rubber tire" resistance to vertical/diagonal pile loads while keeping
+   * impact shape retention ≥ 0.70 rest area. */
+  diameterStiffness: 0.30,
   /** Area-restoration drive (px/step at FULL deficit). Measured pile physics:
    * bottom-layer balls under a sustained multi-ball load were equilibrating
    * at 0.3-0.5× rest area with the old ceiling (deficit capped at 0.5, accel
@@ -119,11 +110,9 @@ export const SOFT = {
    * directly, neighbor-aware (never pushes a particle into another ball's
    * collision disc) and radius-capped (never inflates past rest). */
   expandMaxMove: 0.5,
-  /** Radial move per substep = ringRadius × deficit × this. Phase 2.11.2:
-   * KEPT at 0.5 — weakening it (0.15-0.4) did NOT deepen the deformation
-   * equilibrium (the ring's Matter contacts, not the positional restore,
-   * carry load) but DID let settled-pile overlap exceed the 2.5px bound.
-   * Visible recovery comes from the softer rim/spokes/braces. */
+  /** Radial move per substep = ringRadius × deficit × this. Kept at 0.5 so
+   * settled-pile disc overlap stays ≤ 2.5px; smooth recovery feel comes from
+   * the softer rim (0.40), diameter braces (0.30), and higher damping (0.29). */
   expandRate: 0.5,
   /** Area deficit below which no positional expansion runs (sub-visible). */
   expandMinDeficit: 0.004,
@@ -234,12 +223,11 @@ export const SOFT = {
    * soak ended; measured impact/rebound fast phases are < 120 substeps and
    * real disturbances still trip the drift/area gates, so 300 (2.5s) keeps
    * a wide margin over every genuine transient. */
-  restWarSurrenderSteps: 300,
+  restWarSurrenderSteps: 200,
   /** Max area deficit (fraction of rest area) a standing war may carry and
-   * still surrender (Phase 2.10.2: 0.03 → 0.12 — compressed wall wedges
-   * must also reach rest; real impacts deform area FAR beyond 12% within
-   * the 5s window and keep it there only while the disturbance lasts). */
-  restWarSurrenderAreaTolerance: 0.12,
+   * still surrender (widened 0.12 → 0.18 for the 25% softer jelly-slime
+   * ring so deeply squished bottom-layer balls still reach coherent rest). */
+  restWarSurrenderAreaTolerance: 0.18,
   // --- container clamp ---
   // The clamp is an anti-tunneling backstop that only fires when a particle
   // CENTER crosses an inner surface line (see SoftBallManager.clampToContainer);
