@@ -58,21 +58,18 @@ export const SOFT = {
    * (targets §6); settled piles still sleep (standing wars now surrender
    * and the drift gate still vetoes real motion). Stability re-verified
    * by the full unit battery + QA scenarios. */
-  rimStiffness: 0.40,
-  /** Spoke (particle-to-center) stiffness. Kept at 0.18 so settled-pile
-   * particles stay below the 2px/step stillness bar; jelly-slime softness
-   * comes from the softer rim (0.40) and diameter braces (0.30). */
-  spokeStiffness: 0.18,
+  rimStiffness: 0.35,
+  /** Spoke (particle-to-center) stiffness at rest/gentle contact; dynamically
+   * softens down to 0.28× under heavy indentation (see applyPressure). */
+  spokeStiffness: 0.17,
   /** Rim/spoke damping — SLIME CONTROL (spec §4): constraint damping kills
-   * ring oscillation. 0.29 gives a smooth, viscous jelly recovery without
+   * ring oscillation. 0.30 gives a smooth, viscous jelly recovery without
    * snappy spring-back while still settling cleanly to rest. */
-  damping: 0.29,
-  /** Diameter-brace stiffness — SLIME CONTROL (spec §4): holds the ring's
-   * overall size through hard impacts (1-frame point-collapse otherwise).
-   * Lowered 0.4 → 0.30 (25% softer cross-brace): eliminates the "inflated
-   * rubber tire" resistance to vertical/diagonal pile loads while keeping
-   * impact shape retention ≥ 0.70 rest area. */
-  diameterStiffness: 0.30,
+  damping: 0.30,
+  /** Diameter-brace stiffness at rest/gentle contact; dynamically softens
+   * down to 0.28× under heavy pocket squeeze so the perpendicular axis can
+   * bulge freely like real slime. */
+  diameterStiffness: 0.24,
   /** Area-restoration drive (px/step at FULL deficit). Measured pile physics:
    * bottom-layer balls under a sustained multi-ball load were equilibrating
    * at 0.3-0.5× rest area with the old ceiling (deficit capped at 0.5, accel
@@ -135,9 +132,8 @@ export const SOFT = {
    * further out under load (thicker flatten) while the inner radius stays
    * ≥55% of the rest ring (no small ball disappears into a sliver; the
    * 0.52 sweep candidate produced a 2.9 aspect on the wedge-trapped ball). */
-  minRadiusFraction: 0.55,
-  minRadiusRecovery: 0.8,
-  /** Max fraction of rest area the solver may try to correct per step. */
+  minRadiusFraction: 0.36,
+  minRadiusRecovery: 0.32,
   maxPressureCorrection: 0.35,
   /** Rest area is computed at creation; area below this fraction triggers
    * max pressure (hard floor to prevent total collapse). */
@@ -223,11 +219,11 @@ export const SOFT = {
    * soak ended; measured impact/rebound fast phases are < 120 substeps and
    * real disturbances still trip the drift/area gates, so 300 (2.5s) keeps
    * a wide margin over every genuine transient. */
-  restWarSurrenderSteps: 200,
+  restWarSurrenderSteps: 180,
   /** Max area deficit (fraction of rest area) a standing war may carry and
-   * still surrender (widened 0.12 → 0.18 for the 25% softer jelly-slime
-   * ring so deeply squished bottom-layer balls still reach coherent rest). */
-  restWarSurrenderAreaTolerance: 0.18,
+   * still surrender (widened to 0.28 so heavily squeezed balls in tight
+   * pockets beside large tiers reach coherent rest without outline jitter). */
+  restWarSurrenderAreaTolerance: 0.28,
   // --- container clamp ---
   // The clamp is an anti-tunneling backstop that only fires when a particle
   // CENTER crosses an inner surface line (see SoftBallManager.clampToContainer);
@@ -372,10 +368,12 @@ export function applyPressure(ball: SoftBall): void {
   pcy /= ball.particles.length
   const ringR = ball.radius * (1 - SOFT.particleRadiusFactor)
   const minR = ringR * SOFT.minRadiusFraction
+  let minLen = ringR
   for (const p of ball.particles) {
     const dx = p.position.x - pcx
     const dy = p.position.y - pcy
     const len = Math.hypot(dx, dy) || 1
+    if (len < minLen) minLen = len
     const depth = minR - len
     if (depth > 0) {
       const k = Math.min(1, depth / (ringR * 0.3))
@@ -389,6 +387,28 @@ export function applyPressure(ball: SoftBall): void {
           y: p.velocity.y + (dy / len) * eff,
         })
       }
+    }
+  }
+  // Adaptive squeeze compliance: when a side of the ring is indented >12%
+  // (under heavy pile weight or squeezed in a narrow pocket beside a large
+  // ball), soften spokes and diameter cross-braces down to 0.28× so the ball
+  // visibly squishes and molds into the pocket without fighting its own hub.
+  const inwardSqueeze = Math.max(0, 1 - minLen / ringR)
+  const soften = inwardSqueeze > 0.12 ? Math.max(0.28, 1 - (inwardSqueeze - 0.12) * 1.6) : 1
+  const constraints = ball.composite.constraints
+  const segs = ball.particles.length
+  if (constraints.length >= segs * 3) {
+    const rimS = SOFT.rimStiffness * (0.55 + 0.45 * soften)
+    const spokeS = SOFT.spokeStiffness * soften
+    const braceS = spokeS * 0.5
+    const diamS = SOFT.diameterStiffness * soften
+    for (let i = 0; i < segs; i++) {
+      constraints[i]!.stiffness = rimS
+      constraints[segs + i]!.stiffness = spokeS
+      constraints[2 * segs + i]!.stiffness = braceS
+    }
+    for (let i = 3 * segs; i < constraints.length; i++) {
+      constraints[i]!.stiffness = diamS
     }
   }
   // Center-body retention
@@ -693,66 +713,78 @@ export function renderContour(
   const m = raw.length
   const out = targetOut ?? []
   out.length = 0
-  const cx = ball.center.position.x
-  const cy = ball.center.position.y
-  // Phase 2.9.7 hand-drawn contour: 2 low-frequency harmonics for a subtle,
-  // organic asymmetry (Ball Guys style). Deterministic per-ball seed, stable
-  // over time, rides the simulated deformation. Third harmonic removed
-  // (it caused high-frequency bumps that read as polygon noise).
-  //
-  // Phase 2.9.8 ENVELOPE SAFETY: the offset is applied as an INWARD dip from
-  // the particle outer edge, never outward — `outset` is the maximum. The
-  // rendered fill/outline therefore can never extend past the collision
-  // envelope (the particle discs), which is what makes "Matter owns contact
-  // separation" sound: a ball's visible surface can never cut into a
-  // neighbor's, no matter what the wave does.
+  const c = softBallCentroid(ball)
+  const cx = c.x
+  const cy = c.y
   const h1 = Math.sin(ball.seed) * 0.008 + 0.007
   const h2 = Math.sin(ball.seed * 1.7 + 2.1) * 0.006
-  // Per-ball harmonic ceiling (largest |wave| this seed can produce).
   const waveCap = Math.abs(h1) + Math.abs(h2)
-  // Dip amplitude: ~0.7% of radius at the wave trough (≤ ~0.9px on tier 6),
-  // so two largest-tier balls at the backstop's 4px clearance still stay
-  // within the 7px ink stroke's coverage (4 + 2·0.9 < 7).
   const dipAmp = 0.007
+  const envelopeSafety = 0.25 + 0.006 * ball.radius
+
+  // Determine consistent loop winding sign ONCE so individual vertex normals
+  // never flip 180° on heavily flattened or concave pocket-hugging edges.
+  let signedArea = 0
   for (let i = 0; i < m; i++) {
-    const prev = raw[(i - 1 + m) % m]!
+    const p = raw[i]!
+    const q = raw[(i + 1) % m]!
+    signedArea += (p.x - cx) * (q.y - cy) - (q.x - cx) * (p.y - cy)
+  }
+  const windingSign = signedArea >= 0 ? 1 : -1
+  const span = Math.max(1, Math.floor(samplesPerSegment / 2))
+
+  for (let i = 0; i < m; i++) {
+    const prev = raw[(i - span + m) % m]!
     const cur = raw[i]!
-    const next = raw[(i + 1) % m]!
-    // Average edge normal around this sample (miter-free, stable)
-    const e1x = cur.x - prev.x
-    const e1y = cur.y - prev.y
-    const e2x = next.x - cur.x
-    const e2y = next.y - cur.y
-    let nx = e1y + e2y
-    let ny = -(e1x + e2x)
+    const next = raw[(i + span) % m]!
+    const tx = next.x - prev.x
+    const ty = next.y - prev.y
+    const tl = Math.hypot(tx, ty) || 1
+    const enx = (ty / tl) * windingSign
+    const eny = (-tx / tl) * windingSign
+
+    const mx = cur.x - cx
+    const my = cur.y - cy
+    const ml = Math.hypot(mx, my) || 1
+    const rnx = mx / ml
+    const rny = my / ml
+
+    // Blend the wide-stencil edge normal with the centroid-radial normal so
+    // compressed chords never whip the outset lever-arm sideways (eliminates
+    // swallowtail loops and outline flicker under heavy squeeze).
+    let nx = enx * 0.55 + rnx * 0.45
+    let ny = eny * 0.55 + rny * 0.45
     const nl = Math.hypot(nx, ny) || 1
     nx /= nl
     ny /= nl
-    // Ensure the normal points AWAY from the centroid
-    const mx = cur.x - cx
-    const my = cur.y - cy
-    if (mx * nx + my * ny < 0) {
-      nx = -nx
-      ny = -ny
-    }
-    // Angular position of this sample around the centroid
-    const ang = Math.atan2(cur.y - cy, cur.x - cx)
+
+    const ang = Math.atan2(my, mx)
     const wave =
       Math.sin(ang * 3 + ball.seed) * h1 +
       Math.sin(ang * 5 + ball.seed * 2.2) * h2
-    // wave/waveCap ∈ [−1, 1] → dip ∈ [0, 2·dipAmp·r] → offset ∈ [outset − 2·dipAmp·r, outset]
     const dip = (1 - wave / waveCap) * dipAmp * ball.radius
-    // Phase 2.11.2 ENVELOPE SAFETY MARGIN: the catmull-rom through the
-    // particle centers overshoots the local ring between particles under
-    // deformation (overshoot grows with particle spacing ∝ radius), which
-    // pushed the widest contour ~0.13px past the collision discs at the new
-    // r 52. A small radius-proportional inward margin (≤1px at tier 10,
-    // sub-pixel/invisible at every playable tier) restores the invariant
-    // `contour ≤ particle collision discs` for ALL radii.
-    const envelopeSafety = 0.2 + 0.006 * ball.radius
     const ox = cur.x + nx * (outset - dip - envelopeSafety)
     const oy = cur.y + ny * (outset - dip - envelopeSafety)
     out.push({ x: ox, y: oy })
+  }
+  // 1-pass cyclic smoothing on the offset contour to eliminate micro-kinks at
+  // pocket transition corners while keeping the contour strictly inside the
+  // collision envelope.
+  if (m >= 6) {
+    let prevX = out[m - 1]!.x
+    let prevY = out[m - 1]!.y
+    const firstX = out[0]!.x
+    const firstY = out[0]!.y
+    for (let i = 0; i < m; i++) {
+      const curP = out[i]!
+      const nextP = i + 1 < m ? out[i + 1]! : { x: firstX, y: firstY }
+      const sx = 0.2 * prevX + 0.6 * curP.x + 0.2 * nextP.x
+      const sy = 0.2 * prevY + 0.6 * curP.y + 0.2 * nextP.y
+      prevX = curP.x
+      prevY = curP.y
+      curP.x = sx
+      curP.y = sy
+    }
   }
   return out
 }

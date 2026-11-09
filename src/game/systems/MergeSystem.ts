@@ -309,8 +309,25 @@ export class MergeSystem {
     const cb = this.centroidOf(eb)
     const cx = (ca.x + cb.x) / 2
     const cy = (ca.y + cb.y) / 2
-    const avgVx = (ea.body.velocity.x + eb.body.velocity.x) / 2
-    const avgVy = (ea.body.velocity.y + eb.body.velocity.y) / 2
+    const compositeVelocity = (e: PlacementEntity): { x: number; y: number } => {
+      const soft = this.balls as SoftBallManager
+      const ent = soft.getBallById?.(e.id)
+      if (ent && 'soft' in ent) {
+        let vx = ent.soft.center.velocity.x
+        let vy = ent.soft.center.velocity.y
+        for (const p of ent.soft.particles) {
+          vx += p.velocity.x
+          vy += p.velocity.y
+        }
+        const inv = 1 / (ent.soft.particles.length + 1)
+        return { x: vx * inv, y: vy * inv }
+      }
+      return e.body.velocity
+    }
+    const va = compositeVelocity(ea)
+    const vb = compositeVelocity(eb)
+    const avgVx = (va.x + vb.x) / 2
+    const avgVy = (va.y + vb.y) / 2
 
     // Phase 2.13.3 (spec §1) TRANSACTIONAL ORDER: find a valid nearby
     // position BEFORE removing the sources. The placement search never sees

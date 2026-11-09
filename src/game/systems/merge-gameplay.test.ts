@@ -4,6 +4,7 @@ import { containerBounds, wallCollidersAt, floorCollider } from '../../config/co
 import { getTier } from '../../config/ballTiers'
 import { PhysicsWorld } from './PhysicsWorld'
 import { SoftBallManager } from './SoftBallManager'
+import { SOFT, renderContour, softBallCentroid } from './SoftBall'
 import { MergeSystem } from './MergeSystem'
 import { ScoreSystem } from './ScoreSystem'
 import { gameBus } from '../events/gameBus'
@@ -158,4 +159,81 @@ describe('Phase 2.10.0: merge placement in real gameplay (anti-trap)', () => {
     }
     physics.dispose()
   }, 90_000)
+
+  it('MAXIMUM SQUEEZE: big tier-7 white ball on the left, two tier-3 pink balls merge into tier-4 red on the right — stays in pocket, deforms heavily, zero outline flicker', () => {
+    const { manager, step, physics } = rig()
+    const b = containerBounds()
+    const r7 = getTier(7)!.radius
+    const r3 = getTier(3)!.radius
+    // Big Tier 7 white ball settled on the left/center-left of the floor,
+    // Big Tier 7 white ball settled on the right-of-center floor (x=370),
+    // leaving a ~100px narrow pocket against the right wall for a 152px-wide
+    // Tier 4 red ball.
+    const white = manager.spawnBall(370, b.floorY - r7 - 2, 7)
+    step(0.6)
+    // Two Tier 3 pink balls stacked in the tight right-hand pocket between the
+    // Tier 7 ball and the right container wall.
+    const rightWallX = b.innerRightAt(b.floorY - r3 - 2)
+    const pinkX = rightWallX - r3 - 2
+    const p1 = manager.spawnBall(pinkX, b.floorY - r3 - 2, 3)
+    const p2 = manager.spawnBall(pinkX - 4, b.floorY - r3 * 2.2, 3)
+    const midX = (p1.soft.center.position.x + p2.soft.center.position.x) / 2
+    const midY = (p1.soft.center.position.y + p2.soft.center.position.y) / 2
+
+    // Step until the two Tier 3 pink balls merge into a Tier 4 red ball.
+    let red = manager.getBalls().find((e) => e.tier === 4)
+    for (let i = 0; i < 120 && !red; i++) {
+      step(1 / 120)
+      red = manager.getBalls().find((e) => e.tier === 4)
+    }
+    expect(red).toBeDefined()
+    const redBirth = softBallCentroid(red!.soft)
+    const whitePos = softBallCentroid(white.soft)
+    // 1. NEVER teleports above the Tier 7 ball: stays in the right-hand pocket!
+    expect(redBirth.x).toBeGreaterThan(whitePos.x + 60)
+    expect(Math.hypot(redBirth.x - midX, redBirth.y - midY)).toBeLessThanOrEqual(48)
+
+    // 2. Heavily deforms in the narrow pocket (aspect < 0.90) with a smooth,
+    //    flicker-free outline (no self-intersecting cusps across 60 frames).
+    const measureAspect = () => {
+      const xs = red!.soft.particles.map((p) => p.position.x)
+      const ys = red!.soft.particles.map((p) => p.position.y)
+      const w = Math.max(...xs) - Math.min(...xs)
+      const h = Math.max(...ys) - Math.min(...ys)
+      return Math.min(w, h) / Math.max(w, h)
+    }
+    let minAspect = measureAspect()
+    let maxFrameToFrameContourJump = 0
+    let prevContour: Array<{ x: number; y: number }> | null = null
+    let prevCentroid: { x: number; y: number } | null = null
+    for (let f = 0; f < 60; f++) {
+      step(1 / 60)
+      const xs = red!.soft.particles.map((p) => p.position.x)
+      const ys = red!.soft.particles.map((p) => p.position.y)
+      const w = Math.max(...xs) - Math.min(...xs)
+      const h = Math.max(...ys) - Math.min(...ys)
+      minAspect = Math.min(minAspect, Math.min(w, h) / Math.max(w, h))
+      const contour = renderContour(red!.soft, 6, red!.soft.radius * SOFT.particleRadiusFactor)
+      const rc = softBallCentroid(red!.soft)
+      if (prevContour && prevCentroid) {
+        for (let k = 0; k < contour.length; k++) {
+          // Measure local shape jump (relative to centroid motion): no vertex normal flip
+          const curRelX = contour[k]!.x - rc.x
+          const curRelY = contour[k]!.y - rc.y
+          const prevRelX = prevContour[k]!.x - prevCentroid.x
+          const prevRelY = prevContour[k]!.y - prevCentroid.y
+          maxFrameToFrameContourJump = Math.max(
+            maxFrameToFrameContourJump,
+            Math.hypot(curRelX - prevRelX, curRelY - prevRelY),
+          )
+        }
+      }
+      prevContour = contour.map((pt) => ({ x: pt.x, y: pt.y }))
+      prevCentroid = { x: rc.x, y: rc.y }
+    }
+    expect(minAspect).toBeLessThan(0.9) // genuinely squished oval in the pocket
+    expect(maxFrameToFrameContourJump).toBeLessThan(12) // no 2*outset (~48px) normal-flip outline flicker
+    expect(worstPairOverlap(manager)).toBeLessThanOrEqual(2.5)
+    physics.dispose()
+  }, 60_000)
 })

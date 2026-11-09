@@ -374,7 +374,8 @@ export class SoftBallManager {
     const soft = ball.soft
     const c = soft.center.position
     const ringR = soft.radius * (1 - SOFT.particleRadiusFactor)
-    const minR = ringR * SOFT.minRadiusFraction
+    const pocketMinR = ringR * 0.24
+    const maxBulgeR = ringR * 1.36
     const bodyR = soft.radius * SOFT.particleRadiusFactor + SOFT.contactSkin
     const n = soft.particles.length
 
@@ -384,7 +385,7 @@ export class SoftBallManager {
       if (B === ball || B.state === 'removed') continue
       const dx = B.soft.center.position.x - c.x
       const dy = B.soft.center.position.y - c.y
-      const reach = soft.radius + B.soft.radius + 2 * SOFT.contactSkin + 8
+      const reach = maxBulgeR + bodyR + B.soft.radius + 2 * SOFT.contactSkin + 12
       if (dx * dx + dy * dy > reach * reach) continue
       const rB = bodyR + B.soft.radius * SOFT.particleRadiusFactor + SOFT.contactSkin + 0.5
       for (const pb of B.soft.particles) {
@@ -400,7 +401,11 @@ export class SoftBallManager {
       }
     }
     if (nearN === 0) return
+
     let anyDeepOverlap = false
+    let totalDeficit = 0
+    let freeCount = 0
+    const allowedR = new Array<number>(n)
     const targetR = new Array<number>(n)
     for (let i = 0; i < n; i++) {
       const p = soft.particles[i]!
@@ -409,7 +414,7 @@ export class SoftBallManager {
       const dist = Math.hypot(rx, ry) || 1
       const ux = rx / dist
       const uy = ry / dist
-      let allowed = Math.min(ringR, this.wallLimitedDistance(soft.center, ux, uy, bodyR))
+      let allowed = Math.min(maxBulgeR, this.wallLimitedDistance(soft.center, ux, uy, bodyR))
       for (let qi = 0; qi < nearN; qi++) {
         const q = near[qi]!
         const qx = q.x - c.x
@@ -421,27 +426,61 @@ export class SoftBallManager {
         const tHit = b1 - Math.sqrt(disc)
         if (tHit < allowed) allowed = tHit
       }
+      allowedR[i] = Math.max(pocketMinR, allowed)
       if (ringR - allowed > 2.5) anyDeepOverlap = true
-      targetR[i] = Math.max(minR, Math.min(ringR, allowed))
+      if (allowed < ringR) {
+        totalDeficit += ringR - allowedR[i]!
+        targetR[i] = allowedR[i]!
+      } else {
+        if (allowed > ringR + 2) freeCount++
+        targetR[i] = ringR
+      }
     }
     if (!anyDeepOverlap) return
 
-    // 1-pass cyclic smoothing so the conformed pocket silhouette is a smooth
-    // organic jelly curve, clamped never to exceed the hard clearance limit.
+    // Area-preserving pocket bulge: redistribute lost radial distance from
+    // squeezed directions onto unconstrained directions so the ball molds into
+    // an oval/bean filling the open channel of the pocket.
+    if (freeCount > 0 && totalDeficit > 0) {
+      const bonus = Math.min(ringR * 0.36, (totalDeficit / freeCount) * 0.85)
+      for (let i = 0; i < n; i++) {
+        if (allowedR[i]! > ringR + 2) {
+          targetR[i] = Math.min(allowedR[i]!, ringR + bonus)
+        }
+      }
+    }
+
+    // 2-pass cyclic smoothing clamped by each ray's hard clearance limit.
+    for (let pass = 0; pass < 2; pass++) {
+      const nextR = new Array<number>(n)
+      for (let i = 0; i < n; i++) {
+        const prev = targetR[(i - 1 + n) % n]!
+        const curr = targetR[i]!
+        const next = targetR[(i + 1) % n]!
+        nextR[i] = Math.max(pocketMinR, Math.min(allowedR[i]!, 0.25 * prev + 0.5 * curr + 0.25 * next))
+      }
+      for (let i = 0; i < n; i++) targetR[i] = nextR[i]!
+    }
+
+    let sumX = 0
+    let sumY = 0
     for (let i = 0; i < n; i++) {
-      const prev = targetR[(i - 1 + n) % n]!
-      const curr = targetR[i]!
-      const next = targetR[(i + 1) % n]!
-      const smoothed = Math.max(minR, Math.min(curr, 0.25 * prev + 0.5 * curr + 0.25 * next))
       const p = soft.particles[i]!
       const rx = p.position.x - c.x
       const ry = p.position.y - c.y
       const dist = Math.hypot(rx, ry) || 1
-      const delta = smoothed - dist
+      const delta = targetR[i]! - dist
       if (Math.abs(delta) > 0.05) {
         Matter.Body.translate(p, { x: (rx / dist) * delta, y: (ry / dist) * delta })
       }
+      sumX += p.position.x
+      sumY += p.position.y
     }
+    // Re-center the hub body at the conformed ring's centroid so spokes do not
+    // yank squeezed particles back into the adjacent obstacle on Frame 1.
+    const newCx = sumX / n
+    const newCy = sumY / n
+    Matter.Body.translate(soft.center, { x: newCx - c.x, y: newCy - c.y })
     soft.area = softBallArea(soft)
   }
 
@@ -802,6 +841,18 @@ export class SoftBallManager {
       // into it (measured: wall-directed expansion buried bodies ~15px past
       // the visible surface). Blocked directions simply don't expand; the
       // ball bulges into free space instead (the desired slime behavior).
+      let minParticleDist = ringR
+      for (const p of soft.particles) {
+        const d = Math.hypot(p.position.x - c.x, p.position.y - c.y)
+        if (d < minParticleDist) minParticleDist = d
+      }
+      const inwardSqueeze = Math.max(0, 1 - minParticleDist / ringR)
+      const bulgeCap =
+        1.02 +
+        Math.min(
+          0.36,
+          Math.max(Math.max(0, deficit - 0.012) * 1.25, Math.max(0, inwardSqueeze - 0.10) * 0.85),
+        )
       for (const p of soft.particles) {
         const rx = p.position.x - c.x
         const ry = p.position.y - c.y
@@ -811,21 +862,20 @@ export class SoftBallManager {
         const uy = (ry / dist) * dir
         let move: number
         if (outward) {
-          // never expand past the rest ring
-          move = Math.min(delta, Math.max(0, ringR * 1.02 - dist))
-          // ANTI-FOLD FLOOR (positional): a particle below the min ring
-          // radius is a folding ring — restore it positionally, stronger
-          // than the deficit-driven rate (the velocity-level recovery loses
-          // to sustained contact pressure; measured ball 9 folding into an
-          // arrowhead under a dense-pile squeeze).
+          // Allow unconstrained flanks to bulge up to bulgeCap × ringR when the
+          // ball is indented on another side so volume is preserved by lateral
+          // or vertical slime bulge without bang-bang oscillation at deficit=0.
+          move = Math.min(delta, Math.max(0, ringR * bulgeCap - dist))
           if (dist < minR) {
-            move = Math.max(move, Math.min((minR - dist) * 0.5, SOFT.expandMaxMove * 2))
+            move = Math.max(move, Math.min((minR - dist) * 0.4, SOFT.expandMaxMove * 1.5))
           }
           if (move <= 0) continue
         } else {
-          // deflation: pull the particle toward the centroid, never below
-          // the min ring radius (the anti-fold floor wins over deflation)
-          move = Math.min(delta, Math.max(0, dist - Math.max(minR, ringR * 0.92)))
+          // Deflation: only pull inward particles that exceed the current
+          // squeeze-aware bulge envelope (prevents bang-bang outline flicker
+          // when a squeezed oval reaches restArea).
+          const deflateFloor = Math.max(minR, ringR * Math.max(0.92, bulgeCap - 0.04))
+          move = Math.min(delta, Math.max(0, dist - deflateFloor))
           if (move <= 0) continue
         }
         if (outward) {
