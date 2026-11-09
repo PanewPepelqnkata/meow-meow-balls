@@ -431,58 +431,186 @@ function lightShafts(
 const THEMES: Record<ThemeName, ThemeDef> = {
   light: {
     name: 'light',
-    bgColor: 0xf3f1eb,
-    gridColor: 0xd7dce0,
-    gridAlpha: 0.55,
+    // KINGDOM (overcast): cool grey-blue sky with light breaks — the
+    // default run backdrop. Castle on a green hill centrepiece, rolling
+    // farmland, banner pennant line, drifting low clouds.
+    bgColor: 0xc7cfda,
+    gridColor: 0xb4becb,
+    gridAlpha: 0.5,
     draw: (g, w, h, rng) => {
-      // Morning sky: cream base warming to pale blue at the top.
-      g.fillGradientStyle(0xfdf6e8, 0xf3f1eb, 0xdceaf2, 0xdceaf2, 1)
+      // Overcast sky: pale silver-grey at the horizon warming to a soft
+      // blue-grey at the top; one broad light break behind the castle.
+      g.fillGradientStyle(0x9fb2c4, 0xa8b8c8, 0xd4dae2, 0xc7cfda, 1)
       g.fillRect(0, 0, w, h)
 
-      // Simple warm sun: one soft halo disc + a crisp warm core (no
-      // concentric rings).
-      const sx = w * 0.82
-      const sy = h * 0.12
-      g.fillStyle(0xffe9a8, 0.4)
-      g.fillCircle(sx, sy, Math.min(w, h) * 0.1)
-      g.fillStyle(0xffd766, 0.9)
-      g.fillCircle(sx, sy, Math.min(w, h) * 0.048)
+      // Broad soft light break (upper-left): pale disc + wide haze, as if
+      // the sun sits behind the cloud deck.
+      const gx = w * 0.3
+      const gy = h * 0.16
+      g.fillStyle(0xf2f0e4, 0.35)
+      g.fillCircle(gx, gy, Math.min(w, h) * 0.16)
+      g.fillStyle(0xe9ead8, 0.5)
+      g.fillCircle(gx, gy, Math.min(w, h) * 0.075)
 
-      // Gentle distant hills grounding the horizon (two soft layers).
-      rollingHill(g, w, h, h * 0.86, h * 0.02, 1.2, 0xdce8d8)
-      rollingHill(g, w, h, h * 0.92, h * 0.018, 2.6, 0xc9dfc6)
-
-      // Soft cartoon clouds with natural silhouettes: each cloud is a row
-      // of overlapping rounded bumps whose radii taper toward the tips,
-      // sitting on a slightly rounded base — an organic puffy outline, not
-      // a chain of equal circles.
-      const cloud = (cx: number, cy: number, cw: number, ch: number, alpha: number) => {
-        g.fillStyle(0xffffff, alpha)
+      // Layered overcast clouds — the same organic bump-silhouette cloud
+      // language as the old morning sky, in cool greys with slightly
+      // darker underbellies.
+      const cloud = (cx: number, cy: number, cw: number, ch: number, alpha: number, top: number, under: number) => {
+        // Under-slab shadow first (dark underbelly).
+        g.fillStyle(under, alpha * 0.85)
+        g.fillRoundedRect(cx - cw / 2, cy - ch * 0.16, cw, ch * 0.5, ch * 0.25)
+        g.fillStyle(top, alpha)
         const bumps = 6
         const radii: number[] = []
         for (let i = 0; i < bumps; i++) {
-          // Tapered profile: small → big → small (natural cloud hump).
           const t = i / (bumps - 1)
           radii.push(ch * (0.42 + Math.sin(t * Math.PI) * 0.55 + (rng() - 0.5) * 0.12))
         }
-        // Base slab with rounded ends.
-        g.fillRoundedRect(cx - cw / 2, cy - ch * 0.28, cw, ch * 0.5, ch * 0.25)
-        // Bumps along the top, overlapping so no circle edge reads alone.
+        g.fillRoundedRect(cx - cw / 2, cy - ch * 0.3, cw, ch * 0.5, ch * 0.25)
         for (let i = 0; i < bumps; i++) {
           const bx = cx - cw / 2 + (cw / (bumps - 1)) * i
-          g.fillCircle(bx, cy - ch * 0.22, radii[i]!)
+          g.fillCircle(bx, cy - ch * 0.24, radii[i]!)
         }
-        // One offset lower bump on the flank for asymmetry.
-        g.fillCircle(cx - cw * 0.31, cy + ch * 0.02, ch * 0.3)
+        g.fillCircle(cx - cw * 0.31, cy, ch * 0.3)
       }
-      cloud(w * 0.16, h * 0.15, w * 0.23, Math.min(w, h) * 0.055, 0.96)
-      cloud(w * 0.56, h * 0.09, w * 0.15, Math.min(w, h) * 0.04, 0.88)
-      cloud(w * 0.4, h * 0.27, w * 0.11, Math.min(w, h) * 0.03, 0.8)
+      cloud(w * 0.18, h * 0.1, w * 0.3, Math.min(w, h) * 0.06, 0.92, 0xe8ebef, 0xa9b3bf)
+      cloud(w * 0.62, h * 0.07, w * 0.22, Math.min(w, h) * 0.045, 0.85, 0xe4e8ee, 0xa4aebc)
+      cloud(w * 0.42, h * 0.2, w * 0.13, Math.min(w, h) * 0.032, 0.72, 0xdfe4eb, 0x9fabb9)
+      cloud(w * 0.85, h * 0.16, w * 0.16, Math.min(w, h) * 0.038, 0.78, 0xe2e6ec, 0xa2adbb)
 
-      // Subtle birds: small, sparse, soft blue-gray.
-      bird(g, w * 0.31, h * 0.21, 8, 0x8fa8b8, 0.65)
-      bird(g, w * 0.355, h * 0.185, 6, 0x8fa8b8, 0.55)
-      bird(g, w * 0.65, h * 0.31, 7, 0x9db4c2, 0.5)
+      // Distant hill bands behind the castle hill (cool, hazy).
+      rollingHill(g, w, h, h * 0.84, h * 0.02, 1.2, 0xb9c6bd)
+      rollingHill(g, w, h, h * 0.885, h * 0.018, 2.6, 0xa7bda9)
+
+      // ---- CASTLE ON A HILL (centrepiece, centre-left) -----------------
+      // The hill: a soft green mound rising from the middle hill band.
+      const hillCx = w * 0.5
+      const hillTop = h * 0.68
+      g.fillStyle(0x8fb98a, 1)
+      g.beginPath()
+      g.moveTo(w * 0.14, h)
+      g.lineTo(w * 0.14, h * 0.93)
+      // Left slope up to the crest.
+      for (let i = 0; i <= 8; i++) {
+        const t = i / 8
+        const x = w * 0.14 + (hillCx - w * 0.14 - w * 0.22) * t
+        const y = h * 0.93 - (h * 0.93 - hillTop) * Math.sin(t * Math.PI * 0.5)
+        g.lineTo(x, y)
+      }
+      // Crest.
+      g.lineTo(hillCx, hillTop)
+      // Right slope down.
+      for (let i = 0; i <= 8; i++) {
+        const t = i / 8
+        const x = hillCx + w * 0.05 + (w * 0.36 - w * 0.05) * t
+        const y = hillTop + (h * 0.95 - hillTop) * Math.sin(t * Math.PI * 0.5)
+        g.lineTo(x, y)
+      }
+      g.lineTo(w * 0.95, h)
+      g.closePath()
+      g.fillPath()
+      // Hill shading: a soft darker band along the right flank.
+      g.fillStyle(0x7aa776, 0.5)
+      g.beginPath()
+      g.moveTo(hillCx, hillTop)
+      g.lineTo(hillCx + w * 0.05, hillTop + 2)
+      g.lineTo(hillCx + w * 0.36, h * 0.95)
+      g.lineTo(w * 0.95, h)
+      g.lineTo(hillCx + w * 0.1, h)
+      g.closePath()
+      g.fillPath()
+
+      // Castle silhouette + stone faces, cresting the hill. Built from a
+      // keep (large centre block), two side towers with conical roofs,
+      // curtain wall and a gate. Friendly cartoon read: warm grey stone,
+      // plum ink outlines, crimson pennants.
+      const stone = 0xd6cfc0
+      const stoneShade = 0xa89f92
+      const ink = 0x4a445d
+      const keepW = Math.min(w, h) * 0.13
+      const keepH = Math.min(w, h) * 0.185
+      const keepX = hillCx - keepW / 2
+      const keepY = hillTop - keepH
+      // Curtain wall first (behind towers).
+      const wallW = keepW * 2.6
+      const wallH = keepH * 0.34
+      g.fillStyle(stoneShade, 1)
+      g.fillRect(keepX - wallW / 2 + keepW / 2, keepY + keepH - wallH, wallW, wallH)
+      // Keep body with a soft plum outline for separation from the sky.
+      g.fillStyle(ink, 1)
+      g.fillRect(keepX - 2, keepY - 2, keepW + 4, keepH + 4)
+      g.fillStyle(stone, 1)
+      g.fillRect(keepX, keepY, keepW, keepH)
+      g.fillStyle(stoneShade, 1)
+      g.fillRect(keepX + keepW * 0.62, keepY, keepW * 0.38, keepH)
+      // Keep crenellations.
+      const merlonW = keepW / 5
+      g.fillStyle(stone, 1)
+      for (let i = 0; i < 5; i++) {
+        if (i % 2 === 0) g.fillRect(keepX + i * merlonW, keepY - merlonW * 0.7, merlonW, merlonW * 0.7)
+      }
+      // Keep windows (two arched slits, warm light).
+      g.fillStyle(0x6e5a3e, 1)
+      g.fillRect(keepX + keepW * 0.2, keepY + keepH * 0.3, keepW * 0.12, keepH * 0.18)
+      g.fillRect(keepX + keepW * 0.68, keepY + keepH * 0.3, keepW * 0.12, keepH * 0.18)
+      g.fillStyle(0xffd98a, 0.85)
+      g.fillRect(keepX + keepW * 0.22, keepY + keepH * 0.33, keepW * 0.08, keepH * 0.12)
+      // Side towers with conical roofs.
+      const tower = (tx: number, tw: number, th: number) => {
+        g.fillStyle(stone, 1)
+        g.fillRect(tx, keepY + keepH - th, tw, th)
+        g.fillStyle(stoneShade, 1)
+        g.fillRect(tx + tw * 0.6, keepY + keepH - th, tw * 0.4, th)
+        // Conical roof.
+        g.fillStyle(0x5d6fae, 1)
+        g.fillTriangle(tx - tw * 0.2, keepY + keepH - th, tx + tw * 1.2, keepY + keepH - th, tx + tw * 0.5, keepY + keepH - th - tw * 1.5)
+        // Tiny window.
+        g.fillStyle(0x6e5a3e, 1)
+        g.fillRect(tx + tw * 0.4, keepY + keepH - th * 0.55, tw * 0.2, th * 0.2)
+      }
+      tower(keepX - keepW * 0.75, keepW * 0.5, keepH * 0.62)
+      tower(keepX + keepW * 1.25, keepW * 0.5, keepH * 0.62)
+      // Gate arch in the curtain wall.
+      g.fillStyle(0x6e5a3e, 1)
+      g.fillRect(hillCx - keepW * 0.14, keepY + keepH - wallH * 0.55, keepW * 0.28, wallH * 0.55)
+      // Pennant flags on the keep + towers (crimson with a tiny cream tip).
+      const pennant = (fx: number, fy: number, fw: number, fh: number) => {
+        g.lineStyle(2, ink, 1)
+        g.lineBetween(fx, fy, fx, fy - fh)
+        g.fillStyle(0xbe2b2b, 1)
+        g.fillTriangle(fx, fy - fh, fx + fw, fy - fh + fh * 0.22, fx, fy - fh + fh * 0.44)
+      }
+      // Flagpoles fly from each roof peak: tower tops sit at
+      // keepY + keepH - keepH*0.62, conical peaks another keepW*0.75 up.
+      const towerTopY = keepY + keepH - keepH * 0.62 - keepW * 0.75
+      pennant(hillCx, keepY - merlonW * 0.7, keepW * 0.5, keepH * 0.28)
+      pennant(keepX - keepW * 0.5, towerTopY, keepW * 0.34, keepH * 0.2)
+      pennant(keepX + keepW * 1.5, towerTopY, keepW * 0.34, keepH * 0.2)
+
+      // Banner line strung across the upper right sky (festive kingdom).
+      const blY = h * 0.3
+      g.lineStyle(2.5, 0x8a8f9c, 1)
+      g.beginPath()
+      for (let i = 0; i <= 10; i++) {
+        const t = i / 10
+        g.lineTo(w * (0.58 + t * 0.36), blY + Math.sin(t * Math.PI * 1.6) * h * 0.012)
+      }
+      g.strokePath()
+      for (let i = 1; i < 10; i += 2) {
+        const t = i / 10
+        const bx = w * (0.58 + t * 0.36)
+        const by = blY + Math.sin(t * Math.PI * 1.6) * h * 0.012
+        g.fillStyle(i % 4 === 1 ? 0xbe2b2b : 0xf0d68a, 1)
+        g.fillTriangle(bx - w * 0.008, by, bx + w * 0.008, by, bx, by + h * 0.022)
+      }
+
+      // Foreground meadow band (deepest green) grounding the bottom.
+      rollingHill(g, w, h, h * 0.93, h * 0.015, 0.6, 0x86ad7f)
+
+      // Subtle birds between clouds.
+      bird(g, w * 0.31, h * 0.19, 8, 0x7d8ea0, 0.6)
+      bird(g, w * 0.355, h * 0.165, 6, 0x7d8ea0, 0.5)
+      bird(g, w * 0.68, h * 0.26, 7, 0x8798a8, 0.45)
     },
   },
 

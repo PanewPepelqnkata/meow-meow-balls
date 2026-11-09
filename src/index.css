@@ -26,18 +26,13 @@
 html,
 body,
 #root {
-  margin: 0;
   padding: 0;
-  /* Background matches the theme the boot viewport will pin: portrait
-     phones render the space composition (deep blue), everything else the
-     cream morning sky. Prevents a cream flash behind the canvas on phones
-     while the first frames paint. */
-  @media (orientation: portrait) {
-    background: #0a1628;
-  }
+  /* Background matches the boot theme (the overcast kingdom sky) so no
+     foreign color flashes behind the canvas before the first paint. */
+  background: #c7cfda;
 
-  /* Mobile: the game owns the viewport — no browser scroll/bounce, and
-     the canvas extends under the notch/home indicator (viewport-fit=cover).
+  /* Mobile: the game owns the viewport — no browser scroll/bounce, and the
+     canvas extends under the notch/home indicator (viewport-fit=cover).
      Safe-area padding is applied by the HUD layout, not here. */
   overscroll-behavior: none;
   touch-action: none;

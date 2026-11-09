@@ -36,11 +36,9 @@ export class BackgroundScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.scale.off(Phaser.Scale.Events.RESIZE, this.applyDprCamera, this)
     })
-  // Phase 2.19: the PORTRAIT composition is space-themed by design — the
-  // dark blue/purple sky reads as a native mobile game and the phone funnel
-  // was tuned against it. Space is set at CONSTRUCTION (no light→space
-  // flash on the first frames). Desktop/landscape keeps the save-driven
-  // opening theme.
+  // The AUTO opening theme is the overcast KINGDOM backdrop ('light' slot)
+  // on every orientation; portrait advances to space at the first ball
+  // discovery (PlaygroundScene.themeMilestone). Pinned themes apply anywhere.
   // NOTE: this.scale.width/height are still the CONFIG stage dims
   // (720×1280 — portrait!) when create() runs; the real viewport arrives
   // via applyDprResize on READY. Use the actual window viewport here.

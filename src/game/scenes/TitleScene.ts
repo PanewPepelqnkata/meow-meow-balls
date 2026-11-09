@@ -1366,7 +1366,7 @@ export class TitleScene extends Phaser.Scene {
 
     const themes: Array<{ key: 'auto' | ThemeName; label: string }> = [
       { key: 'auto', label: 'AUTO' },
-      { key: 'light', label: 'LIGHT' },
+      { key: 'light', label: 'KINGDOM' },
       { key: 'space', label: 'SPACE' },
       { key: 'jungle', label: 'JUNGLE' },
       { key: 'fantasy', label: 'FANTASY' },

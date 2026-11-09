@@ -992,11 +992,9 @@ export class PlaygroundScene extends Phaser.Scene {
   private themeMilestone(tier: number, firstTime: boolean, chainDepth: number): void {
     if (!this.backgroundScene) return
     // Phase 2.14.0: a pinned theme (SETTINGS) freezes the background — the
-    // run-progression milestones only apply on AUTO. Phase 2.19: portrait
-    // phones are pinned to space (their composition theme) — no cycling.
-    if (themeSetting() !== 'auto') return
-    // PORTRAIT AUTO (user spec): start light; the FIRST ball discovery
-    // transitions to space (once — no further portrait cycling).
+    // run-progression milestones only apply on AUTO. Portrait AUTO starts
+    // on the kingdom backdrop; the FIRST ball discovery transitions to
+    // space (once — no further portrait cycling).
     if (window.innerWidth < window.innerHeight) {
       if (firstTime) this.backgroundScene.setTheme('space', THEME_PROGRESS.fadeMs)
       return
