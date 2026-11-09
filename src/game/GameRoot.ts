@@ -30,12 +30,12 @@ export function createGame(parent: HTMLElement): Phaser.Game {
   const bootW = parentRect.width || window.innerWidth
   const bootH = parentRect.height || window.innerHeight
   resolveViewportContainer(bootW, bootH)
-  // The default (auto) opening theme is the overcast KINGDOM backdrop on
-  // every orientation — the clear color matches its sky base so no frame
+  // The default (auto) opening theme is the KINGDOM Throne Vault Hall on
+  // every orientation — the clear color matches its stone masonry base so no frame
   // flashes a foreign color before BackgroundScene paints (it covers every
   // pixel, but first-frame flashes and resize gaps still read against the
   // clear color).
-  const clearColor = '#c7cfda'
+  const clearColor = '#181526'
   // HiDPI RENDERING: the game runs in Scale.NONE — we own the canvas
   // buffer entirely. The buffer is sized to PHYSICAL pixels (CSS × full
   // devicePixelRatio — NO cap: iPhone DPR 3 renders a 1170×2532 buffer)

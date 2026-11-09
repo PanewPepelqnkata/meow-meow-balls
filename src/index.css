@@ -27,9 +27,9 @@ html,
 body,
 #root {
   padding: 0;
-  /* Background matches the boot theme (the overcast kingdom sky) so no
+  /* Background matches the boot theme (the kingdom throne vault hall) so no
      foreign color flashes behind the canvas before the first paint. */
-  background: #c7cfda;
+  background: #181526;
 
   /* Mobile: the game owns the viewport — no browser scroll/bounce, and the
      canvas extends under the notch/home indicator (viewport-fit=cover).

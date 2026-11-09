@@ -50,6 +50,8 @@ export interface ThemeDrawTarget {
   moveTo(x: number, y: number): unknown
   lineTo(x: number, y: number): unknown
   arc(x: number, y: number, radius: number, startAngle: number, endAngle: number, anticlockwise?: boolean): unknown
+  bezierCurveTo(cp1x: number, cp1y: number, cp2x: number, cp2y: number, x: number, y: number): unknown
+  quadraticCurveTo(cpx: number, cpy: number, x: number, y: number): unknown
   closePath(): unknown
   fillPath(): unknown
   strokePath(): unknown
@@ -350,25 +352,6 @@ function leafyMound(
   g.fillRect(x - mw / 2 + step * 0.2, y - mh * 0.35, mw - step * 0.4, mh * 0.35 + 2)
 }
 
-/** Bird silhouette (two shallow quadratic arcs, sampled). */
-function bird(g: ThemeDrawTarget, x: number, y: number, s: number, color: number, alpha: number): void {
-  g.lineStyle(2, color, alpha)
-  g.beginPath()
-  g.moveTo(x - s, y)
-  for (let i = 1; i <= 6; i++) {
-    const t = i / 6
-    const qx = (1 - t) * (1 - t) * (x - s) + 2 * (1 - t) * t * (x - s * 0.45) + t * t * x
-    const qy = (1 - t) * (1 - t) * y + 2 * (1 - t) * t * (y - s * 0.75) + t * t * y
-    g.lineTo(qx, qy)
-  }
-  for (let i = 1; i <= 6; i++) {
-    const t = i / 6
-    const qx = (1 - t) * (1 - t) * x + 2 * (1 - t) * t * (x + s * 0.45) + t * t * (x + s)
-    const qy = (1 - t) * (1 - t) * y + 2 * (1 - t) * t * (y - s * 0.75) + t * t * y
-    g.lineTo(qx, qy)
-  }
-  g.strokePath()
-}
 
 /** Cratered moon/planet disc with shading and craters. */
 function crateredBody(
@@ -431,186 +414,467 @@ function lightShafts(
 const THEMES: Record<ThemeName, ThemeDef> = {
   light: {
     name: 'light',
-    // KINGDOM (overcast): cool grey-blue sky with light breaks — the
-    // default run backdrop. Castle on a green hill centrepiece, rolling
-    // farmland, banner pennant line, drifting low clouds.
-    bgColor: 0xc7cfda,
-    gridColor: 0xb4becb,
-    gridAlpha: 0.5,
-    draw: (g, w, h, rng) => {
-      // Overcast sky: pale silver-grey at the horizon warming to a soft
-      // blue-grey at the top; one broad light break behind the castle.
-      g.fillGradientStyle(0x9fb2c4, 0xa8b8c8, 0xd4dae2, 0xc7cfda, 1)
-      g.fillRect(0, 0, w, h)
+    // KINGDOM THRONE VAULT HALL (Main Screen Reference Style):
+    // Faithful translation of the iconic main screen throne vault hall:
+    // - Atmospheric stone masonry back wall with soft vignette and mortar lines
+    // - High timber hammerbeam ceiling cornice and beam braces
+    // - Perspective checkered marble floor receding to the horizon with warm floor light pools
+    // - Two gothic stained-glass lancet windows with vibrant diamond mosaic jewels & lead lines
+    // - Grand cylindrical stone columns with gilded ring capitals & bases
+    // - Royal velvet banners pinned to columns with gold trim & crown emblems
+    // - Two heavy medieval wrought-iron chandeliers with warm glowing halos and candle flames
+    bgColor: 0x181526,
+    gridColor: 0x393747,
+    gridAlpha: 0.12,
+    draw: (g, w, h) => {
+      const isDesktop = w > h
+      // Floor horizon line matching the reference scene's proportion
+      const horizon = h * (isDesktop ? 0.61 : 0.64)
+      const minDim = Math.min(w, h)
 
-      // Broad soft light break (upper-left): pale disc + wide haze, as if
-      // the sun sits behind the cloud deck.
-      const gx = w * 0.3
-      const gy = h * 0.16
-      g.fillStyle(0xf2f0e4, 0.35)
-      g.fillCircle(gx, gy, Math.min(w, h) * 0.16)
-      g.fillStyle(0xe9ead8, 0.5)
-      g.fillCircle(gx, gy, Math.min(w, h) * 0.075)
+      // 1. BACK WALL: Rich, moody stone masonry with subtle vertical gradient
+      g.fillGradientStyle(0x1b172a, 0x1b172a, 0x382e40, 0x262030, 1)
+      g.fillRect(0, 0, w, horizon)
 
-      // Layered overcast clouds — the same organic bump-silhouette cloud
-      // language as the old morning sky, in cool greys with slightly
-      // darker underbellies.
-      const cloud = (cx: number, cy: number, cw: number, ch: number, alpha: number, top: number, under: number) => {
-        // Under-slab shadow first (dark underbelly).
-        g.fillStyle(under, alpha * 0.85)
-        g.fillRoundedRect(cx - cw / 2, cy - ch * 0.16, cw, ch * 0.5, ch * 0.25)
-        g.fillStyle(top, alpha)
-        const bumps = 6
-        const radii: number[] = []
-        for (let i = 0; i < bumps; i++) {
-          const t = i / (bumps - 1)
-          radii.push(ch * (0.42 + Math.sin(t * Math.PI) * 0.55 + (rng() - 0.5) * 0.12))
+      // Horizontal & vertical stone courses on the back wall
+      const stoneRows = 9
+      const stoneH = horizon / stoneRows
+      const blockW = Math.max(58, w / (isDesktop ? 15 : 8))
+      for (let r = 1; r < stoneRows; r++) {
+        const sy = r * stoneH
+        g.lineStyle(1.4, 0x111625, 0.44)
+        g.lineBetween(0, sy, w, sy)
+        const xOff = (r % 2) * (blockW * 0.5)
+        for (let bx = -blockW + xOff; bx < w + blockW; bx += blockW) {
+          g.lineBetween(bx, sy, bx, sy + stoneH)
         }
-        g.fillRoundedRect(cx - cw / 2, cy - ch * 0.3, cw, ch * 0.5, ch * 0.25)
-        for (let i = 0; i < bumps; i++) {
-          const bx = cx - cw / 2 + (cw / (bumps - 1)) * i
-          g.fillCircle(bx, cy - ch * 0.24, radii[i]!)
+      }
+
+      // 2. TIMBER HAMMERBEAM CORNICE / CEILING BEAM
+      const corniceH = Math.max(20, h * 0.044)
+      g.fillStyle(0x14111d, 1)
+      g.fillRect(0, 0, w, corniceH)
+      g.fillStyle(0x3a2a2d, 1)
+      g.fillRect(0, corniceH - 6, w, 6)
+      g.fillStyle(0x755240, 1)
+      g.fillRect(0, corniceH - 6, w, 2)
+      g.lineStyle(2, 0x111625, 1)
+      g.lineBetween(0, corniceH, w, corniceH)
+
+      // 3. PERSPECTIVE CHECKERED MARBLE FLOOR
+      const floorH = h - horizon
+      const rows = 12
+      const cx = w * 0.5
+      const nearColW = w * (isDesktop ? 0.088 : 0.145)
+      for (let r = 0; r < rows; r++) {
+        const p0 = r / rows
+        const p1 = (r + 1) / rows
+        const depth0 = 0.075 + p0 * p0 * 0.925
+        const depth1 = 0.075 + p1 * p1 * 0.925
+        const y0 = horizon + floorH * p0 * p0
+        const y1 = horizon + floorH * p1 * p1
+
+        const colCount = Math.ceil(w / (nearColW * 0.09)) + 12
+        for (let col = -colCount; col <= colCount; col++) {
+          const x0 = cx + col * nearColW * depth0
+          const x1 = cx + (col + 1) * nearColW * depth0
+          const x2 = cx + (col + 1) * nearColW * depth1
+          const x3 = cx + col * nearColW * depth1
+          if (Math.max(x0, x1, x2, x3) < -10 || Math.min(x0, x1, x2, x3) > w + 10) continue
+
+          const isLight = (r + Math.abs(col)) % 2 === 0
+          const tileCol = isLight ? 0x9b90a3 : 0x2f2c3d
+          g.fillStyle(tileCol, 1)
+          g.beginPath()
+          g.moveTo(x0, y0)
+          g.lineTo(x1, y0)
+          g.lineTo(x2, y1)
+          g.lineTo(x3, y1)
+          g.closePath()
+          g.fillPath()
+
+          // Tile grout stroke
+          g.lineStyle(0.8, 0x111625, 0.45)
+          g.beginPath()
+          g.moveTo(x0, y0)
+          g.lineTo(x1, y0)
+          g.lineTo(x2, y1)
+          g.lineTo(x3, y1)
+          g.closePath()
+          g.strokePath()
         }
-        g.fillCircle(cx - cw * 0.31, cy, ch * 0.3)
-      }
-      cloud(w * 0.18, h * 0.1, w * 0.3, Math.min(w, h) * 0.06, 0.92, 0xe8ebef, 0xa9b3bf)
-      cloud(w * 0.62, h * 0.07, w * 0.22, Math.min(w, h) * 0.045, 0.85, 0xe4e8ee, 0xa4aebc)
-      cloud(w * 0.42, h * 0.2, w * 0.13, Math.min(w, h) * 0.032, 0.72, 0xdfe4eb, 0x9fabb9)
-      cloud(w * 0.85, h * 0.16, w * 0.16, Math.min(w, h) * 0.038, 0.78, 0xe2e6ec, 0xa2adbb)
-
-      // Distant hill bands behind the castle hill (cool, hazy).
-      rollingHill(g, w, h, h * 0.84, h * 0.02, 1.2, 0xb9c6bd)
-      rollingHill(g, w, h, h * 0.885, h * 0.018, 2.6, 0xa7bda9)
-
-      // ---- CASTLE ON A HILL (centrepiece, centre-left) -----------------
-      // The hill: a soft green mound rising from the middle hill band.
-      const hillCx = w * 0.5
-      const hillTop = h * 0.68
-      g.fillStyle(0x8fb98a, 1)
-      g.beginPath()
-      g.moveTo(w * 0.14, h)
-      g.lineTo(w * 0.14, h * 0.93)
-      // Left slope up to the crest.
-      for (let i = 0; i <= 8; i++) {
-        const t = i / 8
-        const x = w * 0.14 + (hillCx - w * 0.14 - w * 0.22) * t
-        const y = h * 0.93 - (h * 0.93 - hillTop) * Math.sin(t * Math.PI * 0.5)
-        g.lineTo(x, y)
-      }
-      // Crest.
-      g.lineTo(hillCx, hillTop)
-      // Right slope down.
-      for (let i = 0; i <= 8; i++) {
-        const t = i / 8
-        const x = hillCx + w * 0.05 + (w * 0.36 - w * 0.05) * t
-        const y = hillTop + (h * 0.95 - hillTop) * Math.sin(t * Math.PI * 0.5)
-        g.lineTo(x, y)
-      }
-      g.lineTo(w * 0.95, h)
-      g.closePath()
-      g.fillPath()
-      // Hill shading: a soft darker band along the right flank.
-      g.fillStyle(0x7aa776, 0.5)
-      g.beginPath()
-      g.moveTo(hillCx, hillTop)
-      g.lineTo(hillCx + w * 0.05, hillTop + 2)
-      g.lineTo(hillCx + w * 0.36, h * 0.95)
-      g.lineTo(w * 0.95, h)
-      g.lineTo(hillCx + w * 0.1, h)
-      g.closePath()
-      g.fillPath()
-
-      // Castle silhouette + stone faces, cresting the hill. Built from a
-      // keep (large centre block), two side towers with conical roofs,
-      // curtain wall and a gate. Friendly cartoon read: warm grey stone,
-      // plum ink outlines, crimson pennants.
-      const stone = 0xd6cfc0
-      const stoneShade = 0xa89f92
-      const ink = 0x4a445d
-      const keepW = Math.min(w, h) * 0.13
-      const keepH = Math.min(w, h) * 0.185
-      const keepX = hillCx - keepW / 2
-      const keepY = hillTop - keepH
-      // Curtain wall first (behind towers).
-      const wallW = keepW * 2.6
-      const wallH = keepH * 0.34
-      g.fillStyle(stoneShade, 1)
-      g.fillRect(keepX - wallW / 2 + keepW / 2, keepY + keepH - wallH, wallW, wallH)
-      // Keep body with a soft plum outline for separation from the sky.
-      g.fillStyle(ink, 1)
-      g.fillRect(keepX - 2, keepY - 2, keepW + 4, keepH + 4)
-      g.fillStyle(stone, 1)
-      g.fillRect(keepX, keepY, keepW, keepH)
-      g.fillStyle(stoneShade, 1)
-      g.fillRect(keepX + keepW * 0.62, keepY, keepW * 0.38, keepH)
-      // Keep crenellations.
-      const merlonW = keepW / 5
-      g.fillStyle(stone, 1)
-      for (let i = 0; i < 5; i++) {
-        if (i % 2 === 0) g.fillRect(keepX + i * merlonW, keepY - merlonW * 0.7, merlonW, merlonW * 0.7)
-      }
-      // Keep windows (two arched slits, warm light).
-      g.fillStyle(0x6e5a3e, 1)
-      g.fillRect(keepX + keepW * 0.2, keepY + keepH * 0.3, keepW * 0.12, keepH * 0.18)
-      g.fillRect(keepX + keepW * 0.68, keepY + keepH * 0.3, keepW * 0.12, keepH * 0.18)
-      g.fillStyle(0xffd98a, 0.85)
-      g.fillRect(keepX + keepW * 0.22, keepY + keepH * 0.33, keepW * 0.08, keepH * 0.12)
-      // Side towers with conical roofs.
-      const tower = (tx: number, tw: number, th: number) => {
-        g.fillStyle(stone, 1)
-        g.fillRect(tx, keepY + keepH - th, tw, th)
-        g.fillStyle(stoneShade, 1)
-        g.fillRect(tx + tw * 0.6, keepY + keepH - th, tw * 0.4, th)
-        // Conical roof.
-        g.fillStyle(0x5d6fae, 1)
-        g.fillTriangle(tx - tw * 0.2, keepY + keepH - th, tx + tw * 1.2, keepY + keepH - th, tx + tw * 0.5, keepY + keepH - th - tw * 1.5)
-        // Tiny window.
-        g.fillStyle(0x6e5a3e, 1)
-        g.fillRect(tx + tw * 0.4, keepY + keepH - th * 0.55, tw * 0.2, th * 0.2)
-      }
-      tower(keepX - keepW * 0.75, keepW * 0.5, keepH * 0.62)
-      tower(keepX + keepW * 1.25, keepW * 0.5, keepH * 0.62)
-      // Gate arch in the curtain wall.
-      g.fillStyle(0x6e5a3e, 1)
-      g.fillRect(hillCx - keepW * 0.14, keepY + keepH - wallH * 0.55, keepW * 0.28, wallH * 0.55)
-      // Pennant flags on the keep + towers (crimson with a tiny cream tip).
-      const pennant = (fx: number, fy: number, fw: number, fh: number) => {
-        g.lineStyle(2, ink, 1)
-        g.lineBetween(fx, fy, fx, fy - fh)
-        g.fillStyle(0xbe2b2b, 1)
-        g.fillTriangle(fx, fy - fh, fx + fw, fy - fh + fh * 0.22, fx, fy - fh + fh * 0.44)
-      }
-      // Flagpoles fly from each roof peak: tower tops sit at
-      // keepY + keepH - keepH*0.62, conical peaks another keepW*0.75 up.
-      const towerTopY = keepY + keepH - keepH * 0.62 - keepW * 0.75
-      pennant(hillCx, keepY - merlonW * 0.7, keepW * 0.5, keepH * 0.28)
-      pennant(keepX - keepW * 0.5, towerTopY, keepW * 0.34, keepH * 0.2)
-      pennant(keepX + keepW * 1.5, towerTopY, keepW * 0.34, keepH * 0.2)
-
-      // Banner line strung across the upper right sky (festive kingdom).
-      const blY = h * 0.3
-      g.lineStyle(2.5, 0x8a8f9c, 1)
-      g.beginPath()
-      for (let i = 0; i <= 10; i++) {
-        const t = i / 10
-        g.lineTo(w * (0.58 + t * 0.36), blY + Math.sin(t * Math.PI * 1.6) * h * 0.012)
-      }
-      g.strokePath()
-      for (let i = 1; i < 10; i += 2) {
-        const t = i / 10
-        const bx = w * (0.58 + t * 0.36)
-        const by = blY + Math.sin(t * Math.PI * 1.6) * h * 0.012
-        g.fillStyle(i % 4 === 1 ? 0xbe2b2b : 0xf0d68a, 1)
-        g.fillTriangle(bx - w * 0.008, by, bx + w * 0.008, by, bx, by + h * 0.022)
       }
 
-      // Foreground meadow band (deepest green) grounding the bottom.
-      rollingHill(g, w, h, h * 0.93, h * 0.015, 0.6, 0x86ad7f)
+      // Floor depth shadow gradient
+      g.fillGradientStyle(0x181526, 0x181526, 0x120f1c, 0x120f1c, 0.44)
+      g.fillRect(0, horizon, w, floorH)
 
-      // Subtle birds between clouds.
-      bird(g, w * 0.31, h * 0.19, 8, 0x7d8ea0, 0.6)
-      bird(g, w * 0.355, h * 0.165, 6, 0x7d8ea0, 0.5)
-      bird(g, w * 0.68, h * 0.26, 7, 0x8798a8, 0.45)
+      // Horizon baseboard / skirting
+      g.fillStyle(0x282234, 1)
+      g.fillRect(0, horizon - 8, w, 8)
+      g.fillStyle(0x695872, 1)
+      g.fillRect(0, horizon - 8, w, 2)
+      g.fillStyle(0x111625, 1)
+      g.fillRect(0, horizon - 1, w, 2)
+
+      // 4. ARCHITECTURAL HORIZONTAL SPACING
+      const colXs = isDesktop
+        ? [w * 0.052, w * 0.33, w * 0.67, w * 0.948]
+        : [w * 0.06, w * 0.94]
+      const winXs = isDesktop
+        ? [w * 0.18, w * 0.82]
+        : [w * 0.22, w * 0.78]
+
+      // 5. GOTHIC STAINED-GLASS WINDOWS (smooth pointed bezier arch & clipped diamond mosaic)
+      const winW = isDesktop ? Math.min(w * 0.105, 128) : Math.min(w * 0.24, 92)
+      const winH = isDesktop ? Math.min(h * 0.44, 330) : Math.min(h * 0.35, 220)
+      const winY = isDesktop ? h * 0.155 : h * 0.175
+
+      // Helper: evaluates the pointed arch half-width at any y >= archTopY
+      const archHalfWidthAtY = (y: number, topY: number, baseY: number, halfW: number): number => {
+        if (y >= baseY) return halfW
+        if (y <= topY) return 0
+        const u = (y - topY) / (baseY - topY) // 0 at apex, 1 at springline
+        // Smooth ogive curve: sin(u * PI/2)^0.72 gives a graceful gothic lancet arch
+        return halfW * Math.pow(Math.sin(u * Math.PI * 0.5), 0.72)
+      }
+
+      const tracePointedArch = (cxArch: number, topY: number, baseY: number, botY: number, halfW: number) => {
+        g.beginPath()
+        g.moveTo(cxArch - halfW, botY)
+        g.lineTo(cxArch - halfW, baseY)
+        const steps = 16
+        for (let i = 1; i <= steps; i++) {
+          const u = 1 - i / steps
+          const ay = topY + u * (baseY - topY)
+          const hw = archHalfWidthAtY(ay, topY, baseY, halfW)
+          g.lineTo(cxArch - hw, ay)
+        }
+        for (let i = 1; i <= steps; i++) {
+          const u = i / steps
+          const ay = topY + u * (baseY - topY)
+          const hw = archHalfWidthAtY(ay, topY, baseY, halfW)
+          g.lineTo(cxArch + hw, ay)
+        }
+        g.lineTo(cxArch + halfW, botY)
+        g.closePath()
+      }
+
+      const drawGothicWindow = (wcx: number) => {
+        const halfW = winW * 0.5
+        const left = wcx - halfW
+        const archTopY = winY
+        const archBaseY = winY + winW * 0.65
+        const bottomY = winY + winH
+
+        // Stone arch frame surround
+        g.fillStyle(0x2b2538, 1)
+        tracePointedArch(wcx, archTopY - 9, archBaseY, bottomY, halfW + 8)
+        g.fillPath()
+        g.lineStyle(2.5, 0x111625, 1)
+        tracePointedArch(wcx, archTopY - 9, archBaseY, bottomY, halfW + 8)
+        g.strokePath()
+
+        // Dark lead backing inside arch
+        g.fillStyle(0x161221, 1)
+        tracePointedArch(wcx, archTopY, archBaseY, bottomY, halfW)
+        g.fillPath()
+
+        // Stained glass mosaic cells clipped cleanly inside the pointed arch
+        const mosaicCols = [0x9e2844, 0x3d4e8c, 0xd4a045, 0x2e6b72, 0x8a326a, 0xc27138]
+        const gridXCount = 4
+        const gridYCount = 8
+        const cellW = winW / gridXCount
+        const cellH = winH / gridYCount
+        for (let gy = 0; gy < gridYCount; gy++) {
+          for (let gx = 0; gx < gridXCount; gx++) {
+            const px0 = left + gx * cellW
+            const px1 = px0 + cellW
+            const py0 = winY + gy * cellH
+            const py1 = py0 + cellH
+            const pyMid = (py0 + py1) * 0.5
+
+            // Check arch bounds at top, mid, and bottom of cell
+            const hwTop = archHalfWidthAtY(py0 + 2, archTopY, archBaseY, halfW - 1.5)
+            const hwMid = archHalfWidthAtY(pyMid, archTopY, archBaseY, halfW - 1.5)
+            const hwBot = archHalfWidthAtY(py1 - 1, archTopY, archBaseY, halfW - 1.5)
+
+            const clipX0Top = Math.max(px0 + 1, wcx - hwTop)
+            const clipX1Top = Math.min(px1 - 1, wcx + hwTop)
+            const clipX0Bot = Math.max(px0 + 1, wcx - hwBot)
+            const clipX1Bot = Math.min(px1 - 1, wcx + hwBot)
+
+            if (clipX1Bot <= clipX0Bot + 1 && clipX1Top <= clipX0Top + 1) continue
+
+            const colIdx = (gx * 3 + gy * 2) % mosaicCols.length
+            g.fillStyle(mosaicCols[colIdx]!, 0.92)
+
+            if (py0 >= archBaseY) {
+              // Full rectangular pane below springline
+              g.fillRect(px0 + 1, py0 + 1, cellW - 2, cellH - 2)
+              g.lineStyle(1.4, 0x111625, 0.85)
+              g.lineBetween(px0, pyMid, px0 + cellW * 0.5, py0)
+              g.lineBetween(px0 + cellW * 0.5, py0, px1, pyMid)
+              g.lineBetween(px0, pyMid, px0 + cellW * 0.5, py1)
+              g.lineBetween(px0 + cellW * 0.5, py1, px1, pyMid)
+            } else {
+              // Polygon pane conforming to the pointed arch curve
+              const xTL = Math.max(px0 + 1, Math.min(px1 - 1, wcx - hwTop))
+              const xTR = Math.max(px0 + 1, Math.min(px1 - 1, wcx + hwTop))
+              const xML = Math.max(px0 + 1, Math.min(px1 - 1, wcx - hwMid))
+              const xMR = Math.max(px0 + 1, Math.min(px1 - 1, wcx + hwMid))
+              const xBL = Math.max(px0 + 1, Math.min(px1 - 1, wcx - hwBot))
+              const xBR = Math.max(px0 + 1, Math.min(px1 - 1, wcx + hwBot))
+              if (xBR - xBL < 2) continue
+              g.beginPath()
+              g.moveTo(xBL, py1 - 1)
+              g.lineTo(xML, pyMid)
+              if (xTR - xTL >= 1) {
+                g.lineTo(xTL, py0 + 1)
+                g.lineTo(xTR, py0 + 1)
+              } else {
+                // Cell reaches apex of arch
+                const apexY = Math.max(archTopY + 1, py0 + 1)
+                g.lineTo(wcx, apexY)
+              }
+              g.lineTo(xMR, pyMid)
+              g.lineTo(xBR, py1 - 1)
+              g.closePath()
+              g.fillPath()
+
+              // Clipped diamond lead lines if cell is mostly inside arch
+              const cxCell = (xBL + xBR) * 0.5
+              g.lineStyle(1.4, 0x111625, 0.85)
+              g.lineBetween(xML, pyMid, cxCell, Math.max(py0, archTopY + 2))
+              g.lineBetween(cxCell, Math.max(py0, archTopY + 2), xMR, pyMid)
+              g.lineBetween(xML, pyMid, cxCell, py1)
+              g.lineBetween(cxCell, py1, xMR, pyMid)
+            }
+          }
+        }
+
+        // Horizontal lead muntin bars
+        g.lineStyle(1.8, 0x111625, 0.9)
+        for (let gy = 1; gy < gridYCount; gy++) {
+          const py = winY + gy * cellH
+          const hw = archHalfWidthAtY(py, archTopY, archBaseY, halfW)
+          if (hw > 2) g.lineBetween(wcx - hw, py, wcx + hw, py)
+        }
+        // Vertical lead muntin bars
+        for (let gx = 1; gx < gridXCount; gx++) {
+          const px = left + gx * cellW
+          const dx = Math.abs(px - wcx)
+          // Find top y on arch for this x
+          let topBarY = archTopY
+          if (dx > 0.5) {
+            const ratio = Math.min(1, dx / halfW)
+            const u = Math.asin(Math.pow(ratio, 1 / 0.72)) / (Math.PI * 0.5)
+            topBarY = archTopY + u * (archBaseY - archTopY)
+          }
+          g.lineBetween(px, topBarY, px, bottomY)
+        }
+
+        // Crisp inner stone surround outline & center mullion
+        g.lineStyle(3, 0x111625, 1)
+        tracePointedArch(wcx, archTopY, archBaseY, bottomY, halfW)
+        g.strokePath()
+        g.lineStyle(3, 0x111625, 1)
+        g.lineBetween(wcx, archTopY, wcx, bottomY)
+
+        // Carved stone window sill
+        g.fillStyle(0x3e354c, 1)
+        g.fillRect(left - 10, bottomY, winW + 20, 8)
+        g.fillStyle(0x786887, 1)
+        g.fillRect(left - 10, bottomY, winW + 20, 2)
+        g.lineStyle(1.8, 0x111625, 1)
+        g.beginPath()
+        g.moveTo(left - 10, bottomY)
+        g.lineTo(left + winW + 10, bottomY)
+        g.lineTo(left + winW + 10, bottomY + 8)
+        g.lineTo(left - 10, bottomY + 8)
+        g.closePath()
+        g.strokePath()
+      }
+
+      winXs.forEach((wx) => drawGothicWindow(wx))
+
+      // 6. GRAND STONE PILLARS WITH GILDED CAPITALS & ROYAL VELVET BANNERS
+      const pillarW = isDesktop ? Math.max(36, w * 0.042) : Math.max(26, w * 0.08)
+      const bannerW = pillarW * 1.06
+      const bannerH = isDesktop ? h * 0.28 : h * 0.22
+      const bannerY = isDesktop ? h * 0.24 : h * 0.27
+
+      const drawPillarAndBanner = (pcx: number) => {
+        const px = pcx - pillarW * 0.5
+        const pTop = corniceH
+        const pBottom = horizon + 12
+        const pH = pBottom - pTop
+
+        // Pillar cylindrical shading
+        g.fillStyle(0x342c3d, 1)
+        g.fillRect(px, pTop, pillarW, pH)
+        g.fillStyle(0x5e526a, 1)
+        g.fillRect(px + pillarW * 0.28, pTop, pillarW * 0.44, pH)
+        g.fillStyle(0x81738e, 0.72)
+        g.fillRect(px + pillarW * 0.44, pTop, pillarW * 0.16, pH)
+        g.lineStyle(2, 0x111625, 1)
+        g.lineBetween(px, pTop, px, pBottom)
+        g.lineBetween(px + pillarW, pTop, px + pillarW, pBottom)
+
+        // Gilded capitals & bases
+        const drawRing = (ry: number, rH: number, extraW = 5) => {
+          g.fillStyle(0xcda34a, 1)
+          g.fillRect(px - extraW, ry, pillarW + extraW * 2, rH)
+          g.fillStyle(0xfde59b, 1)
+          g.fillRect(px - extraW, ry, pillarW + extraW * 2, 2)
+          g.lineStyle(1.6, 0x111625, 1)
+          g.beginPath()
+          g.moveTo(px - extraW, ry)
+          g.lineTo(px + pillarW + extraW, ry)
+          g.lineTo(px + pillarW + extraW, ry + rH)
+          g.lineTo(px - extraW, ry + rH)
+          g.closePath()
+          g.strokePath()
+        }
+        drawRing(pTop, 9, 6)
+        drawRing(pTop + 13, 6, 4)
+        drawRing(pBottom - 20, 7, 4)
+        drawRing(pBottom - 10, 10, 6)
+
+        // Royal velvet hanging banner
+        const bx = pcx - bannerW * 0.5
+        const by = bannerY
+        // Brass crossbar rod & finials
+        g.fillStyle(0xd6ad60, 1)
+        g.fillRect(bx - 5, by - 4, bannerW + 10, 4)
+        g.fillCircle(bx - 5, by - 2, 4)
+        g.fillCircle(bx + bannerW + 5, by - 2, 4)
+
+        // Banner cloth with swallowtail notch at bottom
+        g.fillStyle(0x731a34, 1)
+        g.beginPath()
+        g.moveTo(bx, by)
+        g.lineTo(bx + bannerW, by)
+        g.lineTo(bx + bannerW, by + bannerH)
+        g.lineTo(pcx, by + bannerH - bannerW * 0.35)
+        g.lineTo(bx, by + bannerH)
+        g.closePath()
+        g.fillPath()
+
+        // Gold inner border trim
+        g.lineStyle(2.2, 0xd6ad60, 1)
+        g.beginPath()
+        g.moveTo(bx + 3, by)
+        g.lineTo(bx + bannerW - 3, by)
+        g.lineTo(bx + bannerW - 3, by + bannerH - 4)
+        g.lineTo(pcx, by + bannerH - bannerW * 0.35 - 3)
+        g.lineTo(bx + 3, by + bannerH - 4)
+        g.closePath()
+        g.strokePath()
+
+        // Golden Crown emblem
+        const crownW = bannerW * 0.52
+        const crownH = crownW * 0.55
+        const crownX = pcx - crownW * 0.5
+        const crownY = by + bannerH * 0.38
+        g.fillStyle(0xf3be48, 1)
+        g.beginPath()
+        g.moveTo(crownX, crownY + crownH)
+        g.lineTo(crownX + crownW, crownY + crownH)
+        g.lineTo(crownX + crownW, crownY)
+        g.lineTo(crownX + crownW * 0.72, crownY + crownH * 0.45)
+        g.lineTo(pcx, crownY)
+        g.lineTo(crownX + crownW * 0.28, crownY + crownH * 0.45)
+        g.lineTo(crownX, crownY)
+        g.closePath()
+        g.fillPath()
+        g.lineStyle(1.2, 0x6e4310, 1)
+        g.beginPath()
+        g.moveTo(crownX, crownY + crownH)
+        g.lineTo(crownX + crownW, crownY + crownH)
+        g.lineTo(crownX + crownW, crownY)
+        g.lineTo(crownX + crownW * 0.72, crownY + crownH * 0.45)
+        g.lineTo(pcx, crownY)
+        g.lineTo(crownX + crownW * 0.28, crownY + crownH * 0.45)
+        g.lineTo(crownX, crownY)
+        g.closePath()
+        g.strokePath()
+      }
+
+      colXs.forEach((cxP) => drawPillarAndBanner(cxP))
+
+      // 7. WARM LIGHT POOLS ON CHECKERED FLOOR (directly below chandeliers)
+      const poolY = horizon + floorH * 0.42
+      const poolXs = isDesktop ? [w * 0.25, w * 0.75] : [w * 0.22, w * 0.78]
+      poolXs.forEach((px) => {
+        g.fillStyle(0xffe194, 0.16)
+        g.fillEllipse(px, poolY, minDim * 0.46, minDim * 0.16)
+        g.fillStyle(0xfff4c2, 0.24)
+        g.fillEllipse(px, poolY, minDim * 0.26, minDim * 0.085)
+      })
+
+      // 8. HANGING MEDIEVAL WROUGHT-IRON CHANDELIERS WITH CANDLES
+      const chanXs = isDesktop ? [w * 0.25, w * 0.75] : [w * 0.22, w * 0.78]
+      const chanY = isDesktop ? h * 0.145 : h * 0.135
+      const chanW = isDesktop ? Math.min(w * 0.15, 172) : Math.min(w * 0.28, 105)
+      const chanR = chanW * 0.5
+
+      const drawChandelier = (chX: number) => {
+        // Support chain from ceiling
+        g.lineStyle(2.8, 0x111625, 1)
+        g.lineBetween(chX, 0, chX, chanY)
+
+        // Candlelight halo behind chandelier (matching reference warm circular glow)
+        g.fillStyle(0xffc850, 0.2)
+        g.fillCircle(chX, chanY - 4, chanR * 1.32)
+        g.fillStyle(0xffe58a, 0.34)
+        g.fillCircle(chX, chanY - 4, chanR * 0.76)
+
+        // Diagonal stays from central chain to iron ring
+        g.lineStyle(2.2, 0x111625, 1)
+        g.lineBetween(chX, chanY - 18, chX - chanR * 0.85, chanY)
+        g.lineBetween(chX, chanY - 18, chX + chanR * 0.85, chanY)
+
+        // Iron ring ellipse
+        g.lineStyle(7, 0x111625, 1)
+        g.strokeEllipse(chX, chanY, chanW, chanW * 0.32)
+        g.lineStyle(3, 0x2e273a, 1)
+        g.strokeEllipse(chX, chanY - 1, chanW - 3, chanW * 0.3)
+
+        // 5 Candles around the iron wheel
+        const candleOffsets = [-0.85, -0.48, 0, 0.48, 0.85]
+        candleOffsets.forEach((t) => {
+          const candX = chX + t * chanR
+          const candY = chanY + Math.sqrt(Math.max(0, 1 - t * t)) * (chanW * 0.16) * (Math.abs(t) < 0.1 ? 1 : -0.2)
+          const candW = Math.max(4.5, chanW * 0.056)
+          const candH = Math.max(13, chanW * 0.185)
+
+          // Candle wax body
+          g.fillStyle(0xede8d8, 1)
+          g.fillRect(candX - candW * 0.5, candY - candH, candW, candH)
+          g.lineStyle(1.2, 0x111625, 1)
+          g.beginPath()
+          g.moveTo(candX - candW * 0.5, candY - candH)
+          g.lineTo(candX + candW * 0.5, candY - candH)
+          g.lineTo(candX + candW * 0.5, candY)
+          g.lineTo(candX - candW * 0.5, candY)
+          g.closePath()
+          g.strokePath()
+          // Wick
+          g.lineStyle(1.4, 0x111625, 1)
+          g.lineBetween(candX, candY - candH, candX, candY - candH - 3)
+
+          // Glowing teardrop flame
+          const flameY = candY - candH - 4
+          const flameH = candH * 0.8
+          g.fillStyle(0xff9e24, 0.95)
+          g.fillTriangle(candX - candW * 0.65, flameY, candX + candW * 0.65, flameY, candX, flameY - flameH)
+          g.fillStyle(0xfff8d4, 1)
+          g.fillTriangle(candX - candW * 0.35, flameY, candX + candW * 0.35, flameY, candX, flameY - flameH * 0.65)
+        })
+      }
+
+      chanXs.forEach((cxC) => drawChandelier(cxC))
     },
   },
 
@@ -1076,6 +1340,14 @@ class G2D {
 
   lineTo(x: number, y: number): void {
     this.ctx.lineTo(x, y)
+  }
+
+  bezierCurveTo(cp1x: number, cp1y: number, cp2x: number, cp2y: number, x: number, y: number): void {
+    this.ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y)
+  }
+
+  quadraticCurveTo(cpx: number, cpy: number, x: number, y: number): void {
+    this.ctx.quadraticCurveTo(cpx, cpy, x, y)
   }
 
   arc(x: number, y: number, radius: number, startAngle: number, endAngle: number, anticlockwise?: boolean): void {
