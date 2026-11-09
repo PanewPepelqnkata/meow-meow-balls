@@ -202,8 +202,14 @@ export class ContainerView {
         ctx.fill(body)
         ctx.save()
         ctx.clip(body)
+        // Phase-align the tile with the fixed frame's courses so brick rows
+        // continue across the sliding joint (pattern origin is stage 0,0;
+        // the sleeve's local 0 sits at CONTAINER.topY).
+        const phase = (CONTAINER.topY) % 30
+        ctx.translate(0, -phase)
         ctx.fillStyle = this.stonePattern
-        ctx.fillRect(-Math.abs(minX) - width, -4, w + width * 2, length + 8)
+        ctx.fillRect(-Math.abs(minX) - width, -4, w + width * 2, length + 8 + phase)
+        ctx.translate(0, phase)
         // Upper-left light: lift the top of the sliding section slightly.
         const lift = ctx.createLinearGradient(0, 0, 0, Math.min(length, 90))
         lift.addColorStop(0, 'rgba(214, 209, 232, 0.14)')
@@ -298,23 +304,38 @@ export class ContainerView {
       ctx.stroke(uPath(inner, dist, R - T / 2 + dist, trim))
     }
     if (this.skin === 'royal_keep') {
-      // Refined castle bastion. One light source (upper-left): soft light on
-      // the outer shoulder, controlled shade toward the inner face, and a
-      // warm gold edging band hugging the playable interior line.
+      // Refined castle bastion, bottom-edge finish: ONE soft drop shadow
+      // under the silhouette (light from upper-left), ONE dark-plum
+      // outline, ONE subtle bevel on the lit shoulder, the shared stone
+      // body, and a clean two-layer gold trim hugging the interior line.
+      // No stacked heel lines — each edge band appears exactly once.
       const bevel = ctx.createLinearGradient(0, CONTAINER.topY - T, 0, inner[3]!.y + T)
-      bevel.addColorStop(0, 'rgba(214, 209, 232, 0.16)')
+      bevel.addColorStop(0, 'rgba(214, 209, 232, 0.15)')
       bevel.addColorStop(0.35, 'rgba(214, 209, 232, 0)')
       bevel.addColorStop(0.8, 'rgba(18, 14, 32, 0.10)')
-      bevel.addColorStop(1, 'rgba(18, 14, 32, 0.22)')
-      strokeU(T / 2, T + 10, '#111625')
+      bevel.addColorStop(1, 'rgba(18, 14, 32, 0.20)')
+      // Soft directional shadow cast beneath the masonry (upper-left
+      // light). The source stroke is fully covered by the outline and body
+      // painted above, so only the offset blur reads — a single restrained
+      // cast shadow, clearly separated from the contour.
+      ctx.save()
+      ctx.shadowColor = 'rgba(17, 22, 37, 0.30)'
+      ctx.shadowBlur = 14
+      ctx.shadowOffsetX = 5
+      ctx.shadowOffsetY = 10
+      strokeU(T / 2, T + 8, '#111625')
+      ctx.restore()
+      // Single continuous dark-plum outline.
+      strokeU(T / 2, T + 8, '#111625')
+      // Stone body under a vertical light/shade pass.
       strokeU(T / 2, T, '#524b69')
       strokeU(T / 2, T - 5, this.stonePattern)
       strokeU(T / 2, T - 5, bevel)
-      // Gold edging: warm base, lit top edge, shaded heel.
-      strokeU(T * 0.085, T * 0.17, '#8a5f14')
+      // Restrained warm highlight on the outer shoulder (upper-left light).
+      strokeU(T * 0.94, T * 0.09, 'rgba(230, 226, 244, 0.30)')
+      // Clean gold trim: warm base + lit inner line. Exactly two strokes.
       strokeU(T * 0.085, T * 0.15, '#d8a018')
-      strokeU(T * 0.10, T * 0.05, '#f2cd6e')
-      strokeU(T * 0.90, T * 0.06, '#6e4c10')
+      strokeU(T * 0.105, T * 0.05, '#f2cd6e')
       this.paintGloss(ctx, inner)
       ctx.restore()
       return
@@ -482,9 +503,11 @@ export class ContainerView {
   }
 
 
-  /** Ashlar masonry tile: modest stone courses with soft bevels and quiet
-  * per-block variation, shared by the fixed frame U and both sleeves so
-  * the whole bastion reads as one continuous wall. */
+  /** Ashlar masonry tile shared by the fixed frame U and both sleeves so
+  * the bastion reads as one continuous wall. Each stone is shaded
+  * individually: a lighter top-lit face, a darker lower edge, gentle
+  * perimeter bevels, deterministic tone jitter between neighbours, and
+  * dark-plum mortar separation — a solid wall, not a clipped texture. */
   private createStonePattern(): CanvasPattern {
     const canvas = document.createElement('canvas')
     const course = 30
@@ -493,41 +516,54 @@ export class ContainerView {
     canvas.height = course * 2 * this.textureScale
     const ctx = canvas.getContext('2d')!
     ctx.scale(this.textureScale, this.textureScale)
-    ctx.fillStyle = '#4e4864'
+    // Mortar bed: dark plum so every stone separation reads as shadow.
+    ctx.fillStyle = '#3b3550'
     ctx.fillRect(0, 0, block * 2, course * 2)
-    const faces: Array<readonly [string, string]> = [
-      ['#8f89a3', '#736d88'],
-      ['#8a84a0', '#6f6984'],
-      ['#938da7', '#77708c'],
-      ['#87819c', '#6b6580'],
-    ]
+    // Deterministic per-cell tone jitter (stable across bakes/reloads).
+    const jitter = (seed: number): number => {
+      const s = Math.sin(seed * 127.1 + 311.7) * 43758.5453
+      return s - Math.floor(s)
+    }
+    const base = { r: 140, g: 134, b: 162 }
     for (let row = 0; row < 2; row++) {
       const offset = row % 2 === 0 ? 0 : block / 2
       for (let col = -1; col < 3; col++) {
-        const x = col * block + offset + 2.5
-        const y = row * course + 2.5
-        const w = block - 5
-        const h = course - 5
-        const [hi, lo] = faces[(row * 3 + col + 4) % 4]!
+        const x = col * block + offset + 2
+        const y = row * course + 2
+        const w = block - 4
+        const h = course - 4
+        // Per-brick tone: ±10 units of natural variation.
+        const t = jitter(row * 37.13 + col * 91.7 + 5.3) * 22 - 11
+        const rr = Math.round(base.r + t)
+        const gg = Math.round(base.g + t)
+        const bb = Math.round(base.b + t)
+        // Top-lit face: lighter near the top, settling darker at the base.
         const face = ctx.createLinearGradient(x, y, x, y + h)
-        face.addColorStop(0, hi)
-        face.addColorStop(1, lo)
+        face.addColorStop(0, `rgb(${Math.min(255, rr + 22)}, ${Math.min(255, gg + 20)}, ${Math.min(255, bb + 24)})`)
+        face.addColorStop(0.55, `rgb(${rr}, ${gg}, ${bb})`)
+        face.addColorStop(1, `rgb(${Math.max(0, rr - 26)}, ${Math.max(0, gg - 26)}, ${Math.max(0, bb - 24)})`)
         ctx.fillStyle = face
         ctx.fillRect(x, y, w, h)
-        // Bevel: light catches the top edge, shadow settles under it.
-        ctx.strokeStyle = 'rgba(226, 222, 240, 0.20)'
-        ctx.lineWidth = 1.2
+        // Gentle bevel: light catches top+left, shadow settles bottom+right.
+        ctx.lineWidth = 1.1
+        ctx.strokeStyle = 'rgba(228, 224, 244, 0.20)'
         ctx.beginPath()
-        ctx.moveTo(x + 1, y + h - 1)
-        ctx.lineTo(x + 1, y + 1)
-        ctx.lineTo(x + w - 1, y + 1)
+        ctx.moveTo(x + 0.6, y + h - 0.6)
+        ctx.lineTo(x + 0.6, y + 0.6)
+        ctx.lineTo(x + w - 0.6, y + 0.6)
         ctx.stroke()
-        ctx.strokeStyle = 'rgba(26, 22, 40, 0.30)'
+        ctx.strokeStyle = 'rgba(24, 20, 38, 0.26)'
         ctx.beginPath()
-        ctx.moveTo(x + 1, y + h - 1)
-        ctx.lineTo(x + w - 1, y + h - 1)
-        ctx.lineTo(x + w - 1, y + 1)
+        ctx.moveTo(x + 0.6, y + h - 0.6)
+        ctx.lineTo(x + w - 0.6, y + h - 0.6)
+        ctx.lineTo(x + w - 0.6, y + 0.6)
         ctx.stroke()
+        // One soft controlled highlight patch (upper-left light).
+        const sheen = ctx.createLinearGradient(x, y, x + w * 0.5, y + h * 0.5)
+        sheen.addColorStop(0, 'rgba(255, 252, 255, 0.10)')
+        sheen.addColorStop(1, 'rgba(255, 252, 255, 0)')
+        ctx.fillStyle = sheen
+        ctx.fillRect(x, y, w, h)
       }
     }
     const pattern = ctx.createPattern(canvas, 'repeat')!

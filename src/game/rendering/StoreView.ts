@@ -1338,29 +1338,51 @@ export class StoreView {
       return
     }
     if (id === 'og_container') {
-      // The classic glossy blue U-container with hazard stripes.
-      const uw = r * 1.15
-      const uh = r * 1.15
-      const ux = x - uw / 2
-      const uy = y - uh * 0.58
-      g.fillStyle(0x087cf7)
-      g.fillRoundedRect(ux, uy, uw, uh, r * 0.24)
-      g.lineStyle(line, INK).strokeRoundedRect(ux, uy, uw, uh, r * 0.24)
-      g.lineStyle(Math.max(1.5, r * 0.09), 0x28d9ff)
-      g.lineBetween(ux + 3, uy + 3, ux + 3, uy + uh - 3)
-      g.lineBetween(ux + uw - 3, uy + 3, ux + uw - 3, uy + uh - 3)
-      // Hazard chevrons on the floor band.
-      g.lineStyle(Math.max(1.2, r * 0.08), 0xfff0c5)
-      g.lineBetween(ux + 5, uy + uh * 0.62, ux + uw * 0.4, uy + uh - 3)
-      g.lineBetween(ux + uw * 0.5, uy + uh * 0.62, ux + uw - 5, uy + uh - 3)
-      g.lineBetween(ux + 5, uy + uh * 0.62, ux + uw * 0.5, uy + uh * 0.62)
-      g.lineBetween(ux + uw * 0.4, uy + uh - 3, ux + uw - 5, uy + uh - 3)
-      // Extend-walls sleeve peeking above the rim.
-      g.fillStyle(0x36c9ff)
-      g.fillRoundedRect(x - r * 0.36, uy - r * 0.34, r * 0.24, r * 0.5, 2)
-      g.lineStyle(Math.max(1.2, r * 0.07), INK).strokeRoundedRect(x - r * 0.36, uy - r * 0.34, r * 0.24, r * 0.5, 2)
-      g.fillRoundedRect(x + r * 0.12, uy - r * 0.34, r * 0.24, r * 0.5, 2)
-      g.strokeRoundedRect(x + r * 0.12, uy - r * 0.34, r * 0.24, r * 0.5, 2)
+      // The classic glossy blue U-container: an open-top vessel with thick
+      // ink-outlined walls. lineStyle is set BEFORE building each path —
+      // Phaser Graphics binds the style to the path ops that follow it
+      // (same call order as the horseshoe magnet icon).
+      const R = r * 0.52
+      const wallW = r * 0.34
+      const top = y - r * 0.72
+      const botC = y + r * 0.3
+      const lx = x - R
+      const rx = x + R
+      // Soft ground shadow.
+      g.fillStyle(INK, 0.14).fillEllipse(x, botC + R + wallW * 0.3, R * 1.7, r * 0.2)
+      const strokeU = (width: number, color: number): void => {
+        g.lineStyle(width, color)
+        g.beginPath()
+        g.moveTo(lx, top)
+        g.lineTo(lx, botC)
+        g.arc(x, botC, R, Math.PI, 0, true)
+        g.lineTo(rx, top)
+        g.strokePath()
+      }
+      strokeU(wallW, 0x118cfb)
+      strokeU(wallW + line * 3, INK)
+      strokeU(wallW, 0x118cfb)
+      // Finished rim caps on the open top ends: small ink-outlined tabs
+      // reading as thick wall cross-sections (like the magnet's pole caps).
+      for (const cx of [lx, rx]) {
+        g.fillStyle(0x118cfb).fillRoundedRect(cx - wallW * 0.72, top - wallW * 0.5, wallW * 1.44, wallW * 0.6, wallW * 0.2)
+        g.lineStyle(Math.max(1.4, line * 0.9), INK).strokeRoundedRect(cx - wallW * 0.72, top - wallW * 0.5, wallW * 1.44, wallW * 0.6, wallW * 0.2)
+        g.fillStyle(0xa8e4ff, 0.85).fillRoundedRect(cx - wallW * 0.55, top - wallW * 0.42, wallW * 1.1, wallW * 0.16, wallW * 0.08)
+      }
+      // One glossy inner-light line per side (simplified from two bands).
+      const Ri = R - wallW * 0.46
+      g.lineStyle(Math.max(1.5, wallW * 0.22), 0x6fd6ff)
+      g.beginPath()
+      g.moveTo(x - Ri, top + wallW * 0.1)
+      g.lineTo(x - Ri, botC + wallW * 0.1)
+      g.moveTo(x + Ri, top + wallW * 0.1)
+      g.lineTo(x + Ri, botC + wallW * 0.1)
+      g.strokePath()
+      // Cream hazard dash along the outer floor band.
+      g.lineStyle(Math.max(2.2, wallW * 0.42), 0xffe9a0)
+      g.beginPath()
+      g.arc(x, botC, R, Math.PI * 0.7, Math.PI * 0.3, true)
+      g.strokePath()
       return
     }
     if (id === 'coinMagnet') {
