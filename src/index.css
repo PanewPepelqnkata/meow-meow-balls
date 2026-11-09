@@ -29,7 +29,7 @@ body,
   padding: 0;
   /* Background matches the boot theme (dark abandoned royal hall) so no
      foreign color flashes behind the canvas before the first paint. */
-  background: #0f0d17;
+  background: #12101c;
 
   /* Mobile: the game owns the viewport — no browser scroll/bounce, and the
      canvas extends under the notch/home indicator (viewport-fit=cover).

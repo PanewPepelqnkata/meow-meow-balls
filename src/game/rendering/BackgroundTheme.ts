@@ -500,17 +500,23 @@ const THEMES: Record<ThemeName, ThemeDef> = {
     // abandoned hall: weathered stone walls, faded dusty jewel glass, deep
     // floor shadows, subtle cobwebs, torn faded banners, and an overall
     // dark vignette overlay so play elements (container, balls, HUD) pop cleanly.
-    bgColor: 0x0f0d17,
-    gridColor: 0x221e2e,
-    gridAlpha: 0.08,
+    bgColor: 0x12101c,
+    gridColor: 0x272235,
+    gridAlpha: 0.09,
     draw: (g, w, h) => {
       const isDesktop = w > h
       const horizon = h * (isDesktop ? 0.61 : 0.64)
       const minDim = Math.min(w, h)
 
-      // 1. BACK WALL: Very dark, moody stone masonry with subtle vertical gradient
-      g.fillGradientStyle(0x110f1c, 0x110f1c, 0x1e1927, 0x16121e, 1)
+      // 1. BACK WALL: Dark stone masonry with a subtle ambient moonlit gradient
+      g.fillGradientStyle(0x151222, 0x151222, 0x241d30, 0x1a1626, 1)
       g.fillRect(0, 0, w, horizon)
+
+      // Soft ambient light bloom in the chamber (faint cool moonlit glow)
+      g.fillStyle(0x384166, 0.12)
+      g.fillEllipse(w * 0.5, horizon * 0.38, w * 0.75, horizon * 0.55)
+      g.fillStyle(0x483a5e, 0.14)
+      g.fillEllipse(w * 0.5, horizon * 0.52, w * 0.6, horizon * 0.45)
 
       // Faint stone block courses (low contrast)
       const stoneRows = 9
@@ -770,6 +776,25 @@ const THEMES: Record<ThemeName, ThemeDef> = {
         // Cobwebs hanging in upper corners of the window arch
         drawCobweb(g, left - 6, archBaseY - winW * 0.35, winW * 0.3, true)
         drawCobweb(g, left + winW + 6, archBaseY - winW * 0.35, winW * 0.3, false)
+
+        // Very gentle ambient moonbeam / dust light shaft casting into the room
+        const beamAngle = wcx < w * 0.5 ? 0.28 : -0.28
+        const beamLen = h * 0.72
+        const beamSpread = winW * 1.8
+        g.fillStyle(0x768eb8, 0.055)
+        g.beginPath()
+        g.moveTo(wcx - halfW * 0.6, bottomY - 10)
+        g.lineTo(wcx + halfW * 0.6, bottomY - 10)
+        g.lineTo(wcx + Math.sin(beamAngle) * beamLen + beamSpread * 0.5, bottomY + Math.cos(beamAngle) * beamLen)
+        g.lineTo(wcx + Math.sin(beamAngle) * beamLen - beamSpread * 0.5, bottomY + Math.cos(beamAngle) * beamLen)
+        g.closePath()
+        g.fillPath()
+
+        // Faint ambient light pool on floor below window
+        const poolX = wcx + Math.sin(beamAngle) * (horizon + floorH * 0.45 - bottomY)
+        const poolY = horizon + floorH * 0.45
+        g.fillStyle(0x4a5b7d, 0.065)
+        g.fillEllipse(poolX, poolY, winW * 1.6, winW * 0.55)
       }
 
       winXs.forEach((wx) => drawGothicWindow(wx))
@@ -882,18 +907,17 @@ const THEMES: Record<ThemeName, ThemeDef> = {
       drawCornerCobweb(g, 0, corniceH, minDim * 0.22, true)
       drawCornerCobweb(g, w, corniceH, minDim * 0.22, false)
 
-      // 8. DARK ATMOSPHERIC VIGNETTE & MOODY OVERLAY
-      // Heavy edge shadowing and dark center veil so foreground balls and container stand out
-      g.fillGradientStyle(0x06050a, 0x06050a, 0x06050a, 0x06050a, 0.58)
+      // 8. SUBTLE AMBIENT VIGNETTE OVERLAY
+      // Balanced edge shading that preserves faint ambient lighting in the room
+      g.fillGradientStyle(0x06050a, 0x06050a, 0x06050a, 0x06050a, 0.38)
       g.fillRect(0, 0, w, h)
 
-      // Center soft radial vignette (dark corners and edges, subtle focus in center)
-      // Dark edge vignette bands (focus in center)
-      g.fillStyle(0x050408, 0.35)
-      g.fillRect(0, 0, w * 0.12, h)
-      g.fillRect(w * 0.88, 0, w * 0.12, h)
-      g.fillRect(0, 0, w, h * 0.12)
-      g.fillRect(0, h * 0.86, w, h * 0.14)
+      // Dark edge vignette bands (focus in center without crushing all ambient light)
+      g.fillStyle(0x050408, 0.22)
+      g.fillRect(0, 0, w * 0.08, h)
+      g.fillRect(w * 0.92, 0, w * 0.08, h)
+      g.fillRect(0, 0, w, h * 0.07)
+      g.fillRect(0, h * 0.91, w, h * 0.09)
     },
   },
 
