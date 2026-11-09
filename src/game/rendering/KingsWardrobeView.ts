@@ -1,6 +1,11 @@
 import Phaser from 'phaser'
 import { getTier } from '../../config/ballTiers'
 import {
+  CONTAINER_SKIN_CATALOG,
+  CONTAINER_SKIN_IDS,
+  type ContainerSkinId,
+} from '../../config/containerSkins'
+import {
   WARDROBE_CHARACTERS,
   buildFallbackOverviewFromSave,
   formatPlaytime,
@@ -1131,7 +1136,125 @@ export class KingsWardrobeView {
         this.contentLayer.add([gLabel, gVal])
         this.drawProgressBar(g, crestX + 12, nextGoalY + goalH - 14, crestW - 24, 7, ratio, BTN_EMERALD)
       }
+      // CONTAINER SKINS showcase: preview + equip owned skins. Purchases
+      // happen in the Store; this section equips what the account owns.
+      const skinsBaseY = nextGoalAvailH >= 48 ? nextGoalY + Math.min(64, nextGoalAvailH) + 10 : statsY + pillBoxH + 10
+      const skinsAvailH = rightY + rightH - 12 - skinsBaseY
+      if (skinsAvailH >= 64) {
+        const skinsH = Math.min(86, skinsAvailH)
+        g.fillStyle(PARCHMENT_CARD, 1)
+        g.fillRoundedRect(crestX, skinsBaseY, crestW, skinsH, 9)
+        g.lineStyle(1.4, PARCHMENT_EDGE, 1)
+        g.strokeRoundedRect(crestX, skinsBaseY, crestW, skinsH, 9)
+        const skinLbl = bodyText(this.scene, crestX + 12, skinsBaseY + 15, 'CONTAINER SKINS', {
+          color: '#6e5236',
+          size: 10,
+          origin: [0, 0.5],
+        })
+        this.contentLayer.add(skinLbl)
+        const ownedSkins = this.overview.profile.owned_container_skins ?? ['royal_keep']
+        const equippedSkin = this.overview.profile.equipped_container_skin ?? 'royal_keep'
+        const skinSlotW = Math.min(120, Math.floor((crestW - 16 - 10 * (CONTAINER_SKIN_IDS.length - 1)) / CONTAINER_SKIN_IDS.length))
+        const skinTotalW = skinSlotW * CONTAINER_SKIN_IDS.length + 10 * (CONTAINER_SKIN_IDS.length - 1)
+        const skinStartX = crestX + (crestW - skinTotalW) / 2
+        const skinSlotY = skinsBaseY + 26
+        const skinSlotH = skinsH - 34
+        for (const [idx, skinId] of CONTAINER_SKIN_IDS.entries()) {
+          const def = CONTAINER_SKIN_CATALOG[skinId]
+          const sx = skinStartX + idx * (skinSlotW + 10)
+          const isOwned = ownedSkins.includes(skinId)
+          const isEquipped = equippedSkin === skinId
+          const cx = sx + skinSlotW / 2
+          const cy = skinSlotY + skinSlotH * 0.5
+          g.fillStyle(isEquipped ? 0xfdf3d3 : PARCHMENT_CARD, 1)
+          g.fillRoundedRect(sx, skinSlotY, skinSlotW, skinSlotH, 8)
+          g.lineStyle(isEquipped ? 2.4 : 1.4, isEquipped ? ROYAL_GOLD_DARK : PARCHMENT_EDGE, 1)
+          g.strokeRoundedRect(sx, skinSlotY, skinSlotW, skinSlotH, 8)
+          this.drawContainerSkinPreview(g, skinId, cx, cy - 6, Math.min(skinSlotW * 0.42, skinSlotH * 0.36))
+          const skinTag = bodyText(this.scene, cx, skinSlotY + skinSlotH - 10, def.name.toUpperCase(), {
+            color: INK_HEX,
+            size: 10,
+          })
+          skinTag.setScale(Math.min(1, (skinSlotW - 6) / Math.max(1, skinTag.width)))
+          this.contentLayer.add(skinTag)
+          if (!isOwned) {
+            const lockTxt = bodyText(this.scene, cx, skinSlotY + 10, 'STORE', {
+              color: '#8a6d3b',
+              size: 9,
+              origin: [0.5, 0],
+            })
+            this.contentLayer.add(lockTxt)
+          } else if (isEquipped) {
+            const eqTxt = bodyText(this.scene, cx, skinSlotY + 10, 'EQUIPPED', {
+              color: '#1f6e2c',
+              size: 9,
+              origin: [0.5, 0],
+            })
+            this.contentLayer.add(eqTxt)
+          }
+          if (isOwned && !isEquipped) {
+            const hit = this.scene.add.zone(sx + skinSlotW / 2, skinSlotY + skinSlotH / 2, skinSlotW, skinSlotH)
+              .setInteractive({ useHandCursor: true })
+            hit.on('pointerup', () => {
+              void this.equipContainerSkinAndRefresh(skinId)
+            })
+            this.contentLayer.add(hit)
+          }
+        }
+      }
     }
+  }
+
+  /** Small U-container thumbnail for the CONTAINER SKINS showcase. */
+  private drawContainerSkinPreview(g: Phaser.GameObjects.Graphics, skinId: ContainerSkinId, cx: number, cy: number, r: number): void {
+    const w = r * 1.5
+    const x = cx - w / 2
+    const y = cy - r * 0.55
+    const h = r * 1.3
+    if (skinId === 'royal_keep') {
+      g.fillStyle(0x4a445d, 1)
+      g.fillRoundedRect(x, y, w, h, r * 0.28)
+      g.lineStyle(2, INK, 1)
+      g.strokeRoundedRect(x, y, w, h, r * 0.28)
+      g.lineStyle(Math.max(1.5, r * 0.12), 0x9892aa, 1)
+      g.lineBetween(x + 2, y + h * 0.38, x + w - 2, y + h * 0.38)
+      g.lineBetween(x + 2, y + h * 0.68, x + w - 2, y + h * 0.68)
+      g.lineBetween(x + w * 0.5, y + h * 0.38, x + w * 0.5, y + h * 0.68)
+      g.lineStyle(Math.max(1.5, r * 0.16), 0xf6c744, 1)
+      g.strokeRoundedRect(x + 2.5, y + 2.5, w - 5, h - 5, r * 0.22)
+    } else {
+      g.fillStyle(0x087cf7, 1)
+      g.fillRoundedRect(x, y, w, h, r * 0.28)
+      g.lineStyle(2, INK, 1)
+      g.strokeRoundedRect(x, y, w, h, r * 0.28)
+      g.lineStyle(Math.max(1.5, r * 0.14), 0x28d9ff, 1)
+      g.lineBetween(x + 3, y + 3, x + 3, y + h - 3)
+      g.lineBetween(x + w - 3, y + 3, x + w - 3, y + h - 3)
+      g.lineStyle(Math.max(1.2, r * 0.1), 0xfff0c5, 1)
+      g.lineBetween(x + 5, y + h * 0.45, x + w * 0.42, y + h - 3)
+      g.lineBetween(x + w * 0.5, y + h * 0.45, x + w - 5, y + h - 3)
+      g.lineBetween(x + 5, y + h * 0.45, x + w * 0.5, y + h * 0.45)
+      g.lineBetween(x + w * 0.42, y + h - 3, x + w - 5, y + h - 3)
+    }
+  }
+
+  /** Equip an owned container skin then re-render the wardrobe tab. */
+  private async equipContainerSkinAndRefresh(skinId: ContainerSkinId): Promise<void> {
+    this.showToast('Equipping container skin...')
+    const { error } = await authService.equipContainerSkin(skinId)
+    if (error) {
+      this.showToast(error.message, 'error')
+      return
+    }
+    this.overview = {
+      ...this.overview,
+      profile: {
+        ...this.overview.profile,
+        equipped_container_skin: skinId,
+      },
+    }
+    this.showToast(`${CONTAINER_SKIN_CATALOG[skinId].name} equipped!`, 'success')
+    this.renderActiveTab()
   }
 
   // ===========================================================================

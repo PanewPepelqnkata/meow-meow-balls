@@ -25,6 +25,12 @@
 
 import { collectibleDiscoveryKey, collectionDiscovery } from '../../config/collectibleCollection'
 import { freshUpgradeLevels, normalizeUpgradeLevels, type UpgradeLevels } from '../../config/abilityUpgrades'
+import {
+  DEFAULT_CONTAINER_SKIN_ID,
+  normalizeEquippedContainerSkin,
+  normalizeOwnedContainerSkins,
+  type ContainerSkinId,
+} from '../../config/containerSkins'
 import { gameBus } from '../events/gameBus'
 import { isDrunkoTestRoute } from './runVariant'
 
@@ -51,6 +57,10 @@ export interface SaveDataV1 {
   coinRevision: number
   /** Account-owned ability levels; hydrated authoritatively from user_progress. */
   upgrades: UpgradeLevels
+  /** Account-owned container skins; hydrated authoritatively from user_progress/profiles. */
+  ownedContainerSkins?: ContainerSkinId[]
+  /** Currently equipped container skin; defaults to 'royal_keep'. */
+  equippedContainerSkin?: ContainerSkinId
   leaderboard: LeaderboardEntry[]
   /** tier → first-discovered-at (ms epoch). */
   discovered: Record<string, number>
@@ -69,6 +79,8 @@ export function freshSave(): SaveDataV1 {
     coins: 0,
     coinRevision: 0,
     upgrades: freshUpgradeLevels(),
+    ownedContainerSkins: [DEFAULT_CONTAINER_SKIN_ID],
+    equippedContainerSkin: DEFAULT_CONTAINER_SKIN_ID,
     leaderboard: [],
     // Tiers 1–3 are known from the first run — pre-seeded as discovered.
     // Tier 4+ unlock PROGRESSIVELY (each fires its discovery: the card
@@ -163,12 +175,17 @@ export function normalizeSave(raw: Partial<SaveDataV1> | null | undefined): Save
   const rawTheme = raw.settings?.theme
   const theme: ThemeSetting = rawTheme && VALID_THEMES.has(rawTheme) ? rawTheme : 'auto'
 
+  const ownedContainerSkins = normalizeOwnedContainerSkins(raw.ownedContainerSkins)
+  const equippedContainerSkin = normalizeEquippedContainerSkin(raw.equippedContainerSkin, ownedContainerSkins)
+
   return {
     version: 1,
     best,
     coins: typeof raw.coins === 'number' && Number.isFinite(raw.coins) && raw.coins >= 0 ? Math.round(raw.coins * 10) / 10 : 0,
     coinRevision,
     upgrades: normalizeUpgradeLevels(raw.upgrades),
+    ownedContainerSkins,
+    equippedContainerSkin,
     leaderboard: leaderboard.slice(0, MAX_LEADERBOARD),
     discovered,
     variants,
@@ -188,6 +205,8 @@ export function cloneSave(save: SaveDataV1 = loadSave()): SaveDataV1 {
     coins: save.coins,
     coinRevision: save.coinRevision,
     upgrades: { ...save.upgrades },
+    ownedContainerSkins: save.ownedContainerSkins ? [...save.ownedContainerSkins] : [DEFAULT_CONTAINER_SKIN_ID],
+    equippedContainerSkin: save.equippedContainerSkin ?? DEFAULT_CONTAINER_SKIN_ID,
     leaderboard: save.leaderboard.map((e) => ({ ...e })),
     discovered: { ...save.discovered },
     variants: { ...save.variants },
@@ -470,6 +489,8 @@ export function resetProgress(): SaveDataV1 {
     coins: current.coins,
     coinRevision: current.coinRevision,
     upgrades: current.upgrades,
+    ownedContainerSkins: current.ownedContainerSkins,
+    equippedContainerSkin: current.equippedContainerSkin,
   }, { syncCloud: true, ownerId })
 }
 

@@ -317,14 +317,19 @@ afterEach(() => {
 })
 
 describe('merchant store', () => {
-  it('lays out six desktop goods in three columns and two rows, with three locked previews', () => {
+  it('lays out six desktop goods in three columns and two rows, with the skin cosmetic and two locked previews', () => {
     const { parent } = createStore()
     const cards = find(parent, 'merchant-item-pages').list
     expect(cards).toHaveLength(6)
     expect(new Set(cards.map((card) => card.x)).size).toBe(3)
     expect(new Set(cards.map((card) => card.y)).size).toBe(2)
     expect(labels(parent)).toContain('100.0 COINS')
-    for (const id of ['coinMagnet', 'mergeBonus', 'extraAbility']) {
+    // The OG Container cosmetic is purchasable for registered accounts with funds.
+    const skin = find(parent, 'merchant-upgrade-og_container')
+    expect(labels(skin)).toContain('OG Container')
+    expect(labels(skin)).toContain('250')
+    expect(find(skin, 'merchant-buy-hit').input?.enabled).toBe(true)
+    for (const id of ['coinMagnet', 'mergeBonus']) {
       const card = find(parent, `merchant-upgrade-${id}`)
       expect(labels(card)).toContain('COMING SOON')
       expect(find(card, 'merchant-buy-hit').input?.enabled).toBe(false)

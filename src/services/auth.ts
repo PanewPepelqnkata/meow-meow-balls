@@ -7,6 +7,14 @@ import {
 import { gameBus } from '../game/events/gameBus'
 import { UPGRADE_CATALOG, freshUpgradeLevels, normalizeUpgradeLevels, upgradeCost, type UpgradeId, type UpgradeLevels } from '../config/abilityUpgrades'
 import { reviveCostForCount } from '../config/gameOver'
+import {
+  CONTAINER_SKIN_CATALOG,
+  DEFAULT_CONTAINER_SKIN_ID,
+  isValidContainerSkinId,
+  normalizeEquippedContainerSkin,
+  normalizeOwnedContainerSkins,
+  type ContainerSkinId,
+} from '../config/containerSkins'
 import { getSupabase } from '../lib/supabase'
 import { isDrunkoTestRoute } from '../game/state/runVariant'
 import { normalizeRunCollectibles, type RunCollectibles } from '../game/state/collectibleMetadata'
@@ -38,6 +46,8 @@ export interface Profile {
   selected_avatar_id?: string | null
   active_title_id?: string | null
   favorite_ball_ids?: string[] | null
+  equipped_container_skin?: string | null
+  owned_container_skins?: string[] | null
   username_changed_at?: string | null
   email?: string
   created_at: string
@@ -63,6 +73,8 @@ export function resolveDisplayName(profile: Profile | null | undefined): string 
 type CloudCoinState = { coins: number; coinRevision: number }
 type UpgradePurchaseState = CloudCoinState & {
   upgrades: UpgradeLevels
+  ownedContainerSkins?: ContainerSkinId[]
+  equippedContainerSkin?: ContainerSkinId
   newlyUnlockedAchievements?: Array<{
     id: string
     name: string
@@ -90,6 +102,8 @@ function parseUpgradePurchaseState(value: unknown): UpgradePurchaseState | null 
     coin_revision?: unknown
     upgrades?: unknown
     newly_unlocked_achievements?: unknown
+    owned_container_skins?: unknown
+    equipped_container_skin?: unknown
   }
   const coins = Number(row.coins)
   const coinRevision = parseCoinRevision(row.coin_revision)
@@ -107,16 +121,26 @@ function parseUpgradePurchaseState(value: unknown): UpgradePurchaseState | null 
         }))
         .filter((item) => item.id.length > 0 && item.name.length > 0)
     : undefined
+  const ownedContainerSkins = Array.isArray(row.owned_container_skins)
+    ? normalizeOwnedContainerSkins(row.owned_container_skins)
+    : undefined
+  const equippedContainerSkin = typeof row.equipped_container_skin === 'string'
+    ? normalizeEquippedContainerSkin(row.equipped_container_skin, ownedContainerSkins)
+    : undefined
   return {
     coins: roundedCoins(coins),
     coinRevision,
     upgrades: normalizeUpgradeLevels(row.upgrades),
     newlyUnlockedAchievements,
+    ownedContainerSkins,
+    equippedContainerSkin,
   }
 }
 
-/** Progress payload excludes server-owned wallet and upgrade fields. */
-function cloudSavePayload(save: SaveDataV1): Omit<SaveDataV1, 'coins' | 'coinRevision' | 'upgrades'> {
+/** Progress payload excludes server-owned wallet, upgrade, and container skin fields. */
+function cloudSavePayload(
+  save: SaveDataV1,
+): Omit<SaveDataV1, 'coins' | 'coinRevision' | 'upgrades' | 'ownedContainerSkins' | 'equippedContainerSkin'> {
   return {
     version: save.version,
     best: save.best,
@@ -164,12 +188,20 @@ function mergeSavesForSameUser(
   const upgrades = b && typeof b === 'object' && 'upgrades' in b && b.upgrades != null
     ? normalizeUpgradeLevels(sb.upgrades)
     : normalizeUpgradeLevels(sa.upgrades)
+  const ownedContainerSkins = b && typeof b === 'object' && 'ownedContainerSkins' in b && b.ownedContainerSkins != null
+    ? normalizeOwnedContainerSkins([...(sa.ownedContainerSkins ?? []), ...(sb.ownedContainerSkins ?? [])])
+    : normalizeOwnedContainerSkins(sa.ownedContainerSkins)
+  const equippedContainerSkin = b && typeof b === 'object' && 'equippedContainerSkin' in b && b.equippedContainerSkin != null
+    ? normalizeEquippedContainerSkin(sb.equippedContainerSkin, ownedContainerSkins)
+    : normalizeEquippedContainerSkin(sa.equippedContainerSkin, ownedContainerSkins)
 
   return normalizeSave({
     version: 1,
     best: Math.max(sa.best, sb.best),
     coins,
     upgrades,
+    ownedContainerSkins,
+    equippedContainerSkin,
     leaderboard: leaderboard.slice(0, 10),
     discovered,
     variants,
@@ -885,6 +917,8 @@ export class AuthService {
       coins?: number | string
       coin_revision?: number | string
       upgrades?: unknown
+      owned_container_skins?: unknown
+      equipped_container_skin?: unknown
       discovered?: Record<string, number>
       variants?: Record<string, number>
       stats?: { runs: number; merges: number; bestTier: number }
@@ -898,6 +932,11 @@ export class AuthService {
           coins: Number(row.coins ?? 0),
           coinRevision: parseCoinRevision(row.coin_revision) ?? 0,
           upgrades: normalizeUpgradeLevels(row.upgrades),
+          ownedContainerSkins: normalizeOwnedContainerSkins(row.owned_container_skins),
+          equippedContainerSkin: normalizeEquippedContainerSkin(
+            row.equipped_container_skin,
+            normalizeOwnedContainerSkins(row.owned_container_skins),
+          ),
           discovered: row.discovered ?? {},
           variants: row.variants ?? {},
           stats: row.stats ?? { runs: 0, merges: 0, bestTier: 0 },
@@ -912,18 +951,24 @@ export class AuthService {
     const canonicalCoins = Math.max(0, Math.round((combined.coins - this.pendingReviveSpendCoins) * 10) / 10)
     const canonicalRevision = combined.coinRevision
     const canonicalUpgrades = { ...combined.upgrades }
+    const canonicalOwnedSkins = normalizeOwnedContainerSkins(combined.ownedContainerSkins)
+    const canonicalEquippedSkin = normalizeEquippedContainerSkin(combined.equippedContainerSkin, canonicalOwnedSkins)
 
     // Preserve local score/stat progress, but only discoveries earned after
     // hydration began; a server reset must not re-import old collection keys.
     const pendingOnlyLocal = cloneSave(liveSaveBeforeWrite)
     pendingOnlyLocal.coins = 0
     pendingOnlyLocal.upgrades = canonicalUpgrades
+    pendingOnlyLocal.ownedContainerSkins = canonicalOwnedSkins
+    pendingOnlyLocal.equippedContainerSkin = canonicalEquippedSkin
     pendingOnlyLocal.variants = {}
     pendingOnlyLocal.discovered = {}
     combined = mergeSavesForSameUser(combined, pendingOnlyLocal)
     combined.coins = canonicalCoins
     combined.coinRevision = canonicalRevision
     combined.upgrades = canonicalUpgrades
+    combined.ownedContainerSkins = canonicalOwnedSkins
+    combined.equippedContainerSkin = canonicalEquippedSkin
 
     const discoveredDuringRestore = retainDiscoveriesSinceRestore(combined, localSameOwnerSave, liveSaveBeforeWrite)
 
@@ -1009,6 +1054,8 @@ export class AuthService {
         coins: displayCoins,
         coinRevision: wallet.coinRevision,
         upgrades: wallet.upgrades,
+        ownedContainerSkins: wallet.ownedContainerSkins ?? loadSave().ownedContainerSkins,
+        equippedContainerSkin: wallet.equippedContainerSkin ?? loadSave().equippedContainerSkin,
       }, { syncCloud: false, ownerId: uid })
       if (wallet.newlyUnlockedAchievements && wallet.newlyUnlockedAchievements.length > 0) {
         for (const ach of wallet.newlyUnlockedAchievements) {
@@ -1084,6 +1131,127 @@ export class AuthService {
     })
     this.cloudSaveChain = task.then(() => undefined, () => undefined)
     return task
+  }
+
+  /** Purchase a container skin cosmetic (e.g. OG Container for 250 coins) via server RPC. */
+  async purchaseContainerSkin(skinId: ContainerSkinId): Promise<{ error: Error | null }> {
+    if (isDrunkoTestRoute() || !this.isRegisteredAccount() || this.authFlowInProgress === 'logout') {
+      return { error: new Error('Container skins are only for players with accounts.') }
+    }
+    if (!isValidContainerSkinId(skinId)) {
+      return { error: new Error('Unknown container skin.') }
+    }
+    const skinDef = CONTAINER_SKIN_CATALOG[skinId]
+    if (skinDef.isDefault) {
+      return { error: new Error(`${skinDef.name} is already unlocked by default.`) }
+    }
+    const uid = this.user!.id
+    if (getSaveOwnerId() !== uid) return { error: new Error('Account progress is not ready.') }
+    const accountRevision = this.accountRevision
+    const task = this.cloudSaveChain.then(async (): Promise<{ error: Error | null }> => {
+      if (accountRevision !== this.accountRevision || this.user?.id !== uid || getSaveOwnerId() !== uid || !this.isRegisteredAccount()) {
+        return { error: new Error('Authentication state changed. Please try again.') }
+      }
+      try {
+        const synced = await this.persistSaveToCloudNow(undefined, uid)
+        if (accountRevision !== this.accountRevision || this.user?.id !== uid || getSaveOwnerId() !== uid) {
+          return { error: new Error('Authentication state changed. Please try again.') }
+        }
+        if (!synced) return { error: new Error('Could not sync account progress. Please try again.') }
+
+        const beforePurchase = cloneSave(loadSave())
+        const owned = normalizeOwnedContainerSkins(beforePurchase.ownedContainerSkins)
+        if (owned.includes(skinId)) {
+          return { error: new Error('Container skin is already owned.') }
+        }
+        if (beforePurchase.coins < skinDef.cost) {
+          return { error: new Error('Not enough coins.') }
+        }
+
+        const { data, error } = await getSupabase().rpc('purchase_container_skin', {
+          p_skin_id: skinId,
+          p_coin_revision: beforePurchase.coinRevision,
+        })
+        if (accountRevision !== this.accountRevision || this.user?.id !== uid || getSaveOwnerId() !== uid || !this.isRegisteredAccount()) {
+          return { error: new Error('Authentication state changed. Please try again.') }
+        }
+        if (error) return { error: new Error(error.message) }
+        const purchased = parseUpgradePurchaseState(data)
+        if (!purchased || !purchased.ownedContainerSkins?.includes(skinId)) {
+          return { error: new Error('Invalid authoritative container skin response.') }
+        }
+
+        const liveSave = loadSave()
+        writeSave({
+          ...liveSave,
+          coins: purchased.coins,
+          coinRevision: purchased.coinRevision,
+          upgrades: purchased.upgrades,
+          ownedContainerSkins: purchased.ownedContainerSkins,
+          equippedContainerSkin: purchased.equippedContainerSkin ?? liveSave.equippedContainerSkin,
+        }, { syncCloud: false, ownerId: uid })
+        if (this.profile) {
+          this.profile = {
+            ...this.profile,
+            owned_container_skins: purchased.ownedContainerSkins,
+            equipped_container_skin: purchased.equippedContainerSkin ?? this.profile.equipped_container_skin,
+          }
+        }
+        return { error: null }
+      } catch (error) {
+        return { error: error instanceof Error ? error : new Error('Could not purchase this container skin.') }
+      }
+    })
+    this.cloudSaveChain = task.then(() => undefined, () => undefined)
+    return task
+  }
+
+  /** Equip an owned container skin. Guests may only equip default 'royal_keep'. */
+  async equipContainerSkin(skinId: ContainerSkinId): Promise<{ error: Error | null }> {
+    if (!isValidContainerSkinId(skinId)) {
+      return { error: new Error('Invalid container skin.') }
+    }
+    const save = loadSave()
+    const owned = normalizeOwnedContainerSkins(save.ownedContainerSkins)
+    if (!owned.includes(skinId)) {
+      return { error: new Error('Container skin has not been unlocked yet.') }
+    }
+    if (!this.user || !this.isRegisteredAccount()) {
+      if (skinId !== DEFAULT_CONTAINER_SKIN_ID) {
+        return { error: new Error('Sign in with a registered account to equip purchased container skins.') }
+      }
+      writeSave({
+        ...save,
+        equippedContainerSkin: DEFAULT_CONTAINER_SKIN_ID,
+      }, { syncCloud: false })
+      return { error: null }
+    }
+    const uid = this.user.id
+    const { data, error } = await getSupabase().rpc('equip_container_skin', {
+      p_skin_id: skinId,
+    })
+    if (error) {
+      return { error: new Error(error.message) }
+    }
+    const raw = (Array.isArray(data) ? data[0] : data) as {
+      equipped_container_skin?: unknown
+      owned_container_skins?: unknown
+    } | null
+    const nextOwned = normalizeOwnedContainerSkins(raw?.owned_container_skins ?? save.ownedContainerSkins)
+    const nextEquipped = normalizeEquippedContainerSkin(raw?.equipped_container_skin ?? skinId, nextOwned)
+    writeSave({
+      ...loadSave(),
+      ownedContainerSkins: nextOwned,
+      equippedContainerSkin: nextEquipped,
+    }, { syncCloud: false, ownerId: uid })
+    if (this.profile) {
+      this.profile = {
+        ...this.profile,
+        owned_container_skins: nextOwned,
+        equipped_container_skin: nextEquipped,
+      }
+    }
+    return { error: null }
   }
 
   /**
@@ -1192,7 +1360,7 @@ export class AuthService {
 
     const { data, error } = await getSupabase()
       .from('profiles')
-      .select('id, username, display_name, avatar_url, selected_avatar_id, active_title_id, favorite_ball_ids, username_changed_at, created_at, updated_at')
+      .select('id, username, display_name, avatar_url, selected_avatar_id, active_title_id, favorite_ball_ids, equipped_container_skin, owned_container_skins, username_changed_at, created_at, updated_at')
       .eq('id', userId)
       .single()
 
@@ -1240,7 +1408,18 @@ export class AuthService {
           active_title_id: overview.profile.active_title_id,
           favorite_ball_ids: overview.profile.favorite_ball_ids,
           username_changed_at: overview.profile.username_changed_at,
+          equipped_container_skin: overview.profile.equipped_container_skin,
+          owned_container_skins: overview.profile.owned_container_skins,
         }
+      }
+      if (overview.profile && getSaveOwnerId() === this.user.id) {
+        const nextOwned = normalizeOwnedContainerSkins(overview.profile.owned_container_skins)
+        const nextEquipped = normalizeEquippedContainerSkin(overview.profile.equipped_container_skin, nextOwned)
+        writeSave({
+          ...loadSave(),
+          ownedContainerSkins: nextOwned,
+          equippedContainerSkin: nextEquipped,
+        }, { syncCloud: false, ownerId: this.user.id })
       }
       return { data: overview, error: null }
     } catch (err) {

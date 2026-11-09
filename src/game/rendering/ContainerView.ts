@@ -1,9 +1,18 @@
 import Phaser from 'phaser'
 import { CONTAINER, interiorPolygon, tipCollidersAt, type Vec2 } from '../../config/container'
+import { normalizeEquippedContainerSkin, type ContainerSkinId } from '../../config/containerSkins'
+import { loadSave } from '../state/save'
 import { bakeCanvas } from './RoughArt'
 
 /**
- * Glossy blue open-top arcade frame with one telescoping joint per wall.
+ * Equippable container skins over one shared physics geometry.
+ * - Royal Keep (default): ashlar stone bastion — two-course masonry with
+ *   deep mortar, a polished gold interior trim, brass gear-rack rails on
+ *   the outer flanks, stone collar corbels and crenellated battlement caps.
+ * - OG Container (store cosmetic): the original glossy blue arcade frame
+ *   with hazard stripe panels and telescoping sleeves.
+ * Only painting differs; Matter.js colliders, wall thickness and slopes are
+ * identical for both skins, so gameplay can never change with a skin.
  * The lower U and two narrow sleeves are baked at native texture resolution.
  * Raise Walls only translates sleeves behind the lower frame and moves the
  * flat caps from the shared collision polygons. No painting/uploads in motion.
@@ -91,6 +100,8 @@ export class ContainerView {
   private readonly slope = (this.normalCorners[3]!.x - this.normalCorners[0]!.x) / CONTAINER.height
   private readonly textureScale = window.devicePixelRatio > 1.5 ? 2 : 1
   private readonly hazardPattern: CanvasPattern
+  private readonly stonePattern: CanvasPattern
+  private readonly skin: ContainerSkinId
   private lastHeight = -1
   private readonly corners = this.normalCorners.map((p) => ({ ...p }))
   private glowPathDirty = true
@@ -122,8 +133,10 @@ export class ContainerView {
   }
 
   constructor(scene: Phaser.Scene) {
+    this.skin = normalizeEquippedContainerSkin(loadSave().equippedContainerSkin)
+    this.stonePattern = this.createStonePattern()
     this.hazardPattern = this.createHazardPattern()
-    const key = `container-frame:${CONTAINER.topWidth}:${CONTAINER.height}`
+    const key = `container-frame:${this.skin}:${CONTAINER.topWidth}:${CONTAINER.height}`
     bakeCanvas(scene, key, 720, 1280, (ctx) => this.paintFrame(ctx), this.textureScale)
     this.frameImage = scene.add.image(0, 0, key)
       .setOrigin(0, 0).setDisplaySize(720, 1280).setDepth(20)
@@ -167,7 +180,7 @@ export class ContainerView {
     const maxX = Math.max(x0, x1, x2, x3) + 4
     const w = Math.ceil(maxX - minX)
     const h = Math.ceil(length + 4)
-    const key = `container-sleeve:${side}:${CONTAINER.height}:${CONTAINER.raisedHeight}`
+    const key = `container-sleeve:${this.skin}:${side}:${CONTAINER.height}:${CONTAINER.raisedHeight}`
     bakeCanvas(scene, key, w, h, (ctx) => {
       ctx.translate(-minX, 0)
       const strip = (inner: number, outer: number): Path2D => {
@@ -180,6 +193,63 @@ export class ContainerView {
         return path
       }
       const body = strip(0, width)
+      if (this.skin === 'royal_keep') {
+        // Sliding bastion sleeve: the SAME masonry fill as the fixed frame
+        // (one continuous wall), a smooth polished brass guide rail on the
+        // outer flank with small rivets, and the gold trim carried up the
+        // inner edge. No rack teeth — a clean machined finish.
+        ctx.fillStyle = '#524b69'
+        ctx.fill(body)
+        ctx.save()
+        ctx.clip(body)
+        ctx.fillStyle = this.stonePattern
+        ctx.fillRect(-Math.abs(minX) - width, -4, w + width * 2, length + 8)
+        // Upper-left light: lift the top of the sliding section slightly.
+        const lift = ctx.createLinearGradient(0, 0, 0, Math.min(length, 90))
+        lift.addColorStop(0, 'rgba(214, 209, 232, 0.14)')
+        lift.addColorStop(1, 'rgba(214, 209, 232, 0)')
+        ctx.fillStyle = lift
+        ctx.fillRect(-Math.abs(minX) - width, 0, w + width * 2, Math.min(length, 90))
+        ctx.restore()
+        ctx.lineWidth = 4
+        ctx.strokeStyle = '#111625'
+        ctx.stroke(body)
+        // Smooth brass guide rail: gradient band with a bright spine and
+        // dark heel, ending in a small machined foot.
+        const rail = strip(width * 0.80, width * 0.97)
+        const brass = ctx.createLinearGradient(0, 0, side * width, 0)
+        brass.addColorStop(0, '#c08a24')
+        brass.addColorStop(0.35, '#e9b945')
+        brass.addColorStop(0.62, '#b37f1c')
+        brass.addColorStop(1, '#7e5710')
+        ctx.fillStyle = brass
+        ctx.fill(rail)
+        ctx.lineWidth = 2
+        ctx.strokeStyle = '#111625'
+        ctx.stroke(rail)
+        // Small rivets down the rail — restrained mechanical detail.
+        const rivets = Math.max(4, Math.round(length / 34))
+        for (let t = 0; t < rivets; t++) {
+          const ty = (t + 0.5) * (length / rivets)
+          const rx = side * (width * 0.885 - this.slope * ty)
+          const ry = ty
+          ctx.beginPath()
+          ctx.arc(rx, ry, 1.8, 0, Math.PI * 2)
+          ctx.fillStyle = '#f6d987'
+          ctx.fill()
+          ctx.lineWidth = 1
+          ctx.strokeStyle = 'rgba(17, 22, 37, 0.55)'
+          ctx.stroke()
+        }
+        // Gold trim carried up the inner edge, matching the fixed frame.
+        ctx.fillStyle = '#8a5f14'
+        ctx.fill(strip(width * 0.065, width * 0.20))
+        ctx.fillStyle = '#d8a018'
+        ctx.fill(strip(width * 0.085, width * 0.15))
+        ctx.fillStyle = '#f2cd6e'
+        ctx.fill(strip(width * 0.10, width * 0.05))
+        return
+      }
       const shade = ctx.createLinearGradient(0, 0, side * width, 0)
       shade.addColorStop(0, '#36c9ff')
       shade.addColorStop(0.2, '#118cfb')
@@ -220,11 +290,6 @@ export class ContainerView {
     ctx.beginPath()
     ctx.rect(0, CONTAINER.topY, 720, 1280 - CONTAINER.topY)
     ctx.clip()
-    const body = ctx.createLinearGradient(0, CONTAINER.topY - T, 0, inner[3]!.y + T)
-    body.addColorStop(0, '#36adff')
-    body.addColorStop(0.3, '#087cf7')
-    body.addColorStop(0.72, '#075bd6')
-    body.addColorStop(1, '#00358f')
     const strokeU = (dist: number, width: number, color: string | CanvasGradient | CanvasPattern, trim = -T * 0.2): void => {
       ctx.strokeStyle = color
       ctx.lineWidth = width
@@ -232,6 +297,33 @@ export class ContainerView {
       ctx.lineCap = 'butt'
       ctx.stroke(uPath(inner, dist, R - T / 2 + dist, trim))
     }
+    if (this.skin === 'royal_keep') {
+      // Refined castle bastion. One light source (upper-left): soft light on
+      // the outer shoulder, controlled shade toward the inner face, and a
+      // warm gold edging band hugging the playable interior line.
+      const bevel = ctx.createLinearGradient(0, CONTAINER.topY - T, 0, inner[3]!.y + T)
+      bevel.addColorStop(0, 'rgba(214, 209, 232, 0.16)')
+      bevel.addColorStop(0.35, 'rgba(214, 209, 232, 0)')
+      bevel.addColorStop(0.8, 'rgba(18, 14, 32, 0.10)')
+      bevel.addColorStop(1, 'rgba(18, 14, 32, 0.22)')
+      strokeU(T / 2, T + 10, '#111625')
+      strokeU(T / 2, T, '#524b69')
+      strokeU(T / 2, T - 5, this.stonePattern)
+      strokeU(T / 2, T - 5, bevel)
+      // Gold edging: warm base, lit top edge, shaded heel.
+      strokeU(T * 0.085, T * 0.17, '#8a5f14')
+      strokeU(T * 0.085, T * 0.15, '#d8a018')
+      strokeU(T * 0.10, T * 0.05, '#f2cd6e')
+      strokeU(T * 0.90, T * 0.06, '#6e4c10')
+      this.paintGloss(ctx, inner)
+      ctx.restore()
+      return
+    }
+    const body = ctx.createLinearGradient(0, CONTAINER.topY - T, 0, inner[3]!.y + T)
+    body.addColorStop(0, '#36adff')
+    body.addColorStop(0.3, '#087cf7')
+    body.addColorStop(0.72, '#075bd6')
+    body.addColorStop(1, '#00358f')
     strokeU(T / 2, T + 10, '#071a35')
     strokeU(T / 2, T, body)
     strokeU(T * 0.075, T * 0.12, '#28d9ff')
@@ -258,6 +350,32 @@ export class ContainerView {
         new Phaser.Math.Vector2(corner.x + dir * T, corner.y + 9),
         new Phaser.Math.Vector2(corner.x, corner.y + 9),
       ]
+      if (this.skin === 'royal_keep') {
+        // Functional sliding connector: a brass strap with twin bolt heads
+        // clamping the moving sleeve to the fixed course. Reads as a
+        // machined joint, not a decorative belt.
+        this.sleeveG.fillGradientStyle(0x837d97, 0x6d6782, 0x5a5470, 0x524b69, 1)
+        this.sleeveG.fillPoints(points, true)
+        this.sleeveG.lineStyle(3, 0x111625, 1)
+        this.sleeveG.strokePoints(points, true, true)
+        // Thin brass strap across the joint line.
+        this.sleeveG.fillStyle(0xc9932f, 1)
+        this.sleeveG.fillRect(corner.x, corner.y - 1, dir * T, 3.5)
+        this.sleeveG.lineStyle(1.5, 0x111625, 0.9)
+        this.sleeveG.strokeRect(corner.x, corner.y - 1, dir * T, 3.5)
+        this.sleeveG.fillStyle(0xf2cd6e, 1)
+        this.sleeveG.fillRect(corner.x + dir * 2, corner.y - 0.5, dir * (T - 10), 1)
+        // Twin bolt heads pinning the strap.
+        for (const bx of [T * 0.28, T * 0.72]) {
+          this.sleeveG.fillStyle(0xd8a018, 1)
+          this.sleeveG.fillCircle(corner.x + dir * bx, corner.y + 4.5, 2.6)
+          this.sleeveG.lineStyle(1.4, 0x111625, 1)
+          this.sleeveG.strokeCircle(corner.x + dir * bx, corner.y + 4.5, 2.6)
+          this.sleeveG.fillStyle(0xf6d987, 1)
+          this.sleeveG.fillCircle(corner.x + dir * bx - 0.7, corner.y + 3.8, 0.8)
+        }
+        continue
+      }
       this.sleeveG.fillGradientStyle(0x2b9cff, 0x0474e9, 0x0750bd, 0x06357e, 1)
       this.sleeveG.fillPoints(points, true)
       this.sleeveG.lineStyle(3, 0x061a3a, 1)
@@ -274,6 +392,52 @@ export class ContainerView {
     for (const [index, cap] of caps.entries()) {
       const g = this.caps[index]!
       const points = cap.vertices
+      if (this.skin === 'royal_keep') {
+        // Finished masonry cap: bevelled stone block inside the shared
+        // physical cap polygon, with a slim brass reinforcement band along
+        // the top and soft shading. The physical chamfer corners from
+        // tipCollidersAt give the bevelled silhouette.
+        g.fillStyle(0x524b69, 1)
+        g.beginPath()
+        g.moveTo(points[0]!.x, points[0]!.y)
+        for (let i = 1; i < points.length; i++) g.lineTo(points[i]!.x, points[i]!.y)
+        g.closePath()
+        g.fillPath()
+        // Lit stone face (upper-left light).
+        g.fillStyle(0x8f89a3, 1)
+        g.beginPath()
+        g.moveTo(points[1]!.x, points[1]!.y)
+        g.lineTo(points[2]!.x, points[2]!.y)
+        g.lineTo(points[3]!.x, points[3]!.y)
+        g.lineTo(points[3]!.x, points[3]!.y + 2.5)
+        g.lineTo(points[2]!.x, points[2]!.y + 2.5)
+        g.lineTo(points[1]!.x, points[1]!.y + 2.5)
+        g.closePath()
+        g.fillPath()
+        // Cool shade toward the outer face.
+        g.fillStyle(0x6b6580, 0.55)
+        g.beginPath()
+        g.moveTo(points[4]!.x, points[4]!.y)
+        g.lineTo(points[5]!.x, points[5]!.y)
+        g.lineTo(points[5]!.x, points[5]!.y + 2)
+        g.lineTo(points[4]!.x, points[4]!.y + 2)
+        g.closePath()
+        g.fillPath()
+        // Slim brass reinforcement band on top with a lit spine.
+        const topY = points[2]!.y + 1
+        const bandX = Math.min(points[2]!.x, points[3]!.x) + 1
+        const bandW = Math.abs(points[3]!.x - points[2]!.x) - 2
+        g.fillStyle(0xc9932f, 1)
+        g.fillRect(bandX, topY, bandW, 2.2)
+        g.fillStyle(0xf2cd6e, 1)
+        g.fillRect(bandX, topY, bandW, 0.9)
+        g.lineStyle(3, 0x111625, 1)
+        g.beginPath()
+        g.moveTo(points[0]!.x, points[0]!.y)
+        for (let i = 1; i < points.length; i++) g.lineTo(points[i]!.x, points[i]!.y)
+        g.strokePath()
+        continue
+      }
       g.fillStyle(0x003f9f, 1)
       g.beginPath()
       g.moveTo(points[0]!.x, points[0]!.y)
@@ -317,7 +481,62 @@ export class ContainerView {
     }
   }
 
+
+  /** Ashlar masonry tile: modest stone courses with soft bevels and quiet
+  * per-block variation, shared by the fixed frame U and both sleeves so
+  * the whole bastion reads as one continuous wall. */
+  private createStonePattern(): CanvasPattern {
+    const canvas = document.createElement('canvas')
+    const course = 30
+    const block = 48
+    canvas.width = block * 2 * this.textureScale
+    canvas.height = course * 2 * this.textureScale
+    const ctx = canvas.getContext('2d')!
+    ctx.scale(this.textureScale, this.textureScale)
+    ctx.fillStyle = '#4e4864'
+    ctx.fillRect(0, 0, block * 2, course * 2)
+    const faces: Array<readonly [string, string]> = [
+      ['#8f89a3', '#736d88'],
+      ['#8a84a0', '#6f6984'],
+      ['#938da7', '#77708c'],
+      ['#87819c', '#6b6580'],
+    ]
+    for (let row = 0; row < 2; row++) {
+      const offset = row % 2 === 0 ? 0 : block / 2
+      for (let col = -1; col < 3; col++) {
+        const x = col * block + offset + 2.5
+        const y = row * course + 2.5
+        const w = block - 5
+        const h = course - 5
+        const [hi, lo] = faces[(row * 3 + col + 4) % 4]!
+        const face = ctx.createLinearGradient(x, y, x, y + h)
+        face.addColorStop(0, hi)
+        face.addColorStop(1, lo)
+        ctx.fillStyle = face
+        ctx.fillRect(x, y, w, h)
+        // Bevel: light catches the top edge, shadow settles under it.
+        ctx.strokeStyle = 'rgba(226, 222, 240, 0.20)'
+        ctx.lineWidth = 1.2
+        ctx.beginPath()
+        ctx.moveTo(x + 1, y + h - 1)
+        ctx.lineTo(x + 1, y + 1)
+        ctx.lineTo(x + w - 1, y + 1)
+        ctx.stroke()
+        ctx.strokeStyle = 'rgba(26, 22, 40, 0.30)'
+        ctx.beginPath()
+        ctx.moveTo(x + 1, y + h - 1)
+        ctx.lineTo(x + w - 1, y + h - 1)
+        ctx.lineTo(x + w - 1, y + 1)
+        ctx.stroke()
+      }
+    }
+    const pattern = ctx.createPattern(canvas, 'repeat')!
+    pattern.setTransform(new DOMMatrix().scale(1 / this.textureScale))
+    return pattern
+  }
+
   /** One crisp diagonal tile, shared by the fixed frame and sliding sleeves. */
+
   private createHazardPattern(): CanvasPattern {
     const canvas = document.createElement('canvas')
     const period = 84

@@ -13,6 +13,7 @@ import {
   upgradeCost,
   wallDurationMs,
 } from '../../config/abilityUpgrades'
+import { CONTAINER_SKIN_CATALOG, normalizeOwnedContainerSkins, OG_CONTAINER_COST, type ContainerSkinId } from '../../config/containerSkins'
 import { gameBus } from '../events/gameBus'
 import { loadSave } from '../state/save'
 import { ballLookFor, ballOutlineWidth, drawBallFace, INK as BALL_INK, restContour } from './BallAppearance'
@@ -44,9 +45,9 @@ const PRODUCTS = [
   { id: 'wallDuration', accent: 0x428fd7 },
   { id: 'shakeDuration', accent: 0xe85d47 },
   { id: 'shakeIntensity', accent: 0xf4c339 },
+  { id: 'og_container', name: 'OG Container', benefit: 'THE CLASSIC ARCADE KEEPER', accent: 0x36adff },
   { id: 'coinMagnet', name: 'Coin Magnet', benefit: 'BRING THE TREASURE CLOSER', accent: 0xdc4d43 },
   { id: 'mergeBonus', name: 'Merge Bonus', benefit: 'MAKE EVERY MERGE COUNT', accent: 0x5baf45 },
-  { id: 'extraAbility', name: 'Extra Ability', benefit: 'A LITTLE EXTRA POWER', accent: 0x9a62ce },
 ] as const
 
 type Product = (typeof PRODUCTS)[number]
@@ -148,6 +149,10 @@ function clamp(value: number, min: number, max: number): number {
 function isUpgrade(product: Product): product is Extract<Product, { id: UpgradeId }> {
   return product.id in UPGRADE_CATALOG
 }
+/** The OG Container store cosmetic — purchased once, equipped in the Wardrobe. */
+function isSkinProduct(product: Product): product is Extract<Product, { id: 'og_container' }> {
+  return product.id === 'og_container'
+}
 
 /** Smooth organic flame flicker combining 3 incommensurate harmonics in [0.72, 1.18]. */
 function sampleFlameFlicker(tSec: number, seed: number): number {
@@ -211,8 +216,8 @@ export class StoreView {
   private readonly reducedMotion: boolean
   private readonly desktopHover: boolean
   private readonly canopyCorners = { tl: 0, tr: 0, bl: 0, br: 0 }
-  private readonly purchasing = new Set<UpgradeId>()
-  private readonly purchaseStatus = new Map<UpgradeId, PurchaseStatus>()
+  private readonly purchasing = new Set<ProductId>()
+  private readonly purchaseStatus = new Map<ProductId, PurchaseStatus>()
   private readonly buyButtons: BuyButton[] = []
   private readonly lanterns: LanternRig[] = []
   private readonly banners: BannerRig[] = []
@@ -1001,15 +1006,19 @@ export class StoreView {
     const padding = Math.round(clamp(w * 0.045, 8, 15))
     this.drawParchment(g, left, top, w, h)
     const active = isUpgrade(product)
+    const skin = isSkinProduct(product)
+    const ownedSkins = normalizeOwnedContainerSkins(loadSave().ownedContainerSkins)
+    const skinOwned = skin && ownedSkins.includes('og_container')
     const current = active ? levels[product.id] : 0
     const max = active ? UPGRADE_CATALOG[product.id].maxLevel : 10
     const maxed = active && current >= max
-    const pending = active && this.purchasing.has(product.id)
-    const cost = active ? upgradeCost(product.id, current) : 0
+    const pending = (active || skin) && this.purchasing.has(product.id)
+    const cost = active ? upgradeCost(product.id, current) : skin ? OG_CONTAINER_COST : 0
     const affordable = balance >= cost
-    const status = active ? this.purchaseStatus.get(product.id) : undefined
+    const status = (active || skin) ? this.purchaseStatus.get(product.id) : undefined
     const title = active ? UPGRADE_CATALOG[product.id].name : product.name
     const benefit = active ? this.benefit(product.id) : product.benefit
+    const purchasable = active || skin
     const compact = h < 185
     const iconR = Math.round(compact ? clamp(h * 0.19, 10, 23) : clamp(Math.min(w * 0.145, h * 0.18), 18, 42))
     const iconX = Math.round(left + padding + iconR)
@@ -1017,7 +1026,7 @@ export class StoreView {
     const art = this.scene.add.graphics().setName(`merchant-upgrade-art-${product.id}`)
     art.fillStyle(product.accent, 0.12).fillCircle(iconX, iconY, iconR * 1.12)
     this.drawProductIcon(art, product.id, iconX, iconY, iconR)
-    if (!active) art.setAlpha(0.85)
+    if (!purchasable) art.setAlpha(0.85)
     card.add(art)
     const textLeft = Math.round(iconX + iconR + padding * 0.6)
     const titleW = Math.max(1, Math.round(w / 2 - padding - textLeft))
@@ -1037,30 +1046,37 @@ export class StoreView {
     const statX = Math.round(compact ? left + padding + statW / 2 : 0)
     const transition = active
       ? `${this.effectValue(product.id, current)} → ${this.effectValue(product.id, Math.min(max, current + 1))}`
-      : 'COMING SOON'
-    const maxLabel = active ? `MAX EFFECT ${this.effectValue(product.id, max)}` : 'NOT AVAILABLE YET'
+      : skin ? 'ONE-TIME COSMETIC'
+        : 'COMING SOON'
+    const maxLabel = active ? `MAX EFFECT ${this.effectValue(product.id, max)}` : skin ? 'OWNED FOREVER ONCE BOUGHT' : 'NOT AVAILABLE YET'
     const barH = Math.round(compact ? 5 : clamp(h * 0.045, 7, 11))
     const barY = Math.round(compact ? top + h - 8 : buttonY - buttonH / 2 - barH / 2 - 10)
     const stageY = Math.round(compact ? top + h - 20 : barY - barH / 2 - 12)
     const maxY = Math.round(compact ? top + h * 0.64 : stageY - 18)
     const effectY = Math.round(compact ? top + h * 0.47 : maxY - 23)
-    this.addFittedText(card, statX, effectY, transition, statW, compact ? 12 : Math.round(clamp(h * 0.105, 17, 27)), active ? INK_HEX : '#836c54')
+    this.addFittedText(card, statX, effectY, transition, statW, compact ? 12 : Math.round(clamp(h * 0.105, 17, 27)), purchasable ? INK_HEX : '#836c54')
     this.addFittedText(card, statX, maxY, maxLabel, statW, compact ? 8 : 10, SECONDARY_TEXT)
-    this.addFittedText(card, statX, stageY, active ? `STAGE ${current} / ${max}` : 'STAGE — / —', statW, compact ? 8 : 10, active ? INK_HEX : SECONDARY_TEXT)
+    this.addFittedText(card, statX, stageY, active ? `STAGE ${current} / ${max}` : skin ? (skinOwned ? 'OWNED — EQUIP IN WARDROBE' : 'COSMETIC SKIN') : 'STAGE — / —', statW, compact ? 8 : 10, purchasable ? INK_HEX : SECONDARY_TEXT)
     this.renderStageBar(card, statX, barY, statW - 4, current, max, product.accent, barH)
-    const label = !active ? 'COMING SOON' : pending ? 'BUYING...' : maxed ? 'MAXED'
-      : !registered ? 'ACCOUNTS ONLY' : `${cost}`
-    const available = active && registered && !maxed && !pending
+    const label = !purchasable ? 'COMING SOON' : pending ? 'BUYING...'
+      : skin ? (skinOwned ? 'OWNED' : !registered ? 'ACCOUNTS ONLY' : `${cost}`)
+        : maxed ? 'MAXED'
+          : !registered ? 'ACCOUNTS ONLY' : `${cost}`
+    const available = purchasable && registered && !maxed && !pending && !(skin && skinOwned)
     this.renderBuyButton(
       card, buttonX, buttonY, buttonW, buttonH, label,
-      active && !pending && !maxed && registered, active, available, page, slotIndex, art, () => {
-        if (!active) return
+      purchasable && !pending && !maxed && registered && !(skin && skinOwned), purchasable, available, page, slotIndex, art, () => {
+        if (!purchasable || (skin && skinOwned)) return
         if (!affordable) {
           this.purchaseStatus.set(product.id, { kind: 'error', message: 'NOT ENOUGH COINS' })
           this.renderItems()
           return
         }
-        void this.purchase(product.id, card.x, card.y, page)
+        if (skin) {
+          void this.purchaseSkin(product.id, card.x, card.y, page)
+          return
+        }
+        void this.purchase(product.id as UpgradeId, card.x, card.y, page)
       },
     )
   }
@@ -1319,6 +1335,32 @@ export class StoreView {
       g.lineStyle(line, 0xdd7e2a)
       g.lineBetween(x - r * 0.9, y - r * 0.49, x - r * 1.06, y - r * 0.67)
       g.lineBetween(x + r * 0.9, y + r * 0.39, x + r * 1.06, y + r * 0.53)
+      return
+    }
+    if (id === 'og_container') {
+      // The classic glossy blue U-container with hazard stripes.
+      const uw = r * 1.15
+      const uh = r * 1.15
+      const ux = x - uw / 2
+      const uy = y - uh * 0.58
+      g.fillStyle(0x087cf7)
+      g.fillRoundedRect(ux, uy, uw, uh, r * 0.24)
+      g.lineStyle(line, INK).strokeRoundedRect(ux, uy, uw, uh, r * 0.24)
+      g.lineStyle(Math.max(1.5, r * 0.09), 0x28d9ff)
+      g.lineBetween(ux + 3, uy + 3, ux + 3, uy + uh - 3)
+      g.lineBetween(ux + uw - 3, uy + 3, ux + uw - 3, uy + uh - 3)
+      // Hazard chevrons on the floor band.
+      g.lineStyle(Math.max(1.2, r * 0.08), 0xfff0c5)
+      g.lineBetween(ux + 5, uy + uh * 0.62, ux + uw * 0.4, uy + uh - 3)
+      g.lineBetween(ux + uw * 0.5, uy + uh * 0.62, ux + uw - 5, uy + uh - 3)
+      g.lineBetween(ux + 5, uy + uh * 0.62, ux + uw * 0.5, uy + uh * 0.62)
+      g.lineBetween(ux + uw * 0.4, uy + uh - 3, ux + uw - 5, uy + uh - 3)
+      // Extend-walls sleeve peeking above the rim.
+      g.fillStyle(0x36c9ff)
+      g.fillRoundedRect(x - r * 0.36, uy - r * 0.34, r * 0.24, r * 0.5, 2)
+      g.lineStyle(Math.max(1.2, r * 0.07), INK).strokeRoundedRect(x - r * 0.36, uy - r * 0.34, r * 0.24, r * 0.5, 2)
+      g.fillRoundedRect(x + r * 0.12, uy - r * 0.34, r * 0.24, r * 0.5, 2)
+      g.strokeRoundedRect(x + r * 0.12, uy - r * 0.34, r * 0.24, r * 0.5, 2)
       return
     }
     if (id === 'coinMagnet') {
@@ -1671,6 +1713,47 @@ export class StoreView {
         this.purchaseStatus.set(id, { kind: 'error', message: error.message || 'PURCHASE FAILED' })
       } else {
         this.purchaseStatus.set(id, { kind: 'success', message: 'PURCHASED!' })
+        if (!this.reducedMotion) {
+          this.celebrations.push({
+            x: burstX,
+            y: burstY,
+            page,
+            bornAt: this.animElapsedSec,
+            duration: 0.65,
+          })
+        }
+      }
+    } catch (error) {
+      if (this.destroyed || revision !== this.lifecycleRevision) return
+      this.purchaseStatus.set(id, { kind: 'error', message: error instanceof Error ? error.message : 'PURCHASE FAILED' })
+    } finally {
+      if (!this.destroyed && revision === this.lifecycleRevision) {
+        this.purchasing.delete(id)
+        this.renderItems()
+        this.renderBottomNav()
+      }
+    }
+  }
+
+  /** One-time OG Container cosmetic purchase (250 coins) via server RPC. */
+  private async purchaseSkin(id: ProductId, burstX: number, burstY: number, page: number): Promise<void> {
+    if (this.destroyed || !authService.isRegisteredAccount()) return
+    const skinId: ContainerSkinId = 'og_container'
+    const save = loadSave()
+    const owned = normalizeOwnedContainerSkins(save.ownedContainerSkins)
+    const cost = CONTAINER_SKIN_CATALOG[skinId].cost
+    if (owned.includes(skinId) || (Number(save.coins) || 0) < cost || this.purchasing.has(id)) return
+    this.purchasing.add(id)
+    this.purchaseStatus.delete(id)
+    this.renderItems()
+    const revision = this.lifecycleRevision
+    try {
+      const { error } = await authService.purchaseContainerSkin(skinId)
+      if (this.destroyed || revision !== this.lifecycleRevision) return
+      if (error) {
+        this.purchaseStatus.set(id, { kind: 'error', message: error.message || 'PURCHASE FAILED' })
+      } else {
+        this.purchaseStatus.set(id, { kind: 'success', message: 'PURCHASED — EQUIP IT IN THE WARDROBE!' })
         if (!this.reducedMotion) {
           this.celebrations.push({
             x: burstX,

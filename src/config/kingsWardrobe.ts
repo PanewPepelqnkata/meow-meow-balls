@@ -1,5 +1,10 @@
 import { COLLECTIBLE_TIERS, collectionDiscovery, collectionSlotsFor } from './collectibleCollection'
 import type { SaveDataV1 } from '../game/state/save'
+import {
+  normalizeEquippedContainerSkin,
+  normalizeOwnedContainerSkins,
+  type ContainerSkinId,
+} from './containerSkins'
 
 export type AchievementCategory = 'gameplay' | 'merge' | 'collection' | 'score' | 'milestone'
 export type AchievementMetricKey = 'runs' | 'merges' | 'collection_count' | 'best_score' | 'best_tier'
@@ -206,6 +211,8 @@ export interface KingsWardrobeOverview {
     selected_avatar_id: string
     active_title_id: string | null
     favorite_ball_ids: string[]
+    equipped_container_skin: ContainerSkinId
+    owned_container_skins: ContainerSkinId[]
     username_changed_at: string | null
     created_at: string
     updated_at: string
@@ -469,6 +476,8 @@ export function buildFallbackOverviewFromSave(
     selected_avatar_id?: string | null
     active_title_id?: string | null
     favorite_ball_ids?: string[] | null
+    equipped_container_skin?: string | null
+    owned_container_skins?: string[] | null
     username_changed_at?: string | null
     created_at?: string | null
     updated_at?: string | null
@@ -513,6 +522,13 @@ export function buildFallbackOverviewFromSave(
   const favorites = Array.isArray(profile?.favorite_ball_ids)
     ? profile!.favorite_ball_ids.filter((id) => isValidWardrobeCharacterId(id)).slice(0, 3)
     : []
+  const ownedSkins = normalizeOwnedContainerSkins(
+    profile?.owned_container_skins ?? save.ownedContainerSkins,
+  )
+  const equippedSkin = normalizeEquippedContainerSkin(
+    profile?.equipped_container_skin ?? save.equippedContainerSkin,
+    ownedSkins,
+  )
 
   const avgScore = save.leaderboard.length > 0
     ? Math.round(save.leaderboard.reduce((acc, e) => acc + e.score, 0) / save.leaderboard.length)
@@ -526,6 +542,8 @@ export function buildFallbackOverviewFromSave(
       selected_avatar_id: selectedAvatar,
       active_title_id: profile?.active_title_id ?? null,
       favorite_ball_ids: favorites,
+      equipped_container_skin: equippedSkin,
+      owned_container_skins: ownedSkins,
       username_changed_at: profile?.username_changed_at ?? null,
       created_at: profile?.created_at ?? new Date().toISOString(),
       updated_at: profile?.updated_at ?? new Date().toISOString(),
