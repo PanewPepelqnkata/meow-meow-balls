@@ -6,13 +6,13 @@ import { bakeCanvas } from './RoughArt'
 
 /**
  * Equippable container skins over one shared physics geometry.
- * - Royal Keep (default): ashlar stone bastion — two-course masonry with
- *   deep mortar, a polished gold interior trim, brass gear-rack rails on
- *   the outer flanks, stone collar corbels and crenellated battlement caps.
+ * - Royal Keep (default): dark-luxury obsidian & midnight-onyx vessel with
+ *   recessed velvet-onyx channels, 24k imperial gold inner/outer trims,
+ *   telescoping gold-trimmed sleeves, gold-ringed collar joints, and
+ *   24k gold-crowned bevel caps.
  * - OG Container (store cosmetic): the original glossy blue arcade frame
  *   with hazard stripe panels and telescoping sleeves.
  * Only painting differs; Matter.js colliders, wall thickness and slopes are
- * identical for both skins, so gameplay can never change with a skin.
  * The lower U and two narrow sleeves are baked at native texture resolution.
  * Raise Walls only translates sleeves behind the lower frame and moves the
  * flat caps from the shared collision polygons. No painting/uploads in motion.
@@ -192,45 +192,48 @@ export class ContainerView {
       }
       const body = strip(0, width)
       if (this.skin === 'royal_keep') {
-        // Sleek Royal Vessel sliding sleeve: deep midnight-sapphire enamel body,
-        // recessed royal-indigo inlay channel, and polished imperial gold inner
-        // and outer trim rails — crisp, luminous, and free of noisy brick grids.
+        // Dark-Luxury Obsidian & 24k Gold sliding sleeve: deep obsidian-onyx
+        // lacquer body, recessed matte-onyx channel with twin gold pinstripes,
+        // brushed 24k gold outer guide rail, and luminous 24k gold inner rim.
         const shade = ctx.createLinearGradient(0, 0, side * width, 0)
-        shade.addColorStop(0, '#303b6e')
-        shade.addColorStop(0.22, '#212952')
-        shade.addColorStop(0.74, '#151b38')
-        shade.addColorStop(1, '#0d1126')
+        shade.addColorStop(0, '#1d2236')
+        shade.addColorStop(0.24, '#131726')
+        shade.addColorStop(0.72, '#0c0f1a')
+        shade.addColorStop(1, '#070911')
         ctx.fillStyle = shade
         ctx.fill(body)
         ctx.lineWidth = 4
-        ctx.strokeStyle = '#090c1c'
+        ctx.strokeStyle = '#04050a'
         ctx.stroke(body)
-        // Recessed royal-indigo channel with subtle gold filigree pinstripe
-        const channel = strip(width * 0.26, width * 0.72)
-        ctx.fillStyle = '#121733'
+        // Recessed matte-onyx channel framed by twin 24k gold filigree hairlines
+        const channel = strip(width * 0.27, width * 0.72)
+        ctx.fillStyle = '#080a12'
         ctx.fill(channel)
         ctx.lineWidth = 1.6
-        ctx.strokeStyle = 'rgba(216, 168, 56, 0.42)'
+        ctx.strokeStyle = 'rgba(232, 185, 74, 0.52)'
         ctx.stroke(channel)
-        // Outer brass/gold guide rail
-        const rail = strip(width * 0.80, width * 0.96)
+        // Center subtle gold trace inside the recessed channel
+        ctx.fillStyle = 'rgba(245, 208, 105, 0.16)'
+        ctx.fill(strip(width * 0.48, width * 0.51))
+        // Brushed 24k gold outer guide rail
+        const rail = strip(width * 0.79, width * 0.95)
         const brass = ctx.createLinearGradient(0, 0, side * width, 0)
-        brass.addColorStop(0, '#c08a24')
-        brass.addColorStop(0.38, '#f0c456')
-        brass.addColorStop(0.7, '#b37f1c')
-        brass.addColorStop(1, '#7e5710')
+        brass.addColorStop(0, '#9e6f18')
+        brass.addColorStop(0.38, '#f6cf65')
+        brass.addColorStop(0.7, '#c48e24')
+        brass.addColorStop(1, '#6e4b0c')
         ctx.fillStyle = brass
         ctx.fill(rail)
         ctx.lineWidth = 1.8
-        ctx.strokeStyle = '#090c1c'
+        ctx.strokeStyle = '#04050a'
         ctx.stroke(rail)
-        // Inner imperial gold rim & specular highlight
-        ctx.fillStyle = '#9a6b18'
-        ctx.fill(strip(width * 0.05, width * 0.19))
-        ctx.fillStyle = '#e5b232'
-        ctx.fill(strip(width * 0.065, width * 0.14))
-        ctx.fillStyle = '#fff0a8'
-        ctx.fill(strip(width * 0.075, width * 0.105))
+        // 24k gold inner rim: burnished base + rich gold + champagne specular spine
+        ctx.fillStyle = '#8f6214'
+        ctx.fill(strip(width * 0.045, width * 0.21))
+        ctx.fillStyle = '#e8b63b'
+        ctx.fill(strip(width * 0.06, width * 0.155))
+        ctx.fillStyle = '#fff5bd'
+        ctx.fill(strip(width * 0.075, width * 0.11))
         return
       }
       const shade = ctx.createLinearGradient(0, 0, side * width, 0)
@@ -281,39 +284,46 @@ export class ContainerView {
       ctx.stroke(uPath(inner, dist, R - T / 2 + dist, trim))
     }
     if (this.skin === 'royal_keep') {
-      // Sleek Royal Vessel: smooth deep midnight-sapphire & twilight-indigo
-      // enameled U-frame with a recessed royal inlay band, warm imperial gold
-      // inner and outer trims, and crisp arcade specular gloss — harmonizing
-      // with every twilight/space/fantasy/jungle backdrop without brick clutter.
+      // Dark-Luxury Obsidian & 24k Gold Vessel:
+      // Rich obsidian-onyx lacquer body, recessed matte-onyx inlay channel
+      // bordered by twin 24k gold filigree lines, outer gold shoulder rail,
+      // and a multi-layered 24k gold inner rim with champagne specular gloss.
+      // Note: trim = -4 extends the top ends 4px above CONTAINER.topY; the
+      // ctx.rect(0, CONTAINER.topY, ...) clip slices them cleanly along the
+      // horizontal rim so both angled walls terminate flush with the caps.
+      const topTrim = -4
       const body = ctx.createLinearGradient(0, CONTAINER.topY - T, 0, inner[3]!.y + T)
-      body.addColorStop(0, '#323e73')
-      body.addColorStop(0.28, '#222b54')
-      body.addColorStop(0.72, '#161c3b')
-      body.addColorStop(1, '#0d1126')
-      // Soft directional drop shadow under the vessel silhouette
+      body.addColorStop(0, '#20263d')
+      body.addColorStop(0.28, '#141829')
+      body.addColorStop(0.72, '#0c0f1b')
+      body.addColorStop(1, '#060810')
+      // Soft luxury drop shadow beneath the vessel
       ctx.save()
-      ctx.shadowColor = 'rgba(6, 8, 20, 0.36)'
-      ctx.shadowBlur = 14
+      ctx.shadowColor = 'rgba(2, 4, 12, 0.52)'
+      ctx.shadowBlur = 16
       ctx.shadowOffsetX = 4
-      ctx.shadowOffsetY = 9
-      strokeU(T / 2, T + 9, '#090c1c')
+      ctx.shadowOffsetY = 10
+      strokeU(T / 2, T + 9, '#04050a', topTrim)
       ctx.restore()
-      // Crisp dark ink outer contour
-      strokeU(T / 2, T + 9, '#090c1c')
-      // Smooth royal-sapphire enameled body
-      strokeU(T / 2, T, body)
-      // Recessed royal-indigo channel along the mid-band with subtle gold bevels
-      const channelDepth = T * 0.48
-      const channelWidth = T * 0.38
-      strokeU(channelDepth, channelWidth + 3, 'rgba(229, 178, 50, 0.38)', channelWidth / 2)
-      strokeU(channelDepth, channelWidth, '#121733', channelWidth / 2)
-      // Outer shoulder imperial gold accent & deep shadow heel
-      strokeU(T * 0.90, T * 0.12, '#0b0f22')
-      strokeU(T * 0.80, T * 0.055, '#c9932f')
-      // Luminous imperial gold inner rim (warm base + bright gold + cream highlight)
-      strokeU(T * 0.095, T * 0.15, '#b8821e')
-      strokeU(T * 0.085, T * 0.085, '#f0c456')
-      strokeU(T * 0.068, T * 0.03, '#fff3b8')
+      // Crisp obsidian-ink outer contour
+      strokeU(T / 2, T + 9, '#04050a', topTrim)
+      // Smooth dark-luxury obsidian lacquer body
+      strokeU(T / 2, T, body, topTrim)
+      // Recessed matte-onyx channel along the mid-band with twin 24k gold bevels
+      const channelDepth = T * 0.49
+      const channelWidth = T * 0.36
+      strokeU(channelDepth, channelWidth + 3.4, 'rgba(236, 190, 78, 0.56)', topTrim)
+      strokeU(channelDepth, channelWidth, '#080a12', topTrim)
+      // Subtle champagne-gold center hairline inside the recessed channel
+      strokeU(channelDepth, 1.4, 'rgba(247, 212, 114, 0.22)', topTrim)
+      // Outer shoulder: deep obsidian heel + brushed 24k gold outer rail
+      strokeU(T * 0.90, T * 0.12, '#05070e', topTrim)
+      strokeU(T * 0.81, T * 0.065, '#cfa038', topTrim)
+      strokeU(T * 0.80, T * 0.022, '#fbe293', topTrim)
+      // 24k Imperial Gold inner rim (burnished bronze base + 24k gold + champagne highlight)
+      strokeU(T * 0.10, T * 0.16, '#8f6214', topTrim)
+      strokeU(T * 0.088, T * 0.095, '#ecc048', topTrim)
+      strokeU(T * 0.072, T * 0.034, '#fff6c4', topTrim)
       this.paintGloss(ctx, inner)
       ctx.restore()
       return
@@ -350,19 +360,28 @@ export class ContainerView {
         new Phaser.Math.Vector2(corner.x, corner.y + 9),
       ]
       if (this.skin === 'royal_keep') {
-        // Sleek royal collar joint: midnight-sapphire housing with an imperial
-        // gold ring clamping the telescoping sleeve to the lower vessel.
-        this.sleeveG.fillGradientStyle(0x323e73, 0x222b54, 0x161c3b, 0x11162e, 1)
+        // Dark-luxury collar joint: obsidian housing with a 24k gold collar
+        // ring and corner studs (normalized x/width so both left & right render).
+        const bandX = Math.min(corner.x + dir * 2, corner.x + dir * (T - 2))
+        const bandW = T - 4
+        const specX = Math.min(corner.x + dir * 5, corner.x + dir * (T - 5))
+        const specW = T - 10
+        this.sleeveG.fillGradientStyle(0x1f253b, 0x141828, 0x0c0f1a, 0x080a12, 1)
         this.sleeveG.fillPoints(points, true)
-        this.sleeveG.lineStyle(3, 0x090c1c, 1)
+        this.sleeveG.lineStyle(3, 0x04050a, 1)
         this.sleeveG.strokePoints(points, true, true)
-        // Polished gold collar band across the joint
-        this.sleeveG.fillStyle(0xd8a018, 1)
-        this.sleeveG.fillRect(corner.x + dir * 2, corner.y - 1.5, dir * (T - 4), 4)
-        this.sleeveG.lineStyle(1.4, 0x090c1c, 0.9)
-        this.sleeveG.strokeRect(corner.x + dir * 2, corner.y - 1.5, dir * (T - 4), 4)
-        this.sleeveG.fillStyle(0xfff0a8, 1)
-        this.sleeveG.fillRect(corner.x + dir * 4, corner.y - 0.8, dir * (T - 12), 1.2)
+        // 24k gold collar band across the joint
+        this.sleeveG.fillStyle(0x9a6b18, 1)
+        this.sleeveG.fillRect(bandX, corner.y - 2, bandW, 5)
+        this.sleeveG.fillStyle(0xecc048, 1)
+        this.sleeveG.fillRect(bandX + 1, corner.y - 1.4, bandW - 2, 3.2)
+        this.sleeveG.fillStyle(0xfff6c4, 1)
+        this.sleeveG.fillRect(specX, corner.y - 0.9, specW, 1.3)
+        this.sleeveG.lineStyle(1.4, 0x04050a, 0.95)
+        this.sleeveG.strokeRect(bandX, corner.y - 2, bandW, 5)
+        // Lower gold hairline accent on the collar skirt
+        this.sleeveG.lineStyle(1.3, 0xd4a234, 0.65)
+        this.sleeveG.lineBetween(bandX + 2, corner.y + 6.2, bandX + bandW - 2, corner.y + 6.2)
         continue
       }
       this.sleeveG.fillGradientStyle(0x2b9cff, 0x0474e9, 0x0750bd, 0x06357e, 1)
@@ -382,37 +401,41 @@ export class ContainerView {
       const g = this.caps[index]!
       const points = cap.vertices
       if (this.skin === 'royal_keep') {
-        // Sleek royal cap: bevelled midnight-sapphire & gold crown cap inside
-        // the shared physical cap polygon.
-        g.fillStyle(0x1b2347, 1)
+        // Dark-luxury 24k gold-crowned bevel cap inside the shared physical cap polygon.
+        g.fillStyle(0x111524, 1)
         g.beginPath()
         g.moveTo(points[0]!.x, points[0]!.y)
         for (let i = 1; i < points.length; i++) g.lineTo(points[i]!.x, points[i]!.y)
         g.closePath()
         g.fillPath()
-        // Lit upper bevel face
-        g.fillStyle(0x3b4982, 1)
+        // Burnished gold upper chamfer facet (points 1 -> 2 -> 3 -> 4)
+        g.fillStyle(0xc8962e, 1)
         g.beginPath()
         g.moveTo(points[1]!.x, points[1]!.y)
         g.lineTo(points[2]!.x, points[2]!.y)
         g.lineTo(points[3]!.x, points[3]!.y)
-        g.lineTo(points[3]!.x, points[3]!.y + 2.5)
-        g.lineTo(points[2]!.x, points[2]!.y + 2.5)
-        g.lineTo(points[1]!.x, points[1]!.y + 2.5)
+        g.lineTo(points[4]!.x, points[4]!.y)
         g.closePath()
         g.fillPath()
-        // Imperial gold crown band on top with specular spine
-        const topY = points[2]!.y + 1
+        // Luminous 24k gold crown plate & champagne specular highlight
+        const topY = points[2]!.y + 0.8
         const bandX = Math.min(points[2]!.x, points[3]!.x) + 1
         const bandW = Math.abs(points[3]!.x - points[2]!.x) - 2
-        g.fillStyle(0xd8a018, 1)
-        g.fillRect(bandX, topY, bandW, 2.5)
-        g.fillStyle(0xfff0a8, 1)
-        g.fillRect(bandX, topY, bandW, 1.0)
-        g.lineStyle(3, 0x090c1c, 1)
+        g.fillStyle(0xf2c955, 1)
+        g.fillRect(bandX, topY, bandW, 2.8)
+        g.fillStyle(0xfff7c8, 1)
+        g.fillRect(bandX + 2, topY + 0.2, Math.max(2, bandW - 4), 1.1)
+        // Recessed dark-onyx base band with gold filigree divider
+        const baseX = Math.min(points[0]!.x, points[5]!.x) + 3
+        const baseW = Math.abs(points[5]!.x - points[0]!.x) - 6
+        g.lineStyle(1.4, 0xe8b948, 0.8)
+        g.lineBetween(baseX, points[0]!.y - 2.2, baseX + baseW, points[0]!.y - 2.2)
+        // Crisp obsidian-ink outer contour
+        g.lineStyle(3, 0x04050a, 1)
         g.beginPath()
         g.moveTo(points[0]!.x, points[0]!.y)
         for (let i = 1; i < points.length; i++) g.lineTo(points[i]!.x, points[i]!.y)
+        g.closePath()
         g.strokePath()
         continue
       }
