@@ -190,5 +190,6 @@
 ## Account refresh and compact layout — 2026-11-11
 
 - Account overview hydration now writes changed container cosmetics without broadcasting `state:save`, so TitleScene no longer rebuilds and destroys the open wardrobe during its own refresh. Unchanged cosmetics still write nothing. Both cases persist the authoritative owned and equipped skins.
-- Compact Trophies and Ledger geometry is now pure and shared. Short screens page fewer rows, reserve one pager inset, and keep title controls at least 36px tall. The passport floor leaves at least 31px between metadata and account actions.
-- `KingsWardrobeLayout.test.ts`: 10 passed. `auth-session.test.ts`: 47 passed. TypeScript and production build passed. No browser reproduction in this pass.
+- Compact Trophies and Ledger geometry is now pure and shared. Short screens page fewer rows, reserve one pager inset, and keep title controls at least 36px tall. Every non-wide passport reserves metadata start, a 31px pill gap, the action button, and its inset, while leaving statistics above 80px.
+- Follow-up: the first floor stayed at 187px above 420px body height, leaving the 520px passport only 25px of metadata clearance. The floor is now derived from those reserves.
+- `KingsWardrobeLayout.test.ts`: 10 passed after the follow-up. `auth-session.test.ts`: 47 passed. TypeScript and production build passed before the passport follow-up. No browser reproduction in this pass.
