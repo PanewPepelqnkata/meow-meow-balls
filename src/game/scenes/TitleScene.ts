@@ -1345,7 +1345,8 @@ export class TitleScene extends Phaser.Scene {
     const contentX = left + (vw - left - right - contentW) / 2
     const cardW = sideBySide ? (contentW - 16) / 2 : contentW
     const themeX = contentX
-    const themeY = topY + (compact ? 4 : 6)
+    const themeY = topY + (compact ? 108 : 6)
+    if (compact) this.buildAccountSection(vw, vh, topY)
     const themeCenterX = themeX + cardW / 2
     const twoThemeRows = cardW < 420
     const themeCardH = twoThemeRows ? (compact ? 158 : 194) : (compact ? 124 : 142)
@@ -1621,9 +1622,10 @@ export class TitleScene extends Phaser.Scene {
     wipe.setWordWrapWidth(cardW - 24, true).setAlign('center')
     this.panelContent.add(wipe)
 
-    // Account section below the wipe notice (use measured wipe height so it never overlaps)
-    const accountTopY = wipe.y + wipe.displayHeight + (compact ? 8 : 14)
-    this.buildAccountSection(vw, vh, accountTopY)
+    if (!compact) {
+      const accountTopY = wipe.y + wipe.displayHeight + 14
+      this.buildAccountSection(vw, vh, accountTopY)
+    }
   }
 
   private buildAccountSection(vw: number, vh: number, topY: number): void {
@@ -1644,7 +1646,7 @@ export class TitleScene extends Phaser.Scene {
     const displayName = resolveDisplayName(profile)
 
     const cardH = compact ? 102 : 118
-    const cardY = topY + (compact ? 2 : 6)
+    const cardY = compact ? topY : topY + 6
     g.fillStyle(UI_COLORS.CARD_BG, 1)
     g.fillRoundedRect(contentX, cardY, cardW, cardH, 12)
     g.lineStyle(2, UI_COLORS.CARD_BORDER, 1)
@@ -1672,8 +1674,8 @@ export class TitleScene extends Phaser.Scene {
 
       const gap = 10
       const btnW = Math.min(180, Math.floor((cardW - 36 - gap) / 2))
-      const btnH = compact ? 36 : 40
-      const btnY = cardY + cardH - btnH / 2 - (compact ? 12 : 16)
+      const btnH = compact ? 32 : 40
+      const btnY = cardY + cardH - btnH / 2 - (compact ? 8 : 16)
       const wardrobeBtnX = centerX - btnW / 2 - gap / 2
       const logoutBtnX = centerX + btnW / 2 + gap / 2
 
@@ -1744,8 +1746,8 @@ export class TitleScene extends Phaser.Scene {
 
       const gap = 10
       const btnW = Math.min(180, Math.floor((cardW - 36 - gap) / 2))
-      const btnH = compact ? 36 : 40
-      const btnY = cardY + cardH - btnH / 2 - (compact ? 12 : 16)
+      const btnH = compact ? 32 : 40
+      const btnY = cardY + cardH - btnH / 2 - (compact ? 8 : 16)
       const accountBtnX = centerX - btnW / 2 - gap / 2
       const loginBtnX = centerX + btnW / 2 + gap / 2
 
