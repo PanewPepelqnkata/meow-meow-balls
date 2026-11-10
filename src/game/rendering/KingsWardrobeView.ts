@@ -426,7 +426,7 @@ export class KingsWardrobeView {
   private animTimer: Phaser.Time.TimerEvent | null = null
   private liveRedraws: Array<(timeMs: number) => void> = []
   private domOverlay: HTMLDivElement | null = null
-  private readonly dustMotes: Array<{ x: number; y: number; r: number; speed: number; phase: number }> = []
+  private readonly dustMotes: Array<{ x: number; y: number; r: number }> = []
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -461,27 +461,17 @@ export class KingsWardrobeView {
       this.dustMotes.push({
         x: ((i * 137) % 100) / 100 * this.vw,
         y: ((i * 293) % 100) / 100 * this.vh,
-        r: 1.4 + (i % 3) * 0.7,
-        speed: 0.008 + (i % 4) * 0.003,
-        phase: i * 1.1,
+        r: 1 + (i % 3) * 0.45,
       })
     }
-
     this.renderBackdrop()
+    for (const mote of this.dustMotes) {
+      this.dustLayer.fillStyle(0xffe9a6, 0.08)
+      this.dustLayer.fillCircle(mote.x, mote.y, mote.r)
+    }
     this.renderTabs()
     this.renderActiveTab()
     void this.refreshOverview()
-
-    this.animTimer = scene.time.addEvent({
-      delay: 60,
-      loop: true,
-      callback: () => {
-        if (this.destroyed) return
-        const now = Date.now()
-        this.updateDustMotes(now)
-        for (const fn of this.liveRedraws) fn(now)
-      },
-    })
 
     this.root.once(Phaser.GameObjects.Events.DESTROY, () => {
       this.cleanup()
@@ -494,9 +484,11 @@ export class KingsWardrobeView {
 
   public setTab(tab: WardrobeTab): void {
     if (this.destroyed || this.activeTab === tab) return
+    this.stopAnimationTimer()
     this.activeTab = tab
     this.renderTabs()
     this.renderActiveTab()
+    this.startAnimationTimer()
   }
 
   public destroy(): void {
@@ -509,21 +501,27 @@ export class KingsWardrobeView {
   private cleanup(): void {
     this.destroyed = true
     this.requestSeq++
-    this.animTimer?.remove(false)
-    this.animTimer = null
+    this.stopAnimationTimer()
     this.liveRedraws.length = 0
     this.closeDomModal()
   }
 
-  private updateDustMotes(now: number): void {
-    this.dustLayer.clear()
-    for (const m of this.dustMotes) {
-      const y = (m.y - (now * m.speed) % this.vh + this.vh) % this.vh
-      const x = m.x + Math.sin(now * 0.0012 + m.phase) * 10
-      const alpha = 0.2 + 0.25 * (0.5 + 0.5 * Math.sin(now * 0.002 + m.phase))
-      this.dustLayer.fillStyle(0xffe9a6, alpha)
-      this.dustLayer.fillCircle(x, y, m.r)
-    }
+  private startAnimationTimer(): void {
+    if (this.destroyed || this.activeTab !== 'mirror' || this.animTimer !== null || this.liveRedraws.length === 0) return
+    this.animTimer = this.scene.time.addEvent({
+      delay: 60,
+      loop: true,
+      callback: () => {
+        if (this.destroyed || this.activeTab !== 'mirror') return
+        const now = Date.now()
+        for (const fn of this.liveRedraws) fn(now)
+      },
+    })
+  }
+
+  private stopAnimationTimer(): void {
+    this.animTimer?.remove(false)
+    this.animTimer = null
   }
 
   private async refreshOverview(): Promise<void> {
@@ -701,6 +699,7 @@ export class KingsWardrobeView {
         this.renderLedgerAndAccountTab(b)
         break
     }
+    this.startAnimationTimer()
   }
 
   private drawRoyalCard(
