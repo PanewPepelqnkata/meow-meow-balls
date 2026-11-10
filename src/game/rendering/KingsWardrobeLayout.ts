@@ -74,16 +74,11 @@ export function ledgerSectionLayout(
   const actionBlockHeight = wide && registered ? buttonHeight * 2 + 10 : buttonHeight
   const actionBottomInset = shortCompact ? 8 : 14
   const metadataStartOffset = 48 + (compact ? 54 : 64) + (compact ? 8 : 12)
-  const passportHeight = wide
-    ? bodyHeight
-    : Math.min(
-      226,
-      bodyHeight - gap - 81,
-      Math.max(
-        Math.floor((bodyHeight - gap) * (compact ? 0.46 : 0.37)),
-        metadataStartOffset + 31 + buttonHeight + actionBottomInset,
-      ),
-    )
+  const requiredPassportHeight = metadataStartOffset + 31 + actionBlockHeight + actionBottomInset
+  const passportHeight = Math.max(
+    wide ? bodyHeight : Math.min(226, bodyHeight - gap - 81, Math.floor((bodyHeight - gap) * (compact ? 0.46 : 0.37))),
+    requiredPassportHeight,
+  )
   const statisticsHeight = wide ? bodyHeight : Math.max(0, bodyHeight - passportHeight - gap)
   const actionTopOffset = passportHeight - actionBlockHeight - actionBottomInset
   const metadataHeight = Math.max(0, actionTopOffset - metadataStartOffset)

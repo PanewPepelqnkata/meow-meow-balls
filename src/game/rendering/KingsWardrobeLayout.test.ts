@@ -53,7 +53,10 @@ describe('compact Account section geometry', () => {
       achievementPageSize: 4,
       titlePageSize: 5,
     }))
-    expect(ledgerSectionLayout(700, false, true, true).passportHeight).toBe(700)
+    const stacked = ledgerSectionLayout(260, false, true, true)
+    expect(stacked.passportHeight).toBeGreaterThanOrEqual(124 + 31 + 44 * 2 + 10 + 14)
+    expect(stacked.actionTopOffset - stacked.metadataStartOffset).toBeGreaterThanOrEqual(31)
+    expect(ledgerSectionLayout(700, false, true, true).passportHeight).toBeGreaterThanOrEqual(700)
     expect(ledgerSectionLayout(700, false, true, true).statisticsHeight).toBe(700)
   })
 })
