@@ -1446,14 +1446,19 @@ export class AuthService {
         created_at: overview.profile.created_at,
         updated_at: overview.profile.updated_at,
       }
-      if (overview.profile && getSaveOwnerId() === this.user.id) {
-        const nextOwned = normalizeOwnedContainerSkins(overview.profile.owned_container_skins)
-        const nextEquipped = normalizeEquippedContainerSkin(overview.profile.equipped_container_skin, nextOwned)
+      const currentSave = loadSave()
+      const nextOwned = normalizeOwnedContainerSkins(overview.profile.owned_container_skins)
+      const nextEquipped = normalizeEquippedContainerSkin(overview.profile.equipped_container_skin, nextOwned)
+      const currentOwned = normalizeOwnedContainerSkins(currentSave.ownedContainerSkins)
+      const cosmeticsChanged = nextEquipped !== currentSave.equippedContainerSkin
+        || nextOwned.length !== currentOwned.length
+        || nextOwned.some((skin, index) => skin !== currentOwned[index])
+      if (getSaveOwnerId() === this.user.id && cosmeticsChanged) {
         writeSave({
-          ...loadSave(),
+          ...currentSave,
           ownedContainerSkins: nextOwned,
           equippedContainerSkin: nextEquipped,
-        }, { syncCloud: false, ownerId: this.user.id })
+        }, { syncCloud: false, notify: false, ownerId: this.user.id })
       }
       return { data: overview, error: null }
     } catch (err) {

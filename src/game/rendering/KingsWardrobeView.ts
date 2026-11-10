@@ -35,6 +35,7 @@ import {
 import { drawCoin, formatCoins } from './Coin'
 import { bakeCanvas } from './RoughArt'
 import { cycleColor } from './rgbCycle'
+import { ledgerSectionLayout, trophySectionLayout } from './KingsWardrobeLayout'
 
 export type WardrobeTab = 'mirror' | 'avatars' | 'trophies' | 'ledger'
 
@@ -1583,8 +1584,9 @@ export class KingsWardrobeView {
     const gap = 12
     const achW = b.wide ? Math.floor((b.bodyW - gap) * 0.62) : b.bodyW
     const titlesW = b.wide ? b.bodyW - achW - gap : b.bodyW
-    const achH = b.wide ? b.bodyH : Math.floor((b.bodyH - gap) * 0.58)
-    const titlesH = b.wide ? b.bodyH : b.bodyH - achH - gap
+    const sections = trophySectionLayout(b.bodyH, b.compact, b.wide)
+    const achH = sections.achievementHeight
+    const titlesH = sections.titleHeight
     const achX = b.bodyX
     const achY = b.bodyY
     const titlesX = b.wide ? b.bodyX + achW + gap : b.bodyX
@@ -1641,16 +1643,15 @@ export class KingsWardrobeView {
     const filtered: PlayerAchievement[] = this.overview.achievements.filter(
       (a) => this.trophyCategory === 'all' || a.category === this.trophyCategory,
     )
-    const pageSize = b.wide ? 4 : 3
+    const pageSize = sections.achievementPageSize
     const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
     this.trophyPage = Phaser.Math.Clamp(this.trophyPage, 0, totalPages - 1)
     const visibleItems = filtered.slice(this.trophyPage * pageSize, (this.trophyPage + 1) * pageSize)
 
-    const pagerBtnH = b.compact ? 32 : 36
+    const pagerBtnH = sections.pagerButtonHeight
     const listTopY = catY + catH / 2 + 8
-    const listBottomY = achY + achH - pagerBtnH - 16
-    const rowGap = 6
-    const rowH = Math.floor((listBottomY - listTopY - rowGap * (pageSize - 1)) / pageSize)
+    const rowGap = sections.titleRowGap
+    const rowH = sections.achievementRowHeight
 
     visibleItems.forEach((ach, idx) => {
       const ry = listTopY + idx * (rowH + rowGap)
@@ -1722,7 +1723,8 @@ export class KingsWardrobeView {
     })
 
     // Pagination controls for Trophy Cabinet
-    const pagerY = achY + achH - pagerBtnH / 2 - 10
+    const pagerInset = sections.pagerInset
+    const pagerY = achY + achH - pagerBtnH / 2 - pagerInset
     const prevBtn = new ChunkyButton({
       scene: this.scene,
       x: achX + 60,
@@ -1770,15 +1772,14 @@ export class KingsWardrobeView {
 
     const activeTitleId = this.overview.profile.active_title_id
     const allTitleAchievements = this.overview.achievements.filter((a) => a.reward_title_id && a.reward_title_name)
-    const titlePageSize = b.wide ? 5 : 3
+    const titlePageSize = sections.titlePageSize
     const totalTitlePages = Math.max(1, Math.ceil(allTitleAchievements.length / titlePageSize))
     this.titlePage = Phaser.Math.Clamp(this.titlePage, 0, totalTitlePages - 1)
     const visibleTitles = allTitleAchievements.slice(this.titlePage * titlePageSize, (this.titlePage + 1) * titlePageSize)
 
-    const tStartY = titlesY + 46
-    const tBottomY = titlesY + titlesH - pagerBtnH - 16
-    const tGap = 6
-    const tRowH = Math.floor((tBottomY - tStartY - tGap * (titlePageSize - 1)) / titlePageSize)
+    const tStartY = titlesY + sections.titleStartInset
+    const tGap = sections.titleRowGap
+    const tRowH = sections.titleRowHeight
 
     visibleTitles.forEach((ach, idx) => {
       const tid = ach.reward_title_id!
@@ -1794,7 +1795,7 @@ export class KingsWardrobeView {
       g.strokeRoundedRect(tx, ty, tw, tRowH, 9)
 
       const actionBtnW = 86
-      const actionBtnH = Math.min(34, Math.max(28, tRowH - 8))
+      const actionBtnH = sections.titleActionHeight
       const textMaxW = tw - actionBtnW - 24
 
       const nameLbl = bodyText(this.scene, tx + 12, ty + tRowH * 0.36, tname, {
@@ -1832,7 +1833,7 @@ export class KingsWardrobeView {
     })
 
     // Pagination controls for Player Titles
-    const tPagerY = titlesY + titlesH - pagerBtnH / 2 - 10
+    const tPagerY = titlesY + titlesH - pagerBtnH / 2 - pagerInset
     const tPrevBtn = new ChunkyButton({
       scene: this.scene,
       x: titlesX + 54,
@@ -1898,8 +1899,9 @@ export class KingsWardrobeView {
     const gap = 12
     const passW = b.wide ? Math.floor((b.bodyW - gap) * 0.37) : b.bodyW
     const statsW = b.wide ? b.bodyW - passW - gap : b.bodyW
-    const passH = b.wide ? b.bodyH : Math.min(226, Math.floor((b.bodyH - gap) * 0.37))
-    const statsH = b.wide ? b.bodyH : b.bodyH - passH - gap
+    const ledger = ledgerSectionLayout(b.bodyH, b.compact, b.wide, isAuthed)
+    const passH = ledger.passportHeight
+    const statsH = ledger.statisticsHeight
     const passX = b.bodyX
     const passY = b.bodyY
     const statsX = b.wide ? b.bodyX + passW + gap : b.bodyX
@@ -1986,9 +1988,8 @@ export class KingsWardrobeView {
         ]
 
     const btnH = b.compact ? 38 : 44
-    const actionBlockH = b.wide && isAuthed ? btnH * 2 + 10 : btnH
-    const metaStartY = badgeBannerY + badgeBannerH + (b.compact ? 8 : 12)
-    const metaAvailH = Math.max(30, passY + passH - 14 - actionBlockH - 10 - metaStartY)
+    const metaStartY = passY + ledger.metadataStartOffset
+    const metaAvailH = ledger.metadataHeight
 
     if (b.wide) {
       const mGap = 7
@@ -2034,7 +2035,7 @@ export class KingsWardrobeView {
       const loginBtn = new ChunkyButton({
         scene: this.scene,
         x: passX + passW / 2,
-        y: passY + passH - btnH / 2 - 14,
+        y: passY + ledger.actionTopOffset + btnH / 2,
         w: innerW,
         h: btnH,
         label: 'SIGN IN / CREATE ACCOUNT',
@@ -2059,7 +2060,7 @@ export class KingsWardrobeView {
       const deleteW = stackVertically ? innerW : halfW
       const logoutX = stackVertically ? passX + passW / 2 : innerX + halfW / 2
       const deleteX = stackVertically ? passX + passW / 2 : innerX + innerW - halfW / 2
-      const deleteY = passY + passH - btnH / 2 - 14
+      const deleteY = passY + ledger.actionTopOffset + btnH / 2
       const logoutY = stackVertically ? deleteY - btnH - 10 : deleteY
 
       const logoutBtn = new ChunkyButton({

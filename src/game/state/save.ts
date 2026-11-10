@@ -445,7 +445,7 @@ function assignCache(next: SaveDataV1): SaveDataV1 {
 /** Write a complete save object (used for cloud progress restoration). */
 export function writeSave(
   save: Partial<SaveDataV1>,
-  options?: { syncCloud?: boolean; ownerId?: string | null },
+  options?: { syncCloud?: boolean; ownerId?: string | null; notify?: boolean },
 ): SaveDataV1 {
   if (isDrunkoTestRoute()) return loadSave()
   const normalized = normalizeSave(save)
@@ -455,7 +455,7 @@ export function writeSave(
   }
   writeNow(options?.syncCloud ?? false)
   gameBus.emit('state:best', { best: current.best })
-  gameBus.emit('state:save', { best: current.best })
+  if (options?.notify !== false) gameBus.emit('state:save', { best: current.best })
   return current
 }
 

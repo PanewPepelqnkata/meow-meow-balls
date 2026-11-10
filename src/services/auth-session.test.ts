@@ -761,6 +761,43 @@ describe('persistent browser auth lifecycle', () => {
     expect(sdk.state.callbackResults.every((result) => result === undefined)).toBe(true)
     expect(sdk.state.nestedCalls).toEqual([])
   })
+
+  it.each([
+    { owned: ['royal_keep'], equipped: 'royal_keep' },
+    { owned: ['royal_keep', 'og_container'], equipped: 'og_container' },
+  ])('hydrates authoritative Account cosmetics without broadcasting a save rebuild', async ({ owned, equipped }) => {
+    sdk.state.session = sessionFor('account-a')
+    await auth.initialize()
+    await vi.advanceTimersByTimeAsync(0)
+    // resetModules replaces the singleton; a static import would observe the previous bus.
+    const { gameBus } = await import('../game/events/gameBus')
+    const stateSave = vi.fn()
+    const off = gameBus.on('state:save', stateSave)
+    sdk.rpc.mockResolvedValueOnce({
+      data: {
+        profile: {
+          id: 'account-a', username: 'RoyalPlayer', display_name: 'RoyalPlayer', selected_avatar_id: 'core:1',
+          active_title_id: null, favorite_ball_ids: [], equipped_container_skin: equipped, owned_container_skins: owned,
+          username_changed_at: null, created_at: '2026-11-09T00:00:00.000Z', updated_at: '2026-11-09T00:00:00.000Z',
+        },
+        auth_providers: ['email'], unlocked_ball_ids: ['core:1', 'core:2', 'core:3'], total_available_balls: 14,
+        achievements: [], titles: [], newly_unlocked_achievements: [],
+        statistics: {
+          games_played: 0, total_merges: 0, highest_tier: 1, total_playtime_ms: 0,
+          total_coins_earned: 0, current_coins: 0, average_score: 0, best_score: 0, verified_runs_count: 0,
+        },
+      },
+      error: null,
+    })
+
+    const result = await auth.getKingsWardrobeOverview()
+    off()
+
+    expect(result.error).toBeNull()
+    expect(stateSave).not.toHaveBeenCalled()
+    expect(saves.loadSave().ownedContainerSkins).toEqual(owned)
+    expect(saves.loadSave().equippedContainerSkin).toBe(equipped)
+  })
 })
 
 describe('account wallet and ability upgrade persistence', () => {
