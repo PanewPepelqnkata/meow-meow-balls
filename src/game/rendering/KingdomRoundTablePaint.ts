@@ -156,10 +156,3 @@ export function paintRoundTableBack(ctx: CanvasRenderingContext2D, uX: number, u
   ctx.fill()
   ctx.restore()
 }
-
-/** Kept as a no-op overlay so existing 2-layer callers stay clean without any occluding front lip or spire. */
-export function paintRoundTableFront(ctx: CanvasRenderingContext2D, uX: number, uY = uX): void {
-  ctx.save()
-  ctx.scale(uX, uY)
-  ctx.restore()
-}

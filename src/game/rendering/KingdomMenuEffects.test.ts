@@ -5,6 +5,7 @@ import { resolveKingdomMenuLayout } from '../../ui/KingdomMenuLayout'
 vi.mock('phaser', () => ({ default: { BlendModes: { ADD: 1 } } }))
 vi.mock('./RoughArt', () => ({ bakeCanvas: vi.fn() }))
 
+import { throneBackrestGeometry } from './KingdomStallArt'
 import { KingdomMenuEffects } from './KingdomMenuEffects'
 import { selectRoundTableSpecs, unlockedRoundTablePool } from './KingdomMenuView'
 import { normalizeSave } from '../state/save'
@@ -138,6 +139,37 @@ describe('Throne vault atmosphere', () => {
     effects.destroy()
   })
 })
+
+describe('throne backrest responsive geometry', () => {
+  it.each([12, 32, 64, 117, 120, 320, 390, 667, 844, 1280, 1920])('keeps velvet dimensions and gradient radii valid at width %s', (throneW) => {
+    const geometry = throneBackrestGeometry(throneW, 152)
+    expect(geometry.recessInset).toBeGreaterThan(0)
+    expect(geometry.recessInset).toBeLessThan(geometry.outerFrameW * 0.4)
+    expect(geometry.recessInset).toBeLessThan(geometry.outerFrameH * 0.625)
+    expect(geometry.padW).toBeGreaterThan(0)
+    expect(geometry.padH).toBeGreaterThan(0)
+    expect(geometry.padW * 0.06).toBeGreaterThanOrEqual(0)
+    expect(geometry.padH * 0.72).toBeGreaterThanOrEqual(0)
+  })
+  it('keeps backrest gradients valid for the actual throne widths across viewports', () => {
+    const viewports = [
+      { width: 320, height: 568, desktop: false },
+      { width: 390, height: 844, desktop: false },
+      { width: 667, height: 375, desktop: true },
+      { width: 1280, height: 800, desktop: true },
+    ]
+    for (const viewport of viewports) {
+      const throneW = viewport.desktop ? Math.min(viewport.width * 0.14, 156) : Math.min(viewport.width * 0.3, 124)
+      const throneH = viewport.desktop ? Math.min(viewport.height * 0.235, 188) : Math.min(viewport.height * 0.195, 152)
+      const geometry = throneBackrestGeometry(throneW, throneH)
+      expect(geometry.padW, `${viewport.width}px pad width`).toBeGreaterThan(0)
+      expect(geometry.padH, `${viewport.width}px pad height`).toBeGreaterThan(0)
+      expect(geometry.padW * 0.06).toBeGreaterThanOrEqual(0)
+      expect(geometry.padH * 0.72).toBeGreaterThanOrEqual(0)
+    }
+  })
+})
+
 
 describe('Round Table unlocked hero selection', () => {
   it('includes only unlocked core tiers and discovered collectible characters', () => {

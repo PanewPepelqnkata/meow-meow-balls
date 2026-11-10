@@ -45,6 +45,21 @@ function pointedArch(ctx: CanvasRenderingContext2D, x: number, y: number, w: num
   ctx.closePath()
 }
 
+export function throneBackrestGeometry(throneW: number, throneH: number) {
+  const safeThroneW = Number.isFinite(throneW) ? Math.max(1, throneW) : 1
+  const safeThroneH = Number.isFinite(throneH) ? Math.max(1, throneH) : 1
+  const outerFrameW = safeThroneW * 0.62
+  const outerFrameH = safeThroneH * 0.68
+  const recessInset = Math.min(Math.max(4, safeThroneW * 0.045), outerFrameW * 0.2, outerFrameH * 0.25)
+  return {
+    outerFrameW,
+    outerFrameH,
+    recessInset,
+    padW: outerFrameW - recessInset * 2.5,
+    padH: outerFrameH - recessInset * 1.6,
+  }
+}
+
 function polygon(ctx: CanvasRenderingContext2D, points: number[]): void {
   ctx.beginPath()
   ctx.moveTo(points[0]!, points[1]!)
@@ -323,8 +338,7 @@ export function bakeThroneVaultHall(scene: Phaser.Scene, layout: KingdomMenuLayo
     }
 
     // Outer carved gilded frame of the high arched backrest
-    const outerFrameW = throneW * 0.62
-    const outerFrameH = throneH * 0.68
+    const { outerFrameW, outerFrameH, recessInset, padW, padH } = throneBackrestGeometry(throneW, throneH)
     const outerFrameX = throneCX - outerFrameW / 2
     const outerFrameY = backTopY + throneH * 0.06
     pointedArch(ctx, outerFrameX, outerFrameY, outerFrameW, outerFrameH)
@@ -341,7 +355,6 @@ export function bakeThroneVaultHall(scene: Phaser.Scene, layout: KingdomMenuLayo
     ctx.stroke()
 
     // Dark carved walnut inner molding recess
-    const recessInset = Math.max(4, throneW * 0.045)
     pointedArch(
       ctx,
       outerFrameX + recessInset * 0.65,
@@ -358,8 +371,6 @@ export function bakeThroneVaultHall(scene: Phaser.Scene, layout: KingdomMenuLayo
     // Plush crimson velvet upholstered backrest with radial vignette shading & diamond tufting
     const padX = outerFrameX + recessInset * 1.25
     const padY = outerFrameY + recessInset * 1.25
-    const padW = outerFrameW - recessInset * 2.5
-    const padH = outerFrameH - recessInset * 1.6
     ctx.save()
     pointedArch(ctx, padX, padY, padW, padH)
     ctx.clip()
