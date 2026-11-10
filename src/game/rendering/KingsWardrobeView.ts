@@ -528,8 +528,24 @@ export class KingsWardrobeView {
 
   private async refreshOverview(): Promise<void> {
     const seq = ++this.requestSeq
-    const { data } = await authService.getKingsWardrobeOverview()
+    let data: KingsWardrobeOverview | null = null
+    let loadError: Error | null = null
+    try {
+      const result = await authService.getKingsWardrobeOverview()
+      data = result.data
+      loadError = result.error
+    } catch (error) {
+      loadError = error instanceof Error ? error : new Error(String(error))
+    }
     if (this.destroyed || seq !== this.requestSeq) return
+    if (loadError) {
+      this.showToast(`Could not load account data: ${loadError.message}`, 'error')
+      return
+    }
+    if (!data) {
+      this.showToast('Could not load account data: the server returned no overview.', 'error')
+      return
+    }
     this.overview = data
     if (!isValidWardrobeCharacterId(this.inspectCharId)) {
       this.inspectCharId = data.profile.selected_avatar_id || 'core:1'
@@ -537,6 +553,18 @@ export class KingsWardrobeView {
     this.renderTabs()
     this.renderActiveTab()
   }
+  private async runAccountAction(action: () => Promise<{ error: Error | null }>, fallback: string): Promise<Error | null> {
+    try {
+      const result = await action()
+      if (result.error) this.showToast(result.error.message, 'error')
+      return result.error
+    } catch (error) {
+      const failure = error instanceof Error ? error : new Error(fallback)
+      this.showToast(failure.message || fallback, 'error')
+      return failure
+    }
+  }
+
 
   private showToast(message: string, kind: 'success' | 'error' = 'success'): void {
     if (this.destroyed) return
@@ -1242,11 +1270,8 @@ export class KingsWardrobeView {
   /** Equip an owned container skin then re-render the wardrobe tab. */
   private async equipContainerSkinAndRefresh(skinId: ContainerSkinId): Promise<void> {
     this.showToast('Equipping container skin...')
-    const { error } = await authService.equipContainerSkin(skinId)
-    if (error) {
-      this.showToast(error.message, 'error')
-      return
-    }
+    const error = await this.runAccountAction(() => authService.equipContainerSkin(skinId), 'Could not equip container skin.')
+    if (error) return
     this.overview = {
       ...this.overview,
       profile: {
@@ -1519,11 +1544,8 @@ export class KingsWardrobeView {
       this.showToast('Sign in to save your Avatar to the leaderboard', 'error')
       return
     }
-    const { error } = await authService.setSelectedAvatar(characterId)
-    if (error) {
-      this.showToast(error.message, 'error')
-      return
-    }
+    const error = await this.runAccountAction(() => authService.setSelectedAvatar(characterId), 'Could not update avatar.')
+    if (error) return
     this.overview.profile.selected_avatar_id = characterId
     this.showToast(`Avatar updated to ${getWardrobeCharacter(characterId).name}!`, 'success')
     this.renderActiveTab()
@@ -1545,11 +1567,8 @@ export class KingsWardrobeView {
       }
       current.push(characterId)
     }
-    const { error } = await authService.saveFavoriteBalls(current)
-    if (error) {
-      this.showToast(error.message, 'error')
-      return
-    }
+    const error = await this.runAccountAction(() => authService.saveFavoriteBalls(current), 'Could not update favorite champions.')
+    if (error) return
     this.overview.profile.favorite_ball_ids = current
     this.showToast('Favorite Champions updated!', 'success')
     this.renderActiveTab()
@@ -1857,11 +1876,8 @@ export class KingsWardrobeView {
       this.showToast('Sign in to equip a Player Title on your profile', 'error')
       return
     }
-    const { error } = await authService.setActiveTitle(titleId)
-    if (error) {
-      this.showToast(error.message, 'error')
-      return
-    }
+    const error = await this.runAccountAction(() => authService.setActiveTitle(titleId), 'Could not equip player title.')
+    if (error) return
     this.overview.profile.active_title_id = titleId
     const label = titleId ? getTitleNameById(titleId) : 'None'
     this.showToast(titleId ? `Equipped title: ${label}` : 'Player title unequipped', 'success')

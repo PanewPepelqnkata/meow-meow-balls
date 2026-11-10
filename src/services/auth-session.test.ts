@@ -671,6 +671,79 @@ describe('persistent browser auth lifecycle', () => {
     expect(sdk.state.nestedCalls).toEqual([])
   })
 
+  it.each([
+    { data: null, error: null, message: 'The Account overview RPC returned no data.' },
+    { data: { profile: { id: 'account-a' } }, error: null, message: 'The Account overview RPC returned an incomplete response.' },
+  ])('returns a diagnostic error rather than treating invalid overview data as success', async ({ data, error, message }) => {
+    sdk.state.session = sessionFor('account-a')
+    await auth.initialize()
+    await vi.advanceTimersByTimeAsync(0)
+    sdk.rpc.mockResolvedValueOnce({ data, error })
+
+    const result = await auth.getKingsWardrobeOverview()
+
+    expect(result.data.profile.id).toBe('account-a')
+    expect(result.error?.message).toBe(message)
+    expect(sdk.rpc).toHaveBeenCalledWith('get_kings_wardrobe_overview')
+  })
+
+  it('preserves the backend RPC error while returning fallback account data', async () => {
+    sdk.state.session = sessionFor('account-a')
+    await auth.initialize()
+    await vi.advanceTimersByTimeAsync(0)
+    sdk.rpc.mockResolvedValueOnce({ data: null, error: { message: 'permission denied', code: '42501' } })
+
+    const result = await auth.getKingsWardrobeOverview()
+
+    expect(result.data.profile.id).toBe('account-a')
+    expect(result.error?.message).toBe('permission denied')
+  })
+
+  it('hydrates the profile from the authorized overview if direct profile hydration failed', async () => {
+    sdk.state.session = sessionFor('account-a')
+    sdk.queryResult.mockImplementation((table, column, value, operation) => {
+      if (table === 'profiles') return Promise.resolve({ data: null, error: { message: 'direct profile read denied' } })
+      return sdk.defaultQuery(table, column, value, operation)
+    })
+    await auth.initialize()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(auth.getProfile()).toBeNull()
+
+    const overview = {
+      profile: {
+        id: 'account-a', username: 'RoyalPlayer', display_name: 'RoyalPlayer',
+        selected_avatar_id: 'core:1', active_title_id: null, favorite_ball_ids: [],
+        equipped_container_skin: 'royal_keep', owned_container_skins: ['royal_keep'],
+        username_changed_at: null, created_at: '2026-11-09T00:00:00.000Z', updated_at: '2026-11-09T00:00:00.000Z',
+      },
+      auth_providers: ['email'], unlocked_ball_ids: ['core:1', 'core:2', 'core:3'], total_available_balls: 14,
+      achievements: [], titles: [], newly_unlocked_achievements: [],
+      statistics: {
+        games_played: 2, total_merges: 3, highest_tier: 4, total_playtime_ms: 1000,
+        total_coins_earned: 25, current_coins: 10, average_score: 42, best_score: 84, verified_runs_count: 2,
+      },
+    }
+    sdk.rpc.mockResolvedValueOnce({ data: overview, error: null })
+
+    const result = await auth.getKingsWardrobeOverview()
+
+    expect(result.error).toBeNull()
+    expect(auth.getProfile()).toEqual(expect.objectContaining({
+      id: 'account-a', username: 'RoyalPlayer', selected_avatar_id: 'core:1', owned_container_skins: ['royal_keep'],
+    }))
+  })
+
+  it('returns rejected Account mutation requests through the error contract', async () => {
+    sdk.state.session = sessionFor('account-a')
+    await auth.initialize()
+    await vi.advanceTimersByTimeAsync(0)
+    sdk.rpc.mockRejectedValueOnce(new Error('network unavailable'))
+
+    const result = await auth.setSelectedAvatar('core:1')
+
+    expect(result.error?.message).toBe('network unavailable')
+  })
+
   it('keeps the owned signup guest transfer instead of resetting it in the SDK listener', async () => {
     await auth.initialize()
     await vi.advanceTimersByTimeAsync(0)

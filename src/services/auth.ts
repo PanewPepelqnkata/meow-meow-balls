@@ -1231,12 +1231,10 @@ export class AuthService {
       return { error: null }
     }
     const uid = this.user.id
-    const { data, error } = await getSupabase().rpc('equip_container_skin', {
+    const { data, error } = await this.accountRpc('equip_container_skin', {
       p_skin_id: skinId,
     })
-    if (error) {
-      return { error: new Error(error.message) }
-    }
+    if (error) return { error }
     const raw = (Array.isArray(data) ? data[0] : data) as {
       equipped_container_skin?: unknown
       owned_container_skins?: unknown
@@ -1356,27 +1354,46 @@ export class AuthService {
       // Offline or unmigrated — local guest save continues to work.
     }
   }
+  private async accountRpc(name: string, args: Record<string, unknown> = {}): Promise<{ data: unknown; error: Error | null }> {
+    try {
+      const { data, error } = await getSupabase().rpc(name, args)
+      return { data, error: error ? new Error(error.message) : null }
+    } catch (error) {
+      return {
+        data: null,
+        error: error instanceof Error ? error : new Error('Account request failed.'),
+      }
+    }
+  }
+
   async fetchProfile(): Promise<Profile | null> {
     const userId = this.user?.id
     if (!userId) return null
     const revision = this.accountRevision
     const requestRevision = ++this.profileRequestRevision
 
-    const { data, error } = await getSupabase()
-      .from('profiles')
-      .select('id, username, display_name, avatar_url, selected_avatar_id, active_title_id, favorite_ball_ids, equipped_container_skin, owned_container_skins, username_changed_at, created_at, updated_at')
-      .eq('id', userId)
-      .single()
+    try {
+      const { data, error } = await getSupabase()
+        .from('profiles')
+        .select('id, username, display_name, avatar_url, selected_avatar_id, active_title_id, favorite_ball_ids, equipped_container_skin, owned_container_skins, username_changed_at, created_at, updated_at')
+        .eq('id', userId)
+        .single()
 
-    if (revision !== this.accountRevision || requestRevision !== this.profileRequestRevision || this.user?.id !== userId) return null
+      if (revision !== this.accountRevision || requestRevision !== this.profileRequestRevision || this.user?.id !== userId) return null
 
-    if (error) {
-      console.error('Error fetching profile:', error)
+      if (error) {
+        console.error('Error fetching profile:', error)
+        return null
+      }
+
+      this.profile = data
+      return data
+    } catch (error) {
+      if (revision === this.accountRevision && requestRevision === this.profileRequestRevision && this.user?.id === userId) {
+        console.error('Error fetching profile:', error)
+      }
       return null
     }
-
-    this.profile = data
-    return data
   }
 
   async getKingsWardrobeOverview(): Promise<{ data: KingsWardrobeOverview; error: Error | null }> {
@@ -1389,10 +1406,22 @@ export class AuthService {
       if (error || !data || typeof data !== 'object') {
         return {
           data: buildFallbackOverviewFromSave(save, this.profile),
-          error: error ? new Error(error.message) : null,
+          error: error
+            ? new Error(error.message)
+            : new Error('The Account overview RPC returned no data.'),
         }
       }
-      const overview = data as KingsWardrobeOverview
+      const candidate = data as Partial<KingsWardrobeOverview>
+      if (!candidate.profile || typeof candidate.profile.id !== 'string'
+        || typeof candidate.profile.selected_avatar_id !== 'string'
+        || !candidate.statistics || !Array.isArray(candidate.achievements)
+        || !Array.isArray(candidate.unlocked_ball_ids) || !Array.isArray(candidate.titles)) {
+        return {
+          data: buildFallbackOverviewFromSave(save, this.profile),
+          error: new Error('The Account overview RPC returned an incomplete response.'),
+        }
+      }
+      const overview = candidate as KingsWardrobeOverview
       if (overview.newly_unlocked_achievements && overview.newly_unlocked_achievements.length > 0) {
         for (const ach of overview.newly_unlocked_achievements) {
           gameBus.emit('achievement:unlocked', {
@@ -1403,18 +1432,19 @@ export class AuthService {
           })
         }
       }
-      if (overview.profile && this.profile) {
-        this.profile = {
-          ...this.profile,
-          username: overview.profile.username,
-          display_name: overview.profile.display_name,
-          selected_avatar_id: overview.profile.selected_avatar_id,
-          active_title_id: overview.profile.active_title_id,
-          favorite_ball_ids: overview.profile.favorite_ball_ids,
-          username_changed_at: overview.profile.username_changed_at,
-          equipped_container_skin: overview.profile.equipped_container_skin,
-          owned_container_skins: overview.profile.owned_container_skins,
-        }
+      this.profile = {
+        id: overview.profile.id,
+        username: overview.profile.username,
+        display_name: overview.profile.display_name,
+        avatar_url: this.profile?.avatar_url ?? null,
+        selected_avatar_id: overview.profile.selected_avatar_id,
+        active_title_id: overview.profile.active_title_id,
+        favorite_ball_ids: overview.profile.favorite_ball_ids,
+        equipped_container_skin: overview.profile.equipped_container_skin,
+        owned_container_skins: overview.profile.owned_container_skins,
+        username_changed_at: overview.profile.username_changed_at,
+        created_at: overview.profile.created_at,
+        updated_at: overview.profile.updated_at,
       }
       if (overview.profile && getSaveOwnerId() === this.user.id) {
         const nextOwned = normalizeOwnedContainerSkins(overview.profile.owned_container_skins)
@@ -1442,12 +1472,10 @@ export class AuthService {
     if (!check.valid) {
       return { error: new Error(check.error ?? 'Invalid username') }
     }
-    const { error } = await getSupabase().rpc('change_username_once', {
+    const { error } = await this.accountRpc('change_username_once', {
       p_new_username: check.normalized,
     })
-    if (error) {
-      return { error: new Error(error.message) }
-    }
+    if (error) return { error }
     await this.fetchProfile()
     return { error: null }
   }
@@ -1459,12 +1487,10 @@ export class AuthService {
     if (!this.user || !this.isRegisteredAccount()) {
       return { error: new Error('Sign in with a registered account to customize your avatar') }
     }
-    const { error } = await getSupabase().rpc('set_selected_avatar', {
+    const { error } = await this.accountRpc('set_selected_avatar', {
       p_avatar_id: avatarId.trim(),
     })
-    if (error) {
-      return { error: new Error(error.message) }
-    }
+    if (error) return { error }
     await this.fetchProfile()
     return { error: null }
   }
@@ -1477,12 +1503,10 @@ export class AuthService {
     if (!check.valid) {
       return { error: new Error(check.error ?? 'Invalid favorite balls') }
     }
-    const { error } = await getSupabase().rpc('save_favorite_balls', {
+    const { error } = await this.accountRpc('save_favorite_balls', {
       p_favorite_ball_ids: check.normalized,
     })
-    if (error) {
-      return { error: new Error(error.message) }
-    }
+    if (error) return { error }
     await this.fetchProfile()
     return { error: null }
   }
@@ -1491,12 +1515,10 @@ export class AuthService {
     if (!this.user || !this.isRegisteredAccount()) {
       return { error: new Error('Sign in with a registered account to equip a title') }
     }
-    const { error } = await getSupabase().rpc('set_active_title', {
+    const { error } = await this.accountRpc('set_active_title', {
       p_title_id: titleId ? titleId.trim() : null,
     })
-    if (error) {
-      return { error: new Error(error.message) }
-    }
+    if (error) return { error }
     await this.fetchProfile()
     return { error: null }
   }
@@ -1508,12 +1530,10 @@ export class AuthService {
     if (confirmation.trim() !== 'DELETE') {
       return { error: new Error('Type DELETE to confirm permanent account deletion') }
     }
-    const { error } = await getSupabase().rpc('delete_own_account', {
+    const { error } = await this.accountRpc('delete_own_account', {
       p_confirmation: confirmation.trim(),
     })
-    if (error) {
-      return { error: new Error(error.message) }
-    }
+    if (error) return { error }
     await this.signOut()
     return { error: null }
   }
