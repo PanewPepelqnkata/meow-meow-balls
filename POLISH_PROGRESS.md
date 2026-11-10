@@ -169,7 +169,7 @@
 
 ## Soft-body deformation protection — 2026-11-10
 
-- Applied the existing small-ball shape-integrity controls to tiers 2–3 and the same-radius tiers 8–12, without making them rigid: the pressure/expansion passes use a 0.52 minimum ring-radius floor for those tiers, retain the 1.04 upper envelope and smoothed radial transitions, and cap protected-tier bulges while preserving adaptive rim/spoke compliance.
-- Tier 1 keeps its original 0.68 inner-ring floor and firmer structural stiffness; tiers 4–7 retain the normal 0.36 floor and original flexible bulge response. Contact recovery remains collision/wall constrained.
-- Regression coverage exercises tier 2, 3, and 8 against a Tier 7 corner load, checking radial bounds, adjacent-particle continuity, area/aspect, and measurable compression. Tier-family selection is checked through tier 12.
-- Verified with `npx vitest run src/game/systems/softball.test.ts` (17 passed), focused tier-group stress tests (4 passed), and `npx tsc --noEmit`.
+ - Applied the existing small-ball shape-integrity controls to tiers 2–3 and the same-radius tiers 8–12 without making them rigid. Those tiers use a 0.52 minimum ring-radius floor, a 1.04 upper envelope, smoothed adjacent-particle transitions, and a protected bulge cap; rim/spoke compliance remains adaptive.
+ - Tier 1 retains its proven 0.68 inner-ring floor and firmer stiffness. Tiers 4–7 retain the normal 0.36 floor and flexible bulge response.
+ - The tier 2, 3, and 8 Tier-7 corner-load regressions require a peak within-frame radial span above 0.15× nominal ring radius, alongside radial, neighbor-continuity, area, and aspect integrity bounds. Tier-class selection is checked through tier 12.
+ - Focused tier-group tests (4 passed), all soft-body tests (17 passed), and `npx tsc --noEmit` pass. `npm test` currently has two unrelated failures that reproduce at pushed baseline `3fe11c0`: `merge-cooldown.test.ts` replacement chain contact revalidation and `merge-gameplay.test.ts` maximum-squeeze contour jump.

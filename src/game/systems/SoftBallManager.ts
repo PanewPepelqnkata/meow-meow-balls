@@ -834,8 +834,8 @@ export class SoftBallManager {
       const protectedShape = hasProtectedSlimeShape(soft.radius)
       const deficit = 1 - softBallArea(soft) / soft.restArea
       const ringR = soft.radius * (1 - SOFT.particleRadiusFactor)
-      // Match the Tier 1 integrity guard: protected silhouettes never
-      // collapse below 68% of their nominal ring radius.
+      // Tier 1 keeps its proven 0.68 anti-crush floor; tiers 2–3 and 8–12
+      // use the softer shared 0.52 floor to preserve their slime response.
       const minR = ringR * (isBlueBall(soft.radius) ? 0.68 : minRadiusFractionFor(soft.radius))
       const c = softBallCentroid(soft, this.centroidScratch)
       let minParticleDist = ringR
@@ -917,9 +917,10 @@ export class SoftBallManager {
           Matter.Body.translate(p, { x: ux * move, y: uy * move })
         }
       }
-      // Protected small-size slime anti-collapse envelope: preserve the
-      // Tier 1-tested [0.68 * ringR, 1.04 * ringR] range and smooth adjacent
-      // particle radial steps for tiers 1–3 and same-size tiers 8–12.
+      // Protected small-size slime anti-collapse envelope. Tier 1 keeps the
+      // stricter 0.68 floor; tiers 2–3 and same-size tiers 8–12 keep the
+      // shared 0.52 floor. All retain the 1.04 bulge ceiling and smooth
+      // adjacent-particle radial steps.
       if (protectedShape) {
         const maxR = ringR * 1.04
         for (let pass = 0; pass < 3; pass++) {

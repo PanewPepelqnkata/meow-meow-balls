@@ -611,6 +611,7 @@ describe('small slime deformation protection (tiers 2–3 and 8+)', () => {
     let maxNeighborRadialStepFrac = 0
     let worstAreaFrac = 1
     let worstAspect = 1
+    let maxRadialSpanFrac = 0
     for (let i = 0; i < 360; i++) {
       physics.step(STEP)
       const events = physics.takeCollisionEvents()
@@ -618,15 +619,20 @@ describe('small slime deformation protection (tiers 2–3 and 8+)', () => {
 
       const center = softBallCentroid(target.soft)
       const points = target.soft.particles
+      let frameMinRadius = Infinity
+      let frameMaxRadius = 0
       for (let k = 0; k < points.length; k++) {
         const p = points[k]!
         const q = points[(k + 1) % points.length]!
         const radial = Math.hypot(p.position.x - center.x, p.position.y - center.y) / ringR
         const nextRadial = Math.hypot(q.position.x - center.x, q.position.y - center.y) / ringR
+        frameMinRadius = Math.min(frameMinRadius, radial)
+        frameMaxRadius = Math.max(frameMaxRadius, radial)
         minRadialFrac = Math.min(minRadialFrac, radial)
         maxRadialFrac = Math.max(maxRadialFrac, radial)
         maxNeighborRadialStepFrac = Math.max(maxNeighborRadialStepFrac, Math.abs(radial - nextRadial))
       }
+      maxRadialSpanFrac = Math.max(maxRadialSpanFrac, frameMaxRadius - frameMinRadius)
       worstAreaFrac = Math.min(worstAreaFrac, softBallArea(target.soft) / target.soft.restArea)
       const xs = points.map((p) => p.position.x)
       const ys = points.map((p) => p.position.y)
@@ -642,9 +648,9 @@ describe('small slime deformation protection (tiers 2–3 and 8+)', () => {
     expect(maxNeighborRadialStepFrac, `tier ${tier} adjacent particle discontinuity`).toBeLessThan(0.18)
     expect(worstAreaFrac, `tier ${tier} minimum area fraction`).toBeGreaterThan(0.5)
     expect(worstAspect, `tier ${tier} minimum aspect ratio`).toBeGreaterThan(0.48)
-    // Do not make the protected tiers rigid: the pile impact must still
-    // produce a visible, bounded slime deformation.
-    expect(minRadialFrac, `tier ${tier} should visibly compress under impact`).toBeLessThan(0.98)
+    // At least 15% radial variation within one simulation step proves a
+    // clearly non-circular slime shape, not accumulated tiny solver drift.
+    expect(maxRadialSpanFrac, `tier ${tier} peak radial deformation span`).toBeGreaterThan(0.15)
     physics.dispose()
   })
 })
