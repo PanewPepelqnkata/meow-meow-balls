@@ -125,18 +125,13 @@ export const SOFT = {
    * travel cap in a settled pile). The visible recovery smoothness comes
    * from the softer rim/spokes + gentler positional restore instead. */
   pressureDamping: 1.6,
-  /** Shape retention (anti-collapse) — SLIME CONTROL (spec §4): when a
-   * particle's distance from the centroid falls below this fraction of its
-   * rest ring radius it gets a small outward Δv (velocity-aware: no push
-   * while recoiling). Sweep (2.10.1): 0.58 → 0.55 — lets the sides bulge
-   * further out under load (thicker flatten) while the inner radius stays
-   * ≥55% of the rest ring (no small ball disappears into a sliver; the
-   * 0.52 sweep candidate produced a 2.9 aspect on the wedge-trapped ball). */
+  /** Minimum inner ring radius fraction for the small slime size classes
+   * (tiers 1–3 and 8–12; tiers 8–12 share tier 3's radius). Keeps heavy pile
+   * loads from folding the ring into a wedge while retaining slime-like
+   * compliance. Tier 1's separate stiffness tuning remains unchanged. */
+  protectedSlimeMinRadiusFraction: 0.52,
+  /** Default inner-ring floor for larger slime sizes (tiers 4–7). */
   minRadiusFraction: 0.36,
-  /** Minimum inner ring radius fraction specifically for the Tier 1 blue ball
-   * (radius 44) so heavy balls (e.g. Tier 7) cannot crush it into a concave
-   * wedge or horned sliver in container corners. */
-  blueBallMinRadiusFraction: 0.52,
   minRadiusRecovery: 0.32,
   maxPressureCorrection: 0.35,
   /** Rest area is computed at creation; area below this fraction triggers
@@ -300,15 +295,21 @@ export function clampSoftBallSpeed(ball: SoftBall, inContact = true): void {
 }
 
 const BLUE_BALL_MAX_RADIUS = getTier(1)!.radius + 0.5
+const PROTECTED_SLIME_MAX_RADIUS = getTier(3)!.radius + 0.5
 
-/** True for the Tier 1 blue ball (and smaller prototype test balls). */
+/** Tier-1-only firmer structural tuning. */
 export function isBlueBall(radius: number): boolean {
   return radius <= BLUE_BALL_MAX_RADIUS
 }
 
+/** Shape-integrity guard for tiers 1–3 and the same-size tiers 8–12. */
+export function hasProtectedSlimeShape(radius: number): boolean {
+  return radius <= PROTECTED_SLIME_MAX_RADIUS
+}
+
 /** Minimum inner ring radius fraction (anti-crush floor) for a ball of `radius`. */
 export function minRadiusFractionFor(radius: number): number {
-  return isBlueBall(radius) ? SOFT.blueBallMinRadiusFraction : SOFT.minRadiusFraction
+  return hasProtectedSlimeShape(radius) ? SOFT.protectedSlimeMinRadiusFraction : SOFT.minRadiusFraction
 }
 
 export function applyPressure(ball: SoftBall): void {
@@ -383,6 +384,7 @@ export function applyPressure(ball: SoftBall): void {
   pcx /= ball.particles.length
   pcy /= ball.particles.length
   const blue = isBlueBall(ball.radius)
+  const protectedShape = hasProtectedSlimeShape(ball.radius)
   const ringR = ball.radius * (1 - SOFT.particleRadiusFactor)
   const minR = ringR * minRadiusFractionFor(ball.radius)
   let minLen = ringR
@@ -394,7 +396,7 @@ export function applyPressure(ball: SoftBall): void {
     const depth = minR - len
     if (depth > 0) {
       const k = Math.min(1, depth / (ringR * 0.3))
-      const recover = k * SOFT.minRadiusRecovery
+      const recover = k * SOFT.minRadiusRecovery * (protectedShape && !blue ? 1.25 : 1)
       // velocity-aware: no extra push when already recoiling outward
       const vOut = (p.velocity.x * dx + p.velocity.y * dy) / len
       const eff = recover * Math.max(0, 1 - vOut / recover)
@@ -406,13 +408,9 @@ export function applyPressure(ball: SoftBall): void {
       }
     }
   }
-  // Adaptive squeeze compliance: when a side of the ring is indented >12%
-  // (under heavy pile weight or squeezed in a narrow pocket beside a large
-  // ball), soften spokes and diameter cross-braces down to 0.28× so the ball
-  // visibly squishes and molds into the pocket without fighting its own hub.
-  // EXCEPTION: the small Tier 1 blue ball keeps a firm structural ring so
-  // giant balls (up to 8.7× heavier) never cave its top in or fold it into a
-  // sharp wedge in container corners.
+  // Tier 1 alone keeps its historically firmer structural ring. Tiers 2–3
+  // and same-size tiers 8–12 use the shared radial protection, while keeping
+  // adaptive rim/spoke compliance so impacts and pile pressure still feel soft.
   const inwardSqueeze = Math.max(0, 1 - minLen / ringR)
   const soften = blue
     ? 1
@@ -439,10 +437,10 @@ export function applyPressure(ball: SoftBall): void {
   const cdx = pcx - ball.center.position.x
   const cdy = pcy - ball.center.position.y
   const cd = Math.hypot(cdx, cdy) || 1
-  const escape = cd - ringR * (blue ? 0.42 : 0.55)
+  const escape = cd - ringR * (blue ? 0.42 : protectedShape ? 0.48 : 0.55)
   if (escape > 0) {
     const k = Math.min(1, escape / (ringR * 0.4))
-    const pull = k * SOFT.minRadiusRecovery
+    const pull = k * SOFT.minRadiusRecovery * (protectedShape && !blue ? 1.25 : 1)
     Matter.Body.setVelocity(ball.center, {
       x: ball.center.velocity.x + (cdx / cd) * pull,
       y: ball.center.velocity.y + (cdy / cd) * pull,

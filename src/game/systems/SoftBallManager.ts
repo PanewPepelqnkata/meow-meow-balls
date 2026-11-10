@@ -10,7 +10,9 @@ import {
   softBallSpeed,
   softBallMaxSpeed,
   softBallSleeping,
+  hasProtectedSlimeShape,
   isBlueBall,
+  minRadiusFractionFor,
   SOFT,
 } from './SoftBall'
 import { CONTAINER, containerBounds, clampBallInside, interiorCorners } from '../../config/container'
@@ -704,16 +706,16 @@ export class SoftBallManager {
           const prA = A.soft.radius * SOFT.particleRadiusFactor + SOFT.contactSkin
           const prB = B.soft.radius * SOFT.particleRadiusFactor + SOFT.contactSkin
           const contact = prA + prB
-          const aBlue = isBlueBall(A.soft.radius)
-          const bBlue = isBlueBall(B.soft.radius)
+          const aProtected = hasProtectedSlimeShape(A.soft.radius)
+          const bProtected = hasProtectedSlimeShape(B.soft.radius)
           const ringRA = A.soft.radius * (1 - SOFT.particleRadiusFactor)
           const ringRB = B.soft.radius * (1 - SOFT.particleRadiusFactor)
-          const minRA = ringRA * (aBlue ? 0.68 : SOFT.minRadiusFraction)
-          const minRB = ringRB * (bBlue ? 0.68 : SOFT.minRadiusFraction)
+          const minRA = ringRA * (isBlueBall(A.soft.radius) ? 0.68 : minRadiusFractionFor(A.soft.radius))
+          const minRB = ringRB * (isBlueBall(B.soft.radius) ? 0.68 : minRadiusFractionFor(B.soft.radius))
           const maxRA = ringRA * 1.04
           const maxRB = ringRB * 1.04
-          const pca = aBlue ? softBallCentroid(A.soft) : ca
-          const pcb = bBlue ? softBallCentroid(B.soft) : cb
+          const pca = aProtected ? softBallCentroid(A.soft) : ca
+          const pcb = bProtected ? softBallCentroid(B.soft) : cb
           const imA = 1 / A.soft.particles[0]!.mass
           const imB = 1 / B.soft.particles[0]!.mass
           const imSum = imA + imB
@@ -746,7 +748,7 @@ export class SoftBallManager {
               const cap = Math.min(6, 1 + deficit * 0.5)
               const fix = Math.min(deficit * SOFT.separationRelaxation, cap)
               let limitA = this.wallLimitedDistance(pa, -nx, -ny, prA)
-              if (aBlue && !bAsleep) {
+              if (aProtected && !bAsleep) {
                 const rxA = pa.position.x - pca.x
                 const ryA = pa.position.y - pca.y
                 const distA = Math.hypot(rxA, ryA) || 1
@@ -760,7 +762,7 @@ export class SoftBallManager {
                 }
               }
               let limitB = this.wallLimitedDistance(pb, nx, ny, prB)
-              if (bBlue && !aAsleep) {
+              if (bProtected && !aAsleep) {
                 const rxB = pb.position.x - pcb.x
                 const ryB = pb.position.y - pcb.y
                 const distB = Math.hypot(rxB, ryB) || 1
@@ -829,22 +831,24 @@ export class SoftBallManager {
     for (const A of balls) {
       if (softBallSleeping(A.soft)) continue
       const soft = A.soft
-      const blue = isBlueBall(soft.radius)
+      const protectedShape = hasProtectedSlimeShape(soft.radius)
       const deficit = 1 - softBallArea(soft) / soft.restArea
       const ringR = soft.radius * (1 - SOFT.particleRadiusFactor)
-      const minR = ringR * (blue ? 0.68 : SOFT.minRadiusFraction)
+      // Match the Tier 1 integrity guard: protected silhouettes never
+      // collapse below 68% of their nominal ring radius.
+      const minR = ringR * (isBlueBall(soft.radius) ? 0.68 : minRadiusFractionFor(soft.radius))
       const c = softBallCentroid(soft, this.centroidScratch)
       let minParticleDist = ringR
       for (const p of soft.particles) {
         const d = Math.hypot(p.position.x - c.x, p.position.y - c.y)
         if (d < minParticleDist) minParticleDist = d
       }
-      if (!blue && deficit < SOFT.expandMinDeficit && deficit > -SOFT.expandMinDeficit) continue
+      if (!protectedShape && deficit < SOFT.expandMinDeficit && deficit > -SOFT.expandMinDeficit) continue
       const bodyR = soft.radius * SOFT.particleRadiusFactor + SOFT.contactSkin
       const outward = deficit > 0
       const delta = Math.min(SOFT.expandMaxMove, ringR * Math.abs(deficit) * SOFT.expandRate)
       let nearN = 0
-      if (outward || blue) {
+      if (outward || protectedShape) {
         for (const B of balls) {
           if (B === A) continue
           const dx = B.soft.center.position.x - c.x
@@ -866,10 +870,9 @@ export class SoftBallManager {
         }
       }
       const inwardSqueeze = Math.max(0, 1 - minParticleDist / ringR)
-      const bulgeCap = blue
+      const bulgeCap = protectedShape
         ? 1.03
-        : 1.02 +
-          Math.min(
+        : 1.02 + Math.min(
             0.36,
             Math.max(Math.max(0, deficit - 0.012) * 1.25, Math.max(0, inwardSqueeze - 0.10) * 0.85),
           )
@@ -914,11 +917,10 @@ export class SoftBallManager {
           Matter.Body.translate(p, { x: ux * move, y: uy * move })
         }
       }
-      // Tier 1 blue ball anti-glitch envelope: positionally clamp radial
-      // distance to [0.66 * ringR, 1.04 * ringR] and smooth adjacent-particle
-      // radial steps so a heavy Tier 7 ball in a corner can never cave the
-      // blue ball in or squirt 1-2 particles into a corner horn.
-      if (blue) {
+      // Protected small-size slime anti-collapse envelope: preserve the
+      // Tier 1-tested [0.68 * ringR, 1.04 * ringR] range and smooth adjacent
+      // particle radial steps for tiers 1–3 and same-size tiers 8–12.
+      if (protectedShape) {
         const maxR = ringR * 1.04
         for (let pass = 0; pass < 3; pass++) {
           const bc = softBallCentroid(soft, this.centroidScratch)

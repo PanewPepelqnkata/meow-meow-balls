@@ -166,3 +166,10 @@
 - Replaced the courtyard/castle rendering with a dark planked merchant stall, inked timber posts, red/cream canopy, and a dedicated counter supporting the glass gumball machine. Removed the retired courtyard/landscape painters and signpost bake paths.
 - Canopy scallops animate as live cloth; two wrought-iron lantern rigs share cached radial lighting, layered flame flicker, pendulum swing, and breathing warm light. Fourteen bounded dust motes and rare hardware/counter twinkles keep the scene warm without filling the navigation area with effects.
 - Native React controls retain navigation and live saved statistics. PLAY uses the Store green beveled hero treatment; secondary controls and the progress plaque use carved timber with brass hardware. Responsive layouts separate title/progress, machine/counter, and navigation; hidden/reduced-motion menus stop scene animation.
+
+## Soft-body deformation protection — 2026-11-10
+
+- Applied the existing small-ball shape-integrity controls to tiers 2–3 and the same-radius tiers 8–12, without making them rigid: the pressure/expansion passes use a 0.52 minimum ring-radius floor for those tiers, retain the 1.04 upper envelope and smoothed radial transitions, and cap protected-tier bulges while preserving adaptive rim/spoke compliance.
+- Tier 1 keeps its original 0.68 inner-ring floor and firmer structural stiffness; tiers 4–7 retain the normal 0.36 floor and original flexible bulge response. Contact recovery remains collision/wall constrained.
+- Regression coverage exercises tier 2, 3, and 8 against a Tier 7 corner load, checking radial bounds, adjacent-particle continuity, area/aspect, and measurable compression. Tier-family selection is checked through tier 12.
+- Verified with `npx vitest run src/game/systems/softball.test.ts` (17 passed), focused tier-group stress tests (4 passed), and `npx tsc --noEmit`.

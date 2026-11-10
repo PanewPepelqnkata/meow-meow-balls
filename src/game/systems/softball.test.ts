@@ -15,8 +15,9 @@ import {
   softBallArea,
   softBallSpeed,
   softBallCentroid,
+  hasProtectedSlimeShape,
+  minRadiusFractionFor,
 } from './SoftBall'
-
 const STEP = PHYSICS.stepMs
 
 describe('soft-body prototype (Matter-native, single ball)', () => {
@@ -560,6 +561,90 @@ describe('Tier 1 blue ball corner-crush protection (anti-wedge / anti-horn)', ()
     expect(worstAreaFrac).toBeGreaterThan(0.64) // no collapse during 9× mass slam transient
     expect(finalAreaFrac).toBeGreaterThan(0.74) // plump settled area under Tier 7 load
     expect(worstAspect).toBeGreaterThan(0.70)
+    physics.dispose()
+  })
+})
+
+describe('small slime deformation protection (tiers 2–3 and 8+)', () => {
+  it('protects tiers 1–3 and same-size tiers 8–12 while leaving tiers 4–7 on normal compliance', () => {
+    for (const tier of [1, 2, 3, 8, 9, 10, 11, 12]) {
+      const radius = getTier(tier)!.radius
+      expect(hasProtectedSlimeShape(radius), `tier ${tier} should use the protected silhouette class`).toBe(true)
+      expect(minRadiusFractionFor(radius), `tier ${tier} minimum ring fraction`).toBe(SOFT.protectedSlimeMinRadiusFraction)
+    }
+    for (const tier of [4, 5, 6, 7]) {
+      const radius = getTier(tier)!.radius
+      expect(hasProtectedSlimeShape(radius), `tier ${tier} should retain normal compliance`).toBe(false)
+      expect(minRadiusFractionFor(radius), `tier ${tier} minimum ring fraction`).toBe(SOFT.minRadiusFraction)
+    }
+  })
+
+  it.each([2, 3, 8])('tier %i stays recognizable under a Tier 7 corner slam and still visibly squishes', (tier) => {
+    const physics = new PhysicsWorld()
+    for (const body of [...wallCollidersAt().map(createWallBody), createWallBody(floorCollider())]) {
+      physics.addBody(body)
+    }
+    const manager = new SoftBallManager(physics.world)
+    manager.tierRadius = (t) => getTier(t)?.radius ?? 44
+    physics.setSubStepHandler(() => {
+      manager.stepAll()
+      manager.separateContacts()
+      manager.expandShape()
+      manager.clampToContainer()
+      manager.commitRest()
+    })
+
+    const bounds = containerBounds()
+    const radius = getTier(tier)!.radius
+    const heavyRadius = getTier(7)!.radius
+    const x = bounds.innerLeftAt(bounds.floorY - radius - 2) + radius + 2
+    const target = manager.spawnBall(x, bounds.floorY - radius - 2, tier)
+    manager.spawnBall(
+      x + radius * 0.45,
+      bounds.floorY - radius * 2 - heavyRadius + 20,
+      7,
+    )
+
+    const ringR = radius * (1 - SOFT.particleRadiusFactor)
+    let minRadialFrac = 1
+    let maxRadialFrac = 1
+    let maxNeighborRadialStepFrac = 0
+    let worstAreaFrac = 1
+    let worstAspect = 1
+    for (let i = 0; i < 360; i++) {
+      physics.step(STEP)
+      const events = physics.takeCollisionEvents()
+      if (events.length) manager.markTouched(events.flatMap(({ bodyA, bodyB }) => [bodyA.id, bodyB.id]))
+
+      const center = softBallCentroid(target.soft)
+      const points = target.soft.particles
+      for (let k = 0; k < points.length; k++) {
+        const p = points[k]!
+        const q = points[(k + 1) % points.length]!
+        const radial = Math.hypot(p.position.x - center.x, p.position.y - center.y) / ringR
+        const nextRadial = Math.hypot(q.position.x - center.x, q.position.y - center.y) / ringR
+        minRadialFrac = Math.min(minRadialFrac, radial)
+        maxRadialFrac = Math.max(maxRadialFrac, radial)
+        maxNeighborRadialStepFrac = Math.max(maxNeighborRadialStepFrac, Math.abs(radial - nextRadial))
+      }
+      worstAreaFrac = Math.min(worstAreaFrac, softBallArea(target.soft) / target.soft.restArea)
+      const xs = points.map((p) => p.position.x)
+      const ys = points.map((p) => p.position.y)
+      const width = Math.max(...xs) - Math.min(...xs)
+      const height = Math.max(...ys) - Math.min(...ys)
+      worstAspect = Math.min(worstAspect, Math.min(width, height) / Math.max(width, height))
+    }
+
+    // Integrity: the soft-body retains a substantial inner ring, bounded
+    // bulges, a continuous perimeter, and enough area/aspect to read as a ball.
+    expect(minRadialFrac, `tier ${tier} should not cave inward under the Tier 7 slam`).toBeGreaterThan(0.55)
+    expect(maxRadialFrac, `tier ${tier} maximum radial fraction`).toBeLessThan(1.08)
+    expect(maxNeighborRadialStepFrac, `tier ${tier} adjacent particle discontinuity`).toBeLessThan(0.18)
+    expect(worstAreaFrac, `tier ${tier} minimum area fraction`).toBeGreaterThan(0.5)
+    expect(worstAspect, `tier ${tier} minimum aspect ratio`).toBeGreaterThan(0.48)
+    // Do not make the protected tiers rigid: the pile impact must still
+    // produce a visible, bounded slime deformation.
+    expect(minRadialFrac, `tier ${tier} should visibly compress under impact`).toBeLessThan(0.98)
     physics.dispose()
   })
 })
