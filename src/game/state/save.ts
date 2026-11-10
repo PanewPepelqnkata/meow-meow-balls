@@ -13,7 +13,7 @@
  *   - `variants`       — `${tier}:${theme}:${variantId}` → first-seen timestamp
  *                         for tier 9–12 characters and their discovery palette.
  *                         Legacy `${tier}:${variantId}` keys remain supported.
- *   - `settings.theme`  — 'auto' (follow run progression) or a fixed theme.
+ *   - `settings.audio`  — persisted Music/SFX levels and independent mute states.
  *   - `stats`           — lifetime runs / merges / best tier.
  *
  * Robustness: every localStorage access is guarded (private mode, blocked
@@ -23,6 +23,7 @@
  * disabled, including storage probes, identity changes, and delayed cloud sync.
  */
 
+import { DEFAULT_AUDIO_SETTINGS, normalizeAudioVolume, type AudioSettings } from '../audio/AudioSettings'
 import { collectibleDiscoveryKey, collectionDiscovery } from '../../config/collectibleCollection'
 import { freshUpgradeLevels, normalizeUpgradeLevels, type UpgradeLevels } from '../../config/abilityUpgrades'
 import {
@@ -66,7 +67,7 @@ export interface SaveDataV1 {
   discovered: Record<string, number>
   /** Character/palette keys (`tier:theme:variantId`), or legacy numeric keys → first-collected-at (ms epoch). */
   variants: Record<string, number>
-  settings: { theme: ThemeSetting }
+  settings: { theme: ThemeSetting; audio: AudioSettings }
   stats: { runs: number; merges: number; bestTier: number }
 }
 
@@ -87,7 +88,7 @@ export function freshSave(): SaveDataV1 {
     // the first time, the wind banner afterwards).
     discovered: { 1: now, 2: now, 3: now },
     variants: {},
-    settings: { theme: 'auto' },
+    settings: { theme: 'auto', audio: { ...DEFAULT_AUDIO_SETTINGS } },
     stats: { runs: 0, merges: 0, bestTier: 0 },
   }
 }
@@ -174,6 +175,13 @@ export function normalizeSave(raw: Partial<SaveDataV1> | null | undefined): Save
 
   const rawTheme = raw.settings?.theme
   const theme: ThemeSetting = rawTheme && VALID_THEMES.has(rawTheme) ? rawTheme : 'auto'
+  const rawAudio = raw.settings?.audio
+  const audio: AudioSettings = {
+    musicVolume: normalizeAudioVolume(rawAudio?.musicVolume, DEFAULT_AUDIO_SETTINGS.musicVolume),
+    effectsVolume: normalizeAudioVolume(rawAudio?.effectsVolume, DEFAULT_AUDIO_SETTINGS.effectsVolume),
+    musicMuted: typeof rawAudio?.musicMuted === 'boolean' ? rawAudio.musicMuted : DEFAULT_AUDIO_SETTINGS.musicMuted,
+    effectsMuted: typeof rawAudio?.effectsMuted === 'boolean' ? rawAudio.effectsMuted : DEFAULT_AUDIO_SETTINGS.effectsMuted,
+  }
 
   const ownedContainerSkins = normalizeOwnedContainerSkins(raw.ownedContainerSkins)
   const equippedContainerSkin = normalizeEquippedContainerSkin(raw.equippedContainerSkin, ownedContainerSkins)
@@ -189,7 +197,7 @@ export function normalizeSave(raw: Partial<SaveDataV1> | null | undefined): Save
     leaderboard: leaderboard.slice(0, MAX_LEADERBOARD),
     discovered,
     variants,
-    settings: { theme },
+    settings: { theme, audio },
     stats: {
       runs: Math.max(runs, leaderboard.length),
       merges,
@@ -479,19 +487,18 @@ export function resetSave(options?: { syncCloud?: boolean; clearOwner?: boolean 
 export function resetProgress(): SaveDataV1 {
   if (isDrunkoTestRoute()) return loadSave()
   const ownerId = getSaveOwnerId()
-  if (ownerId === null) {
-    resetGuestId()
-    return resetSave({ syncCloud: true, clearOwner: false })
-  }
   const current = loadSave()
+  if (ownerId === null) resetGuestId()
+  const fresh = freshSave()
   return writeSave({
-    ...freshSave(),
+    ...fresh,
     coins: current.coins,
     coinRevision: current.coinRevision,
     upgrades: current.upgrades,
     ownedContainerSkins: current.ownedContainerSkins,
     equippedContainerSkin: current.equippedContainerSkin,
-  }, { syncCloud: true, ownerId })
+    settings: { ...fresh.settings, audio: { ...current.settings.audio } },
+  }, { syncCloud: ownerId !== null, ownerId })
 }
 
 /** Record lifetime discovery; collectible themes identify characters, variant ids their palettes.
@@ -627,6 +634,62 @@ export function setThemeSetting(theme: ThemeSetting): void {
   if (isDrunkoTestRoute()) return
   loadSave().settings.theme = theme
   writeNow()
+}
+export function setMusicVolume(value: number): void {
+  if (isDrunkoTestRoute()) return
+  const save = loadSave()
+  save.settings.audio.musicVolume = normalizeAudioVolume(value, DEFAULT_AUDIO_SETTINGS.musicVolume)
+  writeNow()
+  gameBus.emit('audio:settings', { ...save.settings.audio })
+}
+
+export function setEffectsVolume(value: number): void {
+  if (isDrunkoTestRoute()) return
+  const save = loadSave()
+  save.settings.audio.effectsVolume = normalizeAudioVolume(value, DEFAULT_AUDIO_SETTINGS.effectsVolume)
+  writeNow()
+  gameBus.emit('audio:settings', { ...save.settings.audio })
+}
+
+export function setMusicMuted(muted: boolean): void {
+  if (isDrunkoTestRoute()) return
+  const save = loadSave()
+  save.settings.audio.musicMuted = muted
+  writeNow()
+  gameBus.emit('audio:settings', { ...save.settings.audio })
+}
+
+export function setEffectsMuted(muted: boolean): void {
+  if (isDrunkoTestRoute()) return
+  const save = loadSave()
+  save.settings.audio.effectsMuted = muted
+  writeNow()
+  gameBus.emit('audio:settings', { ...save.settings.audio })
+}
+
+export function audioSettings(): AudioSettings {
+  return { ...loadSave().settings.audio }
+}
+
+let audioVolumeWriteTimer: ReturnType<typeof setTimeout> | null = null
+
+export function setAudioVolume(key: 'musicVolume' | 'effectsVolume', value: number): void {
+  if (isDrunkoTestRoute()) return
+  const save = loadSave()
+  save.settings.audio[key] = normalizeAudioVolume(value, DEFAULT_AUDIO_SETTINGS[key])
+  if (audioVolumeWriteTimer !== null) clearTimeout(audioVolumeWriteTimer)
+  audioVolumeWriteTimer = setTimeout(() => {
+    audioVolumeWriteTimer = null
+    write()
+    if (cache) cloudSyncHandler?.(cloneSave(cache), false)
+  }, 300)
+  gameBus.emit('audio:settings', { ...save.settings.audio })
+}
+export function flushAudioSettings(): void {
+  if (audioVolumeWriteTimer === null) return
+  clearTimeout(audioVolumeWriteTimer)
+  audioVolumeWriteTimer = null
+  writeNow(true)
 }
 
 export function themeSetting(): ThemeSetting {

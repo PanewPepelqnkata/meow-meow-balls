@@ -173,3 +173,10 @@
  - Tier 1 retains its proven 0.68 inner-ring floor and firmer stiffness. Tiers 4–7 retain the normal 0.36 floor and flexible bulge response.
  - The tier 2, 3, and 8 Tier-7 corner-load regressions require a peak within-frame radial span above 0.15× nominal ring radius, alongside radial, neighbor-continuity, area, and aspect integrity bounds. Tier-class selection is checked through tier 12.
  - Focused tier-group tests (4 passed), all soft-body tests (17 passed), and `npx tsc --noEmit` pass. `npm test` currently has two unrelated failures that reproduce at pushed baseline `3fe11c0`: `merge-cooldown.test.ts` replacement chain contact revalidation and `merge-gameplay.test.ts` maximum-squeeze contour jump.
+## Adaptive audio and Settings controls — 2026-11-10
+
+- Added a GameRoot-owned Web Audio director with independent Music/Effects gains, first-gesture unlock, visibility suspension, and Phaser teardown. The 84 BPM twilight soundtrack and SFX are synthesized at runtime; no downloaded audio assets or packages. Mix levels were reduced after the user reported ear discomfort.
+- UI hover/accepted-release, drop, floor landing, merge reward, ability, pause/resume, and game-over cues are event-driven. Floor landings are deduplicated per ball per drained frame; no sound work runs in the physics substep.
+- Settings has separate Music/Effects sliders and independent mute toggles; slider writes coalesce during dragging and flush on release/exit. Progress reset preserves audio preferences. The lingering theme explainer note was removed.
+- ChunkyButton pointer release survives pointerout and cancels on pointerupoutside. Unit tests cover one activation and outside cancellation. Browser smoke at 390×844 verified Settings→Back clears the note, and one Play press enters gameplay without JS errors. Headless audio loudness was not independently measured by listening.
+ - Focused UI/settings/landing tests: 65 passed. TypeScript and production build passed. Latest `npm test`: 61/63 files passed; the two known merge physics failures (`merge-cooldown` contact revalidation and `merge-gameplay` contour jump) also reproduce at pre-audio baseline `3fe11c0`.

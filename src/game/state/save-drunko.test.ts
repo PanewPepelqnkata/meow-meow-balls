@@ -19,7 +19,7 @@ function existingSave(): SaveDataV1 {
     leaderboard: [{ score: 1200, bestTier: 5, at: 1000 }],
     discovered: { 1: 100, 2: 100, 3: 100, 4: 200, 5: 300 },
     variants: {},
-    settings: { theme: 'space' },
+    settings: { theme: 'space', audio: { musicVolume: 0.72, effectsVolume: 0.78, musicMuted: false, effectsMuted: false } },
     stats: { runs: 3, merges: 7, bestTier: 5 },
   }
 }

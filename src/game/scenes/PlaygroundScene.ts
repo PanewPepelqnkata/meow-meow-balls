@@ -43,6 +43,7 @@ import { resolveLayout, readSafeArea } from '../../ui/ResponsiveLayout'
 import type { UiLayout } from '../../ui/ResponsiveLayout'
 import { randomSeed } from '../rendering/BallAppearance'
 import { cycleColor } from '../rendering/rgbCycle'
+import { recordFloorLanding } from '../audio/landingSound'
 import { DropClaw } from '../../ui/DropClaw'
 import type { UIScene } from './UIScene'
 
@@ -93,6 +94,7 @@ export class PlaygroundScene extends Phaser.Scene {
   private runCollectibles: RunCollectibles = []
 
   private registeredIds = new Set<number>()
+  private readonly landingImpacts = new Map<number, { tier: number; speed: number }>()
   /**
    * Phase 2.13.0 (spec §4/§12): TWO-slot ball queue.
    * `currentBall` is what the crane holds and what the next drop releases;
@@ -839,27 +841,27 @@ export class PlaygroundScene extends Phaser.Scene {
       this.frameTimings.physicsMs = this.perfPhysicsMs
 
       // One drain per frame: mark first contact (merge eligibility), then merge.
-      // Soft bodies deform physically — the 2.4 visual-impact feeding is retired.
       const events = this.physicsWorld.takeCollisionEvents()
       const ballBodyIds: number[] = []
+      const landingImpacts = this.landingImpacts
+      landingImpacts.clear()
       for (const { bodyA, bodyB, normalX, normalY, approachSpeed } of events) {
         ballBodyIds.push(bodyA.id, bodyB.id)
-        // JELLY: feed the deform springs (visual only) — the contact
-        // normal + approach speed are captured at collisionStart.
-        //
-        // NORMAL DIRECTION (verified against raw Matter, not assumed):
-        // Matter flips the normal so that dot(normal, B - A) < 0 — the
-        // normal points FROM bodyB TOWARD bodyA. The contact direction ON
-        // a body must point TOWARD the other body, so bodyA gets -normal
-        // (which points at bodyB) and bodyB gets +normal (which points at
-        // bodyA). Measured: with bodyA = the floor, dot(normal, A->B) =
-        // -79.9, i.e. the normal points at the floor.
         const bA = this.balls.getBallByBodyId(bodyA.id)
         const bB = this.balls.getBallByBodyId(bodyB.id)
-        if (bA) this.ballRenderer.registerBallImpact(bA, { x: -normalX, y: -normalY }, approachSpeed)
-        if (bB) this.ballRenderer.registerBallImpact(bB, { x: normalX, y: normalY }, approachSpeed)
+        if (bA) {
+          this.ballRenderer.registerBallImpact(bA, { x: -normalX, y: -normalY }, approachSpeed)
+          recordFloorLanding(landingImpacts, bA.id, bA.tier, bodyB.label, approachSpeed)
+        }
+        if (bB) {
+          this.ballRenderer.registerBallImpact(bB, { x: normalX, y: normalY }, approachSpeed)
+          recordFloorLanding(landingImpacts, bB.id, bB.tier, bodyA.label, approachSpeed)
+        }
       }
       if (ballBodyIds.length) this.balls.markTouched(ballBodyIds)
+      for (const landing of landingImpacts.values()) {
+        gameBus.emit('fx:landing', { tier: landing.tier, impact: Math.min(1, landing.speed / 7) })
+      }
       this.mergeSystem.processMerges(events)
       // Sync renderer registration BEFORE the draw pass: a merge in this
       // frame must never render its removed sources (the "second ball
@@ -1079,6 +1081,7 @@ export class PlaygroundScene extends Phaser.Scene {
     // claw showed (the CURRENT slot — Phase 2.13.0 queue).
     const ball = this.balls.spawnBall(clampedX, y, this.currentBall.tier, false, this.currentBall.seed)
     this.ballRenderer.register(ball)
+    gameBus.emit('fx:drop', { tier: ball.tier })
     this.registeredIds.add(ball.id)
     if (!this.runStarted) {
       this.runStarted = true

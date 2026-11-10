@@ -3,6 +3,7 @@ import { drawLucide } from './LucideIcon'
 import { hudText } from './Typography'
 import { UI_COLORS } from './DesignSystem'
 import { pressFx } from './PressFx'
+import { AudioDirector } from '../game/audio/AudioDirector'
 
 /**
  * Phase 2.11.0 — chunky cartoon button (spec §5, §9): rounded body, thick
@@ -248,12 +249,15 @@ export class CartoonButton {
 
     const hit = scene.add.rectangle(0, 0, w, h, 0xffffff, 0.001).setInteractive({ useHandCursor: !this.opts.disabled })
     c.add(hit)
-    // Guest-disabled buttons ARE clickable (to show the login prompt), just grayed out.
     if (!this.opts.disabled || this.opts.guestDisabled) {
+      hit.on('pointerover', () => AudioDirector.uiHover())
       hit.on('pointerdown', () => {
         scene.tweens.add({ targets: c, scale: 0.95, duration: 80, yoyo: true, ease: 'Quad.easeOut' })
       })
-      hit.on('pointerup', () => pressFx(scene, c, this.opts.onPress))
+      hit.on('pointerup', () => {
+        AudioDirector.uiClick()
+        pressFx(scene, c, this.opts.onPress)
+      })
     }
   }
 

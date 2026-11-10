@@ -13,8 +13,9 @@ import { BALL_TIERS, getTier } from '../../config/ballTiers'
 import { MAX_RENDER_DPR } from '../../config/stage'
 import type { BackgroundScene } from './BackgroundScene'
 import type { ThemeName } from '../rendering/BackgroundTheme'
-import { loadSave, resetProgress, setThemeSetting } from '../state/save'
+import { audioSettings, flushAudioSettings, loadSave, resetProgress, setAudioVolume, setEffectsMuted, setMusicMuted, setThemeSetting } from '../state/save'
 import { tier9Theme, variantIdFor } from '../state/runVariant'
+import { AudioDirector } from '../audio/AudioDirector'
 import { session } from '../state/session'
 import { bakeCanvas } from '../rendering/RoughArt'
 import { drawChampionMedal, drawChampionPlaque, drawChampionPodium } from '../rendering/ChampionPodiumArt'
@@ -68,8 +69,9 @@ export class TitleScene extends Phaser.Scene {
   private returnToPause = false
   private closed = false
   private resetArmed = 0
-  private resetArmTimer: number | null = null
   private readonly pointerWorld = new Phaser.Math.Vector2()
+  private resetArmTimer: number | null = null
+  private audioSliderCleanup: Array<() => void> = []
   private offs: Array<() => void> = []
   private unsubscribeAuth: (() => void) | null = null
   /** Reduced-motion preference, read once per the DiscoveryOverlay convention. */
@@ -178,7 +180,6 @@ export class TitleScene extends Phaser.Scene {
     this.buildAll()
     this.cameras.main.fadeIn(260, 8, 10, 20)
 
-    // Native RESIZE can pair the old buffer with new CSS bounds; GameRoot emits this after both settle.
     this.game.events.on('br:dpr', this.onViewportResize, this)
     // Home auth updates only the bridge; decorative artwork and local clocks survive.
     this.unsubscribeAuth = authService.onAuthStateChange(() => {
@@ -600,7 +601,7 @@ export class TitleScene extends Phaser.Scene {
     this.destroyCollectionBook()
     this.destroyStoreView()
     this.destroyWardrobeView()
-    this.teardownLeaderboardScroll()
+    for (const cleanup of this.audioSliderCleanup.splice(0)) cleanup()
     this.panelContent.removeAll(true)
     this.panelRects.length = 0
   }
@@ -1415,19 +1416,107 @@ export class TitleScene extends Phaser.Scene {
         screen: 'settings',
       })
     })
-
-    const note = hudText(this, themeCenterX, themeY + (twoThemeRows ? (compact ? 124 : 156) : (compact ? 88 : 104)), 'AUTO follows discoveries during a run.\nFixed themes stay selected after reload.', 1, {
-      color: UI_COLORS.TEXT_MUTED,
-      size: compact ? 10 : 11,
-      stroke: 0,
-      origin: [0.5, 0],
-      shadow: false,
+    const audioCardY = themeY + themeCardH + (compact ? 6 : 12)
+    const audioCardH = compact ? 132 : 148
+    g.fillStyle(UI_COLORS.CARD_BG, 1)
+    g.fillRoundedRect(themeX, audioCardY, cardW, audioCardH, 12)
+    g.lineStyle(2, UI_COLORS.CARD_BORDER, 1)
+    g.strokeRoundedRect(themeX, audioCardY, cardW, audioCardH, 12)
+    const audioHead = hudText(this, themeCenterX, audioCardY + 19, 'AUDIO', 1, {
+      color: UI_COLORS.TEXT_GOLD, size: 14, stroke: 3, origin: [0.5, 0.5],
     })
-    note.setWordWrapWidth(cardW - 32, true).setAlign('center')
-    this.panelContent.add(note)
+    this.panelContent.add(audioHead)
+
+
+    const audio = audioSettings()
+    const sliderX = themeX + (cardW < 360 ? 78 : 122)
+    const sliderW = Math.max(72, cardW - (cardW < 360 ? 140 : 208))
+    const addSlider = (key: 'musicVolume' | 'effectsVolume', label: string, y: number, initial: number): void => {
+      const text = hudText(this, themeX + 18, y, label, 1, {
+        color: UI_COLORS.TEXT_WHITE, size: compact ? 11 : 12, stroke: 2, origin: [0, 0.5],
+      })
+      this.panelContent.add(text)
+      const valueText = hudText(this, themeX + cardW - 36, y, `${Math.round(initial * 100)}%`, 1, {
+        color: UI_COLORS.TEXT_GOLD, size: compact ? 10 : 11, stroke: 2, origin: [1, 0.5],
+      })
+      this.panelContent.add(valueText)
+      const track = this.add.graphics()
+      track.fillStyle(0x080d1a, 1).fillRoundedRect(sliderX, y - 4, sliderW, 8, 4)
+      const fill = this.add.graphics()
+      this.panelContent.add([track, fill])
+      const thumb = this.add.graphics()
+      const hit = this.add.zone(sliderX + sliderW / 2, y, sliderW + 20, 32).setInteractive({ useHandCursor: true })
+      this.panelContent.add([thumb, hit])
+      const render = (value: number): void => {
+        const clamped = Math.max(0, Math.min(1, value))
+        const x = sliderX + sliderW * clamped
+        fill.clear().fillStyle(UI_COLORS.BTN_GOLD, 1).fillRoundedRect(sliderX, y - 4, Math.max(0, sliderW * clamped), 8, 4)
+        thumb.clear().fillStyle(0xffffff, 1)
+          .fillCircle(x, y, 9).lineStyle(2, UI_COLORS.INK, 1).strokeCircle(x, y, 9)
+        valueText.setText(`${Math.round(clamped * 100)}%`)
+      }
+      const setFromPointer = (pointer: Phaser.Input.Pointer): void => {
+        const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y, this.pointerWorld)
+        const value = (world.x - sliderX) / sliderW
+        render(value)
+        const next = Math.max(0, Math.min(1, value))
+        setAudioVolume(key, next)
+      }
+      let draggingPointer: number | null = null
+      const down = (pointer: Phaser.Input.Pointer): void => {
+        draggingPointer = pointer.id
+        AudioDirector.uiClick()
+        setFromPointer(pointer)
+      }
+      const move = (pointer: Phaser.Input.Pointer): void => {
+        if (draggingPointer === pointer.id && pointer.isDown) setFromPointer(pointer)
+      }
+      const up = (pointer: Phaser.Input.Pointer): void => {
+        if (draggingPointer === pointer.id) {
+          draggingPointer = null
+          flushAudioSettings()
+        }
+      }
+      hit.on('pointerover', () => AudioDirector.uiHover())
+      hit.on('pointerdown', down)
+      this.input.on('pointermove', move)
+      this.input.on('pointerup', up)
+      this.input.on('pointerupoutside', up)
+      this.audioSliderCleanup.push(() => {
+        if (draggingPointer !== null) flushAudioSettings()
+        hit.off('pointerdown', down)
+        this.input.off('pointermove', move)
+        this.input.off('pointerup', up)
+        this.input.off('pointerupoutside', up)
+      })
+      render(initial)
+    }
+    addSlider('musicVolume', 'MUSIC', audioCardY + 49, audio.musicVolume)
+    addSlider('effectsVolume', 'SFX', audioCardY + 85, audio.effectsVolume)
+
+    const musicMute = new ChunkyButton({
+      scene: this, x: themeX + cardW * 0.32, y: audioCardY + audioCardH - 20,
+      w: Math.min(140, cardW * 0.42), h: 28, pill: true,
+      fill: audio.musicMuted ? UI_COLORS.BTN_RED : UI_COLORS.BTN_BLUE,
+      shadowColor: audio.musicMuted ? UI_COLORS.BTN_RED_SHADOW : UI_COLORS.BTN_BLUE_SHADOW,
+      highlightColor: audio.musicMuted ? UI_COLORS.BTN_RED_HIGHLIGHT : UI_COLORS.BTN_BLUE_HIGHLIGHT,
+      label: audio.musicMuted ? 'MUSIC MUTED' : 'MUSIC ON', fontSize: 10,
+      onClick: () => { setMusicMuted(!audioSettings().musicMuted); this.applyScreenVisibility() },
+    })
+    const effectsMute = new ChunkyButton({
+      scene: this, x: themeX + cardW * 0.72, y: audioCardY + audioCardH - 20,
+      w: Math.min(140, cardW * 0.42), h: 28, pill: true,
+      fill: audio.effectsMuted ? UI_COLORS.BTN_RED : UI_COLORS.BTN_BLUE,
+      shadowColor: audio.effectsMuted ? UI_COLORS.BTN_RED_SHADOW : UI_COLORS.BTN_BLUE_SHADOW,
+      highlightColor: audio.effectsMuted ? UI_COLORS.BTN_RED_HIGHLIGHT : UI_COLORS.BTN_BLUE_HIGHLIGHT,
+      label: audio.effectsMuted ? 'SFX MUTED' : 'SFX ON', fontSize: 10,
+      onClick: () => { setEffectsMuted(!audioSettings().effectsMuted); this.applyScreenVisibility() },
+    })
+    this.panelContent.add([musicMute.container, effectsMute.container])
 
     const statsX = sideBySide ? contentX + cardW + 16 : contentX
-    const statsY = sideBySide ? themeY : themeY + themeCardH + (compact ? 8 : 14)
+    const statsY = sideBySide ? themeY : audioCardY + audioCardH + (compact ? 8 : 14)
+
     const statsCenterX = statsX + cardW / 2
     const statsCardH = compact ? 76 : 94
     g.fillStyle(UI_COLORS.CARD_BG, 1)

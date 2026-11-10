@@ -19,6 +19,7 @@ import { loadSave } from '../state/save'
 import { ballLookFor, ballOutlineWidth, drawBallFace, INK as BALL_INK, restContour } from './BallAppearance'
 import { drawCoin, formatCoins } from './Coin'
 import { bakeCanvas } from './RoughArt'
+import { AudioDirector } from '../audio/AudioDirector'
 
 const INK = 0x111625
 const INK_HEX = '#111625'
@@ -1176,6 +1177,7 @@ export class StoreView {
       entry.pressed = true
     })
     zone.on('pointerover', () => {
+      AudioDirector.uiHover()
       entry.buttonHovered = true
     })
     zone.on('pointerout', () => {
@@ -1191,6 +1193,7 @@ export class StoreView {
         || this.scene.time.now < this.suppressPurchaseUntil) return
       const scale = this.scene.cameras.main.zoom || 1
       if (Math.hypot(pointer.x - start.x, pointer.y - start.y) / scale > 10) return
+      AudioDirector.uiClick()
       onClick()
     })
     button.add(zone)

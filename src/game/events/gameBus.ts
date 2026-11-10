@@ -69,9 +69,19 @@ export interface GameEventMap {
   /** Phase 2.13.0: world → UI. A tier was discovered for the first time this
    * run (any tier ≥ 2) — the progression path unlocks its node. */
   'state:discovered': { tier: number }
-  /** World → UI. The drop-cooldown gate flipped. `holding` is false during
-   * the post-drop cooldown (claw + preview show no ball), true when ready. */
+  /** World → UI. Drop cooldown gate flipped; false hides held ball. */
   'state:dropHolding': { holding: boolean }
+  /** Persisted Music/SFX mixer settings changed in Settings. */
+  'audio:settings': {
+    musicVolume: number
+    effectsVolume: number
+    musicMuted: boolean
+    effectsMuted: boolean
+  }
+  /** A player successfully dropped a ball; never emitted for rejected input. */
+  'fx:drop': { tier: number }
+  /** A ball made a meaningful hard landing against the floor or container. */
+  'fx:landing': { tier: number; impact: number }
   /** Server-evaluated achievement newly unlocked on this sync. */
   'achievement:unlocked': {
     id: string

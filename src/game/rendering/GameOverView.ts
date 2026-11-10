@@ -9,6 +9,7 @@ import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK, type Bal
 import { drawCoin, formatCoins, coinsForScore } from './Coin'
 import { gameBus } from '../events/gameBus'
 import { loadSave } from '../state/save'
+import { AudioDirector } from '../audio/AudioDirector'
 
 const CREAM = 0xfff8ec
 const BLUE = 0x2d74c9
@@ -657,6 +658,7 @@ export class GameOverView {
     }
     hit.on('pointerover', () => {
       if (this.restarting) return
+      AudioDirector.uiHover()
       hovered = true
       feedback(pressed ? 0.95 : 1.05, pressed ? 0 : -2)
     })
@@ -674,6 +676,7 @@ export class GameOverView {
     })
     hit.on('pointerup', () => {
       if (this.restarting || !pressed) return
+      AudioDirector.uiClick()
       pressed = false
       if (replay) {
         this.restarting = true

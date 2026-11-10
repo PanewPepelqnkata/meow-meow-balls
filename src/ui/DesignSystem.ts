@@ -2,6 +2,7 @@ import Phaser from 'phaser'
 import { hudText } from './Typography'
 import { drawLucide } from './LucideIcon'
 import { readSafeArea } from './ResponsiveLayout'
+import { AudioDirector } from '../game/audio/AudioDirector'
 
 /**
  * Ball Rush Unified UI Design System & Tokens.
@@ -114,31 +115,24 @@ export class ChunkyButton {
     this.hitZone = scene.add.zone(0, 0, w, h).setInteractive({ useHandCursor: !options.disabled })
     this.container.add(this.hitZone)
 
+    this.hitZone.on('pointerover', () => AudioDirector.uiHover())
     this.hitZone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       if (this.options.disabled || this.pressPointerId !== null) return
       this.pressPointerId = pointer.id
       this.isPressed = true
       this.render()
     })
-
-    this.hitZone.on('pointerup', (pointer: Phaser.Input.Pointer) => {
-      if (this.options.disabled || this.pressPointerId !== pointer.id) return
-      this.pressPointerId = null
-      this.isPressed = false
-      this.render()
-      options.onClick?.()
-    })
-
+    this.hitZone.on('pointerup', (pointer: Phaser.Input.Pointer) => this.finishPress(pointer))
+    this.hitZone.on('pointerupoutside', (pointer: Phaser.Input.Pointer) => this.cancelPress(pointer))
+    this.hitZone.once(Phaser.GameObjects.Events.DESTROY, () => { this.pressPointerId = null })
     this.hitZone.on('pointerout', (pointer: Phaser.Input.Pointer) => {
-      if (this.pressPointerId !== null && this.pressPointerId !== pointer.id) return
-      this.pressPointerId = null
-      this.isPressed = false
-      this.render()
+      if (this.pressPointerId === null || this.pressPointerId === pointer.id) {
+        this.isPressed = false
+        this.render()
+      }
     })
-
     this.setDisabled(!!options.disabled)
   }
-
   public setDisabled(disabled: boolean): void {
     this.options.disabled = disabled
     if (disabled) {
@@ -149,6 +143,22 @@ export class ChunkyButton {
       this.hitZone.input.enabled = !disabled
       this.hitZone.input.cursor = disabled ? 'default' : 'pointer'
     }
+    this.render()
+  }
+
+  private finishPress(pointer: Phaser.Input.Pointer): void {
+    if (this.options.disabled || this.pressPointerId !== pointer.id) return
+    AudioDirector.uiClick()
+    this.pressPointerId = null
+    this.isPressed = false
+    this.render()
+    this.options.onClick?.()
+  }
+
+  private cancelPress(pointer: Phaser.Input.Pointer): void {
+    if (this.pressPointerId !== pointer.id) return
+    this.pressPointerId = null
+    this.isPressed = false
     this.render()
   }
 

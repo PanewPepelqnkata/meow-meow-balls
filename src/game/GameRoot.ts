@@ -10,6 +10,8 @@ import { TitleScene } from './scenes/TitleScene'
 import { PauseScene } from './scenes/PauseScene'
 import { installDiag } from './diag'
 import { installFaultContainment } from './FaultContainment'
+import { AudioDirector } from './audio/AudioDirector'
+import { audioSettings } from './state/save'
 
 /**
  * The single approved boundary between React and the game engine
@@ -129,12 +131,13 @@ export function createGame(parent: HTMLElement): Phaser.Game {
       new URLSearchParams(window.location.search).get('diag') === '1') {
     installDiag(game)
   }
-  // Listeners must not outlive the game (React Strict Mode mounts twice).
+  // Resize listeners and the shared audio director share the Phaser lifetime.
   const cleanup = (): void => {
     ro.disconnect()
     window.visualViewport?.removeEventListener('resize', applyDprResize)
     window.removeEventListener('orientationchange', applyDprResize)
   }
+  AudioDirector.install(game, audioSettings())
   game.events.once(Phaser.Core.Events.DESTROY, cleanup)
   return game
 }

@@ -207,6 +207,7 @@ function mergeSavesForSameUser(
     variants,
     settings: {
       theme: sb.settings.theme !== 'auto' ? sb.settings.theme : sa.settings.theme,
+      audio: { ...sa.settings.audio, ...sb.settings.audio },
     },
     stats: {
       runs: Math.max(sa.stats.runs, sb.stats.runs),
@@ -923,7 +924,7 @@ export class AuthService {
       variants?: Record<string, number>
       stats?: { runs: number; merges: number; bestTier: number }
       leaderboard?: LeaderboardEntry[]
-      settings?: { theme: SaveDataV1['settings']['theme'] }
+      settings?: Partial<SaveDataV1['settings']>
     } | null
     const tableSave = row
       ? normalizeSave({
@@ -941,7 +942,10 @@ export class AuthService {
           variants: row.variants ?? {},
           stats: row.stats ?? { runs: 0, merges: 0, bestTier: 0 },
           leaderboard: Array.isArray(row.leaderboard) ? row.leaderboard : [],
-          settings: row.settings ?? { theme: 'auto' },
+          settings: {
+            theme: row.settings?.theme ?? 'auto',
+            audio: row.settings?.audio ?? loadSave().settings.audio,
+          },
         })
       : null
     // Only the table supplies wallet balances and purchased upgrades. Final

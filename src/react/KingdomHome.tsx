@@ -1,4 +1,5 @@
 import { memo, useSyncExternalStore, type CSSProperties } from 'react'
+import { AudioDirector } from '../game/audio/AudioDirector'
 import { formatCoins } from '../game/rendering/Coin'
 import type { KingdomNavItem, KingdomRect } from '../ui/KingdomMenuLayout'
 import { kingdomMenuBridge } from './kingdomMenuBridge'
@@ -19,7 +20,9 @@ const NavigationButton = memo(function NavigationButton({ item, source, index }:
       className={`kingdom-button${item.action === 'play' ? ' kingdom-button--play' : ''}${item.compact ? ' kingdom-button--compact' : ''}`}
       data-kingdom-action={item.action}
       style={{ ...position(item), '--button-width': `${item.w}px`, '--button-delay': `${100 + index * 55}ms` } as CSSProperties}
-      onClick={() => kingdomMenuBridge.navigate(item.action)}
+      onPointerEnter={() => AudioDirector.uiHover()}
+      onFocus={() => AudioDirector.uiHover()}
+      onClick={() => { AudioDirector.uiClick(); kingdomMenuBridge.navigate(item.action) }}
     >
       <span className="kingdom-button__entrance">
         <span className="kingdom-button__visual">

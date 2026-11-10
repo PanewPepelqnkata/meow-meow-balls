@@ -22,6 +22,10 @@ import {
   resetSave,
   savedBest,
   setCloudSyncHandler,
+  setEffectsMuted,
+  setEffectsVolume,
+  setMusicMuted,
+  setMusicVolume,
   writeSave,
 } from './save'
 
@@ -124,13 +128,30 @@ describe('hasDiscoveredTier (the repeat-discovery gate)', () => {
     }
   })
 
-  it('starts a new guest identity when Settings resets progression', () => {
+  it('starts a new guest identity while preserving wallet, upgrades, cosmetics, and audio settings', () => {
     const previousGuestId = getOrCreateGuestId()
-    recordDiscovery(9, 2, 'pig')
+    writeSave({
+      coins: 17.5,
+      coinRevision: 4,
+      upgrades: { wallDuration: 1, shakeDuration: 2, shakeIntensity: 3 },
+      ownedContainerSkins: ['royal_keep', 'og_container'],
+      equippedContainerSkin: 'og_container',
+      variants: { '9:pig:2': 100 },
+      settings: { theme: 'space', audio: { musicVolume: 0.35, effectsVolume: 0.62, musicMuted: true, effectsMuted: false } },
+    }, { syncCloud: false, ownerId: null })
     resetProgress()
     expect(getOrCreateGuestId()).not.toBe(previousGuestId)
     expect(getSaveOwnerId()).toBeNull()
-    expect(loadSave().variants).toEqual({})
+    expect(loadSave()).toEqual(expect.objectContaining({
+      best: 0,
+      coins: 17.5,
+      coinRevision: 4,
+      upgrades: { wallDuration: 1, shakeDuration: 2, shakeIntensity: 3 },
+      ownedContainerSkins: ['royal_keep', 'og_container'],
+      equippedContainerSkin: 'og_container',
+      variants: {},
+      settings: { theme: 'auto', audio: { musicVolume: 0.35, effectsVolume: 0.62, musicMuted: true, effectsMuted: false } },
+    }))
   })
 
   it('keeps the account owner and unrelated guest identity when Settings resets an account', () => {
@@ -170,6 +191,21 @@ describe('hasDiscoveredTier (the repeat-discovery gate)', () => {
       upgrades: { wallDuration: 2, shakeDuration: 3, shakeIntensity: 1 },
     }))
   })
+  it('keeps account audio preferences while Settings resets progression', () => {
+    writeSave({
+      coins: 24.5,
+      coinRevision: 8,
+      upgrades: { wallDuration: 2, shakeDuration: 3, shakeIntensity: 1 },
+      settings: { theme: 'fantasy', audio: { musicVolume: 0.2, effectsVolume: 0.8, musicMuted: false, effectsMuted: true } },
+    }, { syncCloud: false, ownerId: 'account-a' })
+    resetProgress()
+    expect(loadSave()).toEqual(expect.objectContaining({
+      coins: 24.5,
+      coinRevision: 8,
+      upgrades: { wallDuration: 2, shakeDuration: 3, shakeIntensity: 1 },
+      settings: { theme: 'auto', audio: { musicVolume: 0.2, effectsVolume: 0.8, musicMuted: false, effectsMuted: true } },
+    }))
+  })
 
   it('clears account economy and upgrades on logout without leaking them to the next player', () => {
     writeSave({
@@ -197,6 +233,34 @@ describe('hasDiscoveredTier (the repeat-discovery gate)', () => {
     })).toEqual(expect.objectContaining({
       upgrades: { wallDuration: 0, shakeDuration: 10, shakeIntensity: 0 },
     }))
+  })
+
+  it('normalizes audio sliders and persists independent music/effects mute settings', () => {
+    const normalized = normalizeSave({ settings: { theme: 'auto', audio: {
+      musicVolume: 4,
+      effectsVolume: -2,
+      musicMuted: false,
+      effectsMuted: true,
+    } } })
+    expect(normalized.settings.audio).toEqual({
+      musicVolume: 1,
+      effectsVolume: 0,
+      musicMuted: false,
+      effectsMuted: true,
+    })
+
+    setMusicVolume(0.35)
+    setEffectsVolume(0.62)
+    setMusicMuted(true)
+    setEffectsMuted(false)
+    const persisted = JSON.parse(store['ballrush.save.v1']!) as { settings: { audio: unknown } }
+    expect(persisted.settings.audio).toEqual({
+      musicVolume: 0.35,
+      effectsVolume: 0.62,
+      musicMuted: true,
+      effectsMuted: false,
+    })
+    expect(loadSave().settings.audio).toEqual(persisted.settings.audio)
   })
 
   it('copies economy snapshots while loadSave keeps its stable live reference', () => {
