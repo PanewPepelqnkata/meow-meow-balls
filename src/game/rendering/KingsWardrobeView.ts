@@ -1212,16 +1212,17 @@ export class KingsWardrobeView {
     const y = cy - r * 0.55
     const h = r * 1.3
     if (skinId === 'royal_keep') {
-      g.fillStyle(0x4a445d, 1)
+      // Sleek Royal Vessel preview: midnight-sapphire body with imperial gold trim
+      g.fillStyle(0x1e264d, 1)
       g.fillRoundedRect(x, y, w, h, r * 0.28)
       g.lineStyle(2, INK, 1)
       g.strokeRoundedRect(x, y, w, h, r * 0.28)
-      g.lineStyle(Math.max(1.5, r * 0.12), 0x9892aa, 1)
-      g.lineBetween(x + 2, y + h * 0.38, x + w - 2, y + h * 0.38)
-      g.lineBetween(x + 2, y + h * 0.68, x + w - 2, y + h * 0.68)
-      g.lineBetween(x + w * 0.5, y + h * 0.38, x + w * 0.5, y + h * 0.68)
-      g.lineStyle(Math.max(1.5, r * 0.16), 0xf6c744, 1)
+      g.fillStyle(0x121733, 1)
+      g.fillRoundedRect(x + 4, y + 4, w - 8, h - 8, r * 0.18)
+      g.lineStyle(Math.max(1.5, r * 0.15), 0xf0c456, 1)
       g.strokeRoundedRect(x + 2.5, y + 2.5, w - 5, h - 5, r * 0.22)
+      g.lineStyle(Math.max(1, r * 0.08), 0xfff3b8, 0.9)
+      g.lineBetween(x + 5, y + 3, x + 5, y + h - 5)
     } else {
       g.fillStyle(0x087cf7, 1)
       g.fillRoundedRect(x, y, w, h, r * 0.28)

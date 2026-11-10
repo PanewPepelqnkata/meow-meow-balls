@@ -100,7 +100,6 @@ export class ContainerView {
   private readonly slope = (this.normalCorners[3]!.x - this.normalCorners[0]!.x) / CONTAINER.height
   private readonly textureScale = window.devicePixelRatio > 1.5 ? 2 : 1
   private readonly hazardPattern: CanvasPattern
-  private readonly stonePattern: CanvasPattern
   private readonly skin: ContainerSkinId
   private lastHeight = -1
   private readonly corners = this.normalCorners.map((p) => ({ ...p }))
@@ -134,7 +133,6 @@ export class ContainerView {
 
   constructor(scene: Phaser.Scene) {
     this.skin = normalizeEquippedContainerSkin(loadSave().equippedContainerSkin)
-    this.stonePattern = this.createStonePattern()
     this.hazardPattern = this.createHazardPattern()
     const key = `container-frame:${this.skin}:${CONTAINER.topWidth}:${CONTAINER.height}`
     bakeCanvas(scene, key, 720, 1280, (ctx) => this.paintFrame(ctx), this.textureScale)
@@ -194,66 +192,45 @@ export class ContainerView {
       }
       const body = strip(0, width)
       if (this.skin === 'royal_keep') {
-        // Sliding bastion sleeve: the SAME masonry fill as the fixed frame
-        // (one continuous wall), a smooth polished brass guide rail on the
-        // outer flank with small rivets, and the gold trim carried up the
-        // inner edge. No rack teeth — a clean machined finish.
-        ctx.fillStyle = '#524b69'
+        // Sleek Royal Vessel sliding sleeve: deep midnight-sapphire enamel body,
+        // recessed royal-indigo inlay channel, and polished imperial gold inner
+        // and outer trim rails — crisp, luminous, and free of noisy brick grids.
+        const shade = ctx.createLinearGradient(0, 0, side * width, 0)
+        shade.addColorStop(0, '#303b6e')
+        shade.addColorStop(0.22, '#212952')
+        shade.addColorStop(0.74, '#151b38')
+        shade.addColorStop(1, '#0d1126')
+        ctx.fillStyle = shade
         ctx.fill(body)
-        ctx.save()
-        ctx.clip(body)
-        // Phase-align the tile with the fixed frame's courses so brick rows
-        // continue across the sliding joint (pattern origin is stage 0,0;
-        // the sleeve's local 0 sits at CONTAINER.topY).
-        const phase = (CONTAINER.topY) % 30
-        ctx.translate(0, -phase)
-        ctx.fillStyle = this.stonePattern
-        ctx.fillRect(-Math.abs(minX) - width, -4, w + width * 2, length + 8 + phase)
-        ctx.translate(0, phase)
-        // Upper-left light: lift the top of the sliding section slightly.
-        const lift = ctx.createLinearGradient(0, 0, 0, Math.min(length, 90))
-        lift.addColorStop(0, 'rgba(214, 209, 232, 0.14)')
-        lift.addColorStop(1, 'rgba(214, 209, 232, 0)')
-        ctx.fillStyle = lift
-        ctx.fillRect(-Math.abs(minX) - width, 0, w + width * 2, Math.min(length, 90))
-        ctx.restore()
         ctx.lineWidth = 4
-        ctx.strokeStyle = '#111625'
+        ctx.strokeStyle = '#090c1c'
         ctx.stroke(body)
-        // Smooth brass guide rail: gradient band with a bright spine and
-        // dark heel, ending in a small machined foot.
-        const rail = strip(width * 0.80, width * 0.97)
+        // Recessed royal-indigo channel with subtle gold filigree pinstripe
+        const channel = strip(width * 0.26, width * 0.72)
+        ctx.fillStyle = '#121733'
+        ctx.fill(channel)
+        ctx.lineWidth = 1.6
+        ctx.strokeStyle = 'rgba(216, 168, 56, 0.42)'
+        ctx.stroke(channel)
+        // Outer brass/gold guide rail
+        const rail = strip(width * 0.80, width * 0.96)
         const brass = ctx.createLinearGradient(0, 0, side * width, 0)
         brass.addColorStop(0, '#c08a24')
-        brass.addColorStop(0.35, '#e9b945')
-        brass.addColorStop(0.62, '#b37f1c')
+        brass.addColorStop(0.38, '#f0c456')
+        brass.addColorStop(0.7, '#b37f1c')
         brass.addColorStop(1, '#7e5710')
         ctx.fillStyle = brass
         ctx.fill(rail)
-        ctx.lineWidth = 2
-        ctx.strokeStyle = '#111625'
+        ctx.lineWidth = 1.8
+        ctx.strokeStyle = '#090c1c'
         ctx.stroke(rail)
-        // Small rivets down the rail — restrained mechanical detail.
-        const rivets = Math.max(4, Math.round(length / 34))
-        for (let t = 0; t < rivets; t++) {
-          const ty = (t + 0.5) * (length / rivets)
-          const rx = side * (width * 0.885 - this.slope * ty)
-          const ry = ty
-          ctx.beginPath()
-          ctx.arc(rx, ry, 1.8, 0, Math.PI * 2)
-          ctx.fillStyle = '#f6d987'
-          ctx.fill()
-          ctx.lineWidth = 1
-          ctx.strokeStyle = 'rgba(17, 22, 37, 0.55)'
-          ctx.stroke()
-        }
-        // Gold trim carried up the inner edge, matching the fixed frame.
-        ctx.fillStyle = '#8a5f14'
-        ctx.fill(strip(width * 0.065, width * 0.20))
-        ctx.fillStyle = '#d8a018'
-        ctx.fill(strip(width * 0.085, width * 0.15))
-        ctx.fillStyle = '#f2cd6e'
-        ctx.fill(strip(width * 0.10, width * 0.05))
+        // Inner imperial gold rim & specular highlight
+        ctx.fillStyle = '#9a6b18'
+        ctx.fill(strip(width * 0.05, width * 0.19))
+        ctx.fillStyle = '#e5b232'
+        ctx.fill(strip(width * 0.065, width * 0.14))
+        ctx.fillStyle = '#fff0a8'
+        ctx.fill(strip(width * 0.075, width * 0.105))
         return
       }
       const shade = ctx.createLinearGradient(0, 0, side * width, 0)
@@ -304,38 +281,39 @@ export class ContainerView {
       ctx.stroke(uPath(inner, dist, R - T / 2 + dist, trim))
     }
     if (this.skin === 'royal_keep') {
-      // Refined castle bastion, bottom-edge finish: ONE soft drop shadow
-      // under the silhouette (light from upper-left), ONE dark-plum
-      // outline, ONE subtle bevel on the lit shoulder, the shared stone
-      // body, and a clean two-layer gold trim hugging the interior line.
-      // No stacked heel lines — each edge band appears exactly once.
-      const bevel = ctx.createLinearGradient(0, CONTAINER.topY - T, 0, inner[3]!.y + T)
-      bevel.addColorStop(0, 'rgba(214, 209, 232, 0.15)')
-      bevel.addColorStop(0.35, 'rgba(214, 209, 232, 0)')
-      bevel.addColorStop(0.8, 'rgba(18, 14, 32, 0.10)')
-      bevel.addColorStop(1, 'rgba(18, 14, 32, 0.20)')
-      // Soft directional shadow cast beneath the masonry (upper-left
-      // light). The source stroke is fully covered by the outline and body
-      // painted above, so only the offset blur reads — a single restrained
-      // cast shadow, clearly separated from the contour.
+      // Sleek Royal Vessel: smooth deep midnight-sapphire & twilight-indigo
+      // enameled U-frame with a recessed royal inlay band, warm imperial gold
+      // inner and outer trims, and crisp arcade specular gloss — harmonizing
+      // with every twilight/space/fantasy/jungle backdrop without brick clutter.
+      const body = ctx.createLinearGradient(0, CONTAINER.topY - T, 0, inner[3]!.y + T)
+      body.addColorStop(0, '#323e73')
+      body.addColorStop(0.28, '#222b54')
+      body.addColorStop(0.72, '#161c3b')
+      body.addColorStop(1, '#0d1126')
+      // Soft directional drop shadow under the vessel silhouette
       ctx.save()
-      ctx.shadowColor = 'rgba(17, 22, 37, 0.30)'
+      ctx.shadowColor = 'rgba(6, 8, 20, 0.36)'
       ctx.shadowBlur = 14
-      ctx.shadowOffsetX = 5
-      ctx.shadowOffsetY = 10
-      strokeU(T / 2, T + 8, '#111625')
+      ctx.shadowOffsetX = 4
+      ctx.shadowOffsetY = 9
+      strokeU(T / 2, T + 9, '#090c1c')
       ctx.restore()
-      // Single continuous dark-plum outline.
-      strokeU(T / 2, T + 8, '#111625')
-      // Stone body under a vertical light/shade pass.
-      strokeU(T / 2, T, '#524b69')
-      strokeU(T / 2, T - 5, this.stonePattern)
-      strokeU(T / 2, T - 5, bevel)
-      // Restrained warm highlight on the outer shoulder (upper-left light).
-      strokeU(T * 0.94, T * 0.09, 'rgba(230, 226, 244, 0.30)')
-      // Clean gold trim: warm base + lit inner line. Exactly two strokes.
-      strokeU(T * 0.085, T * 0.15, '#d8a018')
-      strokeU(T * 0.105, T * 0.05, '#f2cd6e')
+      // Crisp dark ink outer contour
+      strokeU(T / 2, T + 9, '#090c1c')
+      // Smooth royal-sapphire enameled body
+      strokeU(T / 2, T, body)
+      // Recessed royal-indigo channel along the mid-band with subtle gold bevels
+      const channelDepth = T * 0.48
+      const channelWidth = T * 0.38
+      strokeU(channelDepth, channelWidth + 3, 'rgba(229, 178, 50, 0.38)', channelWidth / 2)
+      strokeU(channelDepth, channelWidth, '#121733', channelWidth / 2)
+      // Outer shoulder imperial gold accent & deep shadow heel
+      strokeU(T * 0.90, T * 0.12, '#0b0f22')
+      strokeU(T * 0.80, T * 0.055, '#c9932f')
+      // Luminous imperial gold inner rim (warm base + bright gold + cream highlight)
+      strokeU(T * 0.095, T * 0.15, '#b8821e')
+      strokeU(T * 0.085, T * 0.085, '#f0c456')
+      strokeU(T * 0.068, T * 0.03, '#fff3b8')
       this.paintGloss(ctx, inner)
       ctx.restore()
       return
@@ -372,29 +350,19 @@ export class ContainerView {
         new Phaser.Math.Vector2(corner.x, corner.y + 9),
       ]
       if (this.skin === 'royal_keep') {
-        // Functional sliding connector: a brass strap with twin bolt heads
-        // clamping the moving sleeve to the fixed course. Reads as a
-        // machined joint, not a decorative belt.
-        this.sleeveG.fillGradientStyle(0x837d97, 0x6d6782, 0x5a5470, 0x524b69, 1)
+        // Sleek royal collar joint: midnight-sapphire housing with an imperial
+        // gold ring clamping the telescoping sleeve to the lower vessel.
+        this.sleeveG.fillGradientStyle(0x323e73, 0x222b54, 0x161c3b, 0x11162e, 1)
         this.sleeveG.fillPoints(points, true)
-        this.sleeveG.lineStyle(3, 0x111625, 1)
+        this.sleeveG.lineStyle(3, 0x090c1c, 1)
         this.sleeveG.strokePoints(points, true, true)
-        // Thin brass strap across the joint line.
-        this.sleeveG.fillStyle(0xc9932f, 1)
-        this.sleeveG.fillRect(corner.x, corner.y - 1, dir * T, 3.5)
-        this.sleeveG.lineStyle(1.5, 0x111625, 0.9)
-        this.sleeveG.strokeRect(corner.x, corner.y - 1, dir * T, 3.5)
-        this.sleeveG.fillStyle(0xf2cd6e, 1)
-        this.sleeveG.fillRect(corner.x + dir * 2, corner.y - 0.5, dir * (T - 10), 1)
-        // Twin bolt heads pinning the strap.
-        for (const bx of [T * 0.28, T * 0.72]) {
-          this.sleeveG.fillStyle(0xd8a018, 1)
-          this.sleeveG.fillCircle(corner.x + dir * bx, corner.y + 4.5, 2.6)
-          this.sleeveG.lineStyle(1.4, 0x111625, 1)
-          this.sleeveG.strokeCircle(corner.x + dir * bx, corner.y + 4.5, 2.6)
-          this.sleeveG.fillStyle(0xf6d987, 1)
-          this.sleeveG.fillCircle(corner.x + dir * bx - 0.7, corner.y + 3.8, 0.8)
-        }
+        // Polished gold collar band across the joint
+        this.sleeveG.fillStyle(0xd8a018, 1)
+        this.sleeveG.fillRect(corner.x + dir * 2, corner.y - 1.5, dir * (T - 4), 4)
+        this.sleeveG.lineStyle(1.4, 0x090c1c, 0.9)
+        this.sleeveG.strokeRect(corner.x + dir * 2, corner.y - 1.5, dir * (T - 4), 4)
+        this.sleeveG.fillStyle(0xfff0a8, 1)
+        this.sleeveG.fillRect(corner.x + dir * 4, corner.y - 0.8, dir * (T - 12), 1.2)
         continue
       }
       this.sleeveG.fillGradientStyle(0x2b9cff, 0x0474e9, 0x0750bd, 0x06357e, 1)
@@ -414,18 +382,16 @@ export class ContainerView {
       const g = this.caps[index]!
       const points = cap.vertices
       if (this.skin === 'royal_keep') {
-        // Finished masonry cap: bevelled stone block inside the shared
-        // physical cap polygon, with a slim brass reinforcement band along
-        // the top and soft shading. The physical chamfer corners from
-        // tipCollidersAt give the bevelled silhouette.
-        g.fillStyle(0x524b69, 1)
+        // Sleek royal cap: bevelled midnight-sapphire & gold crown cap inside
+        // the shared physical cap polygon.
+        g.fillStyle(0x1b2347, 1)
         g.beginPath()
         g.moveTo(points[0]!.x, points[0]!.y)
         for (let i = 1; i < points.length; i++) g.lineTo(points[i]!.x, points[i]!.y)
         g.closePath()
         g.fillPath()
-        // Lit stone face (upper-left light).
-        g.fillStyle(0x8f89a3, 1)
+        // Lit upper bevel face
+        g.fillStyle(0x3b4982, 1)
         g.beginPath()
         g.moveTo(points[1]!.x, points[1]!.y)
         g.lineTo(points[2]!.x, points[2]!.y)
@@ -435,24 +401,15 @@ export class ContainerView {
         g.lineTo(points[1]!.x, points[1]!.y + 2.5)
         g.closePath()
         g.fillPath()
-        // Cool shade toward the outer face.
-        g.fillStyle(0x6b6580, 0.55)
-        g.beginPath()
-        g.moveTo(points[4]!.x, points[4]!.y)
-        g.lineTo(points[5]!.x, points[5]!.y)
-        g.lineTo(points[5]!.x, points[5]!.y + 2)
-        g.lineTo(points[4]!.x, points[4]!.y + 2)
-        g.closePath()
-        g.fillPath()
-        // Slim brass reinforcement band on top with a lit spine.
+        // Imperial gold crown band on top with specular spine
         const topY = points[2]!.y + 1
         const bandX = Math.min(points[2]!.x, points[3]!.x) + 1
         const bandW = Math.abs(points[3]!.x - points[2]!.x) - 2
-        g.fillStyle(0xc9932f, 1)
-        g.fillRect(bandX, topY, bandW, 2.2)
-        g.fillStyle(0xf2cd6e, 1)
-        g.fillRect(bandX, topY, bandW, 0.9)
-        g.lineStyle(3, 0x111625, 1)
+        g.fillStyle(0xd8a018, 1)
+        g.fillRect(bandX, topY, bandW, 2.5)
+        g.fillStyle(0xfff0a8, 1)
+        g.fillRect(bandX, topY, bandW, 1.0)
+        g.lineStyle(3, 0x090c1c, 1)
         g.beginPath()
         g.moveTo(points[0]!.x, points[0]!.y)
         for (let i = 1; i < points.length; i++) g.lineTo(points[i]!.x, points[i]!.y)
@@ -503,73 +460,6 @@ export class ContainerView {
   }
 
 
-  /** Ashlar masonry tile shared by the fixed frame U and both sleeves so
-  * the bastion reads as one continuous wall. Each stone is shaded
-  * individually: a lighter top-lit face, a darker lower edge, gentle
-  * perimeter bevels, deterministic tone jitter between neighbours, and
-  * dark-plum mortar separation — a solid wall, not a clipped texture. */
-  private createStonePattern(): CanvasPattern {
-    const canvas = document.createElement('canvas')
-    const course = 30
-    const block = 48
-    canvas.width = block * 2 * this.textureScale
-    canvas.height = course * 2 * this.textureScale
-    const ctx = canvas.getContext('2d')!
-    ctx.scale(this.textureScale, this.textureScale)
-    // Mortar bed: dark plum so every stone separation reads as shadow.
-    ctx.fillStyle = '#3b3550'
-    ctx.fillRect(0, 0, block * 2, course * 2)
-    // Deterministic per-cell tone jitter (stable across bakes/reloads).
-    const jitter = (seed: number): number => {
-      const s = Math.sin(seed * 127.1 + 311.7) * 43758.5453
-      return s - Math.floor(s)
-    }
-    const base = { r: 140, g: 134, b: 162 }
-    for (let row = 0; row < 2; row++) {
-      const offset = row % 2 === 0 ? 0 : block / 2
-      for (let col = -1; col < 3; col++) {
-        const x = col * block + offset + 2
-        const y = row * course + 2
-        const w = block - 4
-        const h = course - 4
-        // Per-brick tone: ±10 units of natural variation.
-        const t = jitter(row * 37.13 + col * 91.7 + 5.3) * 22 - 11
-        const rr = Math.round(base.r + t)
-        const gg = Math.round(base.g + t)
-        const bb = Math.round(base.b + t)
-        // Top-lit face: lighter near the top, settling darker at the base.
-        const face = ctx.createLinearGradient(x, y, x, y + h)
-        face.addColorStop(0, `rgb(${Math.min(255, rr + 22)}, ${Math.min(255, gg + 20)}, ${Math.min(255, bb + 24)})`)
-        face.addColorStop(0.55, `rgb(${rr}, ${gg}, ${bb})`)
-        face.addColorStop(1, `rgb(${Math.max(0, rr - 26)}, ${Math.max(0, gg - 26)}, ${Math.max(0, bb - 24)})`)
-        ctx.fillStyle = face
-        ctx.fillRect(x, y, w, h)
-        // Gentle bevel: light catches top+left, shadow settles bottom+right.
-        ctx.lineWidth = 1.1
-        ctx.strokeStyle = 'rgba(228, 224, 244, 0.20)'
-        ctx.beginPath()
-        ctx.moveTo(x + 0.6, y + h - 0.6)
-        ctx.lineTo(x + 0.6, y + 0.6)
-        ctx.lineTo(x + w - 0.6, y + 0.6)
-        ctx.stroke()
-        ctx.strokeStyle = 'rgba(24, 20, 38, 0.26)'
-        ctx.beginPath()
-        ctx.moveTo(x + 0.6, y + h - 0.6)
-        ctx.lineTo(x + w - 0.6, y + h - 0.6)
-        ctx.lineTo(x + w - 0.6, y + 0.6)
-        ctx.stroke()
-        // One soft controlled highlight patch (upper-left light).
-        const sheen = ctx.createLinearGradient(x, y, x + w * 0.5, y + h * 0.5)
-        sheen.addColorStop(0, 'rgba(255, 252, 255, 0.10)')
-        sheen.addColorStop(1, 'rgba(255, 252, 255, 0)')
-        ctx.fillStyle = sheen
-        ctx.fillRect(x, y, w, h)
-      }
-    }
-    const pattern = ctx.createPattern(canvas, 'repeat')!
-    pattern.setTransform(new DOMMatrix().scale(1 / this.textureScale))
-    return pattern
-  }
 
   /** One crisp diagonal tile, shared by the fixed frame and sliding sleeves. */
 

@@ -30,10 +30,10 @@ export function createGame(parent: HTMLElement): Phaser.Game {
   const bootW = parentRect.width || window.innerWidth
   const bootH = parentRect.height || window.innerHeight
   resolveViewportContainer(bootW, bootH)
-  // The default (auto) opening theme is the dark Abandoned Royal Hall on
-  // every orientation — the clear color matches its deep dark tone so no frame
+  // The default (auto) opening theme is Royal Highlands Twilight on every
+  // orientation — the clear color matches its deep sapphire tone so no frame
   // flashes a foreign color before BackgroundScene paints.
-  const clearColor = '#12101c'
+  const clearColor = '#0d152c'
   // HiDPI RENDERING: the game runs in Scale.NONE — we own the canvas
   // buffer entirely. The buffer is sized to PHYSICAL pixels (CSS × full
   // devicePixelRatio — NO cap: iPhone DPR 3 renders a 1170×2532 buffer)

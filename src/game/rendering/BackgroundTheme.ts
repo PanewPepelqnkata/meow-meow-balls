@@ -406,88 +406,6 @@ function lightShafts(
     g.fillPath()
   }
 }
-/** Delicate cobweb draped from an anchor point (subtle, atmospheric). */
-function drawCobweb(
-  g: ThemeDrawTarget,
-  x: number,
-  y: number,
-  size: number,
-  toRight: boolean,
-): void {
-  const dir = toRight ? 1 : -1
-  const strands = 4
-  const webCol = 0x8a8499
-  const webAlpha = 0.22
-  g.lineStyle(0.9, webCol, webAlpha)
-  // Radial spokes
-  for (let i = 0; i <= strands; i++) {
-    const angle = (i / strands) * (Math.PI * 0.45)
-    const ex = x + Math.cos(angle) * size * dir
-    const ey = y + Math.sin(angle) * size
-    g.lineBetween(x, y, ex, ey)
-  }
-  // Concentric sagging arcs connecting spokes
-  const rings = 3
-  for (let r = 1; r <= rings; r++) {
-    const f = r / rings
-    for (let i = 0; i < strands; i++) {
-      const a0 = (i / strands) * (Math.PI * 0.45)
-      const a1 = ((i + 1) / strands) * (Math.PI * 0.45)
-      const x0 = x + Math.cos(a0) * size * f * dir
-      const y0 = y + Math.sin(a0) * size * f
-      const x1 = x + Math.cos(a1) * size * f * dir
-      const y1 = y + Math.sin(a1) * size * f
-      const midX = (x0 + x1) * 0.5 - dir * size * 0.05 * f
-      const midY = (y0 + y1) * 0.5 + size * 0.06 * f
-      g.beginPath()
-      g.moveTo(x0, y0)
-      g.quadraticCurveTo(midX, midY, x1, y1)
-      g.strokePath()
-    }
-  }
-}
-
-/** Large corner cobweb spanning ceiling corners. */
-function drawCornerCobweb(
-  g: ThemeDrawTarget,
-  cornerX: number,
-  cornerY: number,
-  span: number,
-  isLeft: boolean,
-): void {
-  const dir = isLeft ? 1 : -1
-  const rays = 5
-  const webCol = 0x938da6
-  const webAlpha = 0.18
-  g.lineStyle(1.0, webCol, webAlpha)
-  // Main corner rays
-  for (let i = 0; i <= rays; i++) {
-    const a = (i / rays) * (Math.PI * 0.5)
-    const rx = cornerX + Math.cos(a) * span * dir
-    const ry = cornerY + Math.sin(a) * span
-    g.lineBetween(cornerX, cornerY, rx, ry)
-  }
-  // Drooping spiral connector arcs
-  const rings = 4
-  for (let r = 1; r <= rings; r++) {
-    const f = r / rings
-    for (let i = 0; i < rays; i++) {
-      const a0 = (i / rays) * (Math.PI * 0.5)
-      const a1 = ((i + 1) / rays) * (Math.PI * 0.5)
-      const p0x = cornerX + Math.cos(a0) * span * f * dir
-      const p0y = cornerY + Math.sin(a0) * span * f
-      const p1x = cornerX + Math.cos(a1) * span * f * dir
-      const p1y = cornerY + Math.sin(a1) * span * f
-      const sagX = (p0x + p1x) * 0.5 - dir * span * 0.04 * f
-      const sagY = (p0y + p1y) * 0.5 + span * 0.06 * f
-      g.beginPath()
-      g.moveTo(p0x, p0y)
-      g.quadraticCurveTo(sagX, sagY, p1x, p1y)
-      g.strokePath()
-    }
-  }
-}
-
 /* ------------------------------------------------------------------ */
 /* Theme definitions                                                   */
 /* ------------------------------------------------------------------ */
@@ -495,429 +413,132 @@ function drawCornerCobweb(
 const THEMES: Record<ThemeName, ThemeDef> = {
   light: {
     name: 'light',
-    // ABANDONED ROYAL VAULT HALL (Dark, atmospheric, non-distracting):
-    // Replaces high-contrast features and bright chandeliers with a dark,
-    // abandoned hall: weathered stone walls, faded dusty jewel glass, deep
-    // floor shadows, subtle cobwebs, torn faded banners, and an overall
-    // dark vignette overlay so play elements (container, balls, HUD) pop cleanly.
-    bgColor: 0x12101c,
-    gridColor: 0x272235,
-    gridAlpha: 0.09,
-    draw: (g, w, h) => {
-      const isDesktop = w > h
-      const horizon = h * (isDesktop ? 0.61 : 0.64)
-      const minDim = Math.min(w, h)
-
-      // 1. BACK WALL: Dark stone masonry with a subtle ambient moonlit gradient
-      g.fillGradientStyle(0x151222, 0x151222, 0x241d30, 0x1a1626, 1)
-      g.fillRect(0, 0, w, horizon)
-
-      // Soft ambient light bloom in the chamber (faint cool moonlit glow)
-      g.fillStyle(0x384166, 0.12)
-      g.fillEllipse(w * 0.5, horizon * 0.38, w * 0.75, horizon * 0.55)
-      g.fillStyle(0x483a5e, 0.14)
-      g.fillEllipse(w * 0.5, horizon * 0.52, w * 0.6, horizon * 0.45)
-
-      // Faint stone block courses (low contrast)
-      const stoneRows = 9
-      const stoneH = horizon / stoneRows
-      const blockW = Math.max(58, w / (isDesktop ? 15 : 8))
-      for (let r = 1; r < stoneRows; r++) {
-        const sy = r * stoneH
-        g.lineStyle(1.2, 0x0a0812, 0.4)
-        g.lineBetween(0, sy, w, sy)
-        const xOff = (r % 2) * (blockW * 0.5)
-        for (let bx = -blockW + xOff; bx < w + blockW; bx += blockW) {
-          g.lineBetween(bx, sy, bx, sy + stoneH)
-        }
-      }
-
-      // Wall age stains / mildew patches in upper corners and near base
-      g.fillStyle(0x0a0914, 0.55)
-      g.fillEllipse(w * 0.12, horizon * 0.25, w * 0.18, horizon * 0.3)
-      g.fillEllipse(w * 0.88, horizon * 0.22, w * 0.19, horizon * 0.32)
-      g.fillEllipse(w * 0.5, horizon * 0.9, w * 0.35, horizon * 0.18)
-
-      // 2. TIMBER HAMMERBEAM CORNICE / CEILING BEAM (Weathered, dark aged timber)
-      const corniceH = Math.max(20, h * 0.044)
-      g.fillStyle(0x0e0c15, 1)
-      g.fillRect(0, 0, w, corniceH)
-      g.fillStyle(0x1d1720, 1)
-      g.fillRect(0, corniceH - 5, w, 5)
-      g.fillStyle(0x32252a, 1)
-      g.fillRect(0, corniceH - 5, w, 1.5)
-      g.lineStyle(1.8, 0x09070e, 1)
-      g.lineBetween(0, corniceH, w, corniceH)
-
-      // 3. PERSPECTIVE CHECKERED MARBLE FLOOR (Subdued, low contrast, dark dusty tiles)
-      const floorH = h - horizon
-      const rows = 12
-      const cx = w * 0.5
-      const nearColW = w * (isDesktop ? 0.088 : 0.145)
-      for (let r = 0; r < rows; r++) {
-        const p0 = r / rows
-        const p1 = (r + 1) / rows
-        const depth0 = 0.075 + p0 * p0 * 0.925
-        const depth1 = 0.075 + p1 * p1 * 0.925
-        const y0 = horizon + floorH * p0 * p0
-        const y1 = horizon + floorH * p1 * p1
-
-        const colCount = Math.ceil(w / (nearColW * 0.09)) + 12
-        for (let col = -colCount; col <= colCount; col++) {
-          const x0 = cx + col * nearColW * depth0
-          const x1 = cx + (col + 1) * nearColW * depth0
-          const x2 = cx + (col + 1) * nearColW * depth1
-          const x3 = cx + col * nearColW * depth1
-          if (Math.max(x0, x1, x2, x3) < -10 || Math.min(x0, x1, x2, x3) > w + 10) continue
-
-          const isLight = (r + Math.abs(col)) % 2 === 0
-          // Very subdued contrast: dark slate vs deep charcoal
-          const tileCol = isLight ? 0x2e2938 : 0x1a1723
-          g.fillStyle(tileCol, 1)
-          g.beginPath()
-          g.moveTo(x0, y0)
-          g.lineTo(x1, y0)
-          g.lineTo(x2, y1)
-          g.lineTo(x3, y1)
-          g.closePath()
-          g.fillPath()
-
-          // Soft grout lines
-          g.lineStyle(0.8, 0x0b0914, 0.5)
-          g.beginPath()
-          g.moveTo(x0, y0)
-          g.lineTo(x1, y0)
-          g.lineTo(x2, y1)
-          g.lineTo(x3, y1)
-          g.closePath()
-          g.strokePath()
-        }
-      }
-
-      // Deep floor shadow gradient (darker near horizon and deepens foreground edges)
-      g.fillGradientStyle(0x100d18, 0x100d18, 0x0b0912, 0x0b0912, 0.72)
-      g.fillRect(0, horizon, w, floorH)
-
-      // Horizon baseboard / skirting
-      g.fillStyle(0x191522, 1)
-      g.fillRect(0, horizon - 7, w, 7)
-      g.fillStyle(0x352b3d, 1)
-      g.fillRect(0, horizon - 7, w, 1.5)
-      g.lineStyle(1.4, 0x0a0812, 1)
-      g.lineBetween(0, horizon - 1, w, horizon - 1)
-
-      // 4. ARCHITECTURAL HORIZONTAL SPACING
-      const colXs = isDesktop
-        ? [w * 0.052, w * 0.33, w * 0.67, w * 0.948]
-        : [w * 0.06, w * 0.94]
-      const winXs = isDesktop
-        ? [w * 0.18, w * 0.82]
-        : [w * 0.22, w * 0.78]
-
-      // 5. GOTHIC STAINED-GLASS WINDOWS (Aged, dark dusty jewel glass - moody color accents)
-      const winW = isDesktop ? Math.min(w * 0.105, 128) : Math.min(w * 0.24, 92)
-      const winH = isDesktop ? Math.min(h * 0.44, 330) : Math.min(h * 0.35, 220)
-      const winY = isDesktop ? h * 0.155 : h * 0.175
-
-      const archHalfWidthAtY = (y: number, topY: number, baseY: number, halfW: number): number => {
-        if (y >= baseY) return halfW
-        if (y <= topY) return 0
-        const u = (y - topY) / (baseY - topY)
-        return halfW * Math.pow(Math.sin(u * Math.PI * 0.5), 0.72)
-      }
-
-      const tracePointedArch = (cxArch: number, topY: number, baseY: number, botY: number, halfW: number) => {
-        g.beginPath()
-        g.moveTo(cxArch - halfW, botY)
-        g.lineTo(cxArch - halfW, baseY)
-        const steps = 16
-        for (let i = 1; i <= steps; i++) {
-          const u = 1 - i / steps
-          const ay = topY + u * (baseY - topY)
-          const hw = archHalfWidthAtY(ay, topY, baseY, halfW)
-          g.lineTo(cxArch - hw, ay)
-        }
-        for (let i = 1; i <= steps; i++) {
-          const u = i / steps
-          const ay = topY + u * (baseY - topY)
-          const hw = archHalfWidthAtY(ay, topY, baseY, halfW)
-          g.lineTo(cxArch + hw, ay)
-        }
-        g.lineTo(cxArch + halfW, botY)
-        g.closePath()
-      }
-
-      const drawGothicWindow = (wcx: number) => {
-        const halfW = winW * 0.5
-        const left = wcx - halfW
-        const archTopY = winY
-        const archBaseY = winY + winW * 0.65
-        const bottomY = winY + winH
-
-        // Stone arch frame surround
-        g.fillStyle(0x1a1523, 1)
-        tracePointedArch(wcx, archTopY - 9, archBaseY, bottomY, halfW + 8)
-        g.fillPath()
-        g.lineStyle(2.2, 0x090710, 1)
-        tracePointedArch(wcx, archTopY - 9, archBaseY, bottomY, halfW + 8)
-        g.strokePath()
-
-        // Dark backing
-        g.fillStyle(0x0e0b16, 1)
-        tracePointedArch(wcx, archTopY, archBaseY, bottomY, halfW)
-        g.fillPath()
-
-        // Aged, dusty, deep jewel colors (subdued luminance, rich dark tones)
-        const mosaicCols = [0x4d1624, 0x1f294a, 0x5e451d, 0x15363b, 0x471c37, 0x543219]
-        const gridXCount = 4
-        const gridYCount = 8
-        const cellW = winW / gridXCount
-        const cellH = winH / gridYCount
-        for (let gy = 0; gy < gridYCount; gy++) {
-          for (let gx = 0; gx < gridXCount; gx++) {
-            const px0 = left + gx * cellW
-            const px1 = px0 + cellW
-            const py0 = winY + gy * cellH
-            const py1 = py0 + cellH
-            const pyMid = (py0 + py1) * 0.5
-
-            const hwTop = archHalfWidthAtY(py0 + 2, archTopY, archBaseY, halfW - 1.5)
-            const hwMid = archHalfWidthAtY(pyMid, archTopY, archBaseY, halfW - 1.5)
-            const hwBot = archHalfWidthAtY(py1 - 1, archTopY, archBaseY, halfW - 1.5)
-
-            const clipX0Top = Math.max(px0 + 1, wcx - hwTop)
-            const clipX1Top = Math.min(px1 - 1, wcx + hwTop)
-            const clipX0Bot = Math.max(px0 + 1, wcx - hwBot)
-            const clipX1Bot = Math.min(px1 - 1, wcx + hwBot)
-            if (clipX1Bot <= clipX0Bot + 1 && clipX1Top <= clipX0Top + 1) continue
-
-            const colIdx = (gx * 3 + gy * 2) % mosaicCols.length
-            g.fillStyle(mosaicCols[colIdx]!, 0.78)
-
-            if (py0 >= archBaseY) {
-              g.fillRect(px0 + 1, py0 + 1, cellW - 2, cellH - 2)
-              g.lineStyle(1.2, 0x0a0812, 0.7)
-              g.lineBetween(px0, pyMid, px0 + cellW * 0.5, py0)
-              g.lineBetween(px0 + cellW * 0.5, py0, px1, pyMid)
-              g.lineBetween(px0, pyMid, px0 + cellW * 0.5, py1)
-              g.lineBetween(px0 + cellW * 0.5, py1, px1, pyMid)
-            } else {
-              const xTL = Math.max(px0 + 1, Math.min(px1 - 1, wcx - hwTop))
-              const xTR = Math.max(px0 + 1, Math.min(px1 - 1, wcx + hwTop))
-              const xML = Math.max(px0 + 1, Math.min(px1 - 1, wcx - hwMid))
-              const xMR = Math.max(px0 + 1, Math.min(px1 - 1, wcx + hwMid))
-              const xBL = Math.max(px0 + 1, Math.min(px1 - 1, wcx - hwBot))
-              const xBR = Math.max(px0 + 1, Math.min(px1 - 1, wcx + hwBot))
-              if (xBR - xBL < 2) continue
-              g.beginPath()
-              g.moveTo(xBL, py1 - 1)
-              g.lineTo(xML, pyMid)
-              if (xTR - xTL >= 1) {
-                g.lineTo(xTL, py0 + 1)
-                g.lineTo(xTR, py0 + 1)
-              } else {
-                const apexY = Math.max(archTopY + 1, py0 + 1)
-                g.lineTo(wcx, apexY)
-              }
-              g.lineTo(xMR, pyMid)
-              g.lineTo(xBR, py1 - 1)
-              g.closePath()
-              g.fillPath()
-            }
-          }
-        }
-
-        // Dusty aged glass patina overlay (faded film over glass)
-        g.fillStyle(0x120f1c, 0.42)
-        tracePointedArch(wcx, archTopY, archBaseY, bottomY, halfW)
-        g.fillPath()
-
-        // Horizontal lead muntin bars
-        g.lineStyle(1.6, 0x090710, 0.95)
-        for (let gy = 1; gy < gridYCount; gy++) {
-          const py = winY + gy * cellH
-          const hw = archHalfWidthAtY(py, archTopY, archBaseY, halfW)
-          if (hw > 2) g.lineBetween(wcx - hw, py, wcx + hw, py)
-        }
-        // Vertical lead muntin bars
-        for (let gx = 1; gx < gridXCount; gx++) {
-          const px = left + gx * cellW
-          const dx = Math.abs(px - wcx)
-          let topBarY = archTopY
-          if (dx > 0.5) {
-            const ratio = Math.min(1, dx / halfW)
-            const u = Math.asin(Math.pow(ratio, 1 / 0.72)) / (Math.PI * 0.5)
-            topBarY = archTopY + u * (archBaseY - archTopY)
-          }
-          g.lineBetween(px, topBarY, px, bottomY)
-        }
-
-        // Stone surround outline & center mullion
-        g.lineStyle(2.6, 0x090710, 1)
-        tracePointedArch(wcx, archTopY, archBaseY, bottomY, halfW)
-        g.strokePath()
-        g.lineStyle(2.6, 0x090710, 1)
-        g.lineBetween(wcx, archTopY, wcx, bottomY)
-
-        // Weathered stone sill
-        g.fillStyle(0x241e2e, 1)
-        g.fillRect(left - 10, bottomY, winW + 20, 7)
-        g.fillStyle(0x42364c, 1)
-        g.fillRect(left - 10, bottomY, winW + 20, 1.5)
-        g.lineStyle(1.6, 0x090710, 1)
-        g.beginPath()
-        g.moveTo(left - 10, bottomY)
-        g.lineTo(left + winW + 10, bottomY)
-        g.lineTo(left + winW + 10, bottomY + 7)
-        g.lineTo(left - 10, bottomY + 7)
-        g.closePath()
-        g.strokePath()
-
-        // Cobwebs hanging in upper corners of the window arch
-        drawCobweb(g, left - 6, archBaseY - winW * 0.35, winW * 0.3, true)
-        drawCobweb(g, left + winW + 6, archBaseY - winW * 0.35, winW * 0.3, false)
-
-        // Very gentle ambient moonbeam / dust light shaft casting into the room
-        const beamAngle = wcx < w * 0.5 ? 0.28 : -0.28
-        const beamLen = h * 0.72
-        const beamSpread = winW * 1.8
-        g.fillStyle(0x768eb8, 0.055)
-        g.beginPath()
-        g.moveTo(wcx - halfW * 0.6, bottomY - 10)
-        g.lineTo(wcx + halfW * 0.6, bottomY - 10)
-        g.lineTo(wcx + Math.sin(beamAngle) * beamLen + beamSpread * 0.5, bottomY + Math.cos(beamAngle) * beamLen)
-        g.lineTo(wcx + Math.sin(beamAngle) * beamLen - beamSpread * 0.5, bottomY + Math.cos(beamAngle) * beamLen)
-        g.closePath()
-        g.fillPath()
-
-        // Faint ambient light pool on floor below window
-        const poolX = wcx + Math.sin(beamAngle) * (horizon + floorH * 0.45 - bottomY)
-        const poolY = horizon + floorH * 0.45
-        g.fillStyle(0x4a5b7d, 0.065)
-        g.fillEllipse(poolX, poolY, winW * 1.6, winW * 0.55)
-      }
-
-      winXs.forEach((wx) => drawGothicWindow(wx))
-
-      // 6. GRAND WEATHERED STONE PILLARS WITH FADED BANNERS
-      const pillarW = isDesktop ? Math.max(36, w * 0.042) : Math.max(26, w * 0.08)
-      const bannerW = pillarW * 1.05
-      const bannerH = isDesktop ? h * 0.28 : h * 0.22
-      const bannerY = isDesktop ? h * 0.24 : h * 0.27
-
-      const drawPillarAndBanner = (pcx: number) => {
-        const px = pcx - pillarW * 0.5
-        const pTop = corniceH
-        const pBottom = horizon + 12
-        const pH = pBottom - pTop
-
-        // Dark pillar cylindrical shading (much darker, low-contrast)
-        g.fillStyle(0x1c1825, 1)
-        g.fillRect(px, pTop, pillarW, pH)
-        g.fillStyle(0x30293d, 1)
-        g.fillRect(px + pillarW * 0.28, pTop, pillarW * 0.44, pH)
-        g.fillStyle(0x453b52, 0.6)
-        g.fillRect(px + pillarW * 0.44, pTop, pillarW * 0.16, pH)
-        g.lineStyle(1.8, 0x090710, 1)
-        g.lineBetween(px, pTop, px, pBottom)
-        g.lineBetween(px + pillarW, pTop, px + pillarW, pBottom)
-
-        // Weathered tarnished capitals & bases (aged dull bronze/gold)
-        const drawRing = (ry: number, rH: number, extraW = 4) => {
-          g.fillStyle(0x614f2e, 1)
-          g.fillRect(px - extraW, ry, pillarW + extraW * 2, rH)
-          g.fillStyle(0x8f7647, 1)
-          g.fillRect(px - extraW, ry, pillarW + extraW * 2, 1.5)
-          g.lineStyle(1.4, 0x090710, 1)
-          g.beginPath()
-          g.moveTo(px - extraW, ry)
-          g.lineTo(px + pillarW + extraW, ry)
-          g.lineTo(px + pillarW + extraW, ry + rH)
-          g.lineTo(px - extraW, ry + rH)
-          g.closePath()
-          g.strokePath()
-        }
-        drawRing(pTop, 8, 5)
-        drawRing(pTop + 12, 5, 3)
-        drawRing(pBottom - 18, 6, 3)
-        drawRing(pBottom - 9, 9, 5)
-
-        // Weathered, aged velvet banner (darker faded wine tone with tattered rips)
-        const bx = pcx - bannerW * 0.5
-        const by = bannerY
-        // Tarnished bronze rod
-        g.fillStyle(0x665431, 1)
-        g.fillRect(bx - 4, by - 3, bannerW + 8, 3)
-        g.fillCircle(bx - 4, by - 1.5, 3)
-        g.fillCircle(bx + bannerW + 4, by - 1.5, 3)
-
-        // Faded banner cloth with tattered swallowtail
-        g.fillStyle(0x3d1320, 1)
-        g.beginPath()
-        g.moveTo(bx, by)
-        g.lineTo(bx + bannerW, by)
-        g.lineTo(bx + bannerW, by + bannerH * 0.95)
-        g.lineTo(bx + bannerW * 0.78, by + bannerH)
-        g.lineTo(pcx, by + bannerH - bannerW * 0.3)
-        g.lineTo(bx + bannerW * 0.22, by + bannerH * 0.98)
-        g.lineTo(bx, by + bannerH * 0.9)
-        g.closePath()
-        g.fillPath()
-
-        // Tattered tear slits on banner edge
-        g.fillStyle(0x1c1825, 0.8)
-        g.fillTriangle(bx + bannerW - 2, by + bannerH * 0.42, bx + bannerW + 1, by + bannerH * 0.45, bx + bannerW - 5, by + bannerH * 0.44)
-        g.fillTriangle(bx + 2, by + bannerH * 0.65, bx - 1, by + bannerH * 0.68, bx + 5, by + bannerH * 0.67)
-
-        // Faded gold inner trim
-        g.lineStyle(1.6, 0x7a6336, 0.75)
-        g.beginPath()
-        g.moveTo(bx + 3, by)
-        g.lineTo(bx + bannerW - 3, by)
-        g.lineTo(bx + bannerW - 3, by + bannerH * 0.9)
-        g.lineTo(pcx, by + bannerH - bannerW * 0.3 - 3)
-        g.lineTo(bx + 3, by + bannerH * 0.85)
-        g.closePath()
-        g.strokePath()
-
-        // Faded weathered crown emblem
-        const crownW = bannerW * 0.48
-        const crownH = crownW * 0.52
-        const crownX = pcx - crownW * 0.5
-        const crownY = by + bannerH * 0.38
-        g.fillStyle(0x826938, 0.8)
-        g.beginPath()
-        g.moveTo(crownX, crownY + crownH)
-        g.lineTo(crownX + crownW, crownY + crownH)
-        g.lineTo(crownX + crownW, crownY)
-        g.lineTo(crownX + crownW * 0.72, crownY + crownH * 0.45)
-        g.lineTo(pcx, crownY)
-        g.lineTo(crownX + crownW * 0.28, crownY + crownH * 0.45)
-        g.lineTo(crownX, crownY)
-        g.closePath()
-        g.fillPath()
-
-        // Cobweb near top capital and banner rod
-        drawCobweb(g, px - 2, pTop + 14, pillarW * 0.65, true)
-      }
-
-      colXs.forEach((cxP) => drawPillarAndBanner(cxP))
-
-      // 7. COBWEBS IN TOP CEILING CORNERS
-      drawCornerCobweb(g, 0, corniceH, minDim * 0.22, true)
-      drawCornerCobweb(g, w, corniceH, minDim * 0.22, false)
-
-      // 8. SUBTLE AMBIENT VIGNETTE OVERLAY
-      // Balanced edge shading that preserves faint ambient lighting in the room
-      g.fillGradientStyle(0x06050a, 0x06050a, 0x06050a, 0x06050a, 0.38)
+    // ROYAL HIGHLANDS TWILIGHT (Cohesive atmospheric landscape):
+    // Built with the exact layered landscape formula as space, jungle, and
+    // fantasy: a deep sapphire-to-violet dusk gradient sky, crisp starfield,
+    // warm moon with soft halo, three organic sine-wave mountain ridges,
+    // distant kingdom citadel silhouettes on the outer ridges with warm
+    // glowing windows, framed evergreen pines at the outer edges, and soft
+    // valley mist — keeping the central play column completely open.
+    bgColor: 0x0d152c,
+    gridColor: 0x3a4d7a,
+    gridAlpha: 0.14,
+    draw: (g, w, h, rng) => {
+      // 1. Sky: deep royal sapphire → twilight indigo → warm dusk horizon kiss
+      g.fillGradientStyle(0x0d152c, 0x131d3a, 0x2c2b56, 0x3b3366, 1)
       g.fillRect(0, 0, w, h)
 
-      // Dark edge vignette bands (focus in center without crushing all ambient light)
-      g.fillStyle(0x050408, 0.22)
-      g.fillRect(0, 0, w * 0.08, h)
-      g.fillRect(w * 0.92, 0, w * 0.08, h)
-      g.fillRect(0, 0, w, h * 0.07)
-      g.fillRect(0, h * 0.91, w, h * 0.09)
+      // 2. Soft diagonal moonbeams falling gently from upper-left
+      lightShafts(g, w, h, w * 0.18, -h * 0.04, 0xc7dcff, 0.05)
+
+      // 3. Crisp twilight starfield in the upper sky
+      const artScale = Math.min(2.6, 936 / Math.min(w, h))
+      for (let i = 0; i < 65; i++) {
+        const sx = rng() * w
+        const sy = rng() * h * 0.56
+        const r = 0.5 + rng() * 1.1
+        const a = 0.2 + rng() * 0.48
+        if (r > 1.25) {
+          g.fillStyle(0xbfd8ff, a * 0.12)
+          g.fillCircle(sx, sy, r * 2.6)
+        }
+        g.fillStyle(0xf4f8ff, a)
+        g.fillCircle(sx, sy, r)
+      }
+
+      // 4. Warm ivory moon in upper-left with subtle atmospheric halo
+      const mx = w * 0.18
+      const my = h * 0.14
+      const mr = Math.min(w, h) * 0.042 * Math.min(1.45, artScale * 0.7)
+      g.fillStyle(0xffeab8, 0.09)
+      g.fillCircle(mx, my, mr * 2.1)
+      g.fillStyle(0xfff2cf, 0.16)
+      g.fillCircle(mx, my, mr * 1.42)
+      crateredBody(g, mx, my, mr, 0xfff6de, 0xd8c7a0, [
+        { dx: -0.28, dy: -0.14, cr: 0.15 },
+        { dx: 0.22, dy: 0.24, cr: 0.12 },
+        { dx: 0.08, dy: -0.38, cr: 0.09 },
+      ])
+
+      // 5. Layered organic highland ridges (smooth sine-wave silhouettes,
+      // zero flat horizontal wall bands across the container)
+      const ridge = (baseY: number, amp: number, freq: number, phase: number, color: number) => {
+        g.fillStyle(color, 1)
+        g.beginPath()
+        g.moveTo(0, h)
+        for (let x = 0; x <= w; x += 6) {
+          const t = (x / w) * Math.PI * 2
+          const valleyMask = 1 - 0.38 * Math.exp(-Math.pow((x / w - 0.5) / 0.26, 2))
+          const peak =
+            baseY -
+            (Math.abs(Math.sin(t * freq + phase)) * amp +
+              Math.sin(t * freq * 2.3 + phase * 1.5) * amp * 0.22) *
+              valleyMask
+          g.lineTo(x, peak)
+        }
+        g.lineTo(w, h)
+        g.closePath()
+        g.fillPath()
+      }
+      ridge(h * 0.70, h * 0.14, 1.1, 0.35, 0x252952) // far highland ridge
+      ridge(h * 0.79, h * 0.12, 1.45, 2.05, 0x1b2042) // mid valley ridge
+      ridge(h * 0.89, h * 0.09, 1.25, 3.9, 0x131733) // near foreground ridge
+
+      // 6. Distant Royal Citadel silhouette perched on the outer-right highland peak
+      // (kept outside the central play column so the container interior stays clean)
+      const citadelCol = 0x171c3b
+      const cxp = w * 0.83
+      const cyp = h * 0.63
+      const tower = (tx: number, ty: number, tw: number, th: number, roofH: number) => {
+        g.fillStyle(citadelCol, 1)
+        g.fillRect(tx - tw / 2, ty - th, tw, th)
+        g.fillTriangle(tx - tw * 0.64, ty - th, tx + tw * 0.64, ty - th, tx, ty - th - roofH)
+        // Warm amber lancet windows
+        g.fillStyle(0xffd782, 0.85)
+        g.fillRect(tx - tw * 0.13, ty - th * 0.72, tw * 0.26, tw * 0.38)
+        g.fillRect(tx - tw * 0.13, ty - th * 0.36, tw * 0.26, tw * 0.28)
+      }
+      tower(cxp, cyp, w * 0.026, h * 0.095, h * 0.034)
+      tower(cxp - w * 0.032, cyp + h * 0.012, w * 0.019, h * 0.068, h * 0.025)
+      tower(cxp + w * 0.031, cyp + h * 0.014, w * 0.019, h * 0.064, h * 0.024)
+      g.fillStyle(citadelCol, 1)
+      g.fillRect(cxp - w * 0.042, cyp - h * 0.014, w * 0.084, h * 0.03)
+
+      // Distant watchtower on the outer-left ridge
+      const lxp = w * 0.14
+      const lyp = h * 0.68
+      tower(lxp, lyp, w * 0.021, h * 0.072, h * 0.026)
+
+      // 7. Evergreen pine silhouettes framing the lower-left and lower-right edges
+      const pine = (px: number, py: number, s: number, col: number) => {
+        g.fillStyle(col, 1)
+        for (let tier = 0; tier < 3; tier++) {
+          const ty = py - tier * s * 0.52
+          const tw = s * (1.05 - tier * 0.22)
+          const th = s * (0.85 - tier * 0.12)
+          g.fillTriangle(px - tw, ty, px + tw, ty, px, ty - th)
+        }
+      }
+      const pineScale = Math.min(w, h) * 0.038
+      pine(w * 0.05, h * 0.94, pineScale * 1.15, 0x0e1329)
+      pine(w * 0.11, h * 0.96, pineScale * 0.9, 0x111730)
+      pine(w * 0.95, h * 0.94, pineScale * 1.18, 0x0e1329)
+      pine(w * 0.89, h * 0.96, pineScale * 0.88, 0x111730)
+
+      // 8. Soft twilight valley mist ribbons (same formula as fantasy theme)
+      const mist = (cx2: number, cy2: number, cw2: number, ch2: number, col: number, alpha: number) => {
+        for (let i = 0; i < 5; i++) {
+          const t = i / 4
+          const lx = cx2 - cw2 / 2 + cw2 * t
+          const ly = cy2 + Math.sin(t * Math.PI * 1.3 + cx2 * 0.01) * ch2 * 0.3
+          const lr = ch2 * (0.4 + Math.sin(t * Math.PI) * 0.6)
+          g.fillStyle(col, alpha)
+          g.fillEllipse(lx, ly, lr * 2.8, lr * 1.1)
+        }
+      }
+      mist(w * 0.26, h * 0.84, w * 0.36, h * 0.032, 0x6b88d6, 0.09)
+      mist(w * 0.74, h * 0.88, w * 0.36, h * 0.03, 0x8b74d9, 0.08)
+      mist(w * 0.5, h * 0.95, w * 0.52, h * 0.032, 0x5c72b8, 0.10)
     },
   },
 
@@ -1875,7 +1496,9 @@ export class BackgroundTheme {
     const group: CloudObj[] = []
 
     if (theme === 'light') {
-      // All clouds are baked into draw() — no extra layer.
+      // Soft twilight valley haze puffs for subtle depth parallax.
+      addCloud(this.scene, group, w * 0.24, h * 0.83, m * 0.2, m * 0.05, 0x6b88d6, 0.10)
+      addCloud(this.scene, group, w * 0.76, h * 0.87, m * 0.19, m * 0.048, 0x8b74d9, 0.09)
     } else if (theme === 'space') {
       // Nebula banks: canvas-baked soft-gradient composites — every blob
       // clamped inside the texture and the whole bank vignetted to
@@ -2310,11 +1933,14 @@ export class BackgroundTheme {
     for (const p of this.ambient) {
       const t = now * 0.001 + p.ph
       if (p.kind === 'mote') {
-        // Faint dust specks floating lazily in dark air
-        const dx = ((t * 4 + p.x) % (w + 40)) - 20
-        const dy = p.y + Math.sin(t * 0.6 + p.x) * 6
-        g.fillStyle(0x9d94b0, 0.25 + 0.15 * Math.sin(t * 1.8))
-        g.fillCircle(dx, dy, Math.min(p.s, 1.4))
+        // Warm firefly / twilight pollen motes drifting gently
+        const dx = ((t * 5 + p.x) % (w + 40)) - 20
+        const dy = p.y + Math.sin(t * 0.75 + p.x) * 8
+        const a = 0.28 + 0.22 * Math.sin(t * 2.0 + p.ph)
+        g.fillStyle(0xffe699, a * 0.28)
+        g.fillCircle(dx, dy, p.s * 2.2)
+        g.fillStyle(0xfff4cc, a)
+        g.fillCircle(dx, dy, Math.min(p.s, 1.5))
       } else if (p.kind === 'butterfly') {
         // Flapping wings: two arcs whose spread oscillates.
         const flap = Math.sin(t * 9) * 0.6 + 0.7
