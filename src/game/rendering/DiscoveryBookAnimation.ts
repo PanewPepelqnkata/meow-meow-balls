@@ -318,7 +318,6 @@ export class DiscoveryBookAnimation {
       ease: 'Back.easeOut',
     }, () => {
       const turn = { progress: 0 }
-      this.animate({ targets: rig.heading, alpha: 1, duration: 260, ease: 'Sine.easeOut' })
       this.animate({ targets: turn, progress: 1, duration: 360, ease: 'Sine.easeInOut', onUpdate: () => {
         const p = turn.progress
         const face = Math.cos(Math.PI * p)
@@ -332,6 +331,7 @@ export class DiscoveryBookAnimation {
         rig.front!.setVisible(false)
         rig.left!.setVisible(true).setScale(1)
         rig.shade!.setAlpha(0)
+        this.animate({ targets: rig.heading, alpha: 1, duration: 180, ease: 'Sine.easeOut' })
         this.reveal(rig)
       })
     })
@@ -457,14 +457,26 @@ export class DiscoveryBookAnimation {
     }
     const availableW = Math.max(1, right - left)
     const availableH = Math.max(1, bottom - top)
+    const repeatTargetW = layout?.composition === 'portrait'
+      ? Math.min(210, availableW * 0.52)
+      : Math.min(380, availableW * 0.94)
+    const repeatTargetH = layout?.composition === 'portrait'
+      ? Math.min(286, availableH * 0.72)
+      : Math.min(250, availableH * 0.62)
     const scale = this.firstTime
       ? Math.max(0.001, Math.min(1, availableW / rig.width, availableH / rig.height))
-      : Math.max(0.001, Math.min(1.05, Math.min(210, availableW * 0.52) / rig.width, Math.min(286, availableH * 0.72) / rig.height))
-    const x = this.firstTime ? (left + right) / 2 : right - rig.width * scale / 2
+      : Math.max(0.001, Math.min(1.18, repeatTargetW / rig.width, repeatTargetH / rig.height))
+    const portraitRepeat = !this.firstTime && layout?.composition === 'portrait'
+    const x = this.firstTime || portraitRepeat ? (left + right) / 2 : right - rig.width * scale / 2
     const phoneBookOffset = this.firstTime && layout?.composition === 'portrait' ? vh * 0.11 : 0
-    const y = top + rig.height * scale / 2 + phoneBookOffset
+    const baseY = top + rig.height * scale / 2 + phoneBookOffset
+    const y = portraitRepeat ? Math.max(baseY, vh * 0.42) : baseY
     // Only the anchor is responsive. Local animation coordinates survive an
     // orientation change without restarting timers or fighting tween targets.
+    if (this.firstTime) {
+      const showHeading = layout?.composition !== 'portrait'
+      rig.heading.setVisible(showHeading).setScale(showHeading ? 1 : 0.58)
+    }
     root.setPosition(x, y).setScale(scale)
   }
 
