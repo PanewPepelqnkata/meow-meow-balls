@@ -265,7 +265,7 @@ export class DiscoveryBookAnimation {
     hero.setAlpha(0)
     halo.setAlpha(0)
     stamp.setAlpha(0)
-    motion.setPosition(-HALF_W / 2, 32).setScale(0.9).setRotation(-0.045).setAlpha(0)
+    motion.setPosition(this.hudLayout?.().composition === 'portrait' ? 0 : -HALF_W / 2, 32).setScale(0.9).setRotation(-0.045).setAlpha(0)
     return { motion, heading, hero, halo, stamp, labels, unknown, highlight, left, front, binding, shade, targetX, targetY, targetScale: 25 / HERO_RADIUS, width: 640, height: 610 }
   }
 
@@ -306,11 +306,12 @@ export class DiscoveryBookAnimation {
 
   private playBook(): void {
     const rig = this.rig!
+    const portrait = this.hudLayout?.().composition === 'portrait'
     // Anticipation: a closed, weighty leather volume; only this rig moves.
     this.animate({
       targets: rig.motion,
-      x: -HALF_W / 2,
-      y: 0,
+      x: portrait ? 0 : -HALF_W / 2,
+      y: portrait ? 0 : 0,
       scale: 1,
       rotation: 0,
       alpha: 1,
@@ -321,7 +322,10 @@ export class DiscoveryBookAnimation {
       this.animate({ targets: turn, progress: 1, duration: 360, ease: 'Sine.easeInOut', onUpdate: () => {
         const p = turn.progress
         const face = Math.cos(Math.PI * p)
-        rig.motion.x = -HALF_W / 2 * (1 - p)
+        // Desktop swings around the spine. On a phone the whole spread is
+        // nearly viewport-width, so that same 150px swing clips it; keep the
+        // visible book centered and turn the cover in place.
+        rig.motion.x = portrait ? 0 : -HALF_W / 2 * (1 - p)
         rig.front!.setVisible(p < 0.5).setScale(Math.max(0.002, face), 1)
         rig.left!.setVisible(p >= 0.5).setScale(Math.max(0.002, -face), 1)
         rig.binding!.setAlpha(p)
