@@ -14,6 +14,11 @@ import {
   gazeAt,
   wobbleContour,
   drawCollectibleBall,
+  drawEarthAccessory,
+  drawPirateAccessory,
+  takePirateAccessoryPose,
+  dropEarthGlow,
+  clearEarthGlows,
   notifyRoboImpact,
   dropRoboAntennaState,
   clearRoboAntennaStates,
@@ -56,6 +61,8 @@ export class SoftBallRenderer {
   gameOverSequence: GameOverSequence | null = null
   /** Live Graphics layer — face fallback and procedural ball bodies. */
   private readonly layer: Phaser.GameObjects.Graphics
+  /** Companions for tiers 9-12, above ordinary faces and below container chrome. */
+  private readonly accessoryLayer: Phaser.GameObjects.Graphics
   /** Per-tier baked textures (tier 1–7 bodies). */
   private readonly tierBaker: TierBaker
   /** Pooled face sprites per ball. */
@@ -84,6 +91,7 @@ export class SoftBallRenderer {
 
   constructor(scene: Phaser.Scene) {
     this.layer = scene.add.graphics().setDepth(10)
+    this.accessoryLayer = scene.add.graphics().setDepth(13)
     this.tierBaker = new TierBaker(scene)
     this.faces = new FacePool(scene)
   }
@@ -163,6 +171,7 @@ export class SoftBallRenderer {
   unregister(ballId: number): void {
     dropRoboAntennaState(ballId)
     dropPirateState(ballId)
+    dropEarthGlow(ballId)
     this.renderables.delete(ballId)
     this.looks.delete(ballId)
     this.contourPool.delete(ballId)
@@ -175,6 +184,7 @@ export class SoftBallRenderer {
   clear(): void {
     clearRoboAntennaStates()
     clearPirateStates()
+    clearEarthGlows()
     this.renderables.clear()
     this.looks.clear()
     this.contourPool.clear()
@@ -227,11 +237,14 @@ export class SoftBallRenderer {
     this.tierBaker.destroy()
     this.faces.destroy()
     this.layer.destroy()
+    this.accessoryLayer.destroy()
   }
 
   update(deltaMs = 16): void {
     const g = this.layer
+    const accessories = this.accessoryLayer
     g.clear()
+    accessories.clear()
     // The fear layer (the frightened mouths + sweat) is redrawn per frame
     // by the face pass — clear it here so a ball that left the feared
     // state does not keep a stale mouth on screen.
@@ -280,6 +293,9 @@ export class SoftBallRenderer {
       } else if (!this.isCollectibleTier(r.tier)) {
         this.drawLiveFace(g, r, look, drawR, aspect, now, polyResult.cx, polyResult.cy)
       }
+    }
+    for (const r of this.renderables.values()) {
+      if (r.state !== 'removed') this.drawForegroundAccessory(accessories, r)
     }
   }
 
@@ -438,6 +454,34 @@ export class SoftBallRenderer {
     g.fillPoints(poly, true)
     g.lineStyle(ballOutlineWidth(drawR), INK, 1)
     g.strokePoints(poly, true, true)
+  }
+
+  /** Foreground companions stay above neighboring tier 1-8 faces but below container chrome. */
+  private drawForegroundAccessory(g: Phaser.GameObjects.Graphics, r: SoftBallEntity): void {
+    const c = softBallCentroid(r.soft, this.centroidScratch)
+    if (r.tier === 11) {
+      drawEarthAccessory(g, c.x, c.y, r.soft.radius, variantIdFor(r.tier), undefined, this.emotion.panicOf(r.id), r.seed, r.soft.center.angle)
+      return
+    }
+    if (r.tier !== 9) return
+    const pose = takePirateAccessoryPose(r.id)
+    if (!pose) return
+    const bp = (lx: number, ly: number): { x: number; y: number } => {
+      const sx = lx * pose.scaleX
+      const sy = ly * pose.scaleY
+      const cos = Math.cos(pose.bodyAngle)
+      const sin = Math.sin(pose.bodyAngle)
+      return { x: pose.cx + sx * cos - sy * sin, y: pose.cy + sx * sin + sy * cos }
+    }
+    const rp = (ax: number, ay: number, ux: number, uy: number, rot = 0): { x: number; y: number } => {
+      const a = pose.bodyAngle + rot
+      const cos = Math.cos(a)
+      const sin = Math.sin(a)
+      return { x: ax + ux * cos - uy * sin, y: ay + ux * sin + uy * cos }
+    }
+    drawPirateAccessory(g, pose.cx, pose.cy, pose.r, pose.pal, bp, rp, {
+      hatTilt: pose.hatTilt, hatBob: 0, tailSway: 0, parrotBob: pose.parrotBob, parrotWing: pose.parrotWing,
+    }, pose.panic, pose.out, false)
   }
 
   /** Draw a face directly when a pooled sprite face is unavailable. */

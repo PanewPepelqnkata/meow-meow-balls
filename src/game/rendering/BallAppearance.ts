@@ -2531,6 +2531,38 @@ interface PirateSpringOutput {
   parrotBob: number
   parrotWing: number
 }
+const pirateAccessoryPoses = new Map<number, {
+  cx: number
+  cy: number
+  r: number
+  pal: PiratePalette
+  scaleX: number
+  scaleY: number
+  bodyAngle: number
+  hatTilt: number
+  parrotBob: number
+  parrotWing: number
+  panic: number
+  out: number
+}>()
+export function takePirateAccessoryPose(ballId: number): {
+  cx: number
+  cy: number
+  r: number
+  pal: PiratePalette
+  scaleX: number
+  scaleY: number
+  bodyAngle: number
+  hatTilt: number
+  parrotBob: number
+  parrotWing: number
+  panic: number
+  out: number
+} | undefined {
+  const pose = pirateAccessoryPoses.get(ballId)
+  pirateAccessoryPoses.delete(ballId)
+  return pose
+}
 
 const PIRATE_REST_SPRING: PirateSpringOutput = {
   hatTilt: 0,
@@ -2565,7 +2597,10 @@ export function dropPirateState(ballId: number): void {
 
 export function clearPirateStates(): void {
   pirateStates.clear()
+  pirateAccessoryPoses.clear()
 }
+export function dropEarthGlow(_ballId: number): void {}
+export function clearEarthGlows(): void {}
 
 export function notifyPirateImpact(ballId: number, nx: number, ny: number, strength: number): void {
   if (isReducedMotion()) return
@@ -3466,10 +3501,26 @@ export function drawPirateBall(
     }
   }
 
-  // ---- 9. PARROT COMPANION (perched on upper-right hat brim/shoulder) ----
-  // Slightly finer line weight than the main ball so small details (wings, feathers,
-  // beak, claws) stay crisp and readable at normal gameplay size.
-  {
+  if (thumbnail || ballId === undefined) drawPirateAccessory(g, cx, cy, r, pal, bp, rp, sp, panic, out, thumbnail)
+  else pirateAccessoryPoses.set(ballId, { cx, cy, r, pal, scaleX, scaleY, bodyAngle, hatTilt: sp.hatTilt, parrotBob: sp.parrotBob, parrotWing: sp.parrotWing, panic, out })
+}
+
+export function drawPirateAccessory(
+  g: Phaser.GameObjects.Graphics,
+  cx: number,
+  cy: number,
+  r: number,
+  pal: PiratePalette,
+  bp: (lx: number, ly: number) => { x: number; y: number },
+  rp: (ax: number, ay: number, ux: number, uy: number, rot?: number) => { x: number; y: number },
+  sp: PirateSpringOutput,
+  panic: number,
+  out: number,
+  thumbnail: boolean,
+): void {
+  void cx
+  void cy
+  // Slightly finer line weight than the main ball so small details stay readable.
     const prOut = thumbnail ? Math.max(1.1, collectionInkWidth(r) * 0.66) : Math.max(1.35, out * 0.50)
     const prDetail = thumbnail ? Math.max(0.85, prOut * 0.68) : Math.max(1.0, prOut * 0.64)
     const prAnchor = bp(r * 0.80, -r * (0.44 - sp.parrotBob))
@@ -3718,7 +3769,6 @@ export function drawPirateBall(
       g.lineStyle(prDetail, INK, 1)
       g.strokeEllipse(toe.x, toe.y, r * 0.082, r * 0.125)
     }
-  }
 }
 
 export interface CrabPalette {
@@ -4013,15 +4063,325 @@ export function drawCollectibleBall(
   ballId?: number,
   thumbnail = false,
 ): void {
+  if (tier === 11 && (theme === undefined || theme === 'earth')) {
+    drawEarthBall(g, cx, cy, r, variant, poly, panic, gaze, seed, bodyAngle, ballId, thumbnail)
+    if (thumbnail || ballId === undefined) drawEarthAccessory(g, cx, cy, r, variant, poly, panic, seed, bodyAngle, thumbnail)
+    return
+  }
   if (tier === 10) {
     drawCrabBall(g, cx, cy, r, variant, poly, panic, gaze, seed, thumbnail)
     return
   }
-  if (tier !== 9) {
-    throw new Error(`No collectible art implemented for tier ${tier}`)
-  }
   drawTier9Ball(g, cx, cy, r, variant, poly, panic, gaze, seed,
     theme === 'shark' || theme === 'pig' || theme === 'drunko' || theme === 'robo' || theme === 'pirate' ? theme : tier9Theme(),
     bodyAngle, ballId, thumbnail)
+}
+
+export interface EarthPalette {
+  ocean: number
+  oceanLight: number
+  oceanDark: number
+  land: number
+  landLight: number
+  cloud: number
+  ice: number
+  moon: number
+  moonDark: number
+  glow: number
+}
+
+export const EARTH_PALETTES: readonly EarthPalette[] = [
+  {
+    ocean: 0x2b7fe0, oceanLight: 0x7ad4ff, oceanDark: 0x1456b0,
+    land: 0x5cb83a, landLight: 0x8ed45e,
+    cloud: 0xfffefe, ice: 0xf4fbff,
+    moon: 0xf6f1e4, moonDark: 0xc8c0ae, glow: 0x4ec8ff,
+  },
+]
+
+/** One slow revolution. Long enough that the moon reads as drifting, not spinning. */
+const EARTH_ORBIT_MS = 28000
+
+const earthClipper = new BodyFillClipper()
+
+/** Continents in local ball space (fractions of r). Kept apart so ocean shows between them. */
+const EARTH_LANDS: ReadonlyArray<ReadonlyArray<readonly [number, number, number, number]>> = [
+  // North America.
+  [[-0.78, -0.18, -0.62, -0.42], [-0.42, -0.46, -0.22, -0.32], [-0.18, -0.12, -0.36, 0.02], [-0.55, 0.0, -0.78, -0.04]],
+  // South America, a gap below the north.
+  [[-0.42, 0.28, -0.24, 0.2], [-0.16, 0.4, -0.22, 0.62], [-0.4, 0.66, -0.56, 0.46], [-0.56, 0.34, -0.52, 0.24]],
+  // Africa, center, clear of the eyes.
+  [[0.02, 0.1, 0.16, -0.02], [0.3, 0.08, 0.28, 0.28], [0.12, 0.42, -0.04, 0.36], [-0.08, 0.2, -0.06, 0.08]],
+  // Asia, upper right, clear of the right eye.
+  [[0.28, -0.34, 0.5, -0.5], [0.72, -0.36, 0.7, -0.12], [0.48, -0.04, 0.28, -0.1]],
+  // Australia.
+  [[0.34, 0.4, 0.52, 0.32], [0.66, 0.42, 0.58, 0.58], [0.38, 0.58, 0.28, 0.46]],
+]
+
+function earthPoint(
+  cx: number, cy: number, lx: number, ly: number, scaleX: number, scaleY: number, angle: number,
+): { x: number; y: number } {
+  const sx = lx * scaleX
+  const sy = ly * scaleY
+  const c = Math.cos(angle)
+  const s = Math.sin(angle)
+  return { x: cx + sx * c - sy * s, y: cy + sx * s + sy * c }
+}
+
+function earthDeform(
+  poly: Array<{ x: number; y: number }> | undefined, cx: number, cy: number, r: number, angle: number,
+): { scaleX: number; scaleY: number } {
+  if (!poly || poly.length < 3) return { scaleX: 1, scaleY: 1 }
+  let minX = Infinity
+  let maxX = -Infinity
+  let minY = Infinity
+  let maxY = -Infinity
+  const c = Math.cos(angle)
+  const s = Math.sin(angle)
+  for (const p of poly) {
+    const dx = p.x - cx
+    const dy = p.y - cy
+    const lx = dx * c + dy * s
+    const ly = -dx * s + dy * c
+    minX = Math.min(minX, lx)
+    maxX = Math.max(maxX, lx)
+    minY = Math.min(minY, ly)
+    maxY = Math.max(maxY, ly)
+  }
+  return {
+    scaleX: Math.max(0.76, Math.min(1.26, (maxX - minX) / (2 * r))),
+    scaleY: Math.max(0.76, Math.min(1.26, (maxY - minY) / (2 * r))),
+  }
+}
+
+/** Closed quadratic blob, sampled into clipper line segments. */
+function fillEarthBlob(
+  g: Phaser.GameObjects.Graphics,
+  cx: number, cy: number, r: number,
+  segs: ReadonlyArray<readonly [number, number, number, number]>,
+  deform: { scaleX: number; scaleY: number }, angle: number, drift: number,
+): void {
+  const place = (x: number, y: number): { x: number; y: number } =>
+    earthPoint(cx, cy, x * r + drift, y * r, deform.scaleX, deform.scaleY, angle)
+  earthClipper.beginPath()
+  const steps = 6
+  for (let i = 0; i < segs.length; i++) {
+    const cur = segs[i]!
+    const nxt = segs[(i + 1) % segs.length]!
+    const p0 = place(cur[0], cur[1])
+    const ctrl = place(cur[2], cur[3])
+    const p1 = place(nxt[0], nxt[1])
+    for (let s = i === 0 ? 0 : 1; s <= steps; s++) {
+      const t = s / steps
+      const mt = 1 - t
+      earthClipper.lineTo(
+        mt * mt * p0.x + 2 * mt * t * ctrl.x + t * t * p1.x,
+        mt * mt * p0.y + 2 * mt * t * ctrl.y + t * t * p1.y,
+      )
+    }
+  }
+  earthClipper.fill(g)
+}
+
+/** White ice cap: outer limb plus a wavy lower edge, clipped to the body. */
+function fillEarthCap(
+  g: Phaser.GameObjects.Graphics,
+  cx: number, cy: number, r: number, sign: number,
+  deform: { scaleX: number; scaleY: number }, angle: number,
+): void {
+  const a0 = sign < 0 ? Math.PI * 1.28 : Math.PI * 0.28
+  const a1 = sign < 0 ? Math.PI * 1.72 : Math.PI * 0.72
+  earthClipper.beginPath()
+  const steps = 10
+  for (let i = 0; i <= steps; i++) {
+    const a = a0 + (a1 - a0) * (i / steps)
+    const limb = sign < 0 ? 0.86 : 0.98
+    const p = earthPoint(cx, cy, Math.cos(a) * r * 0.98, Math.sin(a) * r * limb, deform.scaleX, deform.scaleY, angle)
+    earthClipper.lineTo(p.x, p.y)
+  }
+  for (let i = steps; i >= 0; i--) {
+    const t = i / steps
+    const x = (-0.38 + 0.76 * t) * r
+    const y = sign * (0.8 + Math.sin(t * Math.PI * 2) * 0.02) * r
+    const p = earthPoint(cx, cy, x, y, deform.scaleX, deform.scaleY, angle)
+    earthClipper.lineTo(p.x, p.y)
+  }
+  earthClipper.fill(g)
+}
+
+function earthOrbit(now: number, seed: number): { angle: number; front: boolean } {
+  const phase = ((seed % 997) / 997) * Math.PI * 2
+  const angle = (now / EARTH_ORBIT_MS) * Math.PI * 2 + phase
+  // Front half of the orbit (sin > 0) draws after the body.
+  return { angle, front: Math.sin(angle) >= 0 }
+}
+
+function paintEarthMoon(
+  g: Phaser.GameObjects.Graphics,
+  anchor: { x: number; y: number },
+  moonR: number,
+  pal: EarthPalette,
+  ink: number,
+  seed: number,
+  now: number,
+  panic: number,
+  thumbnail: boolean,
+): void {
+  g.fillStyle(pal.moonDark, 0.28)
+  g.fillCircle(anchor.x + moonR * 0.18, anchor.y + moonR * 0.22, moonR * 0.92)
+  g.fillStyle(pal.moon, 1)
+  g.fillCircle(anchor.x, anchor.y, moonR)
+  g.fillStyle(pal.moonDark, 0.85)
+  g.fillCircle(anchor.x - moonR * 0.32, anchor.y - moonR * 0.18, moonR * 0.26)
+  g.fillCircle(anchor.x + moonR * 0.28, anchor.y + moonR * 0.16, moonR * 0.16)
+  g.fillCircle(anchor.x + moonR * 0.05, anchor.y - moonR * 0.38, moonR * 0.1)
+  g.fillStyle(0xfffdf6, 0.7)
+  g.fillCircle(anchor.x - moonR * 0.22, anchor.y - moonR * 0.36, moonR * 0.16)
+  g.lineStyle(ink, INK, 1)
+  g.strokeCircle(anchor.x, anchor.y, moonR)
+  const look = ballLookFor(2, seed ^ 0x51a7)
+  drawBallFace(g, {
+    ...look,
+    eyeW: 0.5,
+    eyeH: 0.56,
+    mouthW: 0.22,
+  }, anchor, moonR, 1, {
+    panic, expr: expressionAt(seed ^ 0x51a7, now),
+  }, thumbnail)
+}
+
+/** Tier 11 Earth: cartoon planet, shared Ball Rush face, slow orbiting moon. */
+export function drawEarthBall(
+  g: Phaser.GameObjects.Graphics,
+  cx: number,
+  cy: number,
+  r: number,
+  variant = 0,
+  poly?: Array<{ x: number; y: number }>,
+  panic = 0,
+  gaze?: { x: number; y: number },
+  seed = 11,
+  bodyAngle = 0,
+  _ballId?: number,
+  thumbnail = false,
+): void {
+  const pal = EARTH_PALETTES[variant % EARTH_PALETTES.length]!
+  const now = Date.now()
+  const drift = Math.sin(now * 0.00012 + seed) * r * 0.012
+  const deform = earthDeform(poly, cx, cy, r, bodyAngle)
+  const out = thumbnail ? collectionOutlineWidth(r) : ballOutlineWidth(r)
+  const ink = thumbnail ? collectionInkWidth(r) : Math.max(1.6, r * 0.04)
+
+  const glowWobble = Math.sin(now * 0.0007)
+  const glowLayers: ReadonlyArray<{ rr: number; alpha: number }> = [
+    { rr: 1.55 + glowWobble * 0.02, alpha: 0.08 },
+    { rr: 1.32, alpha: 0.12 },
+    { rr: 1.14, alpha: 0.16 },
+  ]
+  for (const layer of glowLayers) {
+    g.fillStyle(pal.glow, layer.alpha + glowWobble * 0.015)
+    g.fillCircle(cx, cy, r * layer.rr)
+  }
+
+  const orbit = earthOrbit(now, seed)
+  const orbitRx = r * 1.42
+  const orbitRy = r * 0.38
+  const moonR = r * 0.22
+  const moonAnchor = earthPoint(
+    cx, cy,
+    Math.cos(orbit.angle) * orbitRx,
+    Math.sin(orbit.angle) * orbitRy - panic * r * 0.03,
+    deform.scaleX, deform.scaleY, bodyAngle,
+  )
+  if (!orbit.front) paintEarthMoon(g, moonAnchor, moonR, pal, ink * 0.85, seed, now, panic, thumbnail)
+
+  g.fillStyle(pal.ocean, 1)
+  if (poly && poly.length >= 3) g.fillPoints(poly as unknown as Phaser.Math.Vector2[], true)
+  else g.fillCircle(cx, cy, r)
+
+  earthClipper.setBody(poly, cx, cy, r)
+
+  // Ocean shading stays under the land so the continents stay green.
+  g.fillStyle(pal.oceanDark, 0.4)
+  earthClipper.beginPath()
+  earthClipper.arc(cx + r * 0.42, cy + r * 0.08, r * 0.72, -Math.PI * 0.15, Math.PI * 0.72, false)
+  earthClipper.arc(cx + r * 0.72, cy + r * 0.22, r * 0.42, Math.PI * 0.72, -Math.PI * 0.15, true)
+  earthClipper.fill(g)
+  g.fillStyle(pal.oceanLight, 0.35)
+  earthClipper.beginPath()
+  earthClipper.arc(cx - r * 0.34, cy - r * 0.32, r * 0.4, Math.PI * 0.95, Math.PI * 1.75, false)
+  earthClipper.arc(cx - r * 0.16, cy - r * 0.14, r * 0.18, Math.PI * 1.75, Math.PI * 0.95, true)
+  earthClipper.fill(g)
+
+  g.fillStyle(pal.land, 1)
+  for (const land of EARTH_LANDS) fillEarthBlob(g, cx, cy, r, land, deform, bodyAngle, drift)
+
+
+
+  g.fillStyle(pal.ice, 0.96)
+  fillEarthCap(g, cx, cy, r, -1, deform, bodyAngle)
+  g.fillStyle(pal.ice, 0.9)
+  fillEarthCap(g, cx, cy, r, 1, deform, bodyAngle)
+
+  // Clouds sit on the flanks, never across the eyes.
+  g.fillStyle(pal.cloud, 0.92)
+  fillEarthBlob(g, cx, cy, r, [
+    [-0.72, 0.16, -0.58, 0.04], [-0.4, 0.08, -0.28, 0.18], [-0.48, 0.26, -0.68, 0.22],
+  ], deform, bodyAngle, drift * 1.8)
+  fillEarthBlob(g, cx, cy, r, [
+    [0.34, 0.22, 0.52, 0.12], [0.68, 0.24, 0.58, 0.38], [0.4, 0.4, 0.3, 0.3],
+  ], deform, bodyAngle, drift * 1.8)
+
+  if (poly && poly.length >= 3) {
+    g.lineStyle(out, INK, 1)
+    g.strokePoints(poly as unknown as Phaser.Math.Vector2[], true, true)
+  } else {
+    g.lineStyle(out, INK, 1)
+    g.strokeCircle(cx, cy, r)
+  }
+
+  const earthLook = ballLookFor(11, seed)
+  drawBallFace(g, {
+    ...earthLook,
+    eyeW: 0.42,
+    eyeH: 0.46,
+    eyeAsym: 1,
+    gazeX: 0,
+    gazeY: 0,
+    mouth: 0,
+    mouthW: 0.16,
+    mouthTilt: 0,
+  }, { x: cx, y: cy }, r, 1, {
+    gaze, panic, expr: expressionAt(seed, now),
+  }, thumbnail)
+
+}
+
+/** The moon is decorative and is drawn after every ball body when it is in front. */
+export function drawEarthAccessory(
+  g: Phaser.GameObjects.Graphics,
+  cx: number,
+  cy: number,
+  r: number,
+  variant = 0,
+  poly?: Array<{ x: number; y: number }>,
+  panic = 0,
+  seed = 11,
+  bodyAngle = 0,
+  thumbnail = false,
+): void {
+  const now = Date.now()
+  if (!earthOrbit(now, seed).front) return
+  const pal = EARTH_PALETTES[variant % EARTH_PALETTES.length]!
+  const deform = earthDeform(poly, cx, cy, r, bodyAngle)
+  const orbit = earthOrbit(now, seed)
+  const anchor = earthPoint(
+    cx, cy,
+    Math.cos(orbit.angle) * r * 1.42,
+    Math.sin(orbit.angle) * r * 0.38 - panic * r * 0.03,
+    deform.scaleX, deform.scaleY, bodyAngle,
+  )
+  const ink = thumbnail ? collectionInkWidth(r) * 0.7 : Math.max(1.4, r * 0.035)
+  paintEarthMoon(g, anchor, r * 0.22, pal, ink, seed, now, panic, thumbnail)
 }
 
