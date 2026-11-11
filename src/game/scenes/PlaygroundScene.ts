@@ -25,7 +25,7 @@ import { DebugOverlay } from '../debug/DebugOverlay'
 import { PerfOverlay } from '../debug/PerfOverlay'
 import { session, fastbootRequested } from '../state/session'
 
-import { hasDiscoveredCollectible, loadSave, recordDiscovery, recordMerge, recordRunEnd, recordRunStart, savedBest, themeSetting } from '../state/save'
+import { hasDiscoveredCollectible, hasDiscoveredTier, loadSave, recordDiscovery, recordMerge, recordRunEnd, recordRunStart, savedBest, themeSetting } from '../state/save'
 import { authService, scoreService } from '../../services/auth'
 import { isDrunkoTestRoute, isEarthTestRoute, rollNewRunSeed, runVariantFor, themeFor } from '../state/runVariant'
 import { addRunCollectible, type RunCollectibles } from '../state/collectibleMetadata'
@@ -74,21 +74,12 @@ export class PlaygroundScene extends Phaser.Scene {
   private containerView!: ContainerView
   private claw!: DropClaw
   private debug: DebugOverlay | null = null
-  // Tiers 1–3 are known from every run's start; tier 4+ unlock
-  // PROGRESSIVELY — merging into 4 fires its discovery (card first run,
-  // wind card afterwards), and the progression line locks/unlocks with it.
-  /** The lowest tier the wind banner presents — tier 4 repeats included
-   * (tier 4's own first discovery shows the card, like 5+). */
-  private static readonly WIND_BANNER_MIN_TIER = 4
-  /** First-time-this-run tiers. Tiers 1–3 are known from every run's
-   * start; tier 4+ unlock progressively during the run (4's discovery
-   * fires like any other tier's). */
+  // Tiers 1–4 do not open a discovery presentation. Tier 5+ shows the
+  // detailed book once in a lifetime; later runs use its compact page.
+  private static readonly DISCOVERY_PRESENTATION_MIN_TIER = 5
+  /** Tiers created in this run; drives the progression track only. */
   private discoveredTiers = new Set<number>([1, 2, 3])
-  /** Tiers discovered in THIS run — a repeat discovery (a tier already in
-   * the lifetime save) still gets the NON-BLOCKING banner animation once
-   * per run, but never twice for the same tier in the same run. For
-   * collectible tiers the key includes the theme so a new identity in the
-   * same run still fires its full card. */
+  /** One presentation per tier/character identity per run. */
   private runDiscoveredTiers = new Set<string>()
   /** Actual identities merged this run, including lifetime repeats. */
   private runCollectibles: RunCollectibles = []
@@ -291,9 +282,10 @@ export class PlaygroundScene extends Phaser.Scene {
           })
         }
         const runKey = collectible ? `${tier}:${theme}` : String(tier)
-        if (!this.runDiscoveredTiers.has(runKey) && tier >= PlaygroundScene.WIND_BANNER_MIN_TIER) {
+        const firstLifetimeDiscovery = collectible ? firstCollectible : !hasDiscoveredTier(tier)
+        if (!isDrunkoTestRoute() && !this.runDiscoveredTiers.has(runKey) && tier >= PlaygroundScene.DISCOVERY_PRESENTATION_MIN_TIER) {
           this.runDiscoveredTiers.add(runKey)
-          gameBus.emit('discovery:banner', { tier, seed, theme, variant })
+          gameBus.emit('discovery:book', { tier, seed, theme, variant, firstTime: firstLifetimeDiscovery })
         }
 
         if (!isDrunkoTestRoute()) {

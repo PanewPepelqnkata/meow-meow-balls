@@ -84,8 +84,8 @@ export function freshSave(): SaveDataV1 {
     equippedContainerSkin: DEFAULT_CONTAINER_SKIN_ID,
     leaderboard: [],
     // Tiers 1–3 are known from the first run — pre-seeded as discovered.
-    // Tier 4+ unlock PROGRESSIVELY (each fires its discovery: the card
-    // the first time, the wind banner afterwards).
+    // Tier 4+ unlock progressively. Tier 5+ first discoveries open the
+    // detailed collection book; later runs use its compact repeat page.
     discovered: { 1: now, 2: now, 3: now },
     variants: {},
     settings: { theme: 'auto', audio: { ...DEFAULT_AUDIO_SETTINGS } },
@@ -519,8 +519,8 @@ export function recordDiscovery(tier: number, variantId: number | null, theme?: 
 }
 
 /** Has this tier EVER been discovered in any run (lifetime record)? The
- * repeat-discovery banner keys off this: a tier seen before gets the
- * non-blocking corner animation instead of the screen-stealing modal. */
+ * Discovery presentation reads this before writing the new record: unseen
+ * tiers get the full book, while known tiers get the compact repeat page. */
 export function hasDiscoveredTier(tier: number): boolean {
   return loadSave().discovered[String(tier)] != null
 }
