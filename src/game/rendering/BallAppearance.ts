@@ -4108,130 +4108,19 @@ export const EARTH_PALETTES: readonly EarthPalette[] = [
 /** One slow revolution. Long enough that the moon reads as drifting, not spinning. */
 const EARTH_ORBIT_MS = 28000
 
-const earthClipper = new BodyFillClipper()
 const EARTH_GLOW_KEY = 'br-earth-glow'
 const earthGlowImages = new Map<number, Phaser.GameObjects.Image>()
 
-/** Continent ellipses: [x, y, width, height] as fractions of r. Separate shapes, so they cannot fuse. */
+/** Continents as [x, y, width, height] in fractions of r. Big, filling the ball. */
 const EARTH_LANDS: ReadonlyArray<readonly [number, number, number, number]> = [
-  [-0.55, -0.22, 0.42, 0.3],
-  [-0.5, 0.2, 0.22, 0.3],
-  [0.02, -0.5, 0.2, 0.14],
-  [0.5, -0.16, 0.4, 0.28],
-  [0.42, 0.24, 0.28, 0.22],
+  [-0.42, -0.16, 0.7, 0.55],
+  [-0.34, 0.18, 0.32, 0.3],
+  [0.06, -0.42, 0.3, 0.22],
+  [0.34, -0.08, 0.62, 0.5],
+  [0.32, 0.22, 0.36, 0.24],
 ]
 
-function earthPoint(
-  cx: number, cy: number, lx: number, ly: number, scaleX: number, scaleY: number, angle: number,
-): { x: number; y: number } {
-  const sx = lx * scaleX
-  const sy = ly * scaleY
-  const c = Math.cos(angle)
-  const s = Math.sin(angle)
-  return { x: cx + sx * c - sy * s, y: cy + sx * s + sy * c }
-}
 
-function earthDeform(
-  poly: Array<{ x: number; y: number }> | undefined, cx: number, cy: number, r: number, angle: number,
-): { scaleX: number; scaleY: number } {
-  if (!poly || poly.length < 3) return { scaleX: 1, scaleY: 1 }
-  let minX = Infinity
-  let maxX = -Infinity
-  let minY = Infinity
-  let maxY = -Infinity
-  const c = Math.cos(angle)
-  const s = Math.sin(angle)
-  for (const p of poly) {
-    const dx = p.x - cx
-    const dy = p.y - cy
-    const lx = dx * c + dy * s
-    const ly = -dx * s + dy * c
-    minX = Math.min(minX, lx)
-    maxX = Math.max(maxX, lx)
-    minY = Math.min(minY, ly)
-    maxY = Math.max(maxY, ly)
-  }
-  return {
-    scaleX: Math.max(0.76, Math.min(1.26, (maxX - minX) / (2 * r))),
-    scaleY: Math.max(0.76, Math.min(1.26, (maxY - minY) / (2 * r))),
-  }
-}
-/** Ellipse clipped to the live body. Width and height are full diameters. */
-function fillEarthEllipse(
-  g: Phaser.GameObjects.Graphics,
-  cx: number, cy: number, r: number,
-  land: readonly [number, number, number, number],
-  deform: { scaleX: number; scaleY: number }, angle: number, drift: number,
-): void {
-  const [lx, ly, w, h] = land
-  earthClipper.beginPath()
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2
-    const p = earthPoint(
-      cx, cy,
-      (lx + Math.cos(a) * w / 2) * r + drift,
-      (ly + Math.sin(a) * h / 2) * r,
-      deform.scaleX, deform.scaleY, angle,
-    )
-    earthClipper.lineTo(p.x, p.y)
-  }
-  earthClipper.fill(g)
-}
-
-/** Closed quadratic blob, sampled into clipper line segments. */
-function fillEarthBlob(
-  g: Phaser.GameObjects.Graphics,
-  cx: number, cy: number, r: number,
-  segs: ReadonlyArray<readonly [number, number, number, number]>,
-  deform: { scaleX: number; scaleY: number }, angle: number, drift: number,
-): void {
-  const place = (x: number, y: number): { x: number; y: number } =>
-    earthPoint(cx, cy, x * r + drift, y * r, deform.scaleX, deform.scaleY, angle)
-  earthClipper.beginPath()
-  const steps = 6
-  for (let i = 0; i < segs.length; i++) {
-    const cur = segs[i]!
-    const nxt = segs[(i + 1) % segs.length]!
-    const p0 = place(cur[0], cur[1])
-    const ctrl = place(cur[2], cur[3])
-    const p1 = place(nxt[0], nxt[1])
-    for (let s = i === 0 ? 0 : 1; s <= steps; s++) {
-      const t = s / steps
-      const mt = 1 - t
-      earthClipper.lineTo(
-        mt * mt * p0.x + 2 * mt * t * ctrl.x + t * t * p1.x,
-        mt * mt * p0.y + 2 * mt * t * ctrl.y + t * t * p1.y,
-      )
-    }
-  }
-  earthClipper.fill(g)
-}
-
-/** White ice cap: outer limb plus a wavy lower edge, clipped to the body. */
-function fillEarthCap(
-  g: Phaser.GameObjects.Graphics,
-  cx: number, cy: number, r: number, sign: number,
-  deform: { scaleX: number; scaleY: number }, angle: number,
-): void {
-  const a0 = sign < 0 ? Math.PI * 1.28 : Math.PI * 0.28
-  const a1 = sign < 0 ? Math.PI * 1.72 : Math.PI * 0.72
-  earthClipper.beginPath()
-  const steps = 10
-  for (let i = 0; i <= steps; i++) {
-    const a = a0 + (a1 - a0) * (i / steps)
-    const limb = sign < 0 ? 0.86 : 0.98
-    const p = earthPoint(cx, cy, Math.cos(a) * r * 0.98, Math.sin(a) * r * limb, deform.scaleX, deform.scaleY, angle)
-    earthClipper.lineTo(p.x, p.y)
-  }
-  for (let i = steps; i >= 0; i--) {
-    const t = i / steps
-    const x = (-0.38 + 0.76 * t) * r
-    const y = sign * (0.8 + Math.sin(t * Math.PI * 2) * 0.02) * r
-    const p = earthPoint(cx, cy, x, y, deform.scaleX, deform.scaleY, angle)
-    earthClipper.lineTo(p.x, p.y)
-  }
-  earthClipper.fill(g)
-}
 
 function earthOrbit(now: number, seed: number): { angle: number; front: boolean } {
   const phase = ((seed % 997) / 997) * Math.PI * 2
@@ -4285,19 +4174,16 @@ export function drawEarthBall(
   panic = 0,
   gaze?: { x: number; y: number },
   seed = 11,
-  bodyAngle = 0,
+  _bodyAngle = 0,
   _ballId?: number,
   thumbnail = false,
 ): void {
   const pal = EARTH_PALETTES[variant % EARTH_PALETTES.length]!
   const now = Date.now()
-  const drift = Math.sin(now * 0.00012 + seed) * r * 0.012
-  const deform = earthDeform(poly, cx, cy, r, bodyAngle)
   const out = thumbnail ? collectionOutlineWidth(r) : ballOutlineWidth(r)
   const ink = thumbnail ? collectionInkWidth(r) : Math.max(1.6, r * 0.04)
   const scene = g.scene
 
-  // One radial gradient, not stacked discs — stacked fills read as hard rings.
   if (scene && !thumbnail) {
     if (!scene.textures.exists(EARTH_GLOW_KEY)) {
       const size = 256
@@ -4320,60 +4206,30 @@ export function drawEarthBall(
         image = scene.add.image(cx, cy, EARTH_GLOW_KEY)
         earthGlowImages.set(_ballId, image)
       }
-      const breath = 1 + Math.sin(now * 0.0011) * 0.02
-      image.setPosition(cx, cy).setDisplaySize(r * 3.3 * breath, r * 3.3 * breath).setBlendMode(1).setDepth(9).setVisible(true)
+      image.setPosition(cx, cy).setDisplaySize(r * 3.3, r * 3.3).setBlendMode(1).setDepth(9).setVisible(true)
     }
   }
 
   const orbit = earthOrbit(now, seed)
-  const orbitRx = r * 1.42
-  const orbitRy = r * 0.38
-  const moonR = r * 0.22
-  const moonAnchor = earthPoint(
-    cx, cy,
-    Math.cos(orbit.angle) * orbitRx,
-    Math.sin(orbit.angle) * orbitRy - panic * r * 0.03,
-    deform.scaleX, deform.scaleY, bodyAngle,
-  )
-  if (!orbit.front) paintEarthMoon(g, moonAnchor, moonR, pal, ink * 0.85, seed, now, panic, thumbnail)
+  const moonAnchor = { x: cx + Math.cos(orbit.angle) * r * 1.42, y: cy + Math.sin(orbit.angle) * r * 0.38 - panic * r * 0.03 }
+  if (!orbit.front) paintEarthMoon(g, moonAnchor, r * 0.22, pal, ink * 0.85, seed, now, panic, thumbnail)
 
   g.fillStyle(pal.ocean, 1)
   if (poly && poly.length >= 3) g.fillPoints(poly as unknown as Phaser.Math.Vector2[], true)
   else g.fillCircle(cx, cy, r)
 
-  earthClipper.setBody(poly, cx, cy, r)
-
-  // Shading first, land after, so the crescent never tints the continents.
-  g.fillStyle(pal.oceanDark, 0.34)
-  earthClipper.beginPath()
-  earthClipper.arc(cx + r * 0.34, cy, r * 0.9, -Math.PI * 0.5, Math.PI * 0.5, false)
-  earthClipper.arc(cx + r * 0.62, cy, r * 0.55, Math.PI * 0.5, -Math.PI * 0.5, true)
-  earthClipper.fill(g)
-  g.fillStyle(pal.oceanLight, 0.3)
-  earthClipper.beginPath()
-  earthClipper.arc(cx - r * 0.32, cy - r * 0.3, r * 0.42, Math.PI * 0.9, Math.PI * 1.8, false)
-  earthClipper.arc(cx - r * 0.14, cy - r * 0.12, r * 0.2, Math.PI * 1.8, Math.PI * 0.9, true)
-  earthClipper.fill(g)
-
+  // Solid ellipses. The ink outline covers anything past the rim, so the
+  // fills are never sliced into strips, and nothing here rescales per frame.
   g.fillStyle(pal.land, 1)
-  for (const land of EARTH_LANDS) fillEarthEllipse(g, cx, cy, r, land, deform, bodyAngle, drift)
+  for (const [lx, ly, w, h] of EARTH_LANDS) g.fillEllipse(cx + lx * r, cy + ly * r, w * r, h * r)
   g.fillStyle(pal.landLight, 0.7)
-  fillEarthEllipse(g, cx, cy, r, [-0.48, -0.34, 0.22, 0.16], deform, bodyAngle, drift)
-  fillEarthEllipse(g, cx, cy, r, [0.46, -0.18, 0.16, 0.12], deform, bodyAngle, drift)
+  g.fillEllipse(cx - r * 0.46, cy - r * 0.22, r * 0.3, r * 0.22)
+  g.fillEllipse(cx + r * 0.3, cy - r * 0.12, r * 0.26, r * 0.2)
 
   g.fillStyle(pal.ice, 0.96)
-  fillEarthCap(g, cx, cy, r, -1, deform, bodyAngle)
+  g.fillEllipse(cx, cy - r * 0.82, r * 0.7, r * 0.34)
   g.fillStyle(pal.ice, 0.9)
-  fillEarthCap(g, cx, cy, r, 1, deform, bodyAngle)
-
-  // Clouds ride the surface, off the face.
-  g.fillStyle(pal.cloud, 0.9)
-  fillEarthBlob(g, cx, cy, r, [
-    [-0.7, 0.22, -0.56, 0.1], [-0.4, 0.14, -0.3, 0.26], [-0.5, 0.32, -0.68, 0.28],
-  ], deform, bodyAngle, drift * 1.8)
-  fillEarthBlob(g, cx, cy, r, [
-    [0.3, 0.26, 0.48, 0.16], [0.64, 0.28, 0.54, 0.42], [0.36, 0.44, 0.26, 0.34],
-  ], deform, bodyAngle, drift * 1.8)
+  g.fillEllipse(cx, cy + r * 0.78, r * 0.55, r * 0.24)
 
   if (poly && poly.length >= 3) {
     g.lineStyle(out, INK, 1)
@@ -4386,7 +4242,6 @@ export function drawEarthBall(
   drawBallFace(g, ballLookFor(11, seed), { x: cx, y: cy }, r, 1, {
     gaze, panic, expr: expressionAt(seed, now),
   }, thumbnail)
-
 }
 
 /** The moon is decorative and is drawn after every ball body when it is in front. */
@@ -4396,23 +4251,17 @@ export function drawEarthAccessory(
   cy: number,
   r: number,
   variant = 0,
-  poly?: Array<{ x: number; y: number }>,
+  _poly?: Array<{ x: number; y: number }>,
   panic = 0,
   seed = 11,
-  bodyAngle = 0,
+  _bodyAngle = 0,
   thumbnail = false,
 ): void {
   const now = Date.now()
   if (!earthOrbit(now, seed).front) return
   const pal = EARTH_PALETTES[variant % EARTH_PALETTES.length]!
-  const deform = earthDeform(poly, cx, cy, r, bodyAngle)
   const orbit = earthOrbit(now, seed)
-  const anchor = earthPoint(
-    cx, cy,
-    Math.cos(orbit.angle) * r * 1.42,
-    Math.sin(orbit.angle) * r * 0.38 - panic * r * 0.03,
-    deform.scaleX, deform.scaleY, bodyAngle,
-  )
+  const anchor = { x: cx + Math.cos(orbit.angle) * r * 1.42, y: cy + Math.sin(orbit.angle) * r * 0.38 - panic * r * 0.03 }
   const ink = thumbnail ? collectionInkWidth(r) * 0.7 : Math.max(1.4, r * 0.035)
   paintEarthMoon(g, anchor, r * 0.22, pal, ink, seed, now, panic, thumbnail)
 }
