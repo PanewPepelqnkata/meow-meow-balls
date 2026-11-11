@@ -232,6 +232,15 @@ describe('tier-7 → tier-8 merge (Phase 2.13.0: T8 is a real destination)', () 
   }, 30_000)
 })
 
+describe('tier-10 → tier-11 merge', () => {
+  it('allows the tier-10 to tier-11 transition and holds tier 11 at the reserved tier 12', () => {
+    expect(isTransitionDefined(11)).toBe(true)
+    expect(isTransitionDefined(12)).toBe(false)
+    expect(getTier(11)?.playable).toBe(true)
+    expect(getTier(12)?.playable).toBe(false)
+  })
+})
+
 function this_centroid(balls: SoftBallManager, id: number): { x: number; y: number } {
   return balls.centroid(id)
 }

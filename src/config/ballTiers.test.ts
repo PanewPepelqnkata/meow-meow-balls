@@ -21,7 +21,7 @@ describe('ballTiers: single source of truth for tiers 1–12', () => {
     established.forEach((r, i) => expect(getTier(i + 1)!.radius).toBe(r))
   })
 
-  it('has explicit entries for tiers 8–12 (8–10 playable, 11–12 reserved)', () => {
+  it('has explicit entries for tiers 8–12 (8–11 playable, 12 reserved)', () => {
     for (const t of [8, 9, 10]) {
       const tier = getTier(t)!
       // Phase 2.13.0 (spec §10) + the collectible design: the cycling RGB
@@ -29,8 +29,9 @@ describe('ballTiers: single source of truth for tiers 1–12', () => {
       // are real merge destinations; drops still only spawn tiers 1–3.
       expect(tier.playable).toBe(true)
     }
-    // Tiers 11–12 stay reserved placeholders until their designs land.
-    for (const t of [11, 12]) expect(getTier(t)!.playable).toBe(false)
+    // Tier 12 stays a reserved placeholder until its design lands.
+    expect(getTier(11)!.playable).toBe(true)
+    expect(getTier(12)!.playable).toBe(false)
   })
 
   it('tiers 8–12 are all the SAME SIZE as tier 3 (user spec)', () => {
@@ -44,11 +45,11 @@ describe('ballTiers: single source of truth for tiers 1–12', () => {
     }
   })
 
-  it('gameplay progression uses tiers 1–10 (tiers 11–12 stay reserved)', () => {
+  it('gameplay progression uses tiers 1–11 (tier 12 stays reserved)', () => {
     // Spawnable tiers must be playable
     for (const t of SPAWNABLE_TIERS) expect(getTier(t)!.playable).toBe(true)
-    // Reserved tiers are exactly 11 and 12
-    expect(BALL_TIERS.filter((t) => !t.playable).map((t) => t.tier)).toEqual([11, 12])
+    // Reserved tiers are exactly 12
+    expect(BALL_TIERS.filter((t) => !t.playable).map((t) => t.tier)).toEqual([12])
   })
 
   it('downstream derivation follows the config (mass normalization reference)', () => {

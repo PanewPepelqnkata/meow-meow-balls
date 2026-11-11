@@ -72,12 +72,10 @@ export class ScoreDisplay {
   }
 
   private globalText(): string {
-    // A rank exists only for an authenticated player whose score is present
-    // in the ordered leaderboard. Guests, unranked players, and failed loads
-    // stay honest with a dash rather than showing a guessed position.
-    // Portrait shortens the line so the top row always fits Best + Score.
-    return this.rankVal === null ? 'Global #—' : `Global #${this.rankVal}`
+    if (this.rankVal !== null) return `Global #${this.rankVal}`
+    return 'Sign in to rank'
   }
+
 
   setRank(rank: number | null): void {
     this.rankVal = rank !== null && Number.isInteger(rank) && rank > 0 ? rank : null

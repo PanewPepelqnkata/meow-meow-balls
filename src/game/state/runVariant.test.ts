@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { isDrunkoTestRoute, isPirateTestRoute, tier9Theme } from './runVariant'
+import { isDrunkoTestRoute, isEarthTestRoute, isPirateTestRoute, themeFor, tier9Theme } from './runVariant'
 
 function visit(pathname: string, search = ''): void {
   vi.stubGlobal('window', { location: { pathname, search } })
@@ -24,6 +24,9 @@ describe('isDrunkoTestRoute', () => {
     '/pirate_ball',
     '/pirate_ball/',
     '/preview/pirate_ball',
+    '/earth',
+    '/earth/',
+    '/preview/earth',
   ])('recognizes the sandbox path %s', (pathname) => {
     visit(pathname)
     expect(isDrunkoTestRoute()).toBe(true)
@@ -36,6 +39,11 @@ describe('isDrunkoTestRoute', () => {
       expect(isPirateTestRoute()).toBe(true)
     },
   )
+  it.each(['/earth', '/earth/', '/preview/earth'])('deals Earth on %s', (pathname) => {
+    visit(pathname, '?theme=shark&test=1')
+    expect(isEarthTestRoute()).toBe(true)
+    expect(themeFor(11)).toBe('earth')
+  })
   it.each(['/', '/preview', '/drunkos', '/not-drunko', '/drunko/play', '/Drunko', '/drunko.html'])(
     'does not treat the production path %s as a sandbox',
     (pathname) => {

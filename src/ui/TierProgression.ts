@@ -61,7 +61,12 @@ export class TierProgression {
     if (this.lastLayout) this.layout(this.lastLayout)
   }
 
-  /** Unlock a newly discovered tier: relayout + pop + glow/ring pulse. */
+  /** Viewport position of a tier's node, for the discovery flight. */
+  nodeAt(tier: number): { x: number; y: number } | null {
+    const node = this.nodeObjs[tier - 1]
+    return node ? { x: node.x, y: node.y } : null
+  }
+
   unlockTier(tier: number): void {
     if (this.discovered.has(tier)) return
     this.discovered.add(tier)

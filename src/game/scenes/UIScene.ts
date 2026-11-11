@@ -1,5 +1,7 @@
 import Phaser from 'phaser'
 import { UiRoot } from '../../ui/UiRoot'
+import { getTier } from '../../config/ballTiers'
+import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK } from '../rendering/BallAppearance'
 import { GameOverView } from '../rendering/GameOverView'
 import { DiscoveryOverlay } from '../rendering/DiscoveryOverlay'
 import { DiscoveryBanner } from '../rendering/DiscoveryBanner'
@@ -173,7 +175,17 @@ export class UIScene extends Phaser.Scene {
       gameBus.on('discovery:show', ({ tier, seed, theme, variant }) => this.discoveryOverlay.show(tier, seed, theme, variant)),
       // Repeat discovery (seen in an earlier run): the small non-blocking
       // banner — gameplay never pauses for it.
-      gameBus.on('discovery:banner', ({ tier, seed, theme, variant }) => this.discoveryBanner.show(tier, seed, theme, variant)),
+      gameBus.on('discovery:banner', ({ tier, seed, theme, variant }) => {
+        this.discoveryBanner.show(tier, seed, theme, variant)
+        this.flyToCollection(tier, seed)
+      }),
+      gameBus.on('hint:merge', () => {
+        if (localStorage.getItem('br-merge-hint') === 'seen') return
+        localStorage.setItem('br-merge-hint', 'seen')
+        this.time.delayedCall(1600, () => {
+          this.achievementNotification?.show('Matching balls merge', this.scale.width / (this.game.scale.displayScale.x || 1) / 2)
+        })
+      }),
       gameBus.on('achievement:unlocked', ({ name, rewardTitleName }) => {
         const msg = rewardTitleName
           ? `🏆 ACHIEVEMENT: ${name.toUpperCase()} (+TITLE: ${rewardTitleName.toUpperCase()})`
@@ -196,6 +208,39 @@ export class UIScene extends Phaser.Scene {
       this.discoveryOverlay.reset()
       this.discoveryBanner.destroy()
       this.achievementNotification?.clear()
+    })
+  }
+
+  /** A new ball flies from the merge to the FOUND counter, then the count bumps. */
+  private flyToCollection(tier: number, seed: number): void {
+    const z = this.game.scale.displayScale.x || 1
+    const w = this.scale.width / z
+    const h = this.scale.height / z
+    const ball = this.add.graphics().setDepth(90)
+    const look = ballLookFor(tier, seed)
+    const r = 26
+    const poly = restContour(look, r, 0, 0, 32)
+    const tierDef = getTier(tier)
+    if (tierDef) {
+      ball.fillStyle(tierDef.color, 1)
+      ball.fillPoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)
+      ball.lineStyle(ballOutlineWidth(r), INK, 1)
+      ball.strokePoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true, true)
+      drawBallFace(ball, look, { x: 0, y: 0 }, r, 1)
+    }
+    ball.setPosition(w / 2, h * 0.45)
+    this.uiRoot.unlockTier(tier)
+    const target = this.uiRoot.tierNodeAt(tier) ?? { x: w * 0.5, y: h * 0.86 }
+    this.tweens.add({
+      targets: ball,
+      x: target.x,
+      y: target.y,
+      scale: 0.35,
+      duration: 700,
+      ease: 'Cubic.easeIn',
+      onComplete: () => {
+        ball.destroy()
+      },
     })
   }
 

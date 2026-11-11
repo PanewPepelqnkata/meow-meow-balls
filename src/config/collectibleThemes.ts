@@ -35,6 +35,9 @@ export const COLLECTIBLE_THEMES: Record<number, readonly CollectibleTheme[]> = {
   10: [
     { name: 'crab', weight: 1 },
   ],
+  11: [
+    { name: 'earth', weight: 1 },
+  ],
 }
 
 /**

@@ -19,6 +19,10 @@ export class NextBall {
   private seed = 1
   private pos: { x: number; y: number } = { x: 0, y: 0 }
   private diameter = 56
+  private revealMask: Phaser.GameObjects.Graphics | null = null
+  /** 0..1: how much of the ball has faded in since the last drop. */
+  private reveal = 1
+  private revealTimer: Phaser.Time.TimerEvent | null = null
   private readonly scene: Phaser.Scene
 
   /** Hide the next-ball preview (the collectible card owns the screen). */
@@ -27,10 +31,30 @@ export class NextBall {
     this.label?.setVisible(visible)
   }
 
-  /** Cooldown state: the preview ball STAYS VISIBLE (the user asked for
-   * it back) — kept as a no-op so the bus contract stays intact. */
+  /** The drop cooldown. The ball stays, but only the revealed wedge is opaque. */
   setHolding(holding: boolean): void {
-    void holding
+    if (holding) {
+      this.reveal = 1
+      this.revealTimer?.remove()
+      this.revealTimer = null
+      this.redraw()
+      return
+    }
+    this.reveal = 0
+    this.revealTimer?.remove()
+    this.revealTimer = this.scene.time.addEvent({
+      delay: 50,
+      loop: true,
+      callback: () => {
+        this.reveal = Math.min(1, this.reveal + 50 / 1000)
+        this.redraw()
+        if (this.reveal >= 1) {
+          this.revealTimer?.remove()
+          this.revealTimer = null
+        }
+      },
+    })
+    this.redraw()
   }
 
   constructor(scene: Phaser.Scene) {
@@ -71,6 +95,7 @@ export class NextBall {
     const g = this.g
     if (!g) return
     g.clear()
+    if (this.reveal <= 0) return
     const tier = getTier(this.tier)
     if (!tier || !this.label) return
     const r = this.diameter / 2
@@ -98,6 +123,11 @@ export class NextBall {
       g.lineStyle(ballOutlineWidth(r), INK, 1)
       g.strokePoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true, true)
       drawBallFace(g, look, { x: this.pos.x, y: this.pos.y }, r, 1)
+    }
+    g.setAlpha(0.25 + 0.75 * this.reveal)
+    if (this.revealMask) {
+      g.clearMask(true)
+      this.revealMask = null
     }
   }
 }

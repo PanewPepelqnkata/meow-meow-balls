@@ -76,7 +76,8 @@ describe('collection character identities', () => {
         expect(rolled === null || slots.some((slot) => slot.theme === rolled)).toBe(true)
       }
     }
-    expect(collectionSlotsFor(11).every((slot) => slot.theme === null)).toBe(true)
+    expect(collectionSlotsFor(11)[0]?.theme).toBe('earth')
+    expect(collectionSlotsFor(11).slice(1).every((slot) => slot.theme === null)).toBe(true)
     expect(collectionSlotsFor(12).every((slot) => slot.theme === null)).toBe(true)
   })
 })

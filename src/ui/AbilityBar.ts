@@ -59,7 +59,7 @@ export class AbilityBar {
     // For portrait: convert stage Y to viewport Y using the world zoom
     const containerTopStage = 765 // CONTAINER.topY from config
     const containerTopVp = l.world ? (containerTopStage - l.world.centerY) * l.world.zoom + l.vh / 2 : l.abilities.startY - 100
-    const notificationY = Math.max(60, containerTopVp - 40) // Above container, min 60px from top
+    const notificationY = Math.max(120, containerTopVp - 40)
 
     if (!this.guestNotification) {
       this.guestNotification = new FloatingTextNotification(this.scene, notificationY)
@@ -70,7 +70,7 @@ export class AbilityBar {
     // Guests can't use abilities - show notification on press
     const guestPress = () => {
       if (this.guestNotification) {
-        this.guestNotification.show('You need an account to use abilities', l.vw / 2)
+        this.guestNotification.show('Sign in to use abilities', l.vw / 2)
       }
     }
 

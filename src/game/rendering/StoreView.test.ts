@@ -481,7 +481,7 @@ describe('merchant store', () => {
     account.save.coins = 0
     const { parent, completeTween } = createStore(390, 844)
     expect(labels(parent)).toContain('0.0 COINS')
-    expect(labels(find(parent, 'merchant-upgrade-wallDuration'))).toContain('ACCOUNTS ONLY')
+    expect(labels(find(parent, 'merchant-upgrade-wallDuration'))).toContain('SIGN IN TO BUY')
     for (const object of descendants(parent).filter((child) => child.name === 'merchant-buy-hit')) expect(object.input?.enabled).toBe(false)
     tap(find(parent, 'merchant-next').list[0]!)
     completeTween()
@@ -619,7 +619,7 @@ describe('merchant store', () => {
     account.registered = false
     for (const listener of account.authListeners) listener()
     await Promise.resolve()
-    expect(labels(find(parent, 'merchant-upgrade-wallDuration'))).toContain('ACCOUNTS ONLY')
+    expect(labels(find(parent, 'merchant-upgrade-wallDuration'))).toContain('SIGN IN TO BUY')
     expect(labels(parent)).not.toContain('PURCHASED!')
     expect(find(parent, 'merchant-celebration').drawCalls.some((call) => call.method === 'fillCircle')).toBe(false)
   })

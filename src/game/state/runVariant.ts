@@ -69,13 +69,20 @@ export function isPirateTestRoute(): boolean {
   return path === '/pirate_ball' || path.endsWith('/pirate_ball')
 }
 
+/** The /earth test route: every drop is a tier-11 Earth Ball. */
+export function isEarthTestRoute(): boolean {
+  if (typeof window === 'undefined') return false
+  const path = window.location.pathname.replace(/\/+$/, '')
+  return path === '/earth' || path.endsWith('/earth')
+}
+
 /** Isolated character test routes (/drunko and /pirate_ball): every drop is
  *  that tier-9 character and the run leaves no trace (no leaderboard submit,
  *  no save writes). */
 export function isDrunkoTestRoute(): boolean {
   if (typeof window === 'undefined') return false
   const path = window.location.pathname.replace(/\/+$/, '')
-  return path === '/drunko' || path.endsWith('/drunko') || isPirateTestRoute()
+  return path === '/drunko' || path.endsWith('/drunko') || isPirateTestRoute() || isEarthTestRoute()
 }
 
 /** The tier-9 theme this run rolled — a weighted roll from
@@ -95,7 +102,7 @@ export function tier9Theme(): Tier9Theme {
 /** Variants only exist for the randomized high tiers (9 and 10 — the
  *  collectible tiers; each rolls its theme from the config). */
 export function isVariantTier(tier: number): boolean {
-  return tier === 9 || tier === 10
+  return tier === 9 || tier === 10 || tier === 11
 }
 
 /**
@@ -104,8 +111,10 @@ export function isVariantTier(tier: number): boolean {
  * journal recording.
  */
 export function themeFor(tier: number): string | null {
+  if (isEarthTestRoute() && tier === 11) return 'earth'
   if (tier === 9) return tier9Theme()
   if (tier === 10) return rollCollectibleTheme(10, runSeed, hash)
+  if (tier === 11) return rollCollectibleTheme(11, runSeed, hash)
   return null
 }
 

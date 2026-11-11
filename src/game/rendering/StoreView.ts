@@ -1060,9 +1060,9 @@ export class StoreView {
     this.addFittedText(card, statX, stageY, active ? `STAGE ${current} / ${max}` : skin ? (skinOwned ? 'OWNED — EQUIP IN WARDROBE' : 'COSMETIC SKIN') : 'STAGE — / —', statW, compact ? 8 : 10, purchasable ? INK_HEX : SECONDARY_TEXT)
     this.renderStageBar(card, statX, barY, statW - 4, current, max, product.accent, barH)
     const label = !purchasable ? 'COMING SOON' : pending ? 'BUYING...'
-      : skin ? (skinOwned ? 'OWNED' : !registered ? 'ACCOUNTS ONLY' : `${cost}`)
+      : skin ? (skinOwned ? 'OWNED' : !registered ? 'SIGN IN TO BUY' : `${cost}`)
         : maxed ? 'MAXED'
-          : !registered ? 'ACCOUNTS ONLY' : `${cost}`
+          : !registered ? 'SIGN IN TO BUY' : `${cost}`
     const available = purchasable && registered && !maxed && !pending && !(skin && skinOwned)
     this.renderBuyButton(
       card, buttonX, buttonY, buttonW, buttonH, label,

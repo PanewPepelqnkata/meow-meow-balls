@@ -82,6 +82,7 @@ const COLLECTIBLE_HERO_META: Record<string, { name: string; status: string }> = 
   drunko: { name: 'Drunko', status: 'ROYAL TOAST' },
   robo: { name: 'Robo', status: 'IRON GUARD' },
   crab: { name: 'Crab', status: 'SHELL SENTINEL' },
+  earth: { name: 'Earth', status: 'LIVING PLANET' },
 }
 
 export function unlockedRoundTablePool(save: SaveDataV1 = loadSave()): HeroSpec[] {

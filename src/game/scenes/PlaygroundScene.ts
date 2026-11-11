@@ -24,10 +24,10 @@ import { gameBus } from '../events/gameBus'
 import { DebugOverlay } from '../debug/DebugOverlay'
 import { PerfOverlay } from '../debug/PerfOverlay'
 import { session, fastbootRequested } from '../state/session'
-import { bannerForcedByVariant } from '../rendering/DiscoveryBanner'
-import { hasDiscoveredCollectible, hasDiscoveredTier, loadSave, recordDiscovery, recordMerge, recordRunEnd, recordRunStart, savedBest, themeSetting } from '../state/save'
+
+import { hasDiscoveredCollectible, loadSave, recordDiscovery, recordMerge, recordRunEnd, recordRunStart, savedBest, themeSetting } from '../state/save'
 import { authService, scoreService } from '../../services/auth'
-import { isDrunkoTestRoute, rollNewRunSeed, runVariantFor, themeFor } from '../state/runVariant'
+import { isDrunkoTestRoute, isEarthTestRoute, rollNewRunSeed, runVariantFor, themeFor } from '../state/runVariant'
 import { addRunCollectible, type RunCollectibles } from '../state/collectibleMetadata'
 import { isCollectibleTier } from '../../config/collectibleCollection'
 import {
@@ -290,17 +290,8 @@ export class PlaygroundScene extends Phaser.Scene {
             tier, theme, variant, discoveredAt: Date.now(),
           })
         }
-        const showFirstCard = tier >= PlaygroundScene.WIND_BANNER_MIN_TIER &&
-          (collectible ? firstCollectible : firstTime && !hasDiscoveredTier(tier))
-
         const runKey = collectible ? `${tier}:${theme}` : String(tier)
-        if (bannerForcedByVariant() && tier >= PlaygroundScene.WIND_BANNER_MIN_TIER) {
-          this.runDiscoveredTiers.add(runKey)
-          gameBus.emit('discovery:banner', { tier, seed, theme, variant })
-        } else if (showFirstCard) {
-          this.runDiscoveredTiers.add(runKey)
-          gameBus.emit('discovery:show', { tier, seed, theme, variant })
-        } else if (!this.runDiscoveredTiers.has(runKey) && tier >= PlaygroundScene.WIND_BANNER_MIN_TIER) {
+        if (!this.runDiscoveredTiers.has(runKey) && tier >= PlaygroundScene.WIND_BANNER_MIN_TIER) {
           this.runDiscoveredTiers.add(runKey)
           gameBus.emit('discovery:banner', { tier, seed, theme, variant })
         }
@@ -1089,6 +1080,7 @@ export class PlaygroundScene extends Phaser.Scene {
         scoreService.startNewRun()
         recordRunStart()
       }
+      gameBus.emit('hint:merge', {})
     }
     // frame (the update-loop flip would otherwise lag one frame).
     this.lastDropHolding = false
@@ -1109,7 +1101,8 @@ export class PlaygroundScene extends Phaser.Scene {
     // Queue rotation: previous next becomes current; a fresh ball enters next.
     this.currentBall = { ...this.nextBallState }
     const drunkoTestRoute = isDrunkoTestRoute()
-    this.nextBallState = { tier: drunkoTestRoute ? 9 : randomSpawnTier(), seed: randomSeed() }
+    const routeTier = isEarthTestRoute() ? 11 : drunkoTestRoute ? 9 : randomSpawnTier()
+    this.nextBallState = { tier: routeTier, seed: randomSeed() }
     // ?test=<tier>: keep dealing the test tier so the queue never runs out
     // of it (a plain drop in test mode always yields the test ball). /drunko
     // takes precedence so query overrides cannot change its tier.
@@ -1136,8 +1129,9 @@ export class PlaygroundScene extends Phaser.Scene {
    */
   private initQueue(): void {
     const drunkoTestRoute = isDrunkoTestRoute()
-    this.currentBall = { tier: drunkoTestRoute ? 9 : randomSpawnTier(), seed: randomSeed() }
-    this.nextBallState = { tier: drunkoTestRoute ? 9 : randomSpawnTier(), seed: randomSeed() }
+    const routeTier = isEarthTestRoute() ? 11 : drunkoTestRoute ? 9 : randomSpawnTier()
+    this.currentBall = { tier: routeTier, seed: randomSeed() }
+    this.nextBallState = { tier: routeTier, seed: randomSeed() }
     // ?test=<tier> pins both queue slots for visual testing; /drunko is a
     // deliberate route override and always takes precedence over query flags.
     const testTier = Number(new URLSearchParams(window.location.search).get('test') ?? '')

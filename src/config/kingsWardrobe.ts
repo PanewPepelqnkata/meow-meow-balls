@@ -34,6 +34,7 @@ export const WARDROBE_CHARACTERS: readonly WardrobeCharacter[] = [
   { id: 'collectible:9:robo', tier: 9, theme: 'robo', name: 'Robo', subtitle: 'IRON GUARD', requirement: 'Discover Tier 9 Robo', seed: 944 },
   { id: 'collectible:9:pirate', tier: 9, theme: 'pirate', name: 'Pirate', subtitle: 'THE HIGH SEAS', requirement: 'Discover Tier 9 Pirate', seed: 955 },
   { id: 'collectible:10:crab', tier: 10, theme: 'crab', name: 'Crab', subtitle: 'SHELL SENTINEL', requirement: 'Discover Tier 10 Crab', seed: 1011 },
+  { id: 'collectible:11:earth', tier: 11, theme: 'earth', name: 'Earth', subtitle: 'LIVING PLANET', requirement: 'Discover Tier 11 Earth', seed: 1111 },
 ] as const
 
 const CHARACTER_BY_ID: Record<string, WardrobeCharacter> = Object.fromEntries(

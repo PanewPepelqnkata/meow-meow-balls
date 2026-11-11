@@ -178,6 +178,10 @@ export class UiRoot {
     this.tiers.unlockTier(tier)
   }
 
+  tierNodeAt(tier: number): { x: number; y: number } | null {
+    return this.tiers.nodeAt(tier)
+  }
+
   /** Phase 2.13.0 QA hook (read-only): tiers the progression shows unlocked. */
   progressionUnlocked(): number[] {
     return this.tiers.unlocked

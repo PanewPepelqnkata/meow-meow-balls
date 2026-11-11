@@ -64,6 +64,8 @@ export interface GameEventMap {
   /** Phase 2.12.2: world → UI. A genuinely first-time tier was created; the
    * UIScene presents the full-viewport discovery modal (screen-space scene). */
   'discovery:show': { tier: number; seed: number; theme: string | null; variant: number | null }
+  /** First drop of a run: one line telling the player what to do. */
+  'hint:merge': Record<string, never>
   /** Repeat discovery — the identity was already discovered in an earlier run. */
   'discovery:banner': { tier: number; seed: number; theme: string | null; variant: number | null }
   /** Phase 2.13.0: world → UI. A tier was discovered for the first time this

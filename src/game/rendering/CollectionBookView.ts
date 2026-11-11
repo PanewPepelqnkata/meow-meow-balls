@@ -429,7 +429,7 @@ export class CollectionBookView {
     if (tier >= 9 && theme) {
       const draw = (): void => {
         g.clear()
-        drawCollectibleBall(g, x, y, r, tier, variant, undefined, 0, undefined, seed, theme, 0, undefined, true)
+        drawCollectibleBall(g, x, y, r, tier, variant, undefined, 0, undefined, seed, theme, 0, tier === 11 ? 1100 + variant : undefined, true)
       }
       draw()
       leaf.redraws.push(draw)
