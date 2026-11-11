@@ -20,6 +20,7 @@ export class NextBall {
   private pos: { x: number; y: number } = { x: 0, y: 0 }
   private diameter = 56
   private revealMask: Phaser.GameObjects.Graphics | null = null
+  private ghost: Phaser.GameObjects.Graphics | null = null
   /** 0..1: how much of the ball has faded in since the last drop. */
   private reveal = 1
   private revealTimer: Phaser.Time.TimerEvent | null = null
@@ -95,7 +96,7 @@ export class NextBall {
     const g = this.g
     if (!g) return
     g.clear()
-    if (this.reveal <= 0) return
+    g.setAlpha(1)
     const tier = getTier(this.tier)
     if (!tier || !this.label) return
     const r = this.diameter / 2
@@ -124,10 +125,30 @@ export class NextBall {
       g.strokePoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true, true)
       drawBallFace(g, look, { x: this.pos.x, y: this.pos.y }, r, 1)
     }
-    g.setAlpha(0.25 + 0.75 * this.reveal)
-    if (this.revealMask) {
-      g.clearMask(true)
-      this.revealMask = null
+    if (this.reveal < 1) {
+      if (!this.revealMask) this.revealMask = this.scene.make.graphics({ x: 0, y: 0 })
+      const mask = this.revealMask
+      mask.clear()
+      mask.fillStyle(0xffffff, 1)
+      mask.beginPath()
+      mask.moveTo(this.pos.x, this.pos.y)
+      mask.arc(this.pos.x, this.pos.y, r + 4, -Math.PI / 2, -Math.PI / 2 + this.reveal * Math.PI * 2, false)
+      mask.closePath()
+      mask.fillPath()
+      if (!g.mask) g.setMask(mask.createGeometryMask())
+      g.setAlpha(1)
+      if (!this.ghost) this.ghost = this.scene.add.graphics().setDepth(41)
+      this.ghost.clear()
+      this.ghost.setAlpha(0.25)
+      this.ghost.fillStyle(tier.color, 1)
+      this.ghost.fillCircle(this.pos.x, this.pos.y, r)
+    } else {
+      if (this.revealMask) {
+        g.clearMask(true)
+        this.revealMask = null
+      }
+      this.ghost?.destroy()
+      this.ghost = null
     }
   }
 }
