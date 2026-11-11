@@ -4113,11 +4113,11 @@ const earthGlowImages = new Map<number, Phaser.GameObjects.Image>()
 
 /** Continents as [x, y, width, height] in fractions of r. Big, filling the ball. */
 const EARTH_LANDS: ReadonlyArray<readonly [number, number, number, number]> = [
-  [-0.42, -0.16, 0.7, 0.55],
-  [-0.34, 0.18, 0.32, 0.3],
-  [0.06, -0.42, 0.3, 0.22],
-  [0.34, -0.08, 0.62, 0.5],
-  [0.32, 0.22, 0.36, 0.24],
+  [-0.38, -0.14, 0.86, 0.66],
+  [-0.3, 0.2, 0.42, 0.38],
+  [0.04, -0.44, 0.38, 0.26],
+  [0.3, -0.06, 0.74, 0.6],
+  [0.28, 0.24, 0.46, 0.3],
 ]
 
 
@@ -4226,10 +4226,20 @@ export function drawEarthBall(
   g.fillEllipse(cx - r * 0.46, cy - r * 0.22, r * 0.3, r * 0.22)
   g.fillEllipse(cx + r * 0.3, cy - r * 0.12, r * 0.26, r * 0.2)
 
-  g.fillStyle(pal.ice, 0.96)
-  g.fillEllipse(cx, cy - r * 0.82, r * 0.7, r * 0.34)
-  g.fillStyle(pal.ice, 0.9)
-  g.fillEllipse(cx, cy + r * 0.78, r * 0.55, r * 0.24)
+  // Poles: a pale blue shadow under a white cap, plus a bright crest, so
+  // they read as rounded ice instead of flat stickers.
+  g.fillStyle(0xcfe6f6, 1)
+  g.fillEllipse(cx, cy - r * 0.76, r * 0.92, r * 0.46)
+  g.fillStyle(pal.ice, 1)
+  g.fillEllipse(cx, cy - r * 0.82, r * 0.8, r * 0.36)
+  g.fillStyle(0xffffff, 0.85)
+  g.fillEllipse(cx - r * 0.1, cy - r * 0.88, r * 0.36, r * 0.14)
+  g.fillStyle(0xcfe6f6, 1)
+  g.fillEllipse(cx, cy + r * 0.74, r * 0.78, r * 0.36)
+  g.fillStyle(pal.ice, 0.95)
+  g.fillEllipse(cx, cy + r * 0.78, r * 0.66, r * 0.26)
+  g.fillStyle(0xffffff, 0.7)
+  g.fillEllipse(cx - r * 0.08, cy + r * 0.74, r * 0.28, r * 0.1)
 
   if (poly && poly.length >= 3) {
     g.lineStyle(out, INK, 1)
