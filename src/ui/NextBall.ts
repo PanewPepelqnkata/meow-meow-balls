@@ -19,9 +19,8 @@ export class NextBall {
   private seed = 1
   private pos: { x: number; y: number } = { x: 0, y: 0 }
   private diameter = 56
-  private revealMask: Phaser.GameObjects.Graphics | null = null
-  private ghost: Phaser.GameObjects.Graphics | null = null
-  /** 0..1: how much of the ball has faded in since the last drop. */
+  private revealOverlay: Phaser.GameObjects.Graphics | null = null
+  /** 0..1: how much of the ball has become fully visible. */
   private reveal = 1
   private revealTimer: Phaser.Time.TimerEvent | null = null
   private readonly scene: Phaser.Scene
@@ -29,6 +28,7 @@ export class NextBall {
   /** Hide the next-ball preview (the collectible card owns the screen). */
   setVisible(visible: boolean): void {
     this.g?.setVisible(visible)
+    this.revealOverlay?.setVisible(visible)
     this.label?.setVisible(visible)
   }
 
@@ -60,6 +60,7 @@ export class NextBall {
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene
+    scene.events.once(Phaser.Scenes.Events.SHUTDOWN, this.destroy, this)
   }
 
   /** QA hook: preview ball center + diameter (viewport px). */
@@ -77,9 +78,12 @@ export class NextBall {
   layout(l: UiLayout): void {
     this.pos = { x: l.nextBall.pos.x, y: l.nextBall.pos.y }
     this.diameter = l.nextBall.diameter
+    this.revealOverlay?.destroy()
+    this.revealOverlay = null
     this.g?.destroy()
     this.label?.destroy()
     this.g = this.scene.add.graphics().setDepth(42)
+    this.revealOverlay = this.scene.add.graphics().setDepth(43)
     // Portrait: the label sits BESIDE the disc (left-aligned block, compact).
     // Desktop: the label sits BELOW the disc (original centered layout).
     this.label = hudText(this.scene, l.nextBall.label.x, l.nextBall.label.y, 'Next Ball:', l.fontScale, {
@@ -125,30 +129,28 @@ export class NextBall {
       g.strokePoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true, true)
       drawBallFace(g, look, { x: this.pos.x, y: this.pos.y }, r, 1)
     }
+    const overlay = this.revealOverlay
+    if (!overlay) return
+    overlay.clear().setVisible(g.visible)
     if (this.reveal < 1) {
-      if (!this.revealMask) this.revealMask = this.scene.make.graphics({ x: 0, y: 0 })
-      const mask = this.revealMask
-      mask.clear()
-      mask.fillStyle(0xffffff, 1)
-      mask.beginPath()
-      mask.moveTo(this.pos.x, this.pos.y)
-      mask.arc(this.pos.x, this.pos.y, r + 4, -Math.PI / 2, -Math.PI / 2 + this.reveal * Math.PI * 2, false)
-      mask.closePath()
-      mask.fillPath()
-      if (!g.mask) g.setMask(mask.createGeometryMask())
-      g.setAlpha(1)
-      if (!this.ghost) this.ghost = this.scene.add.graphics().setDepth(41)
-      this.ghost.clear()
-      this.ghost.setAlpha(0.25)
-      this.ghost.fillStyle(tier.color, 1)
-      this.ghost.fillCircle(this.pos.x, this.pos.y, r)
-    } else {
-      if (this.revealMask) {
-        g.clearMask(true)
-        this.revealMask = null
-      }
-      this.ghost?.destroy()
-      this.ghost = null
+      // Darken only the unrevealed sector. As its start angle moves
+      // clockwise, the canonical ball underneath becomes fully visible.
+      overlay.fillStyle(0x07142d, 0.68)
+      overlay.beginPath()
+      overlay.moveTo(this.pos.x, this.pos.y)
+      overlay.arc(this.pos.x, this.pos.y, r + 1, -Math.PI / 2 + this.reveal * Math.PI * 2, Math.PI * 1.5, false)
+      overlay.closePath()
+      overlay.fillPath()
+      overlay.lineStyle(Math.max(1.5, r * 0.08), 0xffffff, 0.82)
+      overlay.arc(this.pos.x, this.pos.y, r + 2, -Math.PI / 2, -Math.PI / 2 + this.reveal * Math.PI * 2, false)
+      overlay.strokePath()
     }
+  }
+
+  private destroy(): void {
+    this.revealTimer?.remove()
+    this.revealTimer = null
+    this.revealOverlay?.destroy()
+    this.revealOverlay = null
   }
 }
