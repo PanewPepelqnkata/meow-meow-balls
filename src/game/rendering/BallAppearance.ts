@@ -4359,7 +4359,7 @@ export function drawEarthBall(
   for (const land of EARTH_LANDS) fillEarthEllipse(g, cx, cy, r, land, deform, bodyAngle, drift)
   g.fillStyle(pal.landLight, 0.7)
   fillEarthEllipse(g, cx, cy, r, [-0.48, -0.34, 0.22, 0.16], deform, bodyAngle, drift)
-  fillEarthEllipse(g, cx, cy, r, [0.02, 0.08, 0.16, 0.2], deform, bodyAngle, drift)
+  fillEarthEllipse(g, cx, cy, r, [0.46, -0.18, 0.16, 0.12], deform, bodyAngle, drift)
 
   g.fillStyle(pal.ice, 0.96)
   fillEarthCap(g, cx, cy, r, -1, deform, bodyAngle)
