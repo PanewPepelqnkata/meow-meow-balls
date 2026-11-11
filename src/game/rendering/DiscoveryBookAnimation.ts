@@ -307,8 +307,16 @@ export class DiscoveryBookAnimation {
   private playBook(): void {
     const rig = this.rig!
     // Anticipation: a closed, weighty leather volume; only this rig moves.
-    this.animate({ targets: rig.motion, x: -HALF_W / 2, y: 0, scale: 1, rotation: 0, alpha: 1, duration: 260, ease: 'Back.easeOut' })
-    this.later(210, () => {
+    this.animate({
+      targets: rig.motion,
+      x: -HALF_W / 2,
+      y: 0,
+      scale: 1,
+      rotation: 0,
+      alpha: 1,
+      duration: 260,
+      ease: 'Back.easeOut',
+    }, () => {
       const turn = { progress: 0 }
       this.animate({ targets: rig.heading, alpha: 1, duration: 260, ease: 'Sine.easeOut' })
       this.animate({ targets: turn, progress: 1, duration: 360, ease: 'Sine.easeInOut', onUpdate: () => {
