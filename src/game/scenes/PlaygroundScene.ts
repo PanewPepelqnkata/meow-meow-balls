@@ -29,6 +29,7 @@ import { hasDiscoveredCollectible, hasDiscoveredTier, loadSave, recordDiscovery,
 import { authService, scoreService } from '../../services/auth'
 import { isDrunkoTestRoute, isEarthTestRoute, rollNewRunSeed, runVariantFor, themeFor } from '../state/runVariant'
 import { addRunCollectible, type RunCollectibles } from '../state/collectibleMetadata'
+import { discoveryPresentationFor } from '../state/discoveryPresentation'
 import { isCollectibleTier } from '../../config/collectibleCollection'
 import {
   ballLookFor,
@@ -74,9 +75,6 @@ export class PlaygroundScene extends Phaser.Scene {
   private containerView!: ContainerView
   private claw!: DropClaw
   private debug: DebugOverlay | null = null
-  // Tiers 1–4 do not open a discovery presentation. Tier 5+ shows the
-  // detailed book once in a lifetime; later runs use its compact page.
-  private static readonly DISCOVERY_PRESENTATION_MIN_TIER = 5
   /** Tiers created in this run; drives the progression track only. */
   private discoveredTiers = new Set<number>([1, 2, 3])
   /** One presentation per tier/character identity per run. */
@@ -283,9 +281,15 @@ export class PlaygroundScene extends Phaser.Scene {
         }
         const runKey = collectible ? `${tier}:${theme}` : String(tier)
         const firstLifetimeDiscovery = collectible ? firstCollectible : !hasDiscoveredTier(tier)
-        if (!isDrunkoTestRoute() && !this.runDiscoveredTiers.has(runKey) && tier >= PlaygroundScene.DISCOVERY_PRESENTATION_MIN_TIER) {
+        const presentation = discoveryPresentationFor(
+          tier,
+          this.runDiscoveredTiers.has(runKey),
+          firstLifetimeDiscovery,
+          isDrunkoTestRoute(),
+        )
+        if (presentation) {
           this.runDiscoveredTiers.add(runKey)
-          gameBus.emit('discovery:book', { tier, seed, theme, variant, firstTime: firstLifetimeDiscovery })
+          gameBus.emit('discovery:book', { tier, seed, theme, variant, firstTime: presentation === 'first' })
         }
 
         if (!isDrunkoTestRoute()) {
