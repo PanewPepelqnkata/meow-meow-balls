@@ -4111,14 +4111,39 @@ const EARTH_ORBIT_MS = 28000
 const EARTH_GLOW_KEY = 'br-earth-glow'
 const earthGlowImages = new Map<number, Phaser.GameObjects.Image>()
 
-/** Continents as [x, y, width, height] in fractions of r. Big, filling the ball. */
-const EARTH_LANDS: ReadonlyArray<readonly [number, number, number, number]> = [
-  [-0.32, -0.12, 0.72, 0.58],
-  [-0.3, 0.2, 0.42, 0.38],
-  [0.04, -0.44, 0.38, 0.26],
-  [0.3, -0.06, 0.74, 0.6],
-  [0.28, 0.24, 0.46, 0.3],
+/** Continent outlines in fractions of r. Each is a closed shape, not an ellipse. */
+const EARTH_LANDS: ReadonlyArray<ReadonlyArray<readonly [number, number]>> = [
+  [[-0.66, -0.3], [-0.44, -0.5], [-0.22, -0.42], [-0.1, -0.22], [-0.2, -0.02], [-0.36, 0.06], [-0.5, -0.02], [-0.66, -0.12]],
+  [[-0.42, 0.1], [-0.26, 0.08], [-0.18, 0.24], [-0.26, 0.44], [-0.4, 0.36], [-0.48, 0.18]],
+  [[-0.06, -0.52], [0.12, -0.56], [0.22, -0.44], [0.1, -0.34], [-0.04, -0.38]],
+  [[-0.02, -0.24], [0.2, -0.3], [0.36, -0.12], [0.3, 0.1], [0.14, 0.32], [-0.02, 0.4], [-0.14, 0.18], [-0.14, -0.04]],
+  [[0.14, -0.46], [0.42, -0.5], [0.66, -0.34], [0.7, -0.12], [0.5, 0.04], [0.32, 0.18], [0.2, 0.02], [0.12, -0.18]],
 ]
+
+function fillEarthLand(g: Phaser.GameObjects.Graphics, cx: number, cy: number, r: number, pts: ReadonlyArray<readonly [number, number]>): void {
+  const n = pts.length
+  const at = (i: number): readonly [number, number] => pts[((i % n) + n) % n]!
+  g.beginPath()
+  const first = at(0)
+  const second = at(1)
+  g.moveTo(cx + (first[0] + second[0]) / 2 * r, cy + (first[1] + second[1]) / 2 * r)
+  for (let i = 1; i <= n; i++) {
+    const prev = at(i - 1)
+    const corner = at(i)
+    const next = at(i + 1)
+    const x0 = (prev[0] + corner[0]) / 2
+    const y0 = (prev[1] + corner[1]) / 2
+    const x1 = (corner[0] + next[0]) / 2
+    const y1 = (corner[1] + next[1]) / 2
+    for (let s = 1; s <= 4; s++) {
+      const t = s / 4
+      const mt = 1 - t
+      g.lineTo(cx + (mt * mt * x0 + 2 * mt * t * corner[0] + t * t * x1) * r, cy + (mt * mt * y0 + 2 * mt * t * corner[1] + t * t * y1) * r)
+    }
+  }
+  g.closePath()
+  g.fillPath()
+}
 
 
 
@@ -4218,13 +4243,11 @@ export function drawEarthBall(
   if (poly && poly.length >= 3) g.fillPoints(poly as unknown as Phaser.Math.Vector2[], true)
   else g.fillCircle(cx, cy, r)
 
-  // Solid ellipses. The ink outline covers anything past the rim, so the
-  // fills are never sliced into strips, and nothing here rescales per frame.
   g.fillStyle(pal.land, 1)
-  for (const [lx, ly, w, h] of EARTH_LANDS) g.fillEllipse(cx + lx * r, cy + ly * r, w * r, h * r)
-  g.fillStyle(pal.landLight, 0.7)
-  g.fillEllipse(cx - r * 0.46, cy - r * 0.22, r * 0.3, r * 0.22)
-  g.fillEllipse(cx + r * 0.3, cy - r * 0.12, r * 0.26, r * 0.2)
+  for (const land of EARTH_LANDS) fillEarthLand(g, cx, cy, r, land)
+  g.fillStyle(pal.landLight, 0.65)
+  fillEarthLand(g, cx, cy, r, [[-0.52, -0.36], [-0.34, -0.42], [-0.28, -0.26], [-0.46, -0.24]])
+  fillEarthLand(g, cx, cy, r, [[0.02, -0.14], [0.2, -0.16], [0.22, 0.04], [0.06, 0.08]])
 
   // Poles: a pale blue shadow under a white cap, plus a bright crest, so
   // they read as rounded ice instead of flat stickers.
