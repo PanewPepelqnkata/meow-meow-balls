@@ -116,7 +116,7 @@ export class DiscoveryBookAnimation {
       this.reducedMotion = this.media.matches
       this.media.addEventListener?.('change', this.onMotionChange)
     }
-    if (!this.reducedMotion && options.firstTime) this.applyEntranceOrigin()
+    if (!this.reducedMotion && options.firstTime && this.hudLayout?.().composition !== 'portrait') this.applyEntranceOrigin()
     if (this.reducedMotion) {
       this.applySettledPose()
       this.later(options.firstTime ? 2100 : 1750, () => this.exit())
