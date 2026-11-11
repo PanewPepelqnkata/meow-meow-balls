@@ -1,7 +1,8 @@
 import Phaser from 'phaser'
 import { UiRoot } from '../../ui/UiRoot'
 import { getTier } from '../../config/ballTiers'
-import { ballLookFor, ballOutlineWidth, drawBallFace, restContour, INK } from '../rendering/BallAppearance'
+import { ballLookFor, drawBallFace, drawCollectibleBall, restContour, INK } from '../rendering/BallAppearance'
+import { collectionSlotsFor, isCollectibleTier } from '../../config/collectibleCollection'
 import { GameOverView } from '../rendering/GameOverView'
 import { DiscoveryOverlay } from '../rendering/DiscoveryOverlay'
 import { DiscoveryBanner } from '../rendering/DiscoveryBanner'
@@ -173,11 +174,9 @@ export class UIScene extends Phaser.Scene {
       // Phase 2.12.2: first-time tier → full-viewport discovery modal
       // (presented here in screen space; state owned by the world scene).
       gameBus.on('discovery:show', ({ tier, seed, theme, variant }) => this.discoveryOverlay.show(tier, seed, theme, variant)),
-      // Repeat discovery (seen in an earlier run): the small non-blocking
-      // banner — gameplay never pauses for it.
-      gameBus.on('discovery:banner', ({ tier, seed, theme, variant }) => {
-        this.discoveryBanner.show(tier, seed, theme, variant)
-        this.flyToCollection(tier, seed)
+      // A new ball: the book opens and the ball lands in its slot.
+      gameBus.on('discovery:banner', ({ tier, seed, theme }) => {
+        this.stampInBook(tier, seed, theme)
       }),
       gameBus.on('hint:merge', () => {
         if (localStorage.getItem('br-merge-hint') === 'seen') return
@@ -211,35 +210,82 @@ export class UIScene extends Phaser.Scene {
     })
   }
 
-  /** A new ball flies from the merge to the FOUND counter, then the count bumps. */
-  private flyToCollection(tier: number, seed: number): void {
+  /** The book opens, shows the ball in its slot, then tucks away. Never blocks play. */
+  private stampInBook(tier: number, seed: number, theme: string | null): void {
     const z = this.game.scale.displayScale.x || 1
     const w = this.scale.width / z
     const h = this.scale.height / z
-    const ball = this.add.graphics().setDepth(90)
-    const look = ballLookFor(tier, seed)
-    const r = 26
-    const poly = restContour(look, r, 0, 0, 32)
-    const tierDef = getTier(tier)
-    if (tierDef) {
-      ball.fillStyle(tierDef.color, 1)
-      ball.fillPoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)
-      ball.lineStyle(ballOutlineWidth(r), INK, 1)
-      ball.strokePoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true, true)
-      drawBallFace(ball, look, { x: 0, y: 0 }, r, 1)
+    const book = this.add.container(w * 0.5, h * 0.42).setDepth(90).setScale(0.4)
+    const cover = this.add.graphics()
+    cover.fillStyle(0x4a2412, 1)
+    cover.fillRoundedRect(-170, -120, 170, 240, { tl: 14, bl: 14, tr: 0, br: 0 })
+    cover.lineStyle(6, 0x111111, 1)
+    cover.strokeRoundedRect(-170, -120, 170, 240, { tl: 14, bl: 14, tr: 0, br: 0 })
+    cover.fillStyle(0xc9a24b, 1)
+    cover.fillRoundedRect(-150, -20, 130, 40, 6)
+    const title = this.add.text(-85, 0, 'COLLECTION', { fontFamily: 'Lilita One, Arial Black, sans-serif', fontSize: '16px', color: '#4a2412' }).setOrigin(0.5)
+    const flap = this.add.container(170, 0)
+    const flapG = this.add.graphics()
+    flapG.fillStyle(0x5c2e16, 1)
+    flapG.fillRoundedRect(-170, -120, 170, 240, { tl: 0, bl: 0, tr: 14, br: 14 })
+    flapG.lineStyle(6, 0x111111, 1)
+    flapG.strokeRoundedRect(-170, -120, 170, 240, { tl: 0, bl: 0, tr: 14, br: 14 })
+
+    flap.add(flapG)
+    const page = this.add.graphics()
+    page.fillStyle(0xf7f1e3, 1)
+    page.fillRoundedRect(8, -112, 156, 224, { tl: 0, bl: 0, tr: 10, br: 10 })
+    page.lineStyle(3, 0x111111, 1)
+    page.strokeRoundedRect(8, -112, 156, 224, { tl: 0, bl: 0, tr: 10, br: 10 })
+    for (let i = 0; i < 8; i++) {
+      page.lineStyle(1.5, 0xd9cfc0, 1)
+      page.strokeCircle(46 + (i % 2) * 62, -72 + Math.floor(i / 2) * 44, 16)
     }
-    ball.setPosition(w / 2, h * 0.45)
+    const heading = this.add.text(86, -98, 'TIER ' + tier, { fontFamily: 'Lilita One, Arial Black, sans-serif', fontSize: '13px', color: '#6b3a1f' }).setOrigin(0.5)
+    heading.setVisible(false)
+
+    const slots = isCollectibleTier(tier) ? collectionSlotsFor(tier) : []
+    const found = theme ? slots.findIndex((s) => s.theme === theme) : -1
+    const slot = found >= 0 ? found : Math.max(0, tier - 1)
+    const col = slot % 2
+    const row = Math.floor(slot / 2) % 4
+
+    const sx = 46 + col * 62
+    const sy = -72 + row * 44
+    const r = 18
+    if (isCollectibleTier(tier)) {
+      page.setPosition(0, 0)
+      drawCollectibleBall(page, sx, sy, r, tier, 0, undefined, 0, undefined, seed, theme ?? undefined, 0, undefined, true)
+
+    } else {
+      const look = ballLookFor(tier, seed)
+      const poly = restContour(look, r, sx, sy, 24)
+      const tierDef = getTier(tier)
+      if (tierDef) {
+        page.fillStyle(tierDef.color, 1)
+        page.fillPoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true)
+        page.lineStyle(1.5, INK, 1)
+        page.strokePoints(poly.map((p) => new Phaser.Math.Vector2(p.x, p.y)), true, true)
+        drawBallFace(page, look, { x: sx, y: sy }, r, 1)
+      }
+    }
+    page.setVisible(false)
+    book.add([cover, title, flap, page, heading])
+
     this.uiRoot.unlockTier(tier)
-    const target = this.uiRoot.tierNodeAt(tier) ?? { x: w * 0.5, y: h * 0.86 }
     this.tweens.add({
-      targets: ball,
-      x: target.x,
-      y: target.y,
-      scale: 0.35,
-      duration: 700,
-      ease: 'Cubic.easeIn',
+      targets: book, scale: 1.15, duration: 420, ease: 'Back.easeOut',
       onComplete: () => {
-        ball.destroy()
+        this.tweens.add({
+          targets: flap, x: -170, duration: 320, ease: 'Cubic.easeIn',
+          onComplete: () => { page.setVisible(true); heading.setVisible(true) },
+        })
+        this.time.delayedCall(1400, () => {
+          this.tweens.add({
+            targets: book, scale: 0.12, x: w - 60, y: 50, alpha: 0, duration: 300,
+            onComplete: () => book.destroy(),
+          })
+        })
       },
     })
   }
