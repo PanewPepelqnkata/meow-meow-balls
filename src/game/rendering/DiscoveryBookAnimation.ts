@@ -437,7 +437,9 @@ export class DiscoveryBookAnimation {
     let top = Math.max(12, safe.top + 10)
     let bottom = vh - Math.max(12, safe.bottom + 10)
     if (layout?.composition === 'portrait') {
-      top = Math.max(top, layout.stack.hudBottom + 20, vh * 0.2)
+      // The stack's gameplay-slot estimate includes extra breathing room on
+      // narrow phones; anchor to the actually visible HUD row instead.
+      top = Math.max(top, vh * 0.2)
       bottom = Math.min(bottom, layout.stack.controlsTop - 12)
     } else {
       // Leave the pause/header controls visible; use a genuine side gutter
@@ -459,9 +461,8 @@ export class DiscoveryBookAnimation {
       ? Math.max(0.001, Math.min(1, availableW / rig.width, availableH / rig.height))
       : Math.max(0.001, Math.min(1.05, Math.min(210, availableW * 0.52) / rig.width, Math.min(286, availableH * 0.72) / rig.height))
     const x = this.firstTime ? (left + right) / 2 : right - rig.width * scale / 2
-    const y = this.firstTime
-      ? top + availableH / 2
-      : top + rig.height * scale / 2
+    const phoneBookOffset = this.firstTime && layout?.composition === 'portrait' ? vh * 0.11 : 0
+    const y = top + rig.height * scale / 2 + phoneBookOffset
     // Only the anchor is responsive. Local animation coordinates survive an
     // orientation change without restarting timers or fighting tween targets.
     root.setPosition(x, y).setScale(scale)
