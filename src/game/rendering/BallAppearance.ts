@@ -2599,8 +2599,14 @@ export function clearPirateStates(): void {
   pirateStates.clear()
   pirateAccessoryPoses.clear()
 }
-export function dropEarthGlow(_ballId: number): void {}
-export function clearEarthGlows(): void {}
+export function dropEarthGlow(ballId: number): void {
+  earthGlowImages.get(ballId)?.destroy()
+  earthGlowImages.delete(ballId)
+}
+export function clearEarthGlows(): void {
+  for (const image of earthGlowImages.values()) image.destroy()
+  earthGlowImages.clear()
+}
 
 export function notifyPirateImpact(ballId: number, nx: number, ny: number, strength: number): void {
   if (isReducedMotion()) return
@@ -4103,19 +4109,16 @@ export const EARTH_PALETTES: readonly EarthPalette[] = [
 const EARTH_ORBIT_MS = 28000
 
 const earthClipper = new BodyFillClipper()
+const EARTH_GLOW_KEY = 'br-earth-glow'
+const earthGlowImages = new Map<number, Phaser.GameObjects.Image>()
 
-/** Continents in local ball space (fractions of r). Kept apart so ocean shows between them. */
-const EARTH_LANDS: ReadonlyArray<ReadonlyArray<readonly [number, number, number, number]>> = [
-  // North America.
-  [[-0.78, -0.18, -0.62, -0.42], [-0.42, -0.46, -0.22, -0.32], [-0.18, -0.12, -0.36, 0.02], [-0.55, 0.0, -0.78, -0.04]],
-  // South America, a gap below the north.
-  [[-0.42, 0.28, -0.24, 0.2], [-0.16, 0.4, -0.22, 0.62], [-0.4, 0.66, -0.56, 0.46], [-0.56, 0.34, -0.52, 0.24]],
-  // Africa, center, clear of the eyes.
-  [[0.02, 0.1, 0.16, -0.02], [0.3, 0.08, 0.28, 0.28], [0.12, 0.42, -0.04, 0.36], [-0.08, 0.2, -0.06, 0.08]],
-  // Asia, upper right, clear of the right eye.
-  [[0.28, -0.34, 0.5, -0.5], [0.72, -0.36, 0.7, -0.12], [0.48, -0.04, 0.28, -0.1]],
-  // Australia.
-  [[0.34, 0.4, 0.52, 0.32], [0.66, 0.42, 0.58, 0.58], [0.38, 0.58, 0.28, 0.46]],
+/** Continent ellipses: [x, y, width, height] as fractions of r. Separate shapes, so they cannot fuse. */
+const EARTH_LANDS: ReadonlyArray<readonly [number, number, number, number]> = [
+  [-0.55, -0.22, 0.42, 0.3],
+  [-0.5, 0.2, 0.22, 0.3],
+  [0.02, -0.5, 0.2, 0.14],
+  [0.5, -0.16, 0.4, 0.28],
+  [0.42, 0.24, 0.28, 0.22],
 ]
 
 function earthPoint(
@@ -4152,6 +4155,27 @@ function earthDeform(
     scaleX: Math.max(0.76, Math.min(1.26, (maxX - minX) / (2 * r))),
     scaleY: Math.max(0.76, Math.min(1.26, (maxY - minY) / (2 * r))),
   }
+}
+/** Ellipse clipped to the live body. Width and height are full diameters. */
+function fillEarthEllipse(
+  g: Phaser.GameObjects.Graphics,
+  cx: number, cy: number, r: number,
+  land: readonly [number, number, number, number],
+  deform: { scaleX: number; scaleY: number }, angle: number, drift: number,
+): void {
+  const [lx, ly, w, h] = land
+  earthClipper.beginPath()
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2
+    const p = earthPoint(
+      cx, cy,
+      (lx + Math.cos(a) * w / 2) * r + drift,
+      (ly + Math.sin(a) * h / 2) * r,
+      deform.scaleX, deform.scaleY, angle,
+    )
+    earthClipper.lineTo(p.x, p.y)
+  }
+  earthClipper.fill(g)
 }
 
 /** Closed quadratic blob, sampled into clipper line segments. */
@@ -4271,16 +4295,34 @@ export function drawEarthBall(
   const deform = earthDeform(poly, cx, cy, r, bodyAngle)
   const out = thumbnail ? collectionOutlineWidth(r) : ballOutlineWidth(r)
   const ink = thumbnail ? collectionInkWidth(r) : Math.max(1.6, r * 0.04)
+  const scene = g.scene
 
-  const glowWobble = Math.sin(now * 0.0007)
-  const glowLayers: ReadonlyArray<{ rr: number; alpha: number }> = [
-    { rr: 1.55 + glowWobble * 0.02, alpha: 0.08 },
-    { rr: 1.32, alpha: 0.12 },
-    { rr: 1.14, alpha: 0.16 },
-  ]
-  for (const layer of glowLayers) {
-    g.fillStyle(pal.glow, layer.alpha + glowWobble * 0.015)
-    g.fillCircle(cx, cy, r * layer.rr)
+  // One radial gradient, not stacked discs — stacked fills read as hard rings.
+  if (scene && !thumbnail) {
+    if (!scene.textures.exists(EARTH_GLOW_KEY)) {
+      const size = 256
+      const canvas = scene.textures.createCanvas(EARTH_GLOW_KEY, size, size)
+      const ctx = canvas?.getContext()
+      if (ctx && canvas) {
+        const grad = ctx.createRadialGradient(size / 2, size / 2, size * 0.3, size / 2, size / 2, size / 2)
+        grad.addColorStop(0, 'rgba(126,224,255,0.5)')
+        grad.addColorStop(0.35, 'rgba(78,200,255,0.24)')
+        grad.addColorStop(0.7, 'rgba(78,200,255,0.08)')
+        grad.addColorStop(1, 'rgba(78,200,255,0)')
+        ctx.fillStyle = grad
+        ctx.fillRect(0, 0, size, size)
+        canvas.refresh()
+      }
+    }
+    if (_ballId !== undefined && scene.textures.exists(EARTH_GLOW_KEY)) {
+      let image = earthGlowImages.get(_ballId)
+      if (!image || image.scene !== scene) {
+        image = scene.add.image(cx, cy, EARTH_GLOW_KEY)
+        earthGlowImages.set(_ballId, image)
+      }
+      const breath = 1 + Math.sin(now * 0.0011) * 0.02
+      image.setPosition(cx, cy).setDisplaySize(r * 3.3 * breath, r * 3.3 * breath).setBlendMode(1).setDepth(9).setVisible(true)
+    }
   }
 
   const orbit = earthOrbit(now, seed)
@@ -4301,35 +4343,36 @@ export function drawEarthBall(
 
   earthClipper.setBody(poly, cx, cy, r)
 
-  // Ocean shading stays under the land so the continents stay green.
-  g.fillStyle(pal.oceanDark, 0.4)
+  // Shading first, land after, so the crescent never tints the continents.
+  g.fillStyle(pal.oceanDark, 0.34)
   earthClipper.beginPath()
-  earthClipper.arc(cx + r * 0.42, cy + r * 0.08, r * 0.72, -Math.PI * 0.15, Math.PI * 0.72, false)
-  earthClipper.arc(cx + r * 0.72, cy + r * 0.22, r * 0.42, Math.PI * 0.72, -Math.PI * 0.15, true)
+  earthClipper.arc(cx + r * 0.34, cy, r * 0.9, -Math.PI * 0.5, Math.PI * 0.5, false)
+  earthClipper.arc(cx + r * 0.62, cy, r * 0.55, Math.PI * 0.5, -Math.PI * 0.5, true)
   earthClipper.fill(g)
-  g.fillStyle(pal.oceanLight, 0.35)
+  g.fillStyle(pal.oceanLight, 0.3)
   earthClipper.beginPath()
-  earthClipper.arc(cx - r * 0.34, cy - r * 0.32, r * 0.4, Math.PI * 0.95, Math.PI * 1.75, false)
-  earthClipper.arc(cx - r * 0.16, cy - r * 0.14, r * 0.18, Math.PI * 1.75, Math.PI * 0.95, true)
+  earthClipper.arc(cx - r * 0.32, cy - r * 0.3, r * 0.42, Math.PI * 0.9, Math.PI * 1.8, false)
+  earthClipper.arc(cx - r * 0.14, cy - r * 0.12, r * 0.2, Math.PI * 1.8, Math.PI * 0.9, true)
   earthClipper.fill(g)
 
   g.fillStyle(pal.land, 1)
-  for (const land of EARTH_LANDS) fillEarthBlob(g, cx, cy, r, land, deform, bodyAngle, drift)
-
-
+  for (const land of EARTH_LANDS) fillEarthEllipse(g, cx, cy, r, land, deform, bodyAngle, drift)
+  g.fillStyle(pal.landLight, 0.7)
+  fillEarthEllipse(g, cx, cy, r, [-0.48, -0.34, 0.22, 0.16], deform, bodyAngle, drift)
+  fillEarthEllipse(g, cx, cy, r, [0.02, 0.08, 0.16, 0.2], deform, bodyAngle, drift)
 
   g.fillStyle(pal.ice, 0.96)
   fillEarthCap(g, cx, cy, r, -1, deform, bodyAngle)
   g.fillStyle(pal.ice, 0.9)
   fillEarthCap(g, cx, cy, r, 1, deform, bodyAngle)
 
-  // Clouds sit on the flanks, never across the eyes.
-  g.fillStyle(pal.cloud, 0.92)
+  // Clouds ride the surface, off the face.
+  g.fillStyle(pal.cloud, 0.9)
   fillEarthBlob(g, cx, cy, r, [
-    [-0.72, 0.16, -0.58, 0.04], [-0.4, 0.08, -0.28, 0.18], [-0.48, 0.26, -0.68, 0.22],
+    [-0.7, 0.22, -0.56, 0.1], [-0.4, 0.14, -0.3, 0.26], [-0.5, 0.32, -0.68, 0.28],
   ], deform, bodyAngle, drift * 1.8)
   fillEarthBlob(g, cx, cy, r, [
-    [0.34, 0.22, 0.52, 0.12], [0.68, 0.24, 0.58, 0.38], [0.4, 0.4, 0.3, 0.3],
+    [0.3, 0.26, 0.48, 0.16], [0.64, 0.28, 0.54, 0.42], [0.36, 0.44, 0.26, 0.34],
   ], deform, bodyAngle, drift * 1.8)
 
   if (poly && poly.length >= 3) {
@@ -4340,18 +4383,7 @@ export function drawEarthBall(
     g.strokeCircle(cx, cy, r)
   }
 
-  const earthLook = ballLookFor(11, seed)
-  drawBallFace(g, {
-    ...earthLook,
-    eyeW: 0.42,
-    eyeH: 0.46,
-    eyeAsym: 1,
-    gazeX: 0,
-    gazeY: 0,
-    mouth: 0,
-    mouthW: 0.16,
-    mouthTilt: 0,
-  }, { x: cx, y: cy }, r, 1, {
+  drawBallFace(g, ballLookFor(11, seed), { x: cx, y: cy }, r, 1, {
     gaze, panic, expr: expressionAt(seed, now),
   }, thumbnail)
 
