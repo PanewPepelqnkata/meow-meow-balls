@@ -100,7 +100,11 @@ export class DiscoveryBookAnimation {
     this.destroy()
     this.firstTime = options.firstTime
     this.entranceOrigin = options.origin ?? null
-    this.root = this.scene.add.container(0, 0).setDepth(DEPTH).setScrollFactor(0)
+    // World space, like every other HUD element: the UI camera is zoomed by
+    // the render DPR and scrolled to frame CSS pixels, so scrollFactor(0)
+    // would pin this artwork to the raw camera viewport — the top-left
+    // corner on a phone — instead of the laid-out CSS position.
+    this.root = this.scene.add.container(0, 0).setDepth(DEPTH)
       .setName('discovery-book-animation')
     this.rig = options.firstTime
       ? this.buildBook(entries, target)

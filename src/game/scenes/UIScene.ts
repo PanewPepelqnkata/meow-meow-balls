@@ -95,7 +95,7 @@ export class UIScene extends Phaser.Scene {
     })
     this.discoveryBook = new DiscoveryBookAnimation(this, () => this.uiRoot.layout_)
     const forcedDiscovery = new URLSearchParams(window.location.search).get('discovery')
-    if (forcedDiscovery === 'book' || forcedDiscovery === 'page') {
+    if (forcedDiscovery === 'book' || forcedDiscovery === 'page' || forcedDiscovery === 'wind') {
       this.time.delayedCall(15_000, () => gameBus.emit('discovery:book', {
         tier: 5,
         seed: 5065,
