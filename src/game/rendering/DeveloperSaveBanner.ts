@@ -43,13 +43,7 @@ export class DeveloperSaveBanner {
       .setName('developer-save-banner')
     this.root = root
 
-    // A soft ink plate keeps the big type readable over any pile/theme.
-    const plate = this.scene.add.graphics()
-    plate.fillStyle(0x000000, 0.28)
-    plate.fillRoundedRect(-wrapWidth / 2 - 14, -size * 2.1, wrapWidth + 28, size * 4.2, 22)
-    root.add(plate)
-
-    const text = hudText(this.scene, 0, 0, 'YOU WERE SAVED BY\nthe developer <3', 1, {
+    const text = hudText(this.scene, 0, 0, 'YOU WERE SAVED BY\nTHE DEVELOPER <3', 1, {
       color: '#ffe27a',
       size,
       stroke: Math.max(4, Math.round(size * 0.16)),
@@ -57,7 +51,16 @@ export class DeveloperSaveBanner {
       shadow: true,
     })
     text.setAlign('center').setWordWrapWidth(wrapWidth, true).setName('developer-save-text')
-    root.add(text)
+
+    // A soft ink plate keeps the big type readable over any pile/theme.
+    // Sized from the MEASURED text box (wrapping and stroke padding vary by
+    // viewport) so a narrow phone's extra line never overflows the plate.
+    const plate = this.scene.add.graphics()
+    const plateW = Math.min(vw - 8, Math.ceil(text.width) + 28)
+    const plateH = Math.min(vh - 16, Math.ceil(text.height) + 22)
+    plate.fillStyle(0x000000, 0.28)
+    plate.fillRoundedRect(-plateW / 2, -plateH / 2, plateW, plateH, 22)
+    root.add([plate, text])
 
     if (this.reducedMotion) {
       root.setAlpha(1).setScale(1)
