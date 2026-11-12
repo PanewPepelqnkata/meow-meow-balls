@@ -474,11 +474,12 @@ export class DiscoveryBookAnimation {
     const scale = this.firstTime
       ? Math.max(0.001, Math.min(1, availableW / rig.width, availableH / rig.height))
       : Math.max(0.001, Math.min(1.18, repeatTargetW / rig.width, repeatTargetH / rig.height))
-    const portraitRepeat = !this.firstTime && layout?.composition === 'portrait'
-    const x = this.firstTime || portraitRepeat ? (left + right) / 2 : right - rig.width * scale / 2
+    // First-time discovery: the full book, centered in the play slot.
+    // Repeat discovery: a compact page pinned to the TOP-RIGHT corner so it
+    // never covers the pile the player is still working.
+    const x = this.firstTime ? (left + right) / 2 : right - rig.width * scale / 2
     const phoneBookOffset = this.firstTime && layout?.composition === 'portrait' ? vh * 0.11 : 0
-    const baseY = top + rig.height * scale / 2 + phoneBookOffset
-    const y = portraitRepeat ? Math.max(baseY, vh * 0.42) : baseY
+    const y = top + rig.height * scale / 2 + phoneBookOffset
     // Only the anchor is responsive. Local animation coordinates survive an
     // orientation change without restarting timers or fighting tween targets.
     if (this.firstTime) {
