@@ -27,6 +27,9 @@ export interface GameEventMap {
   }
   /** World → UI: run was revived after game over (fallen-out balls cleared, overlay dismissed). */
   'run:revived': { revivesUsed: number; nextReviveCost: number; removedBalls: number }
+  /** World → UI: a blessed run survived its first overflow — the ball
+   * exploded, the run continues, and the UI announces the save. */
+  'run:developerSave': { removedBalls: number }
   // ---- Phase 2.11.0: PlaygroundScene (world) ↔ UIScene (HUD) wiring ----
   /** The upcoming ball changed (tier + the appearance seed the preview,
    * crane and the eventual spawn all share). */

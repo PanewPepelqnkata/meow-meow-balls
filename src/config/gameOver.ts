@@ -63,6 +63,20 @@ export function isOutsideContainer(c: Vec2, currentWallHeight: number): boolean 
 export const REVIVE_BASE_COST = 25
 
 /**
+ * Share of runs that start with a free save: the first overflow explodes the
+ * fallen ball, announces the save, and lets the run continue. Rolled ONCE per
+ * run (boot and restart) so the game-over screen can never reroll it.
+ */
+export const DEVELOPER_SAVE_CHANCE = 0.25
+
+/** Roll the per-run developer save. `rng` returns [0,1). */
+export function rollDeveloperSave(rng: () => number = Math.random): boolean {
+  const roll = rng()
+  return Number.isFinite(roll) && roll < DEVELOPER_SAVE_CHANCE
+}
+
+
+/**
  * Coin cost for the next revive in a run, doubling each time:
  * 0 revives used -> 25, 1 -> 50, 2 -> 100, 3 -> 200, 4 -> 400, ...
  */

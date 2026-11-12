@@ -3,6 +3,7 @@ import { UiRoot } from '../../ui/UiRoot'
 import { GameOverView } from '../rendering/GameOverView'
 import { DiscoveryOverlay } from '../rendering/DiscoveryOverlay'
 import { DiscoveryBookAnimation } from '../rendering/DiscoveryBookAnimation'
+import { DeveloperSaveBanner } from '../rendering/DeveloperSaveBanner'
 import { AuthModal } from '../../ui/AuthModal'
 import { FloatingTextNotification } from '../../ui/FloatingTextNotification'
 import { authService, scoreService } from '../../services/auth'
@@ -28,6 +29,7 @@ export class UIScene extends Phaser.Scene {
   private readonly gameOverlay: GameOverView
   private discoveryOverlay!: DiscoveryOverlay
   private discoveryBook!: DiscoveryBookAnimation
+  private developerSaveBanner!: DeveloperSaveBanner
   private achievementNotification: FloatingTextNotification | null = null
   private lastBest = 0
   private lastScore = 0
@@ -94,6 +96,7 @@ export class UIScene extends Phaser.Scene {
       this.uiRoot.setHudVisible(visible)
     })
     this.discoveryBook = new DiscoveryBookAnimation(this, () => this.uiRoot.layout_)
+    this.developerSaveBanner = new DeveloperSaveBanner(this)
     const forcedDiscovery = new URLSearchParams(window.location.search).get('discovery')
     if (forcedDiscovery === 'book' || forcedDiscovery === 'page' || forcedDiscovery === 'wind') {
       this.time.delayedCall(15_000, () => gameBus.emit('discovery:book', {
@@ -136,6 +139,7 @@ export class UIScene extends Phaser.Scene {
         this.uiRoot.setAbilitiesEnabled(enabled)
       }),
       gameBus.on('run:gameover', ({ score, best, tierReached, ballsMerged, durationMs, revivesUsed, reviveCost }) => {
+        this.developerSaveBanner.destroy()
         const drunkoTestRoute = isDrunkoTestRoute()
         this.lastBest = best
         this.uiRoot.setScore(score, best)
@@ -172,6 +176,7 @@ export class UIScene extends Phaser.Scene {
         this.gameOverlay.hide()
         this.discoveryOverlay.reset()
         this.discoveryBook.destroy()
+        this.developerSaveBanner.destroy()
         this.uiRoot.resetForNewRun()
         this.lastScore = 0
         this.uiRoot.setScore(0, this.lastBest)
@@ -183,6 +188,9 @@ export class UIScene extends Phaser.Scene {
       // Legacy/QA repeat route uses the compact book page.
       gameBus.on('discovery:banner', ({ tier, seed, theme, variant }) => {
         this.discoveryBook.show({ tier, seed, theme, variant, firstTime: false })
+      }),
+      gameBus.on('run:developerSave', () => {
+        this.developerSaveBanner.show()
       }),
       gameBus.on('hint:merge', () => {
         if (localStorage.getItem('br-merge-hint') === 'seen') return
@@ -212,6 +220,7 @@ export class UIScene extends Phaser.Scene {
       this.offs = []
       this.discoveryOverlay.reset()
       this.discoveryBook.destroy()
+      this.developerSaveBanner.destroy()
       this.achievementNotification?.clear()
     })
   }

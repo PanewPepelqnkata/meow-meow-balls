@@ -11,7 +11,7 @@ import { SoftBallManager } from '../systems/SoftBallManager'
 import { WallAnimator } from '../systems/WallAnimator'
 import { InputController } from '../systems/InputSystem'
 import { MergeSystem } from '../systems/MergeSystem'
-import { isOutsideContainer, isSpillingOrOutsideContainer, reviveCostForCount } from '../../config/gameOver'
+import { isOutsideContainer, isSpillingOrOutsideContainer, reviveCostForCount, rollDeveloperSave } from '../../config/gameOver'
 import { GameOverSequence } from '../rendering/GameOverSequence'
 import { GameOverWatch } from '../systems/GameOverWatch'
 import { ScoreSystem } from '../systems/ScoreSystem'
@@ -129,6 +129,10 @@ export class PlaygroundScene extends Phaser.Scene {
   private readonly overflowBallIds = new Set<number>()
   /** Post-revive protection window (sim-time ms) during which any ball spilling outside is auto-cleaned. */
   private reviveCleanupUntilMs = 0
+  /** This run rolled the free developer save (once per run, at boot/restart). */
+  private developerSaveReady = false
+  /** The blessed save is spent; the next overflow ends the run as usual. */
+  private developerSaveConsumed = false
   private lastSettledRunScore: number | null = null
   /** Timestamp of this run's leaderboard entry so revived runs update their entry in place. */
   private runLeaderboardAt: number | null = null
@@ -171,7 +175,7 @@ export class PlaygroundScene extends Phaser.Scene {
     // Phase 2.13.0: two-slot ball queue — crane shows `currentBall`, the
     // Next Ball preview shows `nextBallState`.
     this.initQueue()
-
+    this.rollDeveloperSaveForRun()
     // World camera: transparent background — the UI scene renders on top.
     this.cameras.main.setBackgroundColor('rgba(0,0,0,0)')
     this.applyWorldCamera()
@@ -551,6 +555,13 @@ export class PlaygroundScene extends Phaser.Scene {
         },
         /** DEV-ONLY QA hook (mutating): full restart, same as the button. */
         restart: () => this.restartRun(),
+        /** DEV-ONLY QA hook: this run's free-save state. */
+        developerSave: () => ({ ready: this.developerSaveReady, consumed: this.developerSaveConsumed }),
+        /** DEV-ONLY QA hook (mutating): arm/disarm the free save for this run. */
+        setDeveloperSave: (ready: boolean) => {
+          this.developerSaveReady = ready
+          this.developerSaveConsumed = false
+        },
         /** DEV-ONLY QA hook (Phase 2.13.0, read-only): the two-slot queue. */
         queueInfo: () => ({
           current: { ...this.currentBall },
@@ -1202,12 +1213,91 @@ export class PlaygroundScene extends Phaser.Scene {
     }
     if (this.overWatch.observe(outside, deltaMs)) {
       for (const id of outside) this.overflowBallIds.add(id)
+      if (this.developerSaveReady && !this.developerSaveConsumed) {
+        this.developerSave()
+        return
+      }
       this.triggerGameOver()
     }
   }
 
   private currentReviveCost(): number {
     return reviveCostForCount(this.revivesUsed)
+  }
+
+  /**
+   * Roll this run's free developer save — ONCE per run (boot and every
+   * restart), so the game-over screen can never reroll it. Dev override:
+   * `?developersave=1` / `?developersave=0`.
+   */
+  private rollDeveloperSaveForRun(): void {
+    // QA override is DEV-only: production always uses the 25% roll.
+    const forced = import.meta.env.DEV && typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('developersave')
+      : null
+    this.developerSaveReady = forced === '1' ? true : forced === '0' ? false : rollDeveloperSave()
+    this.developerSaveConsumed = false
+  }
+
+  /**
+   * The blessed save: the ball that overflowed EXPLODES, the run keeps
+   * going, and the UI announces it. Costs nothing and deliberately does not
+   * touch `revivesUsed` or the server revive session — the paid revive path
+   * stays exactly as it was.
+   */
+  private developerSave(): void {
+    this.developerSaveConsumed = true
+    for (const id of this.overflowBallIds) {
+      const ball = this.balls.getBallById(id)
+      const c = this.balls.centroid(id)
+      const radius = ball?.soft.radius ?? 34
+      this.burstFx(c.x, c.y, radius, getTier(ball?.tier ?? 1)?.color ?? 0xffffff)
+    }
+    const removedCount = this.removeFallenOutBalls()
+    this.overWatch.reset()
+    this.reviveCleanupUntilMs = this.activeTimeMs + 1500
+    // The overflow never became game over; clear any lingering reaction and
+    // keep the run (input, physics and timers were never stopped).
+    this.gameOverSequence?.destroy()
+    this.gameOverSequence = null
+    this.ballRenderer.gameOverSequence = null
+    gameBus.emit('run:developerSave', { removedBalls: removedCount })
+  }
+
+  /** Short cosmetic shard burst where an overflowed ball exploded. */
+  private burstFx(x: number, y: number, radius: number, color: number): void {
+    const g = this.add.graphics().setDepth(24)
+    const shards = Array.from({ length: 12 }, (_, i) => {
+      const angle = (i / 12) * Math.PI * 2 + (Math.random() - 0.5) * 0.5
+      return {
+        angle,
+        distance: radius * (0.8 + Math.random() * 1.1),
+        size: Math.max(1.5, radius * (0.12 + Math.random() * 0.16)),
+        wobble: (Math.random() - 0.5) * 5,
+      }
+    })
+    const state = { t: 0 }
+    this.tweens.add({
+      targets: state,
+      t: 1,
+      duration: 460,
+      ease: 'Cubic.easeOut',
+      onUpdate: () => {
+        const p = state.t
+        const fade = 1 - p
+        g.clear()
+        g.lineStyle(Math.max(1, radius * 0.09), 0xffffff, 0.8 * fade)
+        g.strokeCircle(x, y, radius * (0.6 + p * 1.2))
+        g.fillStyle(color, 0.95 * fade)
+        for (const shard of shards) {
+          const distance = shard.distance * p
+          const sx = x + Math.cos(shard.angle + shard.wobble * p) * distance
+          const sy = y + Math.sin(shard.angle + shard.wobble * p) * distance + radius * 0.8 * p * p
+          g.fillCircle(sx, sy, Math.max(0.6, shard.size * (1 - p * 0.55)))
+        }
+      },
+      onComplete: () => g.destroy(),
+    })
   }
 
   /** Identify all balls that have fallen out or are spilling past the container walls. */
@@ -1378,6 +1468,7 @@ export class PlaygroundScene extends Phaser.Scene {
     this.gameOver = false
     this.revivesUsed = 0
     this.reviveCleanupUntilMs = 0
+    this.rollDeveloperSaveForRun()
     this.overflowBallIds.clear()
     this.lastSettledRunScore = null
     this.runLeaderboardAt = null
